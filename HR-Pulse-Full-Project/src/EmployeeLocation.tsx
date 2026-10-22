@@ -1,11 +1,11 @@
-import {useRef,useState,type ChangeEvent,type ReactNode} from 'react';
+import {useEffect,useRef,useState,type ChangeEvent,type ReactNode} from 'react';
 import {Upload} from 'lucide-react';
 import {read,utils} from 'xlsx';
 import {api,parseCsv,type Module} from './api';
 
 const locations={Site:['NCL','WCL'],Office:['Nagpur CO','Chandrapur HO']};
 const tabs=['Add New Employee','Update Existing Employee','Region Employee Details','Department & Designation'];
-const steps=['Employee Details','Work Details','Contract & Policies','Assets & Docs'];
+const steps=['Employee Details','Work Details','Contract & Policies','Assets','Docs'];
 
 type FieldProps={label:string;required?:boolean;placeholder?:string;type?:string;options?:string[];wide?:boolean;value?:string;onChange?:(value:string)=>void};
 function Field({label,required,placeholder='',type='text',options,wide,value,onChange}:FieldProps){
@@ -20,12 +20,12 @@ const documents=[
 ];
 const conditionalDocuments=new Set(['VTC certificate','Medical fitness certificate','Driving licence','Operator competency certificate']);
 
-function JoiningForm(){
- const[step,setStep]=useState(0),[candidateFill,setCandidateFill]=useState(false),[employeeGroup,setEmployeeGroup]=useState('Corporate / HO'),[employeeCategory,setEmployeeCategory]=useState('');
+function JoiningForm({employeeGroup}:{employeeGroup:'Corporate / HO'|'OB / COAL'}){
+ const[step,setStep]=useState(0),[candidateFill,setCandidateFill]=useState(false),[employeeCategory,setEmployeeCategory]=useState('');
+ useEffect(()=>{if(employeeGroup==='Corporate / HO')setEmployeeCategory('');},[employeeGroup]);
  const showMineCompliance=employeeGroup==='OB / COAL'&&['Driver','Operator'].includes(employeeCategory);
  const visibleDocuments=documents.filter(([name])=>!conditionalDocuments.has(name)||showMineCompliance);
  return <form className="joining-form" onSubmit={event=>event.preventDefault()}>
-  <label className="employee-group-select" htmlFor="employee-group"><span>Employee Group</span><select id="employee-group" value={employeeGroup} onChange={event=>{setEmployeeGroup(event.target.value);if(event.target.value==='Corporate / HO')setEmployeeCategory('');}}><option>Corporate / HO</option><option>OB / COAL</option></select></label>
   <div className="joining-steps" aria-label="Employee joining steps">{steps.map((label,index)=><button type="button" key={label} className={step===index?'active':''} onClick={()=>setStep(index)}><i>{index+1}</i><span>{label}</span></button>)}</div>
   <div className="joining-card">
    <div className="joining-heading"><div><h2>{steps[step]}</h2><p>Complete all applicable details from the CMLL employee joining form.</p></div><label className="candidate-fill"><span><strong>Fill Data by Candidate</strong><small>Candidate can complete the joining information</small></span><input type="checkbox" checked={candidateFill} onChange={event=>setCandidateFill(event.target.checked)}/></label></div>
@@ -53,13 +53,14 @@ function JoiningForm(){
      <label className="joining-check wide"><input type="checkbox"/><span><strong>Candidate Declaration</strong><small>I declare that the information and documents submitted are true and complete.</small></span></label><Field label="Candidate Signature / Date"/><Field label="Prepared By (HR) / Date"/><Field label="Site HR Verification / Date"/><Field label="Final Approval Reference / Date"/><Field label="Employee Code (after approval)"/>
     </div></Section>
    </>}
-   {step===3&&<Section title="Document Checklist"><div className="joining-table-wrap"><table className="joining-table documents-table"><thead><tr><th>S.No.</th><th>Document Name</th><th>Mandatory / Conditional</th><th>Upload</th><th>Verified By</th><th>Remarks</th></tr></thead><tbody>{visibleDocuments.map(([name,rule],index)=><tr key={name}><td>{index+1}</td><td>{name}</td><td>{rule}</td><td><input aria-label={`Upload ${name}`} type="file"/></td><td><input aria-label={`Verified by ${name}`}/></td><td><input aria-label={`Remarks for ${name}`}/></td></tr>)}</tbody></table></div></Section>}
+   {step===3&&<Section title="Asset Details"><EntryTable columns={['Asset Type','Asset / Tag No.','Serial No.','Issue Date','Return Date','Remarks']}/></Section>}
+   {step===4&&<Section title="Document Checklist"><div className="joining-table-wrap"><table className="joining-table documents-table"><thead><tr><th>S.No.</th><th>Document Name</th><th>Mandatory / Conditional</th><th>Upload</th><th>Verified By</th><th>Remarks</th></tr></thead><tbody>{visibleDocuments.map(([name,rule],index)=><tr key={name}><td>{index+1}</td><td>{name}</td><td>{rule}</td><td><input aria-label={`Upload ${name}`} type="file"/></td><td><input aria-label={`Verified by ${name}`}/></td><td><input aria-label={`Remarks for ${name}`}/></td></tr>)}</tbody></table></div></Section>}
    <div className="joining-actions"><button type="button" disabled={step===0} onClick={()=>setStep(step-1)}>Previous</button>{step<steps.length-1?<button type="button" className="next" onClick={()=>setStep(step+1)}>Save & Continue</button>:<button type="submit" className="next">Submit Employee</button>}</div>
   </div>
  </form>;
 }
 
-export default function EmployeeLocation({title='Employee Master',grant,module,notice}:{title?:string;grant?:string;module?:Module;notice?:(message:string)=>void}){
+export default function EmployeeLocation({title='Employee Master',grant,module,notice,employeeGroup='Corporate / HO'}:{title?:string;grant?:string;module?:Module;notice?:(message:string)=>void;employeeGroup?:'Corporate / HO'|'OB / COAL'}){
  const[tab,setTab]=useState('Add New Employee');
  const[type,setType]=useState<keyof typeof locations|''>(''),[location,setLocation]=useState('');
  const importInput=useRef<HTMLInputElement>(null),[importStatus,setImportStatus]=useState(''),[importError,setImportError]=useState(''),[importRows,setImportRows]=useState<Record<string,unknown>[]>([]),[importBusy,setImportBusy]=useState(false);
@@ -78,6 +79,6 @@ export default function EmployeeLocation({title='Employee Master',grant,module,n
   }catch(error){setImportRows([]);setImportError((error as Error).message);}finally{event.target.value='';}
  }
  async function saveImport(){if(!grant||!importRows.length)return;setImportBusy(true);setImportError('');try{const result=await api<{imported:number}>(grant,'import/employees','POST',{records:importRows});setImportRows([]);setImportStatus('');notice?.(`${result.imported} employee drafts saved to Azure`);}catch(error){setImportError((error as Error).message);}finally{setImportBusy(false);}}
- if(title==='Employee Master')return <section className="employee-master" aria-label="Employee Master"><div className="employee-tabs-row"><div className="employee-tabs">{tabs.map(value=><button key={value} className={tab===value?'selected':''} onClick={()=>setTab(value)}>{value}</button>)}</div><input ref={importInput} className="employee-import-input" aria-label="Import employee file" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event=>void importEmployees(event)}/><button className="employee-import" type="button" onClick={()=>importInput.current?.click()}><Upload/>Import</button></div>{importStatus&&<div className="employee-import-status" role="status"><span>{importStatus}</span>{grant&&<button type="button" disabled={importBusy} onClick={()=>void saveImport()}>{importBusy?'Importing…':`Import ${importRows.length} drafts`}</button>}</div>}{importError&&<p className="employee-import-error" role="alert">{importError}</p>}{tab==='Add New Employee'&&<JoiningForm/>}</section>;
+ if(title==='Employee Master')return <section className="employee-master" aria-label="Employee Master"><div className="employee-tabs-row"><div className="employee-tabs">{tabs.map(value=><button key={value} className={tab===value?'selected':''} onClick={()=>setTab(value)}>{value}</button>)}</div><input ref={importInput} className="employee-import-input" aria-label="Import employee file" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event=>void importEmployees(event)}/><button className="employee-import" type="button" onClick={()=>importInput.current?.click()}><Upload/>Import</button></div>{importStatus&&<div className="employee-import-status" role="status"><span>{importStatus}</span>{grant&&<button type="button" disabled={importBusy} onClick={()=>void saveImport()}>{importBusy?'Importing…':`Import ${importRows.length} drafts`}</button>}</div>}{importError&&<p className="employee-import-error" role="alert">{importError}</p>}{tab==='Add New Employee'&&<JoiningForm employeeGroup={employeeGroup}/>}</section>;
  return <section className="employee-master" aria-labelledby="employee-master-title"><div className="page-title"><h1 id="employee-master-title">{title}</h1></div><div className="employee-location-panel"><fieldset><legend>Site / Office</legend><div className="employee-location-types">{Object.keys(locations).map(value=><label key={value}><input type="radio" name="employee-location-type" value={value} checked={type===value} onChange={()=>{setType(value as keyof typeof locations);setLocation('')}}/>{value}</label>)}</div></fieldset>{type&&<div className="employee-location-select"><label htmlFor="employee-location">{type}</label><select id="employee-location" value={location} onChange={event=>setLocation(event.target.value)}><option value="">Select {type.toLowerCase()}</option>{locations[type].map(value=><option key={value} value={value}>{value}</option>)}</select></div>}</div></section>;
 }
