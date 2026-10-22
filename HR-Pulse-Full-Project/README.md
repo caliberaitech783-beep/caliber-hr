@@ -1,14 +1,5 @@
-# HR Pulse
+# Caliber HR
 
-Independent HR management portal for Caliber Mining & Logistic Limited.
+Run npm ci, npm test and npm run build. Deploy dist to Hostinger public_html, uploading assets before index.html. Retain old index and hashed assets for rollback.
 
-## Run locally
-
-```powershell
-pnpm install
-pnpm dev
-```
-
-Phase 1 includes the responsive portal foundation, login experience, dashboard, B1–B8 configuration hub, PostgreSQL/Prisma schema, and architecture plan. The visible demo credentials only drive the local prototype transition; no production credential is embedded.
-
-See `docs/ARCHITECTURE.md` for the API, security, approval-engine, dependency map, decisions, and roadmap.
+Login verifies the existing Pulse username/password using the fixed central HR integration endpoint. HR roles and configured HR portal access are checked centrally. No separate credentials or mock login transition remain. Passwords are never stored. Grants expire after seven days, and validation checks password changes and central revocation. The remaining HR modules are the existing prototype; this change does not implement an HR database/API.
