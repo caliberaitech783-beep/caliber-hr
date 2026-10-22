@@ -1,0 +1,11 @@
+{
+  "name": "hr-azure-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "node --test app.test.mjs"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": { "@azure/identity": "^4.0.0", "pg": "^8.0.0" }
+}

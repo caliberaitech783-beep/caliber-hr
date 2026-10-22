@@ -1,0 +1,15 @@
+# Local build/deployment tooling and generated upload bundles.
+/.pnpm-store/
+/.tools/
+/.azure/
+/hrpulse-hostinger.zip
+/hrpulse-live.zip
+/hr-update.zip
+/hrpulse-deployed.png
+/hr-branding-updated.png
+/hr-azure-frontend.zip
+/hr-azure-connected.png
+/hr-modules-verified.png
+
+/employee-master-blank.png
+/HR-Pulse-Full-Project/server/bootstrap.mjs

@@ -1,0 +1,59 @@
+/* Shared Caliber Pulse branding; layouts and semantic status colors stay intact. */
+:root {
+  --pulse-purple: #522e90;
+  --pulse-pink: #a92b79;
+  --pulse-red: #f44755;
+  --pulse-gradient: linear-gradient(110deg, var(--pulse-purple), var(--pulse-pink) 58%, var(--pulse-red));
+  --pulse-soft: #f3edf9;
+  --pulse-border: #e4d7ed;
+  color: #292238;
+  background: #faf5f8;
+}
+a, .overline, .panel-title button, .config-head button, .empty button,
+.module-grid article > button { color: var(--pulse-purple); }
+.login-brand { background: var(--pulse-gradient); }
+.logo span { background: linear-gradient(145deg, #7541b5, #df2b85); box-shadow: 0 8px 22px #522e9030; }
+.brand-copy small, .brand-copy h1 em, .trust-row svg { color: #ffe0f0; }
+.brand-copy p, .trust-row { color: #f4deef; }
+.orb { background: #ffb9dc; }
+.login-panel { background: radial-gradient(ellipse at top right, #f9e8f1, transparent 60%), #fdfbfe; }
+.login-card h2, .page-title h1 { color: #30233d; }
+.input-wrap, .global-search, .section-head select, .module-grid article > button { border-color: var(--pulse-border); }
+.input-wrap:focus-within { border-color: #8452b5; box-shadow: 0 0 0 3px #8452b51c; }
+.remember input { accent-color: var(--pulse-purple); }
+.sign-in, .primary { background: var(--pulse-gradient); }
+.sign-in { box-shadow: 0 10px 24px #a92b7929; }
+.secure-note svg { color: var(--pulse-purple); }
+.app aside { background: linear-gradient(165deg, #522e90, #702b87 60%, #932a78); color: #f0e7f8; }
+.workspace { background: #ffffff10; border-color: #ffffff25; }
+.workspace small, .workspace span, .side-user small { color: #e0cce9; }
+.workspace strong { color: #fff; }
+.side-head > button, .side-user > button, nav button { color: #eedff5; }
+nav button.active { background: #ffffff24; color: #fff; border-left-color: #ffb7dc; }
+nav button:hover { background: #ffffff18; }
+.avatar { background: linear-gradient(145deg, #f4e6fb, #eab4d6); color: var(--pulse-purple); }
+.main header { background: var(--pulse-gradient); border-bottom-color: #a92b7926; }
+.global-search { background: #fff; }
+.header-actions > button, .header-profile > svg, .header-profile strong, .mobile-menu { color: #fff; }
+.header-profile small { color: #f7e3ee; }
+.header-profile { border-left-color: #ffffff40; }
+.setup-banner { background: var(--pulse-gradient); box-shadow: 0 9px 25px #522e9019; }
+.setup-icon svg, .toast > svg { color: #ffd2e8; }
+.setup-banner p, .setup-progress span { color: #fbe8f2; }
+.setup-progress i, .config-score i { background: #ef9dc8; }
+.setup-banner > button { color: var(--pulse-purple); }
+.kpis article, .panel, .mini-masters > button, .config-score, .module-grid article { border-color: var(--pulse-border); }
+.kpi-icon, .module-icon.blue, .module-icon.violet, .module-icon.teal,
+.module-icon.cyan, .module-icon.indigo { background: var(--pulse-soft); color: var(--pulse-purple); }
+.module-icon.rose { background: #fce9f2; color: #a92b79; }
+.empty-chart i { background: #d9c1eb; }
+.badge { background: var(--pulse-soft); color: var(--pulse-purple); }
+.module-grid article:hover { border-color: #b99acf; box-shadow: 0 10px 25px #522e9012; }
+.toast { background: var(--pulse-purple); }
+button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #b77ed4; outline-offset: 3px; }
+.sign-in:disabled { opacity: .7; cursor: wait; transform: none; }
+@media (max-width: 760px) { .mobile-logo { color: var(--pulse-purple); } }
+
+/* Keep the location dropdown beside Site / Office in both masters. */
+.employee-master .employee-location-panel { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 24px; }
+.employee-master .employee-location-select { flex: 1 1 260px; min-width: 0; margin-top: 0; max-width: 360px; }
