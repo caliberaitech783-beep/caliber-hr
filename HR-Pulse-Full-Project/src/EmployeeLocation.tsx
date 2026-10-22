@@ -1,5 +1,7 @@
-import {useState,type ReactNode} from 'react';
+import {useRef,useState,type ChangeEvent,type ReactNode} from 'react';
 import {Upload} from 'lucide-react';
+import {read,utils} from 'xlsx';
+import {api,parseCsv,type Module} from './api';
 
 const locations={Site:['NCL','WCL'],Office:['Nagpur CO','Chandrapur HO']};
 const tabs=['Add New Employee','Update Existing Employee','Region Employee Details','Department & Designation'];
@@ -53,9 +55,25 @@ function JoiningForm(){
  </form>;
 }
 
-export default function EmployeeLocation({title='Employee Master'}:{title?:string}){
+export default function EmployeeLocation({title='Employee Master',grant,module,notice}:{title?:string;grant?:string;module?:Module;notice?:(message:string)=>void}){
  const[tab,setTab]=useState('Add New Employee');
  const[type,setType]=useState<keyof typeof locations|''>(''),[location,setLocation]=useState('');
- if(title==='Employee Master')return <section className="employee-master" aria-label="Employee Master"><div className="employee-tabs-row"><div className="employee-tabs">{tabs.map(value=><button key={value} className={tab===value?'selected':''} onClick={()=>setTab(value)}>{value}</button>)}</div><button className="employee-import" type="button"><Upload/>Import</button></div>{tab==='Add New Employee'&&<JoiningForm/>}</section>;
+ const importInput=useRef<HTMLInputElement>(null),[importStatus,setImportStatus]=useState(''),[importError,setImportError]=useState(''),[importRows,setImportRows]=useState<Record<string,unknown>[]>([]),[importBusy,setImportBusy]=useState(false);
+ async function importEmployees(event:ChangeEvent<HTMLInputElement>){
+  const file=event.target.files?.[0];if(!file)return;
+  setImportStatus('');setImportError('');
+  try{
+   const extension=file.name.split('.').pop()?.toLowerCase();let rows:Record<string,unknown>[];
+   if(extension==='csv')rows=parseCsv(await file.text());
+   else if(extension==='xlsx'||extension==='xls'){const workbook=read(await file.arrayBuffer(),{type:'array'});const sheet=workbook.Sheets[workbook.SheetNames[0]];if(!sheet)throw new Error('The workbook does not contain a worksheet');rows=utils.sheet_to_json<Record<string,unknown>>(sheet,{defval:''});}
+   else throw new Error('Choose a CSV, XLSX or XLS file');
+   if(!rows.length||rows.length>500)throw new Error('Choose a file with 1–500 employee rows');
+   if(module){const fields=new Map(module.fields.flatMap(field=>[[field.key.toLowerCase(),field.key],[field.label.toLowerCase(),field.key]]));rows=rows.map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[fields.get(key.trim().toLowerCase())||key,value])));const allowed=new Set(module.fields.map(field=>field.key));const unknown=Object.keys(rows[0]).filter(key=>!allowed.has(key));if(unknown.length)throw new Error('Unknown employee columns: '+unknown.join(', '));}
+   setImportRows(rows);
+   setImportStatus(`${file.name} ready · ${rows.length} employee ${rows.length===1?'row':'rows'} loaded`);
+  }catch(error){setImportRows([]);setImportError((error as Error).message);}finally{event.target.value='';}
+ }
+ async function saveImport(){if(!grant||!importRows.length)return;setImportBusy(true);setImportError('');try{const result=await api<{imported:number}>(grant,'import/employees','POST',{records:importRows});setImportRows([]);setImportStatus('');notice?.(`${result.imported} employee drafts saved to Azure`);}catch(error){setImportError((error as Error).message);}finally{setImportBusy(false);}}
+ if(title==='Employee Master')return <section className="employee-master" aria-label="Employee Master"><div className="employee-tabs-row"><div className="employee-tabs">{tabs.map(value=><button key={value} className={tab===value?'selected':''} onClick={()=>setTab(value)}>{value}</button>)}</div><input ref={importInput} className="employee-import-input" aria-label="Import employee file" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event=>void importEmployees(event)}/><button className="employee-import" type="button" onClick={()=>importInput.current?.click()}><Upload/>Import</button></div>{importStatus&&<div className="employee-import-status" role="status"><span>{importStatus}</span>{grant&&<button type="button" disabled={importBusy} onClick={()=>void saveImport()}>{importBusy?'Importing…':`Import ${importRows.length} drafts`}</button>}</div>}{importError&&<p className="employee-import-error" role="alert">{importError}</p>}{tab==='Add New Employee'&&<JoiningForm/>}</section>;
  return <section className="employee-master" aria-labelledby="employee-master-title"><div className="page-title"><h1 id="employee-master-title">{title}</h1></div><div className="employee-location-panel"><fieldset><legend>Site / Office</legend><div className="employee-location-types">{Object.keys(locations).map(value=><label key={value}><input type="radio" name="employee-location-type" value={value} checked={type===value} onChange={()=>{setType(value as keyof typeof locations);setLocation('')}}/>{value}</label>)}</div></fieldset>{type&&<div className="employee-location-select"><label htmlFor="employee-location">{type}</label><select id="employee-location" value={location} onChange={event=>setLocation(event.target.value)}><option value="">Select {type.toLowerCase()}</option>{locations[type].map(value=><option key={value} value={value}>{value}</option>)}</select></div>}</div></section>;
 }

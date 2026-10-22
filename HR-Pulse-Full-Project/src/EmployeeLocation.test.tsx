@@ -8,6 +8,9 @@ describe('Employee Master tabs',()=>{
   const labels=['Add New Employee','Update Existing Employee','Region Employee Details','Department & Designation'];
   expect(labels.map(label=>screen.getByRole('button',{name:label}))).toHaveLength(4);
   expect(screen.getByRole('button',{name:'Import'})).toBeTruthy();
+  expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.csv');
+  expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xlsx');
+  expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xls');
   expect(screen.getByRole('heading',{name:'Employee Details'})).toBeTruthy();
   expect(screen.getByLabelText(/Full Name/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Work Details/}));
