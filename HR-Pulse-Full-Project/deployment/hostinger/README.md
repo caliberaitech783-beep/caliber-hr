@@ -1,6 +1,8 @@
-# Hostinger HR deployment
+# Historical Hostinger deployment (rollback only)
 
-The React source now implements the existing shared Caliber Pulse authentication
+Production website releases now use the Azure GitHub Actions workflow documented in ../../README.md. These instructions describe the retained Hostinger fallback only; do not deploy new releases here.
+
+The React source implements the existing shared Caliber Pulse authentication
 contract and retains the live Caliber theme in `public/caliber-theme.css`. The
 functional modules use the separate Azure HR database through the authenticated
 API; no database credentials are shipped to Hostinger.

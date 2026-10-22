@@ -1,6 +1,6 @@
 # HR Azure API
 
-Deployed on 22 October 2026. The frontend is migrating to Azure Static Web Apps at
+Deployed on 22 October 2026. The frontend runs on Azure Static Web Apps at
 https://hrpulse.cmll.in. The API is https://hr-api-cmll-783.azurewebsites.net.
 Its readiness endpoint was verified from the live Hostinger page and by HTTPS.
 
