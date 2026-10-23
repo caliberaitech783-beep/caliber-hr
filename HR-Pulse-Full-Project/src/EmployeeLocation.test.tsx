@@ -1,6 +1,6 @@
 import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it} from 'vitest';
-import EmployeeLocation,{normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
+import EmployeeLocation,{corporateOfficeExportGrid,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
 const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 
@@ -27,6 +27,15 @@ describe('Corporate / HO import headers',()=>{
   expect(normalizeEmploymentCategory('TEMPORARY')).toBe('Contract');
   expect(normalizeEmploymentCategory(' fixed-term ')).toBe('Contract');
   expect(normalizeEmploymentCategory('TRAINEE')).toBe('Trainee');
+ });
+ it('exports the exact Update Existing Employee columns and displayed values',()=>{
+  const grid=corporateOfficeExportGrid([{id:'1',kind:'employees',code:'EMP-1',name:'Employee One',data:{officeData:{'Sr. No.':1,'Joining Category *':'CORPORATE'}} as any,status:'DRAFT',version:1,updated_at:'2026-10-23'}]);
+  expect(grid[0]).toEqual(officeHeaders);
+  expect(grid[1][0]).toBe(1);
+  expect(grid[1][1]).toBe('CORPORATE');
+  expect(grid[1][2]).toBe('EMP-1');
+  expect(grid[1][3]).toBe('Employee One');
+  expect(grid[1][48]).toBe('DRAFT');
  });
 });
 
