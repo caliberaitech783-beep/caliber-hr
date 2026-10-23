@@ -12,6 +12,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xlsx');
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xls');
   expect(screen.getByRole('heading',{name:'Employee Details'})).toBeTruthy();
+  expect(screen.queryByText('Fill Data by Candidate')).toBeNull();
   expect(screen.getByLabelText(/Full Name/)).toBeTruthy();
   expect(screen.queryByLabelText('Employee Group')).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:/Work Details/}));

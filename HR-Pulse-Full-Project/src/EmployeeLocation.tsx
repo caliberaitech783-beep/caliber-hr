@@ -21,14 +21,14 @@ const documents=[
 const conditionalDocuments=new Set(['VTC certificate','Medical fitness certificate','Driving licence','Operator competency certificate']);
 
 function JoiningForm({employeeGroup}:{employeeGroup:'Corporate / HO'|'OB / COAL'}){
- const[step,setStep]=useState(0),[candidateFill,setCandidateFill]=useState(false),[employeeCategory,setEmployeeCategory]=useState('');
+ const[step,setStep]=useState(0),[employeeCategory,setEmployeeCategory]=useState('');
  useEffect(()=>{if(employeeGroup==='Corporate / HO')setEmployeeCategory('');},[employeeGroup]);
  const showMineCompliance=employeeGroup==='OB / COAL'&&['Driver','Operator'].includes(employeeCategory);
  const visibleDocuments=documents.filter(([name])=>!conditionalDocuments.has(name)||showMineCompliance);
  return <form className="joining-form" onSubmit={event=>event.preventDefault()}>
   <div className="joining-steps" aria-label="Employee joining steps">{steps.map((label,index)=><button type="button" key={label} className={step===index?'active':''} onClick={()=>setStep(index)}><i>{index+1}</i><span>{label}</span></button>)}</div>
   <div className="joining-card">
-   <div className="joining-heading"><div><h2>{steps[step]}</h2><p>Complete all applicable details from the CMLL employee joining form.</p></div><label className="candidate-fill"><span><strong>Fill Data by Candidate</strong><small>Candidate can complete the joining information</small></span><input type="checkbox" checked={candidateFill} onChange={event=>setCandidateFill(event.target.checked)}/></label></div>
+   <div className="joining-heading"><div><h2>{steps[step]}</h2><p>Complete all applicable details from the CMLL employee joining form.</p></div></div>
    {step===0&&<>
     <Section title="Joining & Personal Details"><div className="joining-grid">
      <Field label="Joining Category" required options={['OB','COAL','CORPORATE','HO']}/><Field label="Full Name" required placeholder="As per Aadhaar"/><Field label="Father / Spouse Name" required placeholder="Enter full name"/><Field label="Date of Birth" type="date"/><Field label="Gender" options={['Male','Female','Other']}/><Field label="Caste / Category" options={['SC','ST','OBC','General']}/><Field label="Identification Mark"/><Field label="Blood Group" options={['A+','A-','B+','B-','AB+','AB-','O+','O-']}/><Field label="Mobile" required type="tel" placeholder="10-digit mobile number"/><Field label="Alternate Mobile" type="tel" placeholder="Optional"/><Field label="Candidate E-mail" required type="email" placeholder="name@example.com"/><Field label="Aadhaar No." required placeholder="12-digit Aadhaar number"/><Field label="PAN No." placeholder="Optional / as applicable"/><Field label="Present Address" type="textarea" wide placeholder="House, street, city, state, PIN"/><Field label="Permanent Address" type="textarea" wide placeholder="If same, write 'Same as present'"/><Field label="Emergency Contact Name"/><Field label="Emergency Contact Number" type="tel" placeholder="10-digit number"/>
