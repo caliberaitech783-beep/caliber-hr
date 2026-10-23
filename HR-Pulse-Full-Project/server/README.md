@@ -115,3 +115,6 @@ employee using the live Hostinger UI, updated its name through the employee form
 and confirmed both saves survived page reloads. The named verification masters,
 employee and their audit entries were removed after checking persistence. No
 fictitious business records remain. Ten API tests and eight frontend tests pass.
+
+Shift Master in Master Configuration supports grace minutes, half-day and full-day hour thresholds, overtime-after hours and a night-shift flag. These are configuration values, not attendance/payroll computation. Existing shifts without these values remain valid. The frontend uses site-prefixed storage codes so different sites can each have a shift A. Blueprint timing examples are reference-only and are never seeded into the database.
+
