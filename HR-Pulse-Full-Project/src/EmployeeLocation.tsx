@@ -22,7 +22,8 @@ function corporateImportRow(row:Record<string,unknown>){
 }
 const corporateReferences={siteId:'sites',departmentId:'departments',designationId:'designations',gradeId:'grades',shiftId:'shifts'} as const;
 export function resolveCorporateReferences(rows:Record<string,unknown>[],lookups:Lookup[]){
- return rows.map(row=>{const resolved={...row};for(const [field,kind] of Object.entries(corporateReferences)){const value=String(row[field]??'').trim().toLowerCase();if(!value){resolved[field]='';continue;}const matches=lookups.filter(item=>item.kind===kind&&[item.code,item.name].some(candidate=>candidate.trim().toLowerCase()===value));resolved[field]=matches.length===1?matches[0].id:'';}return resolved;});
+ const companies=lookups.filter(item=>item.kind==='companies');if(companies.length!==1)throw new Error('Configure exactly one active Company master before importing the Corporate / HO workbook');
+ return rows.map(row=>{const resolved:Record<string,unknown>={...row,companyId:companies[0].id};for(const [field,kind] of Object.entries(corporateReferences)){const value=String(row[field]??'').trim().toLowerCase();if(!value){resolved[field]='';continue;}const matches=lookups.filter(item=>item.kind===kind&&[item.code,item.name].some(candidate=>candidate.trim().toLowerCase()===value));resolved[field]=matches.length===1?matches[0].id:'';}return resolved;});
 }
 const employeeExportColumns=[
  'Joining Category','Employee Code','Full Name','Father / Spouse Name','Date of Birth','Gender','Caste / Category','Identification Mark','Blood Group','Mobile','Alternate Mobile','Candidate E-mail','Aadhaar No.','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number',

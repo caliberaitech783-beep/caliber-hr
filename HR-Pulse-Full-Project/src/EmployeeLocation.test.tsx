@@ -13,12 +13,14 @@ describe('Corporate / HO import headers',()=>{
  });
  it('resolves master names and leaves unmatched optional references blank',()=>{
   const rows=resolveCorporateReferences([{siteId:'CMPL NAGPUR',departmentId:'UNKNOWN',designationId:'VP',gradeId:'A1',shiftId:'GENERAL'}],[
+   {id:'company-1',kind:'companies',code:'CMLL',name:'Caliber Mining and Logistics'},
    {id:'site-1',kind:'sites',code:'NAG',name:'CMPL Nagpur'},
    {id:'designation-1',kind:'designations',code:'VP',name:'Vice President'},
    {id:'grade-1',kind:'grades',code:'GRADE-A1',name:'A1'},
    {id:'shift-1',kind:'shifts',code:'GEN',name:'General'},
   ]);
-  expect(rows[0]).toMatchObject({siteId:'site-1',departmentId:'',designationId:'designation-1',gradeId:'grade-1',shiftId:'shift-1'});
+  expect(rows[0]).toMatchObject({companyId:'company-1',siteId:'site-1',departmentId:'',designationId:'designation-1',gradeId:'grade-1',shiftId:'shift-1'});
+  expect(()=>resolveCorporateReferences([{}],[])).toThrow(/exactly one active Company/);
  });
  it('normalizes spreadsheet employment categories for the API',()=>{
   expect(normalizeEmploymentCategory('PERMANENT')).toBe('Permanent');
