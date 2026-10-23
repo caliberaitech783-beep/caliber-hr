@@ -94,9 +94,13 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
   expect(screen.getByRole('button',{name:'Delete All'}).hasAttribute('disabled')).toBe(true);
   expect(screen.queryByRole('textbox')).toBeNull();
-  expect(screen.getByRole('columnheader',{name:'Sr. No.'})).toBeTruthy();
+  expect(screen.queryByRole('columnheader',{name:'Sr. No.'})).toBeNull();
   expect(screen.getByRole('columnheader',{name:'Employee Code'})).toBeTruthy();
   expect(screen.getByRole('columnheader',{name:'ESIC Applicable'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:/Job & Posting Details/}));
+  expect(screen.getByRole('columnheader',{name:'Site *'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:/Educational Details/}));
+  expect(screen.getByRole('columnheader',{name:'Qualification'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Region Employee Details'}));
   expect(screen.getByRole('option',{name:'Nagpur CO'})).toBeTruthy();
   expect(screen.getByRole('option',{name:'Chandrapur HO'})).toBeTruthy();
