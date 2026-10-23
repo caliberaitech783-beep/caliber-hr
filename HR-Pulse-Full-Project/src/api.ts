@@ -2,7 +2,7 @@ export const API='https://hr-api-cmll-783.azurewebsites.net';
 export type Profile={name:string;username?:string;email?:string;actor?:string;assignedRole?:string;permissions:{application:string;hrDesktopAccess?:string[];hrMobileAccess?:string[];site?:unknown;adminLevel?:unknown}};
 export type Session={grant:string;profile:Profile};
 export type Field={key:string;label:string;type:string;required?:boolean;reference?:string;options?:string[];min?:number};
-export type Module={title:string;menu:string;fields:Field[];canWrite:boolean};
+export type Module={autoCode?:boolean;title:string;menu:string;fields:Field[];canWrite:boolean};
 export type RecordRow={id:string;kind:string;code:string;name:string;data:Record<string,string|number>;status:string;version:number;updated_at:string};
 export type Lookup={id:string;kind:string;code:string;name:string};
 export async function pulse(action:string,data:object){

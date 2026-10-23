@@ -27,10 +27,11 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         try{await query('SELECT 1');return send(200,{status:'ready',database:'connected'});}
         catch{return send(503,{status:'unavailable',database:'unavailable'});}
       }
-      const record=path.match(/^\/api\/records\/([a-zA-Z]+)(?:\/([a-fA-F0-9-]+))?(?:\/(submit|deactivate))?$/);
+      const record=path.match(/^\/api\/records\/([a-zA-Z]+)(?:\/([a-fA-F0-9-]+))?(?:\/(submit|deactivate|cancel))?$/);
+      const masterImport=path.match(/^\/api\/import\/(holidays|leaveAllocations)$/);
       const decision=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/decision$/);
       const simple={'/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
-      if(!record&&!decision&&!simple[path]&&path!=='/api/import/employees')return send(404,{error:'Not found'});
+      if(!masterImport&&!record&&!decision&&!simple[path]&&path!=='/api/import/employees')return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
       if(!profile)return send(401,{error:'Sign in with your Caliber Pulse account to continue'});
@@ -45,6 +46,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         else if(action&&req.method==='POST'){const input=await body(req);result=await service[action](profile,kind,id,input.version);}
         else throw problem('Method not allowed',405);
       }else if(decision&&req.method==='POST')result=await service.decide(profile,decision[1],await body(req));
+      else if(masterImport&&req.method==='POST')result=await service.importMasters(profile,masterImport[1],(await body(req)).records);
       else if(path==='/api/import/employees'&&req.method==='POST')result=await service.importEmployees(profile,(await body(req)).records);
       else throw problem('Method not allowed',405);
       return send(200,result);

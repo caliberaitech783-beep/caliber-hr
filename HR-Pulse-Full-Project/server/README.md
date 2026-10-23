@@ -118,3 +118,11 @@ fictitious business records remain. Ten API tests and eight frontend tests pass.
 
 Shift Master in Master Configuration supports grace minutes, half-day and full-day hour thresholds, overtime-after hours and a night-shift flag. These are configuration values, not attendance/payroll computation. Existing shifts without these values remain valid. The frontend uses site-prefixed storage codes so different sites can each have a shift A. Blueprint timing examples are reference-only and are never seeded into the database.
 
+
+## Holiday and leave configuration
+
+Master Configuration includes a dedicated nine-tab leave workspace. It supports leave types, company/department/group policies, periods, employee allocations, requests, encashment requests, blocked dates and holiday CSV import. Record lists provide module-specific columns and filters. New request IDs and day counts are generated server-side; half-day requests require one date. Allocations reserve pending leave and encashment days, and cancellations release reservations. Approval matrix rules take priority over a supplied approver. Finalized requests cannot be edited. Attachments accept PDF/PNG/JPEG up to 500 KB and are excluded from CSV exports.
+
+Accrual frequency and carry-forward fields are configuration only until business rules are confirmed; allocations are currently manual or CSV-based. Encashment tracks days and approval, without calculating pay or initiating payments. Attendance and working-on-holiday requests are not integrated. Existing legacy leave requests without a type/period continue using their annual-policy limit.
+
+Run `node --test *.test.mjs` in server and the frontend test/build scripts. `verify-database.mjs` additionally checks allocation balances, pending cancellation, encashment approval, site isolation and transactional imports in a rollback-only database transaction. Production execution of that verification and the required restart await explicit approval.

@@ -1,3 +1,4 @@
+import {balance,checkLeave,employeeLeaveKinds} from './leave.mjs';
 import { randomUUID } from 'node:crypto';
 import { modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
@@ -19,8 +20,8 @@ export function createService(pool) {
     const ids=await siteIds(db,profile);if(ids===null)return;
     let site=data.siteId;
     if(kind==='sites')site=id;
-    if(kind==='leaveRequests')site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
-    if(!['employees','sites','shifts','holidays','leaveRequests'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
+    if(employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
+    if(!['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
     if(!ids.includes(site))throw problem('This record is outside your assigned Pulse site',403);
   }
   async function references(db,kind,data,id) {
@@ -29,7 +30,7 @@ export function createService(pool) {
       if (!data[field.key]) continue;
       if (!uuid(data[field.key])) throw problem(`${field.label}: choose an existing record`);
       if (data[field.key]===id) throw problem('A record cannot refer to itself');
-      const found=await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind=$2 AND status IN ('ACTIVE','APPROVED')"+(kind==='leaveRequests'&&field.key==='employeeId'?' FOR UPDATE':''),[data[field.key],field.reference]);
+      const found=await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind=$2 AND status IN ('ACTIVE','APPROVED')"+(kind==='leaveRequests'&&field.key==='employeeId'?' FOR UPDATE':field.reference==='leavePeriods'?' FOR SHARE':''),[data[field.key],field.reference]);
       if (!found.rowCount) throw problem(`${field.label} is not active`);
       linked[field.key]=found.rows[0];
     }
@@ -38,13 +39,14 @@ export function createService(pool) {
     if (linked.designationId?.data.departmentId && data.departmentId && linked.designationId.data.departmentId!==data.departmentId)throw problem('Designation must belong to the selected department');
     if (linked.designationId?.data.gradeId && data.gradeId && linked.designationId.data.gradeId!==data.gradeId)throw problem('Grade must match the selected designation');
     if (linked.employeeId && linked.policyId && linked.employeeId.data.companyId!==linked.policyId.data.companyId) throw problem('Leave policy must belong to the employee company');
+    await checkLeave(db,kind,data,linked,id);
     if(kind==='leaveRequests') {
       const overlap=await db.query("SELECT 1 FROM hr_records WHERE kind='leaveRequests' AND status IN ('PENDING','APPROVED') AND data->>'employeeId'=$1 AND data->>'fromDate'<=$2 AND data->>'toDate'>=$3 AND id<>$4",[data.employeeId,data.toDate,data.fromDate,id||randomUUID()]);
       if(overlap.rowCount) throw problem('Employee already has overlapping pending or approved leave',409);
-      const days=(Date.parse(data.toDate)-Date.parse(data.fromDate))/86400000+1;
+      const days=data.days??((Date.parse(data.toDate)-Date.parse(data.fromDate))/86400000+1);
       const year=data.fromDate.slice(0,4);
-      if(year!==data.toDate.slice(0,4))throw problem('Split leave requests across calendar years');
-      const used=await db.query("SELECT COALESCE(SUM((data->>'toDate')::date-(data->>'fromDate')::date+1),0) AS days FROM hr_records WHERE kind='leaveRequests' AND status IN ('PENDING','APPROVED') AND data->>'employeeId'=$1 AND data->>'policyId'=$2 AND left(data->>'fromDate',4)=$3 AND id<>$4",[data.employeeId,data.policyId,year,id||randomUUID()]);
+      if(!data.periodId&&year!==data.toDate.slice(0,4))throw problem('Split leave requests across calendar years');
+      const used=await db.query("SELECT COALESCE(SUM(COALESCE((data->>'days')::numeric, (data->>'toDate')::date-(data->>'fromDate')::date+1)),0) AS days FROM hr_records WHERE kind='leaveRequests' AND status IN ('PENDING','APPROVED') AND data->>'employeeId'=$1 AND data->>'policyId'=$2 AND (CASE WHEN $5='' THEN left(data->>'fromDate',4)=$3 ELSE data->>'periodId'=$5 END) AND id<>$4",[data.employeeId,data.policyId,year,id||randomUUID(),data.periodId||'']);
       if(days+Number(used.rows[0].days)>Number(linked.policyId.data.annualDays))throw problem('Leave exceeds the configured annual entitlement');
     }
   }
@@ -56,12 +58,14 @@ export function createService(pool) {
       existing=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
       if(!existing)throw problem('Record not found',404);
       if(existing.version!==Number(input.version))throw problem('This record changed. Reload it before saving.',409);
+      if(['leaveRequests','leaveEncashments'].includes(kind)&&['APPROVED','CANCELLED','INACTIVE'].includes(existing.status))throw problem('Finalized requests cannot be edited',409);
+      if(kind==='leaveAllocations'&&['employeeId','leaveTypeId','periodId'].some(key=>existing.data[key]!==data[key]))throw problem('Allocation employee, type and period cannot be changed. Create another allocation instead.',409);
       if(existing.status==='PENDING')throw problem('A record awaiting approval cannot be edited',409);
       await locationAccess(db,profile,kind,existing.data,id);
     }
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);
-    const status=['employees','leaveRequests'].includes(kind)?'DRAFT':'ACTIVE';
+    const status=['employees','leaveRequests','leaveEncashments'].includes(kind)?'DRAFT':'ACTIVE';
     let result;
     if(id) result=await db.query('UPDATE hr_records SET code=$1,name=$2,data=$3,status=$4,version=version+1,updated_by=$5,updated_at=now() WHERE id=$6 RETURNING *',[data.code,data.name,data,status,profile.actor,id]);
     else result=await db.query('INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *',[randomUUID(),kind,data.code,data.name,data,status,profile.actor]);
@@ -70,15 +74,20 @@ export function createService(pool) {
     return row;
   }
   return {
-    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||['employees','sites','shifts','holidays','leaveRequests'].includes(kind))}]))}; },
+    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments'].includes(kind))}]))}; },
     async list(profile,kind,params) {
       authorize(profile,kind);
       const page=Math.max(1,Math.min(10000,Number(params.get('page'))||1));
       const search=(params.get('search')||'').slice(0,150);const status=params.get('status')||'';
-      const filter="r.kind=$1 AND ($2='' OR r.code ILIKE '%'||$2||'%' OR r.name ILIKE '%'||$2||'%') AND ($3='' OR r.status=$3) AND "+scopeSql('r','$4');
+      let filter="r.kind=$1 AND ($2='' OR r.code ILIKE '%'||$2||'%' OR r.name ILIKE '%'||$2||'%') AND ($3='' OR r.status=$3) AND "+scopeSql('r','$4');
       const values=[kind,search,status,await siteIds(pool,profile)];
+      const filters=[['leaveTypeId',"r.data->>'leaveTypeId'"],['periodId',"r.data->>'periodId'"],['siteId',"r.data->>'siteId'"],['year',"left(r.data->>'date',4)"],['departmentId',"COALESCE(r.data->>'departmentId',(SELECT e.data->>'departmentId' FROM hr_records e WHERE e.id::text=r.data->>'employeeId'))"]];
+      for(const [key,expression] of filters){const value=params.get(key);if(value){values.push(value);filter+=' AND '+expression+'=$'+values.length;}}
+      if(params.get('fromDate')){values.push(params.get('fromDate'));filter+=" AND COALESCE(r.data->>'toDate',r.data->>'date') >= $"+values.length;}
+      if(params.get('toDate')){values.push(params.get('toDate'));filter+=" AND COALESCE(r.data->>'fromDate',r.data->>'date') <= $"+values.length;}
       const count=await pool.query(`SELECT count(*) FROM hr_records r WHERE ${filter}`,values);
-      const result=await pool.query(`SELECT r.* FROM hr_records r WHERE ${filter} ORDER BY r.updated_at DESC,r.id LIMIT 50 OFFSET $5`,[...values,(page-1)*50]);
+      const result=await pool.query(`SELECT r.* FROM hr_records r WHERE ${filter} ORDER BY r.updated_at DESC,r.id LIMIT 50 OFFSET $${values.length+1}`,[...values,(page-1)*50]);
+      if(kind==='leaveAllocations')for(const row of result.rows)row.data={...row.data,...await balance(pool,row.data.employeeId,row.data.leaveTypeId,row.data.periodId)};
       return {rows:result.rows,total:Number(count.rows[0].count),page,pageSize:50};
     },
     async lookups(profile) {
@@ -88,12 +97,33 @@ export function createService(pool) {
       return result.rows;
     },
     async save(profile,kind,data,id) {return transaction(db=>save(db,profile,kind,data,id));},
+    async cancel(profile,kind,id,version){
+      authorize(profile,kind,true);if(!['leaveRequests','leaveEncashments'].includes(kind)||!uuid(id))throw problem('Invalid cancellation');
+      return transaction(async db=>{
+        await db.query("SELECT id FROM hr_approvals WHERE record_id=$1 AND state='PENDING' FOR UPDATE",[id]);
+        const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
+        if(!record)throw problem('Record not found',404);
+        await locationAccess(db,profile,kind,record.data,id);
+        if(record.version!==Number(version)||!['DRAFT','PENDING','REJECTED'].includes(record.status))throw problem('Only draft, pending or rejected requests can be cancelled',409);
+        if(record.created_by!==profile.actor)throw problem('Only the requester can cancel this request',403);
+        await db.query("UPDATE hr_approvals SET state='CANCELLED',version=version+1,updated_at=now() WHERE record_id=$1 AND state='PENDING'",[id]);
+        await db.query("UPDATE hr_records SET status='CANCELLED',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2",[profile.actor,id]);
+        await audit(db,profile.actor,'CANCEL',kind,id);return {status:'CANCELLED'};
+      });
+    },
+    async importMasters(profile,kind,records){
+      if(!['holidays','leaveAllocations'].includes(kind))throw problem('Unsupported import');
+      authorize(profile,kind,true);if(!Array.isArray(records)||!records.length||records.length>500)throw problem('Import 1–500 rows');
+      return transaction(async db=>{for(const record of records){const input={...record};for(const f of modules[kind].fields.filter(f=>f.type==='reference'))if(input[f.key]&&!uuid(input[f.key])){const ref=await db.query("SELECT id FROM hr_records WHERE kind=$1 AND code=$2 AND status IN ('ACTIVE','APPROVED')",[f.reference,String(input[f.key])]);if(!ref.rowCount)throw problem('Unknown '+f.label+' code');input[f.key]=ref.rows[0].id;}await save(db,profile,kind,input);}return {imported:records.length};});
+    },
     async deactivate(profile,kind,id,version) {
-      authorize(profile,kind,true);if(!uuid(id))throw problem('Invalid record ID');
+      authorize(profile,kind,true);if(['leaveRequests','leaveEncashments'].includes(kind))throw problem('Use Cancel for requests',409);if(!uuid(id))throw problem('Invalid record ID');
       return transaction(async db=>{
         const current=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
         if(!current)throw problem('Record not found',404);
         await locationAccess(db,profile,kind,current.data,id);
+        if(kind==='leaveAllocations'){await db.query('SELECT id FROM hr_records WHERE id=$1 FOR UPDATE',[current.data.employeeId]);const b=await balance(db,current.data.employeeId,current.data.leaveTypeId,current.data.periodId);if(b.used+b.reserved>0)throw problem('Allocation has used or pending days',409);}
+        if(kind==='leavePeriods'){const pending=await db.query("SELECT id FROM hr_records WHERE kind IN ('leaveRequests','leaveEncashments') AND status='PENDING' AND data->>'periodId'=$1",[id]);if(pending.rowCount)throw problem('Resolve pending requests before closing this period',409);}
         const result=await db.query("UPDATE hr_records SET status='INACTIVE',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2 AND kind=$3 AND version=$4 AND status<>'PENDING' RETURNING *",[profile.actor,id,kind,version]);
         if(!result.rowCount)throw problem('Reload the record; pending records cannot be deactivated',409);
         await audit(db,profile.actor,'DEACTIVATE',kind,id);return result.rows[0];
@@ -121,7 +151,7 @@ export function createService(pool) {
     },
     async submit(profile,kind,id,version) {
       authorize(profile,kind,true);
-      if(!['employees','leaveRequests'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');
+      if(!['employees','leaveRequests','leaveEncashments'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');
       return transaction(async db=>{
         const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
         if(!record)throw problem('Record not found',404);
@@ -129,12 +159,12 @@ export function createService(pool) {
         await locationAccess(db,profile,kind,record.data,id);
         await references(db,kind,record.data,id);
         let companyId=record.data.companyId,siteId=record.data.siteId;
-        if(kind==='leaveRequests'){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;}
+        if(['leaveRequests','leaveEncashments'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;}
         const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
         const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
-        if(!rules.length)throw problem('Configure an active approval-matrix rule for this module before submitting',409);
+        if(!rules.length&&!record.data.approver)throw problem('Configure an active approval-matrix rule for this module before submitting',409);
         if(rules.length>1&&weight(rules[0])===weight(rules[1]))throw problem('Approval rules overlap. Resolve the approval matrix before submitting.',409);
-        const workflow=(await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind='workflows' AND status='ACTIVE'",[rules[0].data.workflowId])).rows[0];
+        const workflow=!rules.length&&record.data.approver?{id:null,data:{approvers:record.data.approver}}:(await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind='workflows' AND status='ACTIVE'",[rules[0].data.workflowId])).rows[0];
         if(!workflow)throw problem('The configured workflow is not active',409);
         const approvers=workflow.data.approvers.split(',');
         if(approvers.includes(profile.actor))throw problem('The requester cannot be an approver in their own workflow. Configure another approver.',409);

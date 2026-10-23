@@ -1,3 +1,4 @@
+import {leaveModules,requestFields,policyFields,prepareLeave,validateLeave} from './leave.mjs';
 const text = (key, label, required = false) => ({ key, label, type: 'text', required });
 const ref = (key, label, reference, required = false) => ({ key, label, type: 'reference', reference, required });
 const date = (key, label, required = false) => ({ key, label, type: 'date', required });
@@ -19,6 +20,11 @@ export const modules = {
   workflows: module('Onboarding workflows','Master Configuration',[text('code','Workflow code',true),text('name','Workflow name',true),text('approvers','Approver Pulse usernames, in order (comma separated)',true)]),
   approvalRules: module('Approval matrix','Master Configuration',[text('code','Rule code',true),text('name','Rule name',true),select('target','Module',['employees','leaveRequests'],true),ref('workflowId','Workflow','workflows',true),ref('companyId','Company (blank = all)','companies'),ref('siteId','Site (blank = all)','sites')]),
 };
+Object.assign(modules,leaveModules);
+modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
+modules.leavePolicies.fields=policyFields;
+modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional']));
+modules.approvalRules.fields.find(f=>f.key==='target').options.push('leaveEncashments');
 export const menus = ['Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management','Shift Management','Holiday & Leave','Reports & MIS','Administration','Audit Logs'];
 export function grantedMenus(profile) { return new Set([...(profile.permissions?.hrDesktopAccess || []),...(profile.permissions?.hrMobileAccess || [])].filter(x => menus.includes(x))); }
 export function canRead(profile, kind) {
@@ -33,9 +39,15 @@ export function canWrite(profile, kind) {
 }
 export function validate(kind, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Object.assign(new Error('A record object is required'),{status:400});
+  input=prepareLeave(kind,input);
   const data = {};
   for (const field of modules[kind].fields) {
     const raw = input[field.key];
+    if(field.type==='attachment'){
+      if(!raw){data[field.key]='';continue;}
+      if(typeof raw!=='string'||!/^data:(application\/pdf|image\/png|image\/jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(raw)||raw.length>690000)throw Object.assign(new Error('Use a PDF, PNG or JPEG attachment up to 500 KB'),{status:400});
+      data[field.key]=raw;continue;
+    }
     const value = raw == null ? '' : String(raw).trim();
     if (field.required && !value) throw Object.assign(new Error(`${field.label} is required`),{status:400});
     if (!value) { data[field.key] = ''; continue; }
@@ -61,5 +73,6 @@ export function validate(kind, input) {
     for (const key of ['halfDayHours','fullDayHours','overtimeAfterHours']) if (data[key] !== '' && data[key] > 24) fail('Day and overtime thresholds cannot exceed 24 hours');
     if (data.halfDayHours !== '' && data.fullDayHours !== '' && data.halfDayHours > data.fullDayHours) fail('Half-day threshold cannot exceed full-day hours');
   }
+  validateLeave(kind,data);
   return data;
 }
