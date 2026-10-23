@@ -7,7 +7,12 @@ const locations={Site:['NCL','WCL'],Office:['Nagpur CO','Chandrapur HO']};
 const tabs=['Add New Employee','Update Existing Employee','Region Employee Details','Department & Designation'];
 const steps=['Employee Details','Work Details','Contract & Policies','Assets','Docs'];
 const corporateOfficeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
+const corporateOfficeUploadHeaders=[corporateOfficeHeaders[0],corporateOfficeHeaders[2],corporateOfficeHeaders[1],...corporateOfficeHeaders.slice(3)];
 const corporateDateHeaders=new Set(['Date of Birth','Joining Date *']);
+export function validCorporateOfficeHeaders(values:unknown[]){
+ const headers=values.map(value=>String(value??'').trim());while(headers.at(-1)==='')headers.pop();
+ return [corporateOfficeHeaders,corporateOfficeUploadHeaders].some(format=>headers.length===format.length&&headers.every((header,index)=>header===format[index]));
+}
 function importDate(value:unknown){if(typeof value==='number'){const date=new Date(Date.UTC(1899,11,30)+value*86400000);return date.toISOString().slice(0,10)}return String(value??'').trim()}
 function corporateImportRow(row:Record<string,unknown>){
  const officeData=Object.fromEntries(corporateOfficeHeaders.map(header=>[header,corporateDateHeaders.has(header)?importDate(row[header]):row[header]??'']));
@@ -111,11 +116,11 @@ export default function EmployeeLocation({title='Employee Master',grant,module,n
    if(employeeGroup==='OB / COAL')throw new Error('OB / COAL bulk import format is not configured yet');
    if(extension!=='xlsx'&&extension!=='xls')throw new Error('Choose the Corporate / HO Excel format (.xlsx or .xls)');
    const workbook=read(await file.arrayBuffer(),{type:'array'}),sheet=workbook.Sheets[workbook.SheetNames[0]];if(!sheet)throw new Error('The workbook does not contain a worksheet');
-   const grid=utils.sheet_to_json<unknown[]>(sheet,{header:1,defval:''});const headers=(grid[0]||[]).map(value=>String(value).trim());
-   if(headers.length!==corporateOfficeHeaders.length||headers.some((header,index)=>header!==corporateOfficeHeaders[index]))throw new Error('Use the exact Corporate / HO Employee Master Office Format columns');
+   const grid=utils.sheet_to_json<unknown[]>(sheet,{header:1,defval:''});
+   if(!validCorporateOfficeHeaders(grid[0]||[]))throw new Error('Use the Corporate / HO Employee Master Office Format columns');
    rows=utils.sheet_to_json<Record<string,unknown>>(sheet,{defval:''}).map(corporateImportRow);
    if(!rows.length||rows.length>500)throw new Error('Choose a file with 1–500 employee rows');
-   if(rows.some(row=>!row.code||!row.name))throw new Error('Every row must include Employee Code and Full Name *');
+   const invalidIndex=rows.findIndex(row=>!row.code||!row.name);if(invalidIndex>=0){const row=rows[invalidIndex];throw new Error(`Row ${invalidIndex+2}${row.name?` (${row.name})`:''}: ${!row.code?'Employee Code':'Full Name *'} is required`);}
    setImportRows(rows);
    setImportStatus(`${file.name} ready · ${rows.length} employee ${rows.length===1?'row':'rows'} loaded`);
   }catch(error){setImportRows([]);setImportError((error as Error).message);}finally{event.target.value='';}

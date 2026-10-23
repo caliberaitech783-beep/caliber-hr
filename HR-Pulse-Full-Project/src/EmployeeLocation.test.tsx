@@ -1,6 +1,17 @@
 import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it} from 'vitest';
-import EmployeeLocation from './EmployeeLocation';
+import EmployeeLocation,{validCorporateOfficeHeaders} from './EmployeeLocation';
+
+const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
+
+describe('Corporate / HO import headers',()=>{
+ it('accepts the supplied Employee Code-first format and ignores trailing blank columns',()=>{
+  const uploaded=[officeHeaders[0],officeHeaders[2],officeHeaders[1],...officeHeaders.slice(3),'','',''];
+  expect(validCorporateOfficeHeaders(uploaded)).toBe(true);
+  expect(validCorporateOfficeHeaders(officeHeaders)).toBe(true);
+  expect(validCorporateOfficeHeaders([...uploaded,'Unexpected'])).toBe(false);
+ });
+});
 
 describe('Employee Master tabs',()=>{
  it('shows the four requested tabs and the complete joining workflow',()=>{
