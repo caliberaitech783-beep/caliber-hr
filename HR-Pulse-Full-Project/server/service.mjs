@@ -20,6 +20,7 @@ export function createService(pool) {
   async function locationAccess(db,profile,kind,data,id){
     const ids=await siteIds(db,profile);if(ids===null)return;
     let site=data.siteId;
+    if(kind==='holidays'&&site&&!ids.includes(site))site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND (code=$1 OR name=$1)",[site])).rows.find(r=>ids.includes(r.id))?.id;
     if(kind==='sites')site=id;
     if(employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
     if(!['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);

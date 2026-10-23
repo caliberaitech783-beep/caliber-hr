@@ -15,7 +15,7 @@ const cols:Record<string,string[][]>={
 const filters:Record<string,{key:string;label:string;reference?:string;type?:string}[]>={
  leaveAllocations:[{key:'departmentId',label:'Department',reference:'departments'},{key:'leaveTypeId',label:'Leave type',reference:'leaveTypes'},{key:'periodId',label:'Period',reference:'leavePeriods'}],
  leaveRequests:[{key:'leaveTypeId',label:'Leave type',reference:'leaveTypes'},{key:'fromDate',label:'From',type:'date'},{key:'toDate',label:'To',type:'date'}],
- holidays:[{key:'year',label:'Year',type:'number'},{key:'siteId',label:'Location',reference:'sites'}],
+ holidays:[{key:'year',label:'Year',type:'number'},{key:'siteId',label:'Site ID',type:'text'}],
 };
 export default function LeaveMaster({grant,config,actor,canApprove,notice}:{grant:string;config:Record<string,Module>;actor:string;canApprove:boolean;notice:(s:string)=>void}){
  const[tab,setTab]=useState('dashboard'),[review,setReview]=useState(false),[importTarget,setImportTarget]=useState('leaveTypes'),[openImport,setOpenImport]=useState(false);
