@@ -23,7 +23,7 @@ export const modules = {
 Object.assign(modules,leaveModules);
 modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
-modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional']));
+modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared']));
 modules.approvalRules.fields.find(f=>f.key==='target').options.push('leaveEncashments');
 export const menus = ['Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management','Shift Management','Holiday & Leave','Reports & MIS','Administration','Audit Logs'];
 export function grantedMenus(profile) { return new Set([...(profile.permissions?.hrDesktopAccess || []),...(profile.permissions?.hrMobileAccess || [])].filter(x => menus.includes(x))); }
