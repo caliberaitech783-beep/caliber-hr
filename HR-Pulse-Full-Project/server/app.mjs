@@ -28,7 +28,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         catch{return send(503,{status:'unavailable',database:'unavailable'});}
       }
       const record=path.match(/^\/api\/records\/([a-zA-Z]+)(?:\/([a-fA-F0-9-]+))?(?:\/(submit|deactivate|cancel))?$/);
-      const masterImport=path.match(/^\/api\/import\/(holidays|leaveAllocations)$/);
+      const masterImport=path.match(/^\/api\/import\/(holidays|leaveTypes|leavePolicies|leavePeriods|leaveAllocations|leaveRequests|leaveEncashments|leaveBlocks)$/);
       const decision=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/decision$/);
       const simple={'/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
       if(!masterImport&&!record&&!decision&&!simple[path]&&path!=='/api/import/employees')return send(404,{error:'Not found'});

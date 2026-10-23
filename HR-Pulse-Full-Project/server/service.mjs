@@ -112,7 +112,7 @@ export function createService(pool) {
       });
     },
     async importMasters(profile,kind,records){
-      if(!['holidays','leaveAllocations'].includes(kind))throw problem('Unsupported import');
+      if(!['holidays','leaveTypes','leavePolicies','leavePeriods','leaveAllocations','leaveRequests','leaveEncashments','leaveBlocks'].includes(kind))throw problem('Unsupported import');
       authorize(profile,kind,true);if(!Array.isArray(records)||!records.length||records.length>500)throw problem('Import 1–500 rows');
       return transaction(async db=>{for(const record of records){const input={...record};for(const f of modules[kind].fields.filter(f=>f.type==='reference'))if(input[f.key]&&!uuid(input[f.key])){const ref=await db.query("SELECT id FROM hr_records WHERE kind=$1 AND code=$2 AND status IN ('ACTIVE','APPROVED')",[f.reference,String(input[f.key])]);if(!ref.rowCount)throw problem('Unknown '+f.label+' code');input[f.key]=ref.rows[0].id;}await save(db,profile,kind,input);}return {imported:records.length};});
     },
