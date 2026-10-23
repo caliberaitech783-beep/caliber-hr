@@ -10,7 +10,7 @@ const cols:Record<string,string[][]>={
  leaveRequests:[['code','Request ID'],['employeeId','Employee'],['leaveTypeId','Type'],['fromDate','From'],['toDate','To'],['days','Days'],['name','Reason'],['approver','Requested approver']],
  leaveEncashments:[['employeeId','Employee'],['leaveTypeId','Type'],['days','Days'],['amount','Amount']],
  leaveBlocks:[['name','Name'],['fromDate','From'],['toDate','To'],['siteId','Location'],['departmentId','Department'],['reason','Reason']],
- holidays:[['siteCode','Site code'],['day','DAY'],['date','date'],['siteId','siteId'],['holidayType','holidayType']],
+ holidays:[['siteCode','Site code'],['name','Name'],['day','DAY'],['date','date'],['siteId','siteId'],['holidayType','holidayType']],
 };
 const filters:Record<string,{key:string;label:string;reference?:string;type?:string}[]>={
  leaveAllocations:[{key:'departmentId',label:'Department',reference:'departments'},{key:'leaveTypeId',label:'Leave type',reference:'leaveTypes'},{key:'periodId',label:'Period',reference:'leavePeriods'}],
