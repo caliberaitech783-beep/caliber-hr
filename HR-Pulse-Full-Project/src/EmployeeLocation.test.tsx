@@ -1,6 +1,6 @@
 import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it} from 'vitest';
-import EmployeeLocation,{resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
+import EmployeeLocation,{normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
 const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 
@@ -19,6 +19,11 @@ describe('Corporate / HO import headers',()=>{
    {id:'shift-1',kind:'shifts',code:'GEN',name:'General'},
   ]);
   expect(rows[0]).toMatchObject({siteId:'site-1',departmentId:'',designationId:'designation-1',gradeId:'grade-1',shiftId:'shift-1'});
+ });
+ it('normalizes spreadsheet employment categories for the API',()=>{
+  expect(normalizeEmploymentCategory('PERMANENT')).toBe('Permanent');
+  expect(normalizeEmploymentCategory(' fixed-term ')).toBe('Contract');
+  expect(normalizeEmploymentCategory('TRAINEE')).toBe('Trainee');
  });
 });
 
