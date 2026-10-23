@@ -77,6 +77,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.queryByLabelText('Upload VTC certificate')).toBeNull();
   expect(screen.getByLabelText('Upload Signed appointment letter')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
+  expect(screen.getByRole('button',{name:'Delete All'}).hasAttribute('disabled')).toBe(true);
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(screen.getByRole('columnheader',{name:'Sr. No.'})).toBeTruthy();
   expect(screen.getByRole('columnheader',{name:'Employee Code'})).toBeTruthy();
