@@ -71,7 +71,7 @@ export async function verifyDatabase(pool){
   const encashApproval=(await service.approvals(reviewer)).find(x=>x.record_id===encash.id);
   assert.equal((await service.decide(reviewer,encashApproval.id,{decision:'APPROVED',version:encashApproval.version})).state,'APPROVED');
   assert.equal((await service.list(owner,'leaveAllocations',new URLSearchParams({periodId:period.id}))).rows[0].data.balance,8);
-  await assert.rejects(service.save(owner,'leaveEncashments',{...encash.data,version:2},encash.id),/Finalized/);
+  await assert.rejects(service.save(owner,'leaveEncashments',{...encash.data,version:3},encash.id),/Finalized/);
   await service.save(owner,'leaveBlocks',{code:prefix,name:'Test block',fromDate:'2026-12-01',toDate:'2026-12-01',siteId:site.id,reason:'Test'});
   await assert.rejects(service.save(owner,'leaveRequests',details),/blocked/);
   await assert.rejects(service.importMasters(owner,'holidays',[{code:prefix,name:'Valid holiday',date:'2026-12-25',holidayType:'Public'},{code:prefix+'-bad',name:'Bad holiday',date:'2026-02-30'}]),/valid date/);
