@@ -25,6 +25,7 @@
 .dashboard-title{margin-bottom:10px}
 .workspace,.side-user,.main header>strong{display:none}
 .collapsed aside:hover{width:260px;box-shadow:12px 0 28px #27103e33}
+.collapsed aside:hover+.main{margin-left:260px}
 .collapsed aside:hover .side-head{padding:0 18px}
 .collapsed aside:hover .side-head .logo{display:flex}
 .collapsed aside:hover .side-head .logo b,.collapsed aside:hover nav button span,.collapsed aside:hover .chev{display:inline}
