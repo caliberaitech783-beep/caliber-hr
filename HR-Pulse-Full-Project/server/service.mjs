@@ -1,3 +1,4 @@
+import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds} from './leave.mjs';
 import { randomUUID } from 'node:crypto';
@@ -54,17 +55,19 @@ export function createService(pool) {
   }
   async function save(db,profile,kind,input,id) {
     authorize(profile,kind,true);
-    const data=validate(kind,input); let existing;
+    let data; let existing;
     if(id){
       if(!uuid(id))throw problem('Invalid record ID');
       existing=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
       if(!existing)throw problem('Record not found',404);
       if(existing.version!==Number(input.version))throw problem('This record changed. Reload it before saving.',409);
       if(['leaveRequests','leaveEncashments'].includes(kind)&&['APPROVED','CANCELLED','INACTIVE'].includes(existing.status))throw problem('Finalized requests cannot be edited',409);
-      if(kind==='leaveAllocations'&&['employeeId','leaveTypeId','periodId'].some(key=>existing.data[key]!==data[key]))throw problem('Allocation employee, type and period cannot be changed. Create another allocation instead.',409);
+      if(kind==='leaveAllocations'&&existing.data.__importDraft!=='true'&&['employeeId','leaveTypeId','periodId'].some(key=>existing.data[key]!==input[key]))throw problem('Allocation employee, type and period cannot be changed. Create another allocation instead.',409);
       if(existing.status==='PENDING')throw problem('A record awaiting approval cannot be edited',409);
-      await locationAccess(db,profile,kind,existing.data,id);
+      if(!(existing.data.__importDraft==='true'&&existing.created_by===profile.actor))await locationAccess(db,profile,kind,existing.data,id);
     }
+    if(existing?.data.__importDraft==='true')input=await resolveImportReferences(db,kind,input);
+    data=validate(kind,input);
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);
     const status=['employees','leaveRequests','leaveEncashments'].includes(kind)?'DRAFT':'ACTIVE';
@@ -82,15 +85,15 @@ export function createService(pool) {
       authorize(profile,kind);
       const page=Math.max(1,Math.min(10000,Number(params.get('page'))||1));
       const search=(params.get('search')||'').slice(0,150);const status=params.get('status')||'';
-      let filter="r.kind=$1 AND ($2='' OR r.code ILIKE '%'||$2||'%' OR r.name ILIKE '%'||$2||'%') AND ($3='' OR r.status=$3) AND "+scopeSql('r','$4');
-      const values=[kind,search,status,await siteIds(pool,profile)];
+      let filter="r.kind=$1 AND ($2='' OR r.code ILIKE '%'||$2||'%' OR r.name ILIKE '%'||$2||'%') AND ($3='' OR r.status=$3) AND "+scopeSql('r','$4','$5');
+      const values=[kind,search,status,await siteIds(pool,profile),profile.actor];
       const filters=[['leaveTypeId',"r.data->>'leaveTypeId'"],['periodId',"r.data->>'periodId'"],['siteId',"r.data->>'siteId'"],['year',"left(r.data->>'date',4)"],['departmentId',"COALESCE(r.data->>'departmentId',(SELECT e.data->>'departmentId' FROM hr_records e WHERE e.id::text=r.data->>'employeeId'))"]];
       for(const [key,expression] of filters){const value=params.get(key);if(value){values.push(value);filter+=' AND '+expression+'=$'+values.length;}}
       if(params.get('fromDate')){values.push(params.get('fromDate'));filter+=" AND COALESCE(r.data->>'toDate',r.data->>'date') >= $"+values.length;}
       if(params.get('toDate')){values.push(params.get('toDate'));filter+=" AND COALESCE(r.data->>'fromDate',r.data->>'date') <= $"+values.length;}
       const count=await pool.query(`SELECT count(*) FROM hr_records r WHERE ${filter}`,values);
       const result=await pool.query(`SELECT r.* FROM hr_records r WHERE ${filter} ORDER BY r.updated_at DESC,r.id LIMIT 50 OFFSET $${values.length+1}`,[...values,(page-1)*50]);
-      if(kind==='leaveAllocations')for(const row of result.rows)row.data={...row.data,...await balance(pool,row.data.employeeId,row.data.leaveTypeId,row.data.periodId)};
+      if(kind==='leaveAllocations')for(const row of result.rows)if(row.data.__importDraft!=='true')row.data={...row.data,...await balance(pool,row.data.employeeId,row.data.leaveTypeId,row.data.periodId)};
       return {rows:result.rows,total:Number(count.rows[0].count),page,pageSize:50};
     },
     async lookups(profile) {
@@ -117,7 +120,7 @@ export function createService(pool) {
     async importMasters(profile,kind,records){
       if(!['holidays','leaveTypes','leavePolicies','leavePeriods','leaveAllocations','leaveRequests','leaveEncashments','leaveBlocks'].includes(kind))throw problem('Unsupported import');
       authorize(profile,kind,true);if(!Array.isArray(records)||!records.length||records.length>500)throw problem('Import 1–500 rows');
-      return transaction(async db=>{for(const record of records){const input={...record};for(const f of modules[kind].fields.filter(f=>f.type==='reference'))if(input[f.key]&&!uuid(input[f.key])){const ref=await db.query("SELECT id FROM hr_records WHERE kind=$1 AND code=$2 AND status IN ('ACTIVE','APPROVED')",[f.reference,String(input[f.key])]);if(!ref.rowCount)throw problem('Unknown '+f.label+' code');input[f.key]=ref.rows[0].id;}await save(db,profile,kind,input);}return {imported:records.length};});
+      return transaction(db=>importWithDrafts(db,profile,kind,records,input=>save(db,profile,kind,input)));
     },
     async deactivate(profile,kind,id,version) {
       authorize(profile,kind,true);if(['leaveRequests','leaveEncashments'].includes(kind))throw problem('Use Cancel for requests',409);if(!uuid(id))throw problem('Invalid record ID');
@@ -165,6 +168,7 @@ export function createService(pool) {
       return transaction(async db=>{
         const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
         if(!record)throw problem('Record not found',404);
+        if(record.data.__importDraft==='true')throw problem('Resolve the imported draft and save it before submitting',409);
         if(record.version!==Number(version)||!['DRAFT','REJECTED'].includes(record.status))throw problem('Reload the record; only drafts or rejected records can be submitted',409);
         await locationAccess(db,profile,kind,record.data,id);
         await references(db,kind,record.data,id);
