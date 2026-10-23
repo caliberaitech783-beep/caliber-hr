@@ -101,6 +101,11 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('columnheader',{name:'Site *'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Educational Details/}));
   expect(screen.getByRole('columnheader',{name:'Qualification'})).toBeTruthy();
+  view.rerender(<EmployeeLocation employeeGroup="OB / COAL"/>);
+  expect(screen.getByRole('button',{name:/Mine Compliance/})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:/Mine Compliance/}));
+  expect(screen.getByRole('columnheader',{name:'Medical Examination Date'})).toBeTruthy();
+  view.rerender(<EmployeeLocation employeeGroup="Corporate / HO"/>);
   fireEvent.click(screen.getByRole('button',{name:'Region Employee Details'}));
   expect(screen.getByRole('option',{name:'Nagpur CO'})).toBeTruthy();
   expect(screen.getByRole('option',{name:'Chandrapur HO'})).toBeTruthy();
