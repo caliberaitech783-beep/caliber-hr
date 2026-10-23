@@ -12,7 +12,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('menuitem',{name:/Download as PDF/})).toBeTruthy();
   expect(screen.getByRole('menuitem',{name:/Download as Excel/})).toBeTruthy();
   expect(screen.getByRole('menuitem',{name:/Smart Print/})).toBeTruthy();
-  expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.csv');
+  expect(screen.getByLabelText('Import employee file').getAttribute('accept')).not.toContain('.csv');
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xlsx');
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xls');
   expect(screen.getByRole('heading',{name:'Employee Details'})).toBeTruthy();
@@ -41,6 +41,9 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Upload Signed appointment letter')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
   expect(screen.queryByRole('textbox')).toBeNull();
+  expect(screen.getByRole('columnheader',{name:'Sr. No.'})).toBeTruthy();
+  expect(screen.getByRole('columnheader',{name:'Employee Code'})).toBeTruthy();
+  expect(screen.getByRole('columnheader',{name:'ESIC Applicable'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Region Employee Details'}));
   expect(screen.getByRole('option',{name:'Nagpur CO'})).toBeTruthy();
   expect(screen.getByRole('option',{name:'Chandrapur HO'})).toBeTruthy();

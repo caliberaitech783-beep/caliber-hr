@@ -136,14 +136,21 @@ export function createService(pool) {
         let count=0;
         for(const record of records){
           const input={...record};
+          const officeData=input.__officeData;delete input.__officeData;
+          if(officeData&&(!officeData.constructor||officeData.constructor!==Object))throw problem(`Row ${count+1}: Corporate / HO employee data is invalid`);
+          if(!input.companyId){
+            const companies=await db.query("SELECT id FROM hr_records WHERE kind='companies' AND status IN ('ACTIVE','APPROVED') ORDER BY created_at LIMIT 2");
+            if(companies.rowCount!==1)throw problem(`Row ${count+1}: configure exactly one active company before importing the Corporate / HO format`);
+            input.companyId=companies.rows[0].id;
+          }
           for(const field of modules.employees.fields.filter(x=>x.type==='reference')){
             if(input[field.key]&&!uuid(input[field.key])){
-              const found=await db.query("SELECT id FROM hr_records WHERE kind=$1 AND code=$2 AND status IN ('ACTIVE','APPROVED')",[field.reference,String(input[field.key]).trim()]);
-              if(!found.rowCount)throw problem(`Row ${count+1}: unknown ${field.label} code`);
+              const found=await db.query("SELECT id FROM hr_records WHERE kind=$1 AND (code=$2 OR ($3 AND lower(name)=lower($2))) AND status IN ('ACTIVE','APPROVED') LIMIT 2",[field.reference,String(input[field.key]).trim(),Boolean(officeData)]);
+              if(found.rowCount!==1)throw problem(`Row ${count+1}: unknown or ambiguous ${field.label} code/name`);
               input[field.key]=found.rows[0].id;
             }
           }
-          try { await save(db,profile,'employees',input); } catch(error){throw problem(`Row ${count+1}: ${error.code==='23505'?'employee number already exists':error.status?error.message:'unable to save this row'}`,error.status||400);}
+          try { const saved=await save(db,profile,'employees',input);if(officeData)await db.query("UPDATE hr_records SET data=data||jsonb_build_object('officeData',$1::jsonb) WHERE id=$2",[JSON.stringify(officeData),saved.id]); } catch(error){throw problem(`Row ${count+1}: ${error.code==='23505'?'employee number already exists':error.status?error.message:'unable to save this row'}`,error.status||400);}
           count++;
         }
         return {imported:count,status:'DRAFT'};
