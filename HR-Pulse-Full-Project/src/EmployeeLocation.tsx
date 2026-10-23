@@ -24,7 +24,7 @@ const regionSites={WCL:['Sasti OB','Dhoptala OB','Gauri Pauni OB','Majri OB'],NC
 function RegionEmployeeDetails({employeeGroup}:{employeeGroup:'Corporate / HO'|'OB / COAL'}){
  const[region,setRegion]=useState('');
  useEffect(()=>setRegion(''),[employeeGroup]);
- return <div className="joining-card employee-tab-panel"><div className="joining-heading"><div><h2>Region Employee Details</h2><p>Select the applicable office, coalfield and site.</p></div></div><Section title={employeeGroup}><div className="joining-grid">{employeeGroup==='Corporate / HO'?<Field label="Office" options={['Nagpur CO','Chandrapur HO']}/>:<><Field label="Coalfield" options={['WCL','NCL']} value={region} onChange={setRegion}/>{region&&<Field label="Site" options={regionSites[region as keyof typeof regionSites]}/>}</>}</div></Section></div>;
+ return <div className="joining-card employee-tab-panel region-details-row"><div className="joining-heading"><div><h2>Region Employee Details</h2><p>{employeeGroup}</p></div></div><div className="region-inline-fields">{employeeGroup==='Corporate / HO'?<Field label="Office" options={['Nagpur CO','Chandrapur HO']}/>:<><Field label="Coalfield" options={['WCL','NCL']} value={region} onChange={setRegion}/><Field label="Site" options={region?regionSites[region as keyof typeof regionSites]:[]} /></>}</div></div>;
 }
 
 function ExistingEmployees({rows,loading,error}:{rows:RecordRow[];loading:boolean;error:string}){
