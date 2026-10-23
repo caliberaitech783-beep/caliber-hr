@@ -1,11 +1,11 @@
 import ShiftMaster from './ShiftMaster';
 import {useEffect,useState} from 'react';
-import {Activity,ArrowRight,Building2,CalendarDays,ClipboardCheck,Clock3,Eye,EyeOff,FileBarChart,LayoutDashboard,LockKeyhole,LogOut,Menu,Settings,ShieldCheck,UserPlus,Users,X} from 'lucide-react';
+import {Activity,ArrowRight,Building2,CalendarDays,ClipboardCheck,Eye,EyeOff,FileBarChart,LayoutDashboard,LockKeyhole,LogOut,Menu,Settings,ShieldCheck,UserPlus,Users,X} from 'lucide-react';
 import {api,pulse,clearSession,savedSession,type Session,type Profile,type Module} from './api';
 import {Records,Approvals,Overview,Audit} from './Modules';
 import EmployeeLocation from './EmployeeLocation';
 import './modules.css';
-const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Master Configuration',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Approval Management',ClipboardCheck],['Shift Management',Clock3],['Holiday & Leave',CalendarDays],['Reports & MIS',FileBarChart],['Administration',ShieldCheck],['Audit Logs',FileBarChart]] as const;
+const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Master Configuration',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Approval Management',ClipboardCheck],['Holiday & Leave',CalendarDays],['Reports & MIS',FileBarChart],['Administration',ShieldCheck],['Audit Logs',FileBarChart]] as const;
 const masterGroups=[{name:'B1 · Company & sites',kinds:['companies','clients','regions','sites']},{name:'B2 · Organization',kinds:['departments','grades','designations']},{name:'B3 · Approval workflows',kinds:['workflows']},{name:'B4 · New employee',kinds:['employees']},{name:'B5 · Staff import',kinds:['employees']},{name:'B6 · Shifts',kinds:['shifts']},{name:'B7 · Holiday & leave',kinds:['holidays','leavePolicies','leaveRequests']},{name:'B8 · Approval matrix',kinds:['approvalRules']}];
 function Logo(){return <div className="logo"><span><Activity/></span><b>HR</b></div>}
 function Login({onLogin}:{onLogin:(s:Session)=>void}){
@@ -33,8 +33,8 @@ function Workspace({session,logout}:{session:Session;logout:()=>void}){
   useEffect(()=>{void refreshConfig();const timer=setInterval(()=>void refreshConfig(),60000);return()=>clearInterval(timer);},[session.grant]);
   useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),5000);return()=>clearTimeout(timer);},[notice]);
   useEffect(()=>{const change=()=>{try{setPage(decodeURIComponent(window.location.hash.slice(1)));}catch{setPage('');}};window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
-  useEffect(()=>{if(permitted.length&&!access.has(page))setPage(permitted[0][0]);},[profile,page]);
-  function navigate(name:string){window.location.hash=encodeURIComponent(name);setPage(name);setNotice('');if(window.innerWidth<=760)setCollapsed(true);if(name==='Master Configuration'){setGroup(0);setKind('companies');}if(name==='Holiday & Leave')setKind('leaveRequests');if(name==='Shift Management')setKind('shifts');}
+  useEffect(()=>{if(permitted.length&&!permitted.some(([name])=>name===page)){const next=page==='Shift Management'&&access.has('Master Configuration')?'Master Configuration':permitted[0][0];window.location.hash=encodeURIComponent(next);setPage(next);}},[profile,page]);
+  function navigate(name:string){window.location.hash=encodeURIComponent(name);setPage(name);setNotice('');if(window.innerWidth<=760)setCollapsed(true);if(name==='Master Configuration'){setGroup(0);setKind('companies');}if(name==='Holiday & Leave')setKind('leaveRequests');}
   const employeePage=['Employee Master','Employee Onboarding','Employee Directory'].includes(page);
   const activeKind=employeePage?'employees':kind;
   const groups=masterGroups[group].kinds.filter(k=>config[k]);
@@ -43,7 +43,7 @@ function Workspace({session,logout}:{session:Session;logout:()=>void}){
     {(page==='Dashboard'||page==='Reports & MIS')&&<Overview grant={session.grant} report={page==='Reports & MIS'} onEmployees={()=>navigate('Employee Directory')} showEmployees={access.has('Employee Directory')}/>}
     {page==='Master Configuration'&&<><div className="module-tabs master-groups">{masterGroups.map((g,i)=>g.kinds.some(k=>config[k])&&<button key={g.name} className={group===i?'selected':''} onClick={()=>{setGroup(i);setKind(g.kinds.find(k=>config[k])||'');}}>{g.name}</button>)}</div><div className="module-tabs">{groups.map(k=><button key={k} className={kind===k?'selected':''} onClick={()=>setKind(k)}>{config[k].title}</button>)}</div></>}
     {page==='Holiday & Leave'&&<><p className="help-text">Leave entitlement uses calendar days, including weekends and holidays. Split requests at the calendar-year boundary.</p><div className="module-tabs">{['leaveRequests','holidays','leavePolicies'].filter(k=>config[k]).map(k=><button key={k} className={kind===k?'selected':''} onClick={()=>setKind(k)}>{config[k].title}</button>)}</div></>}
-    {(employeePage||['Master Configuration','Shift Management','Holiday & Leave'].includes(page))&&config[activeKind]&&<Records key={page+activeKind+group} grant={session.grant} kind={activeKind} module={config[activeKind]} readOnly={page==='Employee Directory'} importFirst={page==='Master Configuration'&&group===4} notice={setNotice}/>}
+    {(employeePage||['Master Configuration','Holiday & Leave'].includes(page))&&config[activeKind]&&<Records key={page+activeKind+group} grant={session.grant} kind={activeKind} module={config[activeKind]} readOnly={page==='Employee Directory'} importFirst={page==='Master Configuration'&&group===4} notice={setNotice}/>}
     {page==='Approval Management'&&<Approvals grant={session.grant} actor={profile.actor||''} notice={setNotice}/>}
     {page==='Audit Logs'&&<Audit grant={session.grant}/>}
     {page==='Administration'&&<p className="help-text">Pulse access scope · Level: {String(profile.permissions.adminLevel||'Not specified')} · Site: {typeof profile.permissions.site==='string'?profile.permissions.site:JSON.stringify(profile.permissions.site??'Not specified')}</p>}
