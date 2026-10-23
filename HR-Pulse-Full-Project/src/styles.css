@@ -29,6 +29,7 @@
 .collapsed aside:hover .side-head .logo{display:flex}
 .collapsed aside:hover .side-head .logo b,.collapsed aside:hover nav button span,.collapsed aside:hover .chev{display:inline}
 .collapsed aside:hover nav button{justify-content:flex-start;padding:0 13px}
+.collapsed aside:hover .employee-subnav{display:grid}
 .collapsed .side-head{width:285px;gap:10px;background:inherit}
 .collapsed .side-head>button{order:0;flex:0 0 auto}
 .collapsed .side-head .logo{display:flex;order:1;flex:1;pointer-events:none}
