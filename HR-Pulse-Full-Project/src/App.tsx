@@ -26,7 +26,7 @@ function HeaderClock(){
   return <div className="header-clock" aria-label={`${time}, ${date}`}><strong>{time}</strong><CalendarDays/><span>{date}</span></div>;
 }
 function Workspace({session,logout}:{session:Session;logout:()=>void}){
-  const[config,setConfig]=useState<Record<string,Module>>({}),[profile,setProfile]=useState<Profile>(session.profile),[page,setPage]=useState(()=>decodeURIComponent(window.location.hash.slice(1))),[kind,setKind]=useState('companies'),[group,setGroup]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(true),[collapsed,setCollapsed]=useState(window.innerWidth<=760),[notice,setNotice]=useState('');
+  const[config,setConfig]=useState<Record<string,Module>>({}),[profile,setProfile]=useState<Profile>(session.profile),[page,setPage]=useState(()=>decodeURIComponent(window.location.hash.slice(1))),[kind,setKind]=useState('companies'),[group,setGroup]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(true),[collapsed,setCollapsed]=useState(true),[notice,setNotice]=useState('');
   const[employeeGroup,setEmployeeGroup]=useState<'Corporate / HO'|'OB / COAL'>('Corporate / HO');
   const access=new Set([...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])]);const permitted=navItems.filter(([name])=>access.has(name));
   async function refreshConfig(){const started=performance.now();try{const value=await api<{profile:Profile;modules:Record<string,Module>}>(session.grant,'config');setConfig(value.modules);setProfile(value.profile);setError('');setNotice(`Data loaded. Time taken: ${((performance.now()-started)/1000).toFixed(1)} sec.`);}catch(err){setError((err as Error).message);}finally{setLoading(false);}}
