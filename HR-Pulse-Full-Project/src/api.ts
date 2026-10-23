@@ -28,3 +28,16 @@ export function parseCsv(source:string){
   const keys=rows.shift()?.map(x=>x.trim())||[];if(!keys.length||new Set(keys).size!==keys.length)throw new Error('CSV must have unique column headings');
   return rows.map((values,i)=>{if(values.length!==keys.length)throw new Error(`CSV row ${i+2} has the wrong number of columns`);return Object.fromEntries(keys.map((key,j)=>[key,values[j]]));});
 }
+export function prepareImport(source:string,fields:Field[]){
+ const rows=parseCsv(source),allowed=new Set(fields.map(f=>f.key));
+ const metadata=new Set(['status','updatedAt']);
+ const unknown=Object.keys(rows[0]||{}).filter(k=>!allowed.has(k)&&!metadata.has(k));
+ if(unknown.length)throw new Error('Unknown CSV columns: '+unknown.join(', '));
+ return rows.map((row,index)=>Object.fromEntries(Object.entries(row).filter(([key])=>allowed.has(key)).map(([key,value])=>{
+  if(fields.find(f=>f.key===key)?.type==='date'){
+   const match=value.trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);
+   if(match){value=`${match[3]}-${match[2]}-${match[1]}`;const parsed=new Date(value+'T00:00:00Z');if(!Number.isFinite(parsed.getTime())||parsed.toISOString().slice(0,10)!==value)throw new Error(`CSV row ${index+2}: invalid ${key}`);}
+  }
+  return [key,value];
+ })));
+}
