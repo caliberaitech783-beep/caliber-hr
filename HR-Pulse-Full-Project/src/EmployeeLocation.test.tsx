@@ -24,6 +24,7 @@ describe('Corporate / HO import headers',()=>{
  });
  it('normalizes spreadsheet employment categories for the API',()=>{
   expect(normalizeEmploymentCategory('PERMANENT')).toBe('Permanent');
+  expect(normalizeEmploymentCategory('TEMPORARY')).toBe('Contract');
   expect(normalizeEmploymentCategory(' fixed-term ')).toBe('Contract');
   expect(normalizeEmploymentCategory('TRAINEE')).toBe('Trainee');
  });

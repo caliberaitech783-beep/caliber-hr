@@ -14,7 +14,7 @@ export function validCorporateOfficeHeaders(values:unknown[]){
  return [corporateOfficeHeaders,corporateOfficeUploadHeaders].some(format=>headers.length===format.length&&headers.every((header,index)=>header===format[index]));
 }
 function importDate(value:unknown){if(typeof value==='number'){const date=new Date(Date.UTC(1899,11,30)+value*86400000);return date.toISOString().slice(0,10)}return String(value??'').trim()}
-const employmentCategories=new Map([['permanent','Permanent'],['contract','Contract'],['fixed-term','Contract'],['fixed term','Contract'],['trainee','Trainee'],['consultant','Consultant']]);
+const employmentCategories=new Map([['permanent','Permanent'],['contract','Contract'],['temporary','Contract'],['fixed-term','Contract'],['fixed term','Contract'],['trainee','Trainee'],['consultant','Consultant']]);
 export function normalizeEmploymentCategory(value:unknown){return employmentCategories.get(String(value??'').trim().toLowerCase())||String(value??'').trim()}
 function corporateImportRow(row:Record<string,unknown>){
  const officeData=Object.fromEntries(corporateOfficeHeaders.map(header=>[header,corporateDateHeaders.has(header)?importDate(row[header]):row[header]??'']));
