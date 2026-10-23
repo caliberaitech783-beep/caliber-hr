@@ -67,9 +67,11 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Employment Type')).toBeTruthy();
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
   view.rerender(<EmployeeLocation employeeGroup="OB / COAL"/>);
-  fireEvent.click(screen.getByRole('button',{name:/Work Details/}));
+  fireEvent.click(screen.getByRole('button',{name:/Job & Posting Details/}));
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
   fireEvent.change(screen.getByLabelText('Employee Category'),{target:{value:'Driver'}});
+  expect(screen.getByRole('button',{name:/Mine Compliance/})).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:/Mine Compliance/}));
   expect(screen.getByLabelText(/Medical Examination Date/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Contract & Policies/}));
   expect(screen.getByLabelText('Employment Type')).toBeTruthy();
