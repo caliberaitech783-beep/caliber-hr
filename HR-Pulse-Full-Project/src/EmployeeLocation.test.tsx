@@ -1,6 +1,6 @@
 import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it} from 'vitest';
-import EmployeeLocation,{validCorporateOfficeHeaders} from './EmployeeLocation';
+import EmployeeLocation,{resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
 const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 
@@ -10,6 +10,15 @@ describe('Corporate / HO import headers',()=>{
   expect(validCorporateOfficeHeaders(uploaded)).toBe(true);
   expect(validCorporateOfficeHeaders(officeHeaders)).toBe(true);
   expect(validCorporateOfficeHeaders([...uploaded,'Unexpected'])).toBe(false);
+ });
+ it('resolves master names and leaves unmatched optional references blank',()=>{
+  const rows=resolveCorporateReferences([{siteId:'CMPL NAGPUR',departmentId:'UNKNOWN',designationId:'VP',gradeId:'A1',shiftId:'GENERAL'}],[
+   {id:'site-1',kind:'sites',code:'NAG',name:'CMPL Nagpur'},
+   {id:'designation-1',kind:'designations',code:'VP',name:'Vice President'},
+   {id:'grade-1',kind:'grades',code:'GRADE-A1',name:'A1'},
+   {id:'shift-1',kind:'shifts',code:'GEN',name:'General'},
+  ]);
+  expect(rows[0]).toMatchObject({siteId:'site-1',departmentId:'',designationId:'designation-1',gradeId:'grade-1',shiftId:'shift-1'});
  });
 });
 
