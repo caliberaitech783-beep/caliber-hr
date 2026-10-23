@@ -36,5 +36,13 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Upload Signed appointment letter')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
   expect(screen.queryByRole('textbox')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Region Employee Details'}));
+  expect(screen.getByRole('option',{name:'Nagpur CO'})).toBeTruthy();
+  expect(screen.getByRole('option',{name:'Chandrapur HO'})).toBeTruthy();
+  view.rerender(<EmployeeLocation employeeGroup="OB / COAL"/>);
+  fireEvent.change(screen.getByLabelText('Coalfield'),{target:{value:'WCL'}});
+  for(const site of ['Sasti OB','Dhoptala OB','Gauri Pauni OB','Majri OB'])expect(screen.getByRole('option',{name:site})).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Coalfield'),{target:{value:'NCL'}});
+  for(const site of ['Jayant OB','Dudhichua OB West','Dudhichua OB East'])expect(screen.getByRole('option',{name:site})).toBeTruthy();
  });
 });

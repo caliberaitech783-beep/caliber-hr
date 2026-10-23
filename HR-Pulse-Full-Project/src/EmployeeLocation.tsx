@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState,type ChangeEvent,type ReactNode} from 'react';
 import {Upload} from 'lucide-react';
 import {read,utils} from 'xlsx';
-import {api,parseCsv,type Module} from './api';
+import {api,parseCsv,type Module,type RecordRow} from './api';
 
 const locations={Site:['NCL','WCL'],Office:['Nagpur CO','Chandrapur HO']};
 const tabs=['Add New Employee','Update Existing Employee','Region Employee Details','Department & Designation'];
@@ -19,6 +19,17 @@ const documents=[
  ['Candidate photo','Mandatory'],['Aadhaar (masked display)','Mandatory / secure handling'],['PAN','As applicable'],['Education certificates','As per role'],['Previous employment / experience proof','If experienced'],['Bank proof / cancelled cheque','Before payroll'],['UAN / PF details','If applicable'],['ESIC details','If applicable'],['VTC certificate','OB / COAL where applicable'],['Medical fitness certificate','OB / COAL where applicable'],['Driving licence','Drivers/operators'],['Operator competency certificate','Operators where applicable'],['Address proof','As per policy'],['Signed offer letter','After approval'],['Signed appointment letter','After approval']
 ];
 const conditionalDocuments=new Set(['VTC certificate','Medical fitness certificate','Driving licence','Operator competency certificate']);
+const regionSites={WCL:['Sasti OB','Dhoptala OB','Gauri Pauni OB','Majri OB'],NCL:['Jayant OB','Dudhichua OB West','Dudhichua OB East']};
+
+function RegionEmployeeDetails({employeeGroup}:{employeeGroup:'Corporate / HO'|'OB / COAL'}){
+ const[region,setRegion]=useState('');
+ useEffect(()=>setRegion(''),[employeeGroup]);
+ return <div className="joining-card employee-tab-panel"><div className="joining-heading"><div><h2>Region Employee Details</h2><p>Select the applicable office, coalfield and site.</p></div></div><Section title={employeeGroup}><div className="joining-grid">{employeeGroup==='Corporate / HO'?<Field label="Office" options={['Nagpur CO','Chandrapur HO']}/>:<><Field label="Coalfield" options={['WCL','NCL']} value={region} onChange={setRegion}/>{region&&<Field label="Site" options={regionSites[region as keyof typeof regionSites]}/>}</>}</div></Section></div>;
+}
+
+function ExistingEmployees({rows,loading,error}:{rows:RecordRow[];loading:boolean;error:string}){
+ return <div className="joining-card employee-tab-panel"><div className="joining-heading"><div><h2>Update Existing Employee</h2><p>Imported and saved employee drafts appear here for review and updating.</p></div></div>{error&&<p className="employee-import-error" role="alert">{error}</p>}{loading?<p role="status">Loading employees…</p>:<div className="joining-table-wrap"><table className="joining-table existing-employees"><thead><tr><th>Code</th><th>Name</th><th>Status</th><th>Last Updated</th></tr></thead><tbody>{rows.map(row=><tr key={row.id}><td>{row.code}</td><td>{row.name}</td><td>{row.status}</td><td>{new Date(row.updated_at).toLocaleString('en-IN')}</td></tr>)}</tbody></table>{!rows.length&&<p className="employee-empty">No imported employee records found.</p>}</div>}</div>;
+}
 
 function JoiningForm({employeeGroup}:{employeeGroup:'Corporate / HO'|'OB / COAL'}){
  const[step,setStep]=useState(0),[employeeCategory,setEmployeeCategory]=useState('');
@@ -64,6 +75,8 @@ export default function EmployeeLocation({title='Employee Master',grant,module,n
  const[tab,setTab]=useState('Add New Employee');
  const[type,setType]=useState<keyof typeof locations|''>(''),[location,setLocation]=useState('');
  const importInput=useRef<HTMLInputElement>(null),[importStatus,setImportStatus]=useState(''),[importError,setImportError]=useState(''),[importRows,setImportRows]=useState<Record<string,unknown>[]>([]),[importBusy,setImportBusy]=useState(false);
+ const[employees,setEmployees]=useState<RecordRow[]>([]),[employeesLoading,setEmployeesLoading]=useState(false),[employeesError,setEmployeesError]=useState(''),[employeesVersion,setEmployeesVersion]=useState(0);
+ useEffect(()=>{if(tab!=='Update Existing Employee'||!grant)return;let canceled=false;setEmployeesLoading(true);api<{rows:RecordRow[]}>(grant,'records/employees?page=1&search=&status=').then(result=>{if(!canceled){setEmployees(result.rows);setEmployeesError('');}}).catch(error=>{if(!canceled)setEmployeesError((error as Error).message);}).finally(()=>{if(!canceled)setEmployeesLoading(false);});return()=>{canceled=true;};},[tab,grant,employeesVersion]);
  async function importEmployees(event:ChangeEvent<HTMLInputElement>){
   const file=event.target.files?.[0];if(!file)return;
   setImportStatus('');setImportError('');
@@ -78,7 +91,7 @@ export default function EmployeeLocation({title='Employee Master',grant,module,n
    setImportStatus(`${file.name} ready · ${rows.length} employee ${rows.length===1?'row':'rows'} loaded`);
   }catch(error){setImportRows([]);setImportError((error as Error).message);}finally{event.target.value='';}
  }
- async function saveImport(){if(!grant||!importRows.length)return;setImportBusy(true);setImportError('');try{const result=await api<{imported:number}>(grant,'import/employees','POST',{records:importRows});setImportRows([]);setImportStatus('');notice?.(`${result.imported} employee drafts saved to Azure`);}catch(error){setImportError((error as Error).message);}finally{setImportBusy(false);}}
- if(title==='Employee Master')return <section className="employee-master" aria-label="Employee Master"><div className="employee-tabs-row"><div className="employee-tabs">{tabs.map(value=><button key={value} className={tab===value?'selected':''} onClick={()=>setTab(value)}>{value}</button>)}</div><input ref={importInput} className="employee-import-input" aria-label="Import employee file" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event=>void importEmployees(event)}/><button className="employee-import" type="button" onClick={()=>importInput.current?.click()}><Upload/>Import</button></div>{importStatus&&<div className="employee-import-status" role="status"><span>{importStatus}</span>{grant&&<button type="button" disabled={importBusy} onClick={()=>void saveImport()}>{importBusy?'Importing…':`Import ${importRows.length} drafts`}</button>}</div>}{importError&&<p className="employee-import-error" role="alert">{importError}</p>}{tab==='Add New Employee'&&<JoiningForm employeeGroup={employeeGroup}/>}</section>;
+ async function saveImport(){if(!grant||!importRows.length)return;setImportBusy(true);setImportError('');try{const result=await api<{imported:number}>(grant,'import/employees','POST',{records:importRows});setImportRows([]);setImportStatus('');setEmployeesVersion(version=>version+1);setTab('Update Existing Employee');notice?.(`${result.imported} employee drafts saved to Azure`);}catch(error){setImportError((error as Error).message);}finally{setImportBusy(false);}}
+ if(title==='Employee Master')return <section className="employee-master" aria-label="Employee Master"><div className="employee-tabs-row"><div className="employee-tabs">{tabs.map(value=><button key={value} className={tab===value?'selected':''} onClick={()=>setTab(value)}>{value}</button>)}</div><input ref={importInput} className="employee-import-input" aria-label="Import employee file" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={event=>void importEmployees(event)}/><button className="employee-import" type="button" onClick={()=>importInput.current?.click()}><Upload/>Import</button></div>{importStatus&&<div className="employee-import-status" role="status"><span>{importStatus}</span>{grant&&<button type="button" disabled={importBusy} onClick={()=>void saveImport()}>{importBusy?'Importing…':`Import ${importRows.length} drafts`}</button>}</div>}{importError&&<p className="employee-import-error" role="alert">{importError}</p>}{tab==='Add New Employee'&&<JoiningForm employeeGroup={employeeGroup}/>} {tab==='Update Existing Employee'&&<ExistingEmployees rows={employees} loading={employeesLoading} error={employeesError}/>} {tab==='Region Employee Details'&&<RegionEmployeeDetails employeeGroup={employeeGroup}/>}</section>;
  return <section className="employee-master" aria-labelledby="employee-master-title"><div className="page-title"><h1 id="employee-master-title">{title}</h1></div><div className="employee-location-panel"><fieldset><legend>Site / Office</legend><div className="employee-location-types">{Object.keys(locations).map(value=><label key={value}><input type="radio" name="employee-location-type" value={value} checked={type===value} onChange={()=>{setType(value as keyof typeof locations);setLocation('')}}/>{value}</label>)}</div></fieldset>{type&&<div className="employee-location-select"><label htmlFor="employee-location">{type}</label><select id="employee-location" value={location} onChange={event=>setLocation(event.target.value)}><option value="">Select {type.toLowerCase()}</option>{locations[type].map(value=><option key={value} value={value}>{value}</option>)}</select></div>}</div></section>;
 }
