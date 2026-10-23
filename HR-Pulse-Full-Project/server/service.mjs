@@ -1,3 +1,4 @@
+import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds} from './leave.mjs';
 import { randomUUID } from 'node:crypto';
 import { modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
@@ -74,6 +75,7 @@ export function createService(pool) {
     return row;
   }
   return {
+    ...createDeletion(pool),
     async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments'].includes(kind))}]))}; },
     async list(profile,kind,params) {
       authorize(profile,kind);

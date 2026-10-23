@@ -21,3 +21,13 @@ describe('database-backed record forms',()=>{
   for(const name of ['Add record','Import CSV','Submit','Deactivate'])expect(screen.queryByRole('button',{name})).toBeNull();
  });
 });
+it('requires typed confirmation and deletes the preview snapshot across pages',async()=>{
+ const targets=[{id:'one',version:1},{id:'two',version:2}];let deleted=false;
+ vi.stubGlobal('fetch',vi.fn(async(url:string,options?:RequestInit)=>{
+  if(url.endsWith('/preview'))return new Response(JSON.stringify({records:targets}));
+  if(url.endsWith('/confirm')){expect(JSON.parse(String(options?.body))).toEqual({records:targets});deleted=true;return new Response(JSON.stringify({deleted:2}));}
+  return new Response(JSON.stringify(url.endsWith('/lookups')?[]:{rows:[],total:2,page:1,pageSize:50}));
+ }));
+ render(<Records grant={'a'.repeat(43)} kind="holidays" module={{...companyModule,title:'Holidays'}} notice={()=>{}}/>);
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Delete all'})).not.toBeDisabled());fireEvent.click(screen.getByRole('button',{name:'Delete all'}));await screen.findByRole('heading',{name:'Delete 2 records?'});expect(deleted).toBe(false);expect(screen.getByRole('button',{name:'Delete permanently'})).toBeDisabled();fireEvent.change(screen.getByLabelText('Type DELETE to confirm'),{target:{value:'DELETE'}});fireEvent.click(screen.getByRole('button',{name:'Delete permanently'}));await waitFor(()=>expect(deleted).toBe(true));
+});
