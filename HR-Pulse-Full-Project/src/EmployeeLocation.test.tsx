@@ -14,6 +14,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('heading',{name:'Employee Details'})).toBeTruthy();
   expect(screen.queryByText('Fill Data by Candidate')).toBeNull();
   expect(screen.getByLabelText(/Full Name/)).toBeTruthy();
+  expect(screen.getByLabelText(/Employee Code/)).toBeTruthy();
   expect(screen.queryByLabelText('Employee Group')).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:/Work Details/}));
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
