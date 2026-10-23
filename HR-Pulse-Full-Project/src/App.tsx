@@ -5,7 +5,7 @@ import {api,pulse,clearSession,savedSession,type Session,type Profile,type Modul
 import {Records,Approvals,Overview,Audit} from './Modules';
 import EmployeeLocation from './EmployeeLocation';
 import './modules.css';
-const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Master Configuration',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Approval Management',ClipboardCheck],['Holiday & Leave',CalendarDays],['Reports & MIS',FileBarChart],['Administration',ShieldCheck],['Audit Logs',FileBarChart]] as const;
+const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Master Configuration',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Approval Management',ClipboardCheck],['Reports & MIS',FileBarChart],['Administration',ShieldCheck],['Audit Logs',FileBarChart]] as const;
 const masterGroups=[{name:'B1 · Company & sites',kinds:['companies','clients','regions','sites']},{name:'B2 · Organization',kinds:['departments','grades','designations']},{name:'B3 · Approval workflows',kinds:['workflows']},{name:'B4 · New employee',kinds:['employees']},{name:'B5 · Staff import',kinds:['employees']},{name:'B6 · Shifts',kinds:['shifts']},{name:'B7 · Holiday & leave',kinds:['holidays','leavePolicies','leaveRequests']},{name:'B8 · Approval matrix',kinds:['approvalRules']}];
 function Logo(){return <div className="logo"><span><Activity/></span><b>CALIBER HR</b></div>}
 function Login({onLogin}:{onLogin:(s:Session)=>void}){
@@ -34,7 +34,7 @@ function Workspace({session,logout}:{session:Session;logout:()=>void}){
   useEffect(()=>{void refreshConfig();const timer=setInterval(()=>void refreshConfig(),60000);return()=>clearInterval(timer);},[session.grant]);
   useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),5000);return()=>clearTimeout(timer);},[notice]);
   useEffect(()=>{const change=()=>{try{setPage(decodeURIComponent(window.location.hash.slice(1)));}catch{setPage('');}};window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
-  useEffect(()=>{if(permitted.length&&!permitted.some(([name])=>name===page)){const next=page==='Shift Management'&&access.has('Master Configuration')?'Master Configuration':permitted[0][0];window.location.hash=encodeURIComponent(next);setPage(next);}},[profile,page]);
+  useEffect(()=>{if(permitted.length&&!permitted.some(([name])=>name===page)){const isLegacyMaster=['Shift Management','Holiday & Leave'].includes(page)&&access.has('Master Configuration');if(isLegacyMaster)setMasterMenu(page==='Holiday & Leave'?'Holiday & Leave Master':'Shift Master');const next=isLegacyMaster?'Master Configuration':permitted[0][0];window.location.hash=encodeURIComponent(next);setPage(next);}},[profile,page]);
   function navigate(name:string){window.location.hash=encodeURIComponent(name);setPage(name);setNotice('');if(window.innerWidth<=760)setCollapsed(true);if(name==='Master Configuration'){setGroup(0);setKind('companies');}if(name==='Holiday & Leave')setKind('leaveRequests');}
   const employeePage=['Employee Master','Employee Onboarding','Employee Directory'].includes(page);
   const activeKind=employeePage?'employees':kind;
