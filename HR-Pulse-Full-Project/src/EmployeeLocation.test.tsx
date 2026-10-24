@@ -49,7 +49,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('menuitem',{name:/Download as PDF/})).toBeTruthy();
   expect(screen.getByRole('menuitem',{name:/Download as Excel/})).toBeTruthy();
   expect(screen.getByRole('menuitem',{name:/Smart Print/})).toBeTruthy();
-  expect(screen.getByLabelText('Import employee file').getAttribute('accept')).not.toContain('.csv');
+  expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.csv');
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xlsx');
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xls');
   for(const section of ['Joining & Personal Details','Job & Posting Details','Educational Details','Family Details','Previous Work Experience','Document Checklist'])expect(screen.getByRole('button',{name:new RegExp(section)})).toBeTruthy();
@@ -93,6 +93,9 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Upload Signed appointment letter')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
   expect(screen.getByRole('button',{name:'Delete All'}).hasAttribute('disabled')).toBe(true);
+  const sectionHeading=screen.getByRole('heading',{name:'Joining & Personal Details'}).parentElement?.parentElement;
+  expect(sectionHeading?.querySelector('.joining-heading-tools')?.contains(screen.getByRole('button',{name:'Import'}))).toBe(true);
+  expect(sectionHeading?.querySelector('.joining-heading-tools')?.contains(screen.getByRole('button',{name:/Print\/Export/}))).toBe(true);
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(screen.queryByRole('columnheader',{name:'Sr. No.'})).toBeNull();
   expect(screen.getByRole('columnheader',{name:'Employee Code'})).toBeTruthy();
