@@ -5,7 +5,7 @@ import {read,utils,writeFile} from 'xlsx';
 import {api,parseCsv,type Lookup,type Module,type RecordRow} from './api';
 
 const locations={Site:['NCL','WCL'],Office:['Nagpur CO','Chandrapur HO']};
-const tabs=['Add Temp. Employee','Update Existing Employee','Region Employee Details','Department & Designation'];
+const tabs=['Add Temp. Employee','Update Existing Employee','Region Employee Details','Department & Designation','Employee Verify','Completed Form','T to P C.Id'];
 const corporateOfficeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 const corporateOfficeUploadHeaders=[corporateOfficeHeaders[0],corporateOfficeHeaders[2],corporateOfficeHeaders[1],...corporateOfficeHeaders.slice(3)];
 const corporateDateHeaders=new Set(['Date of Birth','Joining Date *']);

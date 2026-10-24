@@ -40,10 +40,10 @@ describe('Corporate / HO import headers',()=>{
 });
 
 describe('Employee Master tabs',()=>{
- it('shows the four requested tabs and the complete joining workflow',()=>{
+ it('shows the requested tabs and the complete joining workflow',()=>{
   const view=render(<EmployeeLocation/>);
-  const labels=['Add Temp. Employee','Update Existing Employee','Region Employee Details','Department & Designation'];
-  expect(labels.map(label=>screen.getByRole('button',{name:label}))).toHaveLength(4);
+  const labels=['Add Temp. Employee','Update Existing Employee','Region Employee Details','Department & Designation','Employee Verify','Completed Form','T to P C.Id'];
+  expect(labels.map(label=>screen.getByRole('button',{name:label}))).toHaveLength(7);
   expect(screen.getByRole('button',{name:'Import'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
   expect(screen.getByRole('menuitem',{name:/Download as PDF/})).toBeTruthy();
