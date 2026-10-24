@@ -31,3 +31,9 @@ it('requires typed confirmation and deletes the preview snapshot across pages',a
  render(<Records grant={'a'.repeat(43)} kind="holidays" module={{...companyModule,title:'Holidays'}} notice={()=>{}}/>);
  await waitFor(()=>expect((screen.getByRole('button',{name:'Delete all'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Delete all'}));await screen.findByRole('heading',{name:'Delete 2 records?'});expect(deleted).toBe(false);expect((screen.getByRole('button',{name:'Delete permanently'}) as HTMLButtonElement).disabled).toBe(true);fireEvent.change(screen.getByLabelText('Type DELETE to confirm'),{target:{value:'DELETE'}});fireEvent.click(screen.getByRole('button',{name:'Delete permanently'}));await waitFor(()=>expect(deleted).toBe(true));
 });
+it('filters holidays by site tabs using server pagination and resets to page one',async()=>{
+ const urls:string[]=[];vi.stubGlobal('fetch',vi.fn(async(url:string)=>{urls.push(url);return new Response(JSON.stringify(url.endsWith('/lookups')?[]:{rows:[],total:0,page:1,pageSize:50,siteOptions:['NCL-JAYANT','NGP']}));}));
+ render(<Records grant={'a'.repeat(43)} kind="holidays" module={{...companyModule,title:'Holidays'}} notice={()=>{}}/>);
+ fireEvent.click(await screen.findByRole('tab',{name:'NGP'}));await waitFor(()=>expect(urls.some(url=>url.includes('page=1')&&url.includes('siteId=NGP'))).toBe(true));expect(screen.getByRole('tab',{name:'NGP'}).getAttribute('aria-selected')).toBe('true');expect(screen.getByRole('tab',{name:'NCL-JAYANT'})).toBeTruthy();
+ fireEvent.click(screen.getByRole('tab',{name:'All sites'}));await waitFor(()=>expect(screen.getByRole('tab',{name:'All sites'}).getAttribute('aria-selected')).toBe('true'));
+});

@@ -10,12 +10,12 @@ const cols:Record<string,string[][]>={
  leaveRequests:[['code','Request ID'],['employeeId','Employee'],['leaveTypeId','Type'],['fromDate','From'],['toDate','To'],['days','Days'],['name','Reason'],['approver','Requested approver']],
  leaveEncashments:[['employeeId','Employee'],['leaveTypeId','Type'],['days','Days'],['amount','Amount']],
  leaveBlocks:[['name','Name'],['fromDate','From'],['toDate','To'],['siteId','Location'],['departmentId','Department'],['reason','Reason']],
- holidays:[['siteCode','Site code'],['name','Name'],['day','DAY'],['date','date'],['siteId','siteId'],['holidayType','holidayType']],
+ holidays:[['name','Name'],['day','DAY'],['date','date'],['siteId','siteId'],['holidayType','holidayType']],
 };
 const filters:Record<string,{key:string;label:string;reference?:string;type?:string}[]>={
  leaveAllocations:[{key:'departmentId',label:'Department',reference:'departments'},{key:'leaveTypeId',label:'Leave type',reference:'leaveTypes'},{key:'periodId',label:'Period',reference:'leavePeriods'}],
  leaveRequests:[{key:'leaveTypeId',label:'Leave type',reference:'leaveTypes'},{key:'fromDate',label:'From',type:'date'},{key:'toDate',label:'To',type:'date'}],
- holidays:[{key:'year',label:'Year',type:'number'},{key:'siteId',label:'Site ID',type:'text'}],
+ holidays:[{key:'year',label:'Year',type:'number'}],
 };
 export default function LeaveMaster({grant,config,actor,canApprove,notice}:{grant:string;config:Record<string,Module>;actor:string;canApprove:boolean;notice:(s:string)=>void}){
  const[tab,setTab]=useState('dashboard'),[review,setReview]=useState(false);

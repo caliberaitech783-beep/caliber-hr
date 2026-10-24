@@ -94,7 +94,8 @@ export function createService(pool) {
       const count=await pool.query(`SELECT count(*) FROM hr_records r WHERE ${filter}`,values);
       const result=await pool.query(`SELECT r.* FROM hr_records r WHERE ${filter} ORDER BY r.updated_at DESC,r.id LIMIT 50 OFFSET $${values.length+1}`,[...values,(page-1)*50]);
       if(kind==='leaveAllocations')for(const row of result.rows)if(row.data.__importDraft!=='true')row.data={...row.data,...await balance(pool,row.data.employeeId,row.data.leaveTypeId,row.data.periodId)};
-      return {rows:result.rows,total:Number(count.rows[0].count),page,pageSize:50};
+      const siteOptions=kind==='holidays'?(await pool.query("SELECT DISTINCT r.data->>'siteId' AS value FROM hr_records r WHERE r.kind='holidays' AND COALESCE(r.data->>'siteId','')<>'' AND "+scopeSql('r','$1','$2')+" ORDER BY value",[await siteIds(pool,profile),profile.actor])).rows.map(r=>r.value):undefined;
+      return {rows:result.rows,total:Number(count.rows[0].count),page,pageSize:50,siteOptions};
     },
     async lookups(profile) {
       if(!grantedMenus(profile).size)throw problem('No HR permissions assigned',403);

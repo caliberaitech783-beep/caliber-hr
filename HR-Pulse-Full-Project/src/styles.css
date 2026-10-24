@@ -44,3 +44,5 @@
 @media(max-width:760px){.header-clock{gap:5px;margin-right:5px}.header-clock strong{display:none}.employee-master .candidate-fill{min-width:0}.employee-master .joining-card{padding:12px}.toast{top:10px;width:max-content;max-width:calc(100vw - 24px)}}
 
 .master-subnav.employee-subnav{grid-template-columns:1fr}.master-subnav.employee-subnav button{justify-content:flex-start;font-size:12px;min-height:35px;height:auto;padding:8px 12px;text-align:left}
+
+.holiday-site-tabs{display:flex;overflow-x:auto;gap:0;margin:20px 0 24px;border-bottom:1px solid #e8dff2;background:#faf8fc}.holiday-site-tabs button{flex:1 0 auto;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;padding:18px 24px;font-weight:600;color:#29203e}.holiday-site-tabs button.selected{background:#eee8f8;border-bottom-color:#7c3aed;color:#552f91}.holiday-site-tabs button:focus-visible{outline:2px solid #7c3aed;outline-offset:-3px}
