@@ -147,7 +147,7 @@ function JoiningForm({employeeGroup,onSave,defaults,subdepartments,designations,
  const activeSteps=joiningSteps,activeStep=activeSteps[step];
  const visibleDocuments=documents.filter(([name])=>!conditionalDocuments.has(name)||showMineCompliance);
  return <form ref={formRef} className="joining-form" onSubmit={event=>{event.preventDefault();if(!onSave)return;const values=Object.fromEntries(Array.from(new FormData(event.currentTarget).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));setSaving(true);setSaveError('');dirty.current=true;persist();void onSave(values).then(async()=>{finished.current=true;await queue.current;await removeJoiningDraft(draftId.current);onDraftSaved?.();}).catch(error=>setSaveError((error as Error).message)).finally(()=>setSaving(false));}}>
-  <p className="joining-draft-status" role="status">{draftStatus}</p><button type="button" onClick={()=>{dirty.current=true;persist();}}>Save draft</button>
+  <p className="joining-draft-status" role="status">{draftStatus}</p>
   <div className="joining-steps" aria-label="Employee joining steps" style={{gridTemplateColumns:`repeat(${activeSteps.length},minmax(0,1fr))`}}>{activeSteps.map((label,index)=><button type="button" key={label} className={step===index?'active':''} onClick={()=>setStep(index)}><i>{index+1}</i><span>{label}</span></button>)}</div>
   <div className="joining-card">
    <div className="joining-heading"><div><h2>{activeSteps[step]}</h2><p>Complete all applicable details from the CMLL employee joining form.</p></div></div>
