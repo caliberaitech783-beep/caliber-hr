@@ -32,7 +32,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const record=path.match(/^\/api\/records\/([a-zA-Z]+)(?:\/([a-fA-F0-9-]+))?(?:\/(submit|deactivate|cancel))?$/);
       const masterImport=path.match(/^\/api\/import\/(holidays|leaveTypes|leavePolicies|leavePeriods|leaveAllocations|leaveRequests|leaveEncashments|leaveBlocks)$/);
       const decision=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/decision$/);
-      const simple={'/api/holiday-groups':'holidayGroups','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
+      const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
       if(!documents&&!deletion&&!masterImport&&!record&&!decision&&!simple[path]&&path!=='/api/import/employees')return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
@@ -41,6 +41,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       let result;
       if(documents&&['GET','POST'].includes(req.method))result=await service.holidayDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);
       else if(deletion&&req.method==='POST')result=deletion[2]==='preview'?await service.deletePreview(profile,deletion[1]):await service.deleteRecords(profile,deletion[1],await body(req));
+      else if(path==='/api/hierarchies'&&req.method==='POST')result=await service.saveHierarchy(profile,await body(req));
       else if(simple[path]&&req.method==='GET')result=await service[simple[path]](profile);
       else if(record){
         const [,kind,id,action]=record;
@@ -51,7 +52,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         else throw problem('Method not allowed',405);
       }else if(decision&&req.method==='POST')result=await service.decide(profile,decision[1],await body(req));
       else if(masterImport&&req.method==='POST')result=await service.importMasters(profile,masterImport[1],(await body(req)).records);
-      else if(path==='/api/import/employees'&&req.method==='POST')result=await service.importEmployees(profile,(await body(req)).records);
+      else if(path==='/api/import/employees'&&req.method==='POST'){const input=await body(req);result=await service.importEmployees(profile,input.records,input.submitForApproval===true);}
       else throw problem('Method not allowed',405);
       return send(200,result);
     }catch(error){

@@ -1,3 +1,4 @@
+import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './joining-hierarchy.mjs';
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
@@ -79,8 +80,38 @@ export function createService(pool) {
     await audit(db,profile.actor,id?'UPDATE':'CREATE',kind,row.id,{code:row.code,fields:Object.keys(data)});
     return row;
   }
+  async function submitRecord(db,profile,kind,id,version){
+        const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
+        if(!record)throw problem('Record not found',404);
+        if(record.data.__importDraft==='true')throw problem('Resolve the imported draft and save it before submitting',409);
+        if(record.version!==Number(version)||!['DRAFT','REJECTED'].includes(record.status))throw problem('Reload the record; only drafts or rejected records can be submitted',409);
+        await locationAccess(db,profile,kind,record.data,id);
+        await references(db,kind,record.data,id);
+        let companyId=record.data.companyId,siteId=record.data.siteId;
+        if(['leaveRequests','leaveEncashments'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;}
+        const hierarchy=kind==='employees'?await employeeHierarchy(db,siteId):null;
+        const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
+        const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
+        if(!hierarchy&&!rules.length&&!record.data.approver)throw problem('Configure an active approval-matrix rule for this module before submitting',409);
+        if(!hierarchy&&rules.length>1&&weight(rules[0])===weight(rules[1]))throw problem('Approval rules overlap. Resolve the approval matrix before submitting.',409);
+        const workflow=hierarchy||(!rules.length&&record.data.approver?{id:null,data:{approvers:record.data.approver}}:(await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind='workflows' AND status='ACTIVE'",[rules[0].data.workflowId])).rows[0]);
+        if(!workflow)throw problem('The configured workflow is not active',409);
+        const steps=hierarchy?hierarchy.data.steps:workflow.data.approvers.split(',').map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
+        const approvers=steps.flatMap(s=>s.approvers);
+        if(approvers.includes(profile.actor))throw problem('The requester cannot be an approver in their own workflow. Configure another approver.',409);
+        const snapshot={code:record.code,name:record.name,data:{...record.data}};
+        for(const field of modules[kind].fields.filter(x=>x.type==='reference'))if(record.data[field.key]){
+          const ref=(await db.query('SELECT code,name FROM hr_records WHERE id=$1',[record.data[field.key]])).rows[0];
+          if(ref)snapshot.data[field.key]=`${ref.code} · ${ref.name}`;
+        }
+        await db.query('INSERT INTO hr_approvals(id,record_id,approvers,requested_by,record_snapshot,approval_steps) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),id,JSON.stringify(approvers),profile.actor,snapshot,JSON.stringify(steps)]);
+        await db.query("UPDATE hr_records SET status='PENDING',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2",[profile.actor,id]);
+        await audit(db,profile.actor,'SUBMIT',kind,id,{workflowId:workflow.id,stages:steps.length});
+        return {status:'PENDING'};
+  }
   return {
     ...createDeletion(pool),
+    ...createHierarchies(pool),
     ...createHolidayDocuments(pool),
     async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments'].includes(kind))}]))}; },
     async list(profile,kind,params) {
@@ -139,11 +170,11 @@ export function createService(pool) {
         await audit(db,profile.actor,'DEACTIVATE',kind,id);return result.rows[0];
       });
     },
-    async importEmployees(profile,records) {
+    async importEmployees(profile,records,submitForApproval=false) {
       authorize(profile,'employees',true);
       if(!Array.isArray(records)||!records.length||records.length>500)throw problem('Import 1–500 rows at a time');
       return transaction(async db=>{
-        let count=0;
+        let count=0,submitted=0;
         for(const record of records){
           const input={...record};
           const officeData=input.__officeData;delete input.__officeData;
@@ -160,43 +191,13 @@ export function createService(pool) {
               input[field.key]=found.rows[0].id;
             }
           }
-          try { const saved=await save(db,profile,'employees',input);if(officeData)await db.query("UPDATE hr_records SET data=data||jsonb_build_object('officeData',$1::jsonb) WHERE id=$2",[JSON.stringify(officeData),saved.id]); } catch(error){throw problem(`Row ${count+1}: ${error.code==='23505'?'employee number already exists':error.status?error.message:'unable to save this row'}`,error.status||400);}
+          try { const saved=await save(db,profile,'employees',input);if(officeData)await db.query("UPDATE hr_records SET data=data||jsonb_build_object('officeData',$1::jsonb) WHERE id=$2",[JSON.stringify(officeData),saved.id]);if(submitForApproval){const configured=await db.query("SELECT 1 FROM hr_records h JOIN hr_records s ON s.code=h.code WHERE h.kind='joiningHierarchies' AND h.status='ACTIVE' AND s.kind='sites' AND s.id::text=$1",[saved.data.siteId||'']);if(configured.rowCount){await submitRecord(db,profile,'employees',saved.id,saved.version);submitted++;}} } catch(error){throw problem(`Row ${count+1}: ${error.code==='23505'?'employee number already exists':error.status?error.message:'unable to save this row'}`,error.status||400);}
           count++;
         }
-        return {imported:count,status:'DRAFT'};
+        return {imported:count,submitted,status:submitted===count?'PENDING':'DRAFT'};
       });
     },
-    async submit(profile,kind,id,version) {
-      authorize(profile,kind,true);
-      if(!['employees','leaveRequests','leaveEncashments'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');
-      return transaction(async db=>{
-        const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
-        if(!record)throw problem('Record not found',404);
-        if(record.data.__importDraft==='true')throw problem('Resolve the imported draft and save it before submitting',409);
-        if(record.version!==Number(version)||!['DRAFT','REJECTED'].includes(record.status))throw problem('Reload the record; only drafts or rejected records can be submitted',409);
-        await locationAccess(db,profile,kind,record.data,id);
-        await references(db,kind,record.data,id);
-        let companyId=record.data.companyId,siteId=record.data.siteId;
-        if(['leaveRequests','leaveEncashments'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;}
-        const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
-        const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
-        if(!rules.length&&!record.data.approver)throw problem('Configure an active approval-matrix rule for this module before submitting',409);
-        if(rules.length>1&&weight(rules[0])===weight(rules[1]))throw problem('Approval rules overlap. Resolve the approval matrix before submitting.',409);
-        const workflow=!rules.length&&record.data.approver?{id:null,data:{approvers:record.data.approver}}:(await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind='workflows' AND status='ACTIVE'",[rules[0].data.workflowId])).rows[0];
-        if(!workflow)throw problem('The configured workflow is not active',409);
-        const approvers=workflow.data.approvers.split(',');
-        if(approvers.includes(profile.actor))throw problem('The requester cannot be an approver in their own workflow. Configure another approver.',409);
-        const snapshot={code:record.code,name:record.name,data:{...record.data}};
-        for(const field of modules[kind].fields.filter(x=>x.type==='reference'))if(record.data[field.key]){
-          const ref=(await db.query('SELECT code,name FROM hr_records WHERE id=$1',[record.data[field.key]])).rows[0];
-          if(ref)snapshot.data[field.key]=`${ref.code} · ${ref.name}`;
-        }
-        await db.query('INSERT INTO hr_approvals(id,record_id,approvers,requested_by,record_snapshot) VALUES($1,$2,$3,$4,$5)',[randomUUID(),id,JSON.stringify(approvers),profile.actor,snapshot]);
-        await db.query("UPDATE hr_records SET status='PENDING',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2",[profile.actor,id]);
-        await audit(db,profile.actor,'SUBMIT',kind,id,{workflowId:workflow.id,stages:approvers.length});
-        return {status:'PENDING'};
-      });
-    },
+    async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction(db=>submitRecord(db,profile,kind,id,version));},
     async approvals(profile) {
       if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
       return (await pool.query("SELECT a.*,r.kind,a.record_snapshot->>'code' AS code,a.record_snapshot->>'name' AS name,a.record_snapshot->'data' AS data FROM hr_approvals a JOIN hr_records r ON r.id=a.record_id WHERE (a.approvers ? $1 OR a.requested_by=$1) AND "+scopeSql('r','$2')+" ORDER BY a.created_at DESC LIMIT 200",[profile.actor,await siteIds(pool,profile)])).rows;
@@ -209,11 +210,11 @@ export function createService(pool) {
         const approval=(await db.query('SELECT * FROM hr_approvals WHERE id=$1 FOR UPDATE',[id])).rows[0];
         if(!approval)throw problem('Approval not found',404);
         if(approval.state!=='PENDING'||approval.version!==Number(input.version))throw problem('This approval has changed. Reload it.',409);
-        if(approval.requested_by===profile.actor||approval.approvers[approval.stage]!==profile.actor)throw problem('Only the current assigned approver can decide; self-approval is prohibited',403);
+        const next=nextApproval(approval,profile.actor,input.decision);
         const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 FOR UPDATE',[approval.record_id])).rows[0];
         await locationAccess(db,profile,record.kind,record.data,record.id);
-        const stage=approval.stage+1;
-        const state=input.decision==='REJECTED'?'REJECTED':stage===approval.approvers.length?'APPROVED':'PENDING';
+        const stage=next.stage;
+        const state=next.state;
         const history=[...approval.history,{actor:profile.actor,stage:approval.stage+1,decision:input.decision,comments,at:new Date().toISOString()}];
         await db.query('UPDATE hr_approvals SET stage=$1,state=$2,history=$3,version=version+1,updated_at=now() WHERE id=$4',[stage,state,JSON.stringify(history),id]);
         if(state!=='PENDING')await db.query('UPDATE hr_records SET status=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[state==='APPROVED'&&record.kind==='employees'?'ACTIVE':state,profile.actor,record.id]);

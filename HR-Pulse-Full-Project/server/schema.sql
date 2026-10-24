@@ -18,3 +18,5 @@ CREATE TABLE IF NOT EXISTS hr_audit (
  action text NOT NULL, kind text NOT NULL, record_id uuid,
  detail jsonb NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE hr_approvals ADD COLUMN IF NOT EXISTS approval_steps jsonb;
