@@ -96,6 +96,7 @@ describe('Employee Master tabs',()=>{
   const sectionHeading=screen.getByRole('heading',{name:'Joining & Personal Details'}).parentElement?.parentElement;
   expect(sectionHeading?.querySelector('.joining-heading-tools')?.contains(screen.getByRole('button',{name:'Import'}))).toBe(true);
   expect(sectionHeading?.querySelector('.joining-heading-tools')?.contains(screen.getByRole('button',{name:/Print\/Export/}))).toBe(true);
+  expect(sectionHeading?.querySelector('.joining-heading-tools')?.contains(screen.getByRole('button',{name:'Delete All'}))).toBe(true);
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(screen.queryByRole('columnheader',{name:'Sr. No.'})).toBeNull();
   expect(screen.getByRole('columnheader',{name:'Employee Code'})).toBeTruthy();
