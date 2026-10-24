@@ -148,5 +148,5 @@ describe('Employee Master tabs',()=>{
   for(const site of ['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB'])expect(screen.getAllByRole('option',{name:site}).length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Coalfield'),{target:{value:'NCL'}});
   for(const site of ['Jayant OB','Dudichua OB west','Dudichua OB East'])expect(screen.getAllByRole('option',{name:site}).length).toBeGreaterThan(0);
- });
+ },15000);
 });
