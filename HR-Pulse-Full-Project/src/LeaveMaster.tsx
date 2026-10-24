@@ -6,7 +6,7 @@ const cols:Record<string,string[][]>={
  leaveTypes:[['name','Name'],['code','Code'],['isPaid','Paid'],['maxDaysPerPeriod','Max days'],['carryForwardMax','Carry forward'],['encashable','Encashable']],
  leavePolicies:[['name','Policy'],['leaveTypeId','Leave type'],['accrual','Accrual'],['companyId','Company'],['departmentId','Department'],['category','Group'],['effectiveFrom','Effective from']],
  leavePeriods:[['name','Period'],['fromDate','From'],['toDate','To']],
- leaveAllocations:[['employeeId','Employee'],['leaveTypeId','Leave type'],['allocated','Allocated'],['used','Used'],['reserved','Pending'],['balance','Balance'],['periodId','Period']],
+ leaveAllocations:[['employeeId','Employee'],['name','Name'],['leaveTypeId','Leave type'],['allocated','Allocated'],['used','Used'],['reserved','Pending'],['balance','Balance'],['periodId','Period']],
  leaveRequests:[['code','Request ID'],['employeeId','Employee'],['leaveTypeId','Type'],['fromDate','From'],['toDate','To'],['days','Days'],['name','Reason'],['approver','Requested approver']],
  leaveEncashments:[['employeeId','Employee'],['leaveTypeId','Type'],['days','Days'],['amount','Amount']],
  leaveBlocks:[['name','Name'],['fromDate','From'],['toDate','To'],['siteId','Location'],['departmentId','Department'],['reason','Reason']],
