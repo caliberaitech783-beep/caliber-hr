@@ -1,7 +1,7 @@
 import {fireEvent,render,screen,waitFor,cleanup} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const memory=vi.hoisted(()=>new Map<string,any>());
-vi.mock('./joiningDrafts',async original=>({...await original<typeof import('./joiningDrafts')>(),saveJoiningDraft:vi.fn(async(d:any)=>{memory.set(d.id,d);}),listJoiningDrafts:vi.fn(async(owner:string)=>[...memory.values()].filter(d=>d.owner===owner)),removeJoiningDraft:vi.fn(async(id:string)=>{memory.delete(id);})}));
+vi.mock('./joiningDrafts',async original=>({...await original<typeof import('./joiningDrafts')>(),saveJoiningDraft:vi.fn(async(d:any)=>{memory.set(d.id,d);}),listJoiningDrafts:vi.fn(async(owner:string)=>[...memory.values()].filter(d=>d.owner===owner)),removeJoiningDraft:vi.fn(async(id:string)=>{memory.delete(id);}),discardJoiningDraft:vi.fn(async(id:string,owner:string)=>{if(memory.get(id)?.owner!==owner)throw Error('Wrong account');memory.delete(id);})}));
 import EmployeeLocation from './EmployeeLocation';
 import {captureJoiningFields,restoreJoiningFields,saveJoiningDraft} from './joiningDrafts';
 beforeEach(()=>{memory.clear();vi.mocked(saveJoiningDraft).mockClear();});afterEach(cleanup);
@@ -34,4 +34,12 @@ it('keeps the draft when employee submission fails offline',async()=>{
  await screen.findByRole('alert');
  await waitFor(()=>expect([...memory.values()].some(d=>d.fields['Employee Code'][0].value==='TEMP-9')).toBe(true));
  expect(memory.size).toBe(1);vi.unstubAllGlobals();
+});
+
+it('deletes only the confirmed draft and preserves other drafts',async()=>{
+ for(const id of ['one','two'])memory.set(id,{id,owner:'alice',group:'Corporate / HO',updatedAt:new Date().toISOString(),fields:{'Full Name':[{value:id}]},defaults:{},step:1});
+ const confirmation=vi.spyOn(window,'confirm').mockReturnValue(false);
+ render(<EmployeeLocation draftOwner="alice"/>);fireEvent.click(screen.getByRole('button',{name:'Draft'}));
+ await screen.findAllByRole('button',{name:'Delete'});fireEvent.click(screen.getAllByRole('button',{name:'Delete'})[0]);expect(memory.size).toBe(2);
+ confirmation.mockReturnValue(true);fireEvent.click(screen.getAllByRole('button',{name:'Delete'})[0]);await waitFor(()=>expect(screen.getAllByRole('button',{name:'Delete'})).toHaveLength(1));expect(memory.size).toBe(1);confirmation.mockRestore();
 });
