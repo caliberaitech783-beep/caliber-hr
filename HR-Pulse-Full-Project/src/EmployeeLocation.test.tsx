@@ -88,6 +88,11 @@ describe('Employee Master tabs',()=>{
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
   view.rerender(<EmployeeLocation employeeGroup="OB / COAL"/>);
   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+  fireEvent.change(screen.getByLabelText('OB / COAL subtype'),{target:{value:'WCL'}});
+  expect(screen.getAllByRole('option',{name:'Sasti OB'}).length).toBeGreaterThan(0);
+  fireEvent.change(screen.getByLabelText('OB / COAL site'),{target:{value:'Sasti OB'}});
+  expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('WCL');
+  expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('Sasti OB');
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
   fireEvent.change(screen.getByLabelText('Employee Category'),{target:{value:'Driver'}});
   expect(screen.queryByRole('button',{name:/Mine Compliance/})).toBeNull();
