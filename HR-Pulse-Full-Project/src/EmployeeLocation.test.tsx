@@ -67,6 +67,12 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('button',{name:'Camera'})).toBeTruthy();
   expect(screen.getByRole('button',{name:'Gallery'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+  fireEvent.change(screen.getByLabelText('Corporate / HO subtype'),{target:{value:'Corporate'}});
+  fireEvent.change(screen.getByLabelText('Corporate / HO site'),{target:{value:'KSR'}});
+  fireEvent.change(screen.getByLabelText('Department'),{target:{value:'Production'}});
+  expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('CORPORATE');
+  expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('KSR');
+  expect((screen.getAllByLabelText(/Department/).at(-1) as HTMLSelectElement).value).toBe('Production');
   expect(screen.getByLabelText('UAN No.')).toBeTruthy();
   expect(screen.getByLabelText('ESIC')).toBeTruthy();
   expect(screen.getByRole('heading',{name:'Job & Posting Details'})).toBeTruthy();
@@ -85,6 +91,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Qualification 1')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Family Details/}));
   expect(screen.getByLabelText('Family Member Name 1')).toBeTruthy();
+  expect(screen.getByLabelText('Contact No. 1')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
