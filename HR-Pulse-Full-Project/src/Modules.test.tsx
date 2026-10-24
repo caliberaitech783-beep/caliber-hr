@@ -24,6 +24,7 @@ describe('database-backed record forms',()=>{
 it('requires typed confirmation and deletes the preview snapshot across pages',async()=>{
  const targets=[{id:'one',version:1},{id:'two',version:2}];let deleted=false;
  vi.stubGlobal('fetch',vi.fn(async(url:string,options?:RequestInit)=>{
+  if(url.endsWith('/holiday-groups'))return new Response('[]');
   if(url.endsWith('/preview'))return new Response(JSON.stringify({records:targets}));
   if(url.endsWith('/confirm')){expect(JSON.parse(String(options?.body))).toEqual({records:targets});deleted=true;return new Response(JSON.stringify({deleted:2}));}
   return new Response(JSON.stringify(url.endsWith('/lookups')?[]:{rows:[],total:2,page:1,pageSize:50}));
@@ -31,9 +32,10 @@ it('requires typed confirmation and deletes the preview snapshot across pages',a
  render(<Records grant={'a'.repeat(43)} kind="holidays" module={{...companyModule,title:'Holidays'}} notice={()=>{}}/>);
  await waitFor(()=>expect((screen.getByRole('button',{name:'Delete all'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Delete all'}));await screen.findByRole('heading',{name:'Delete 2 records?'});expect(deleted).toBe(false);expect((screen.getByRole('button',{name:'Delete permanently'}) as HTMLButtonElement).disabled).toBe(true);fireEvent.change(screen.getByLabelText('Type DELETE to confirm'),{target:{value:'DELETE'}});fireEvent.click(screen.getByRole('button',{name:'Delete permanently'}));await waitFor(()=>expect(deleted).toBe(true));
 });
-it('filters holidays by site tabs using server pagination and resets to page one',async()=>{
- const urls:string[]=[];vi.stubGlobal('fetch',vi.fn(async(url:string)=>{urls.push(url);return new Response(JSON.stringify(url.endsWith('/lookups')?[]:{rows:[],total:0,page:1,pageSize:50,siteOptions:['NCL-JAYANT','NGP']}));}));
+it('filters holidays through group and site selection and offers site documents',async()=>{
+ const urls:string[]=[];vi.stubGlobal('fetch',vi.fn(async(url:string)=>{urls.push(url);return new Response(JSON.stringify(url.endsWith('/holiday-groups')?[{name:'CO/HO',sites:[{name:'NGP',aliases:['NGP']}]}]:url.includes('/holiday-documents')||url.endsWith('/lookups')?[]:{rows:[],total:0,page:1,pageSize:50}));}));
  render(<Records grant={'a'.repeat(43)} kind="holidays" module={{...companyModule,title:'Holidays'}} notice={()=>{}}/>);
- fireEvent.click(await screen.findByRole('tab',{name:'NGP'}));await waitFor(()=>expect(urls.some(url=>url.includes('page=1')&&url.includes('siteId=NGP'))).toBe(true));expect(screen.getByRole('tab',{name:'NGP'}).getAttribute('aria-selected')).toBe('true');expect(screen.getByRole('tab',{name:'NCL-JAYANT'})).toBeTruthy();
- fireEvent.click(screen.getByRole('tab',{name:'All sites'}));await waitFor(()=>expect(screen.getByRole('tab',{name:'All sites'}).getAttribute('aria-selected')).toBe('true'));
+ fireEvent.click(await screen.findByRole('button',{name:'CO/HO'}));fireEvent.click(screen.getByRole('button',{name:'NGP'}));
+ await waitFor(()=>expect(urls.some(url=>url.includes('page=1')&&url.includes('holidaySite=NGP'))).toBe(true));expect(screen.getByLabelText('Upload holiday document')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'All Sites'}));expect(screen.queryByLabelText('Upload holiday document')).toBeNull();
 });

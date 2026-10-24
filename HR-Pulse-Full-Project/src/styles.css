@@ -47,3 +47,5 @@
 .master-subnav.employee-subnav{grid-template-columns:1fr}.master-subnav.employee-subnav button{justify-content:flex-start;font-size:12px;min-height:35px;height:auto;padding:8px 12px;text-align:left}
 
 .holiday-site-tabs{display:flex;overflow-x:auto;gap:0;margin:20px 0 24px;border-bottom:1px solid #e8dff2;background:#faf8fc}.holiday-site-tabs button{flex:1 0 auto;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;padding:18px 24px;font-weight:600;color:#29203e}.holiday-site-tabs button.selected{background:#eee8f8;border-bottom-color:#7c3aed;color:#552f91}.holiday-site-tabs button:focus-visible{outline:2px solid #7c3aed;outline-offset:-3px}
+
+.holiday-child-tabs{margin-top:10px}.holiday-documents{border:1px solid #e4d8f2;border-radius:12px;padding:20px;margin:16px 0;background:#faf7fd}.holiday-documents h3{margin-top:0}.holiday-documents p{color:#77849a;font-size:14px}.holiday-document-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid #e4d8f2}.holiday-document-row span{overflow-wrap:anywhere}

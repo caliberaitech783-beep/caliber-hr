@@ -1,3 +1,4 @@
+import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds} from './leave.mjs';
@@ -80,6 +81,7 @@ export function createService(pool) {
   }
   return {
     ...createDeletion(pool),
+    ...createHolidayDocuments(pool),
     async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments'].includes(kind))}]))}; },
     async list(profile,kind,params) {
       authorize(profile,kind);
@@ -89,6 +91,7 @@ export function createService(pool) {
       const values=[kind,search,status,await siteIds(pool,profile),profile.actor];
       const filters=[['leaveTypeId',"r.data->>'leaveTypeId'"],['periodId',"r.data->>'periodId'"],['siteId',"r.data->>'siteId'"],['year',"left(r.data->>'date',4)"],['departmentId',"COALESCE(r.data->>'departmentId',(SELECT e.data->>'departmentId' FROM hr_records e WHERE e.id::text=r.data->>'employeeId'))"]];
       for(const [key,expression] of filters){const value=params.get(key);if(value){values.push(value);filter+=' AND '+expression+'=$'+values.length;}}
+      if(kind==='holidays'&&(params.get('holidaySite')||params.get('holidayGroup'))){values.push(holidayAliases(params.get('holidaySite'),params.get('holidayGroup')).map(x=>x.toLowerCase()));filter+=" AND (lower(r.data->>'siteId')=ANY($"+values.length+") OR EXISTS(SELECT 1 FROM hr_records hs WHERE hs.kind='sites' AND hs.id::text=r.data->>'siteId' AND lower(hs.code)=ANY($"+values.length+")))";}
       if(params.get('fromDate')){values.push(params.get('fromDate'));filter+=" AND COALESCE(r.data->>'toDate',r.data->>'date') >= $"+values.length;}
       if(params.get('toDate')){values.push(params.get('toDate'));filter+=" AND COALESCE(r.data->>'fromDate',r.data->>'date') <= $"+values.length;}
       const count=await pool.query(`SELECT count(*) FROM hr_records r WHERE ${filter}`,values);
