@@ -9,6 +9,6 @@ export async function importWithDrafts(db,profile,kind,records,save){let drafts=
  await db.query('SAVEPOINT import_row');try{await save(await resolveImportReferences(db,kind,raw));await db.query('RELEASE SAVEPOINT import_row');}
  catch(e){await db.query('ROLLBACK TO SAVEPOINT import_row');await db.query('RELEASE SAVEPOINT import_row');if(![400,403,409].includes(e.status))throw e;
  const id=randomUUID();const name=String(raw.name||code);const data={...raw,__importDraft:'true',__importIssue:e.message};
- await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES($1,$2,$3,$4,$5,'DRAFT',$6,$6)",[id,kind,code,name,data,profile.actor]);
+ await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$7,$6,$6)",[id,kind,code,name,data,profile.actor,kind==='leaveAllocations'?'ACTIVE':'DRAFT']);
  await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'IMPORT_DRAFT',$2,$3,$4)",[profile.actor,kind,id,{code,row:index+2,reason:e.message}]);drafts++;}
  }return {imported:records.length,drafts,ready:records.length-drafts};}

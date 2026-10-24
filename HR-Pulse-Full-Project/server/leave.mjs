@@ -38,7 +38,7 @@ export function validateLeave(kind,data){
 export const employeeLeaveKinds=['leaveRequests','leaveAllocations','leaveEncashments'];
 export async function balance(db,employeeId,leaveTypeId,periodId,exclude='00000000-0000-0000-0000-000000000000'){
  const rows=(await db.query("SELECT kind,status,data FROM hr_records WHERE kind IN ('leaveAllocations','leaveRequests','leaveEncashments') AND data->>'employeeId'=$1 AND data->>'leaveTypeId'=$2 AND data->>'periodId'=$3 AND id<>$4",[employeeId,leaveTypeId,periodId,exclude])).rows;
- const allocated=rows.filter(x=>x.kind==='leaveAllocations'&&x.status==='ACTIVE').reduce((a,x)=>a+Number(x.data.allocated),0);
+ const allocated=rows.filter(x=>x.kind==='leaveAllocations'&&x.status==='ACTIVE'&&x.data.__importDraft!=='true').reduce((a,x)=>a+Number(x.data.allocated),0);
  const sum=status=>rows.filter(x=>x.kind!=='leaveAllocations'&&x.status===status).reduce((a,x)=>a+Number(x.data.days||0),0);
  const used=sum('APPROVED'),reserved=sum('PENDING');return {allocated,used,reserved,balance:allocated-used-reserved};
 }
@@ -46,7 +46,7 @@ export async function checkLeave(db,kind,data,linked,id){
  const fail=message=>{throw Object.assign(new Error(message),{status:409});};
  if(employeeLeaveKinds.includes(kind))await db.query("SELECT id FROM hr_records WHERE id=$1 FOR UPDATE",[data.employeeId]);
  if(kind==='leaveAllocations'){
-  const same=await db.query("SELECT id FROM hr_records WHERE kind='leaveAllocations' AND status='ACTIVE' AND data->>'employeeId'=$1 AND data->>'leaveTypeId'=$2 AND data->>'periodId'=$3 AND id<>$4",[data.employeeId,data.leaveTypeId,data.periodId,id||randomUUID()]);
+  const same=await db.query("SELECT id FROM hr_records WHERE kind='leaveAllocations' AND status='ACTIVE' AND COALESCE(data->>'__importDraft','')<>'true' AND data->>'employeeId'=$1 AND data->>'leaveTypeId'=$2 AND data->>'periodId'=$3 AND id<>$4",[data.employeeId,data.leaveTypeId,data.periodId,id||randomUUID()]);
   if(same.rowCount)fail('An allocation already exists for this employee, type and period. Edit it instead.');
   if(data.allocated>linked.leaveTypeId.data.maxDaysPerPeriod)fail('Allocation exceeds the leave type maximum');
   const b=await balance(db,data.employeeId,data.leaveTypeId,data.periodId);
