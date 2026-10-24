@@ -35,7 +35,7 @@ it('requires typed confirmation and deletes the preview snapshot across pages',a
 it('filters holidays through group and site selection and offers site documents',async()=>{
  const urls:string[]=[];vi.stubGlobal('fetch',vi.fn(async(url:string)=>{urls.push(url);return new Response(JSON.stringify(url.endsWith('/holiday-groups')?[{name:'CO/HO',sites:[{name:'NGP',aliases:['NGP']}]}]:url.includes('/holiday-documents')||url.endsWith('/lookups')?[]:{rows:[],total:0,page:1,pageSize:50}));}));
  render(<Records grant={'a'.repeat(43)} kind="holidays" module={{...companyModule,title:'Holidays'}} notice={()=>{}}/>);
- fireEvent.click(await screen.findByRole('button',{name:'CO/HO'}));fireEvent.click(screen.getByRole('button',{name:'NGP'}));
+ await screen.findByRole('option',{name:'CO/HO'});fireEvent.change(screen.getByLabelText('Holiday group'),{target:{value:'CO/HO'}});fireEvent.change(screen.getByLabelText('Holiday site'),{target:{value:'NGP'}});
  await waitFor(()=>expect(urls.some(url=>url.includes('page=1')&&url.includes('holidaySite=NGP'))).toBe(true));expect(screen.getByLabelText('Upload holiday document')).toBeTruthy();
- fireEvent.click(screen.getByRole('button',{name:'All Sites'}));expect(screen.queryByLabelText('Upload holiday document')).toBeNull();
+ fireEvent.change(screen.getByLabelText('Holiday group'),{target:{value:''}});expect(screen.queryByLabelText('Upload holiday document')).toBeNull();
 });
