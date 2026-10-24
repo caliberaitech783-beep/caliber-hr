@@ -70,9 +70,14 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Corporate / HO subtype'),{target:{value:'Corporate'}});
   fireEvent.change(screen.getByLabelText('Corporate / HO site'),{target:{value:'KSR'}});
   fireEvent.change(screen.getByLabelText('Department'),{target:{value:'Production'}});
+  fireEvent.change(screen.getByLabelText('Sub-department'),{target:{value:'Top management'}});
+  expect(screen.getAllByRole('option',{name:'CMD'}).length).toBeGreaterThan(0);
+  fireEvent.change(screen.getByLabelText('Designation'),{target:{value:'CMD'}});
   expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('CORPORATE');
   expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('KSR');
   expect((screen.getAllByLabelText(/Department/).at(-1) as HTMLSelectElement).value).toBe('Production');
+  expect((screen.getAllByLabelText(/Sub-department/).at(-1) as HTMLSelectElement).value).toBe('Top management');
+  expect((document.querySelector('select[name="Designation"]') as HTMLSelectElement).value).toBe('CMD');
   expect(screen.getByLabelText('UAN No.')).toBeTruthy();
   expect(screen.getByLabelText('ESIC')).toBeTruthy();
   expect(screen.getByRole('heading',{name:'Job & Posting Details'})).toBeTruthy();
