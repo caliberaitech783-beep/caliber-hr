@@ -42,7 +42,7 @@ describe('Corporate / HO import headers',()=>{
 describe('Employee Master tabs',()=>{
  it('shows the four requested tabs and the complete joining workflow',()=>{
   const view=render(<EmployeeLocation/>);
-  const labels=['Add New Employee','Update Existing Employee','Region Employee Details','Department & Designation'];
+  const labels=['Add Temp. Employee','Update Existing Employee','Region Employee Details','Department & Designation'];
   expect(labels.map(label=>screen.getByRole('button',{name:label}))).toHaveLength(4);
   expect(screen.getByRole('button',{name:'Import'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
