@@ -4,7 +4,7 @@ import ShiftMaster from './ShiftMaster';
 import {useEffect,useState} from 'react';
 import {Activity,ArrowRight,Building2,CalendarDays,ClipboardCheck,Eye,EyeOff,FileBarChart,LayoutDashboard,LockKeyhole,LogOut,Menu,Settings,ShieldCheck,UserPlus,Users,X} from 'lucide-react';
 import {api,pulse,clearSession,savedSession,type Session,type Profile,type Module} from './api';
-import {Records,Approvals,Overview,Audit} from './Modules';
+import {Records,Approvals,Overview,Audit,AccessAdministration} from './Modules';
 import EmployeeLocation from './EmployeeLocation';
 import './modules.css';
 const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Master Configuration',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Approval Management',ClipboardCheck],['Reports & MIS',FileBarChart],['Administration',ShieldCheck],['Audit Logs',FileBarChart]] as const;
@@ -49,7 +49,6 @@ function Workspace({session,logout}:{session:Session;logout:()=>void}){
     {(employeePage||['Master Configuration','Holiday & Leave'].includes(page))&&config[activeKind]&&<Records key={page+activeKind+group} grant={session.grant} kind={activeKind} module={config[activeKind]} readOnly={page==='Employee Directory'} importFirst={page==='Master Configuration'&&group===4} notice={setNotice}/>}
     {page==='Approval Management'&&<Approvals grant={session.grant} actor={profile.actor||''} notice={setNotice}/>}
     {page==='Audit Logs'&&<Audit grant={session.grant}/>}
-    {page==='Administration'&&<p className="help-text">Pulse access scope · Level: {String(profile.permissions.adminLevel||'Not specified')} · Site: {typeof profile.permissions.site==='string'?profile.permissions.site:JSON.stringify(profile.permissions.site??'Not specified')}</p>}
-    {page==='Administration'&&<section className="data-card"><h2>Account & access</h2><p>HR access is managed by your Caliber Pulse administrator.</p><dl><dt>Name</dt><dd>{profile.name}</dd><dt>Role</dt><dd>{profile.assignedRole||'Assigned in Pulse'}</dd><dt>Approval username</dt><dd>{profile.actor||profile.username||profile.email}</dd><dt>Assigned menus</dt><dd>{[...access].join(', ')}</dd></dl><a href="https://pulse.cmll.in" target="_blank" rel="noreferrer">Open Caliber Pulse ↗</a></section>}
+    {page==='Administration'&&<AccessAdministration grant={session.grant} profile={profile} modules={config} notice={setNotice}/>}
     </>}</>}</div>{notice&&(page!=='Master Configuration'||masterMenu==='Holiday & Leave Master')&&<div className="toast" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}><X/></button></div>}</main></div>;
 }

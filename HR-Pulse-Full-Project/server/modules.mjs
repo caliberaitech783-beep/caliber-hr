@@ -30,11 +30,13 @@ export function grantedMenus(profile) { return new Set([...(profile.permissions?
 export function canRead(profile, kind) {
   const granted = grantedMenus(profile);
   if (kind === 'employees') return ['Employee Master','Employee Onboarding','Employee Directory','Reports & MIS'].some(x=>granted.has(x));
+  if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;
   return modules[kind] && (granted.has(modules[kind].menu) || granted.has('Master Configuration'));
 }
 export function canWrite(profile, kind) {
   const granted = grantedMenus(profile);
   if (kind === 'employees') return granted.has('Employee Master') || granted.has('Employee Onboarding');
+  if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;
   return modules[kind] && (granted.has(modules[kind].menu) || granted.has('Master Configuration'));
 }
 export function validate(kind, input) {

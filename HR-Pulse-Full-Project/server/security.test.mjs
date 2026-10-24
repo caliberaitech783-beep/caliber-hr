@@ -19,6 +19,11 @@ test('directory access cannot write and onboarding can create employee drafts',(
  assert.equal(canWrite(profile(['Employee Onboarding']),'employees'),true);
  assert.equal(canWrite(profile(['Dashboard']),'employees'),false);
 });
+test('Administration can configure employee workflows without receiving unrelated master access',()=>{
+ assert.equal(canRead(profile(['Administration']),'workflows'),true);
+ assert.equal(canWrite(profile(['Administration']),'approvalRules'),true);
+ assert.equal(canRead(profile(['Administration']),'companies'),false);
+});
 test('validates real dates, whitelists fields and normalizes approver identities',()=>{
  assert.throws(()=>validate('holidays',{code:'H',name:'Holiday',date:'2026-02-30'}));
  assert.throws(()=>validate('leaveRequests',{code:'L',name:'Leave',employeeId:'x',policyId:'y',fromDate:'2026-12-02',toDate:'2026-12-01'}));
