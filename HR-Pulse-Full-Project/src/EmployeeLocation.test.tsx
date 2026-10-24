@@ -60,7 +60,8 @@ describe('Employee Master tabs',()=>{
   expect(screen.queryByText('Fill Data by Candidate')).toBeNull();
   expect(screen.getByLabelText(/Full Name/)).toBeTruthy();
   expect(screen.getByLabelText(/Employee Code/)).toBeTruthy();
-  expect(screen.queryByLabelText('Employee Group')).toBeNull();
+  expect(screen.getByLabelText('Employee group')).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Upload Aadhaar'})).toBeTruthy();
   expect(screen.getByLabelText('UAN No.')).toBeTruthy();
   expect(screen.getByLabelText('ESIC')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Job & Posting Details/}));
@@ -70,8 +71,8 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('button',{name:/Job & Posting Details/}));
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
   fireEvent.change(screen.getByLabelText('Employee Category'),{target:{value:'Driver'}});
-  expect(screen.getByRole('button',{name:/Mine Compliance/})).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:/Mine Compliance/}));
+  expect(screen.queryByRole('button',{name:/Mine Compliance/})).toBeNull();
+  expect(screen.getByRole('heading',{name:/Mine Compliance/})).toBeTruthy();
   expect(screen.getByLabelText(/Medical Examination Date/)).toBeTruthy();
   expect(screen.queryByRole('button',{name:/Contract & Policies/})).toBeNull();
   expect(screen.queryByRole('button',{name:/Assets$/})).toBeNull();
