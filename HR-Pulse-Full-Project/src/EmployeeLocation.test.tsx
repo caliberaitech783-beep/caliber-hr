@@ -108,6 +108,7 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+  for(const input of screen.getAllByLabelText(/^Upload /))expect(input.getAttribute('accept')).toBe('.jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf');
   expect(screen.getByLabelText('Upload Candidate photo')).toBeTruthy();
   expect(screen.getByLabelText('Upload VTC certificate')).toBeTruthy();
   expect(screen.getByLabelText('Upload Medical fitness certificate')).toBeTruthy();
