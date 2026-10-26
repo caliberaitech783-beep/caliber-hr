@@ -5,7 +5,8 @@ const step=(stage,label,suggested)=>({stage,label,suggested,approvers:[]});
 export const hierarchyTemplates=[
  {code:'NCL-DUDE',name:'Dudhichua OB East',group:'NCL',steps:[step(1,'HR Manager','Ankit Tiwari'),step(1,'Project Manager','Ranjit Das'),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
  {code:'NCL-DUDW',name:'Dudhichua OB West',group:'NCL',steps:[step(1,'HR Manager','Yogesh Laxman Sathe'),step(1,'Project Manager','Arun Kumar Soni'),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
- {code:'NCL-JAYANT',name:'Jayant OB',group:'NCL',steps:[step(1,'HR Manager','Amit Singh'),step(1,'Project Manager','Md. Gulnawaz'),step(2,'HR Manager — either one','Vinod — to be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]}
+ {code:'NCL-JAYANT',name:'Jayant OB',group:'NCL',steps:[step(1,'HR Manager','Amit Singh'),step(1,'Project Manager','Md. Gulnawaz'),step(2,'HR Manager — either one','Vinod — to be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]},
+ {code:'CMLL-CO',name:'Nagpur Office',group:'CO/HO',steps:[step(1,'HR Executive','Mayuri Umate'),step(1,'HOD','To be assigned'),step(1,'HR Manager','Vinod Pinjarkar'),step(2,'Final approval — any one','Mohit Chadda / Manish Chadda / Rahul Chadda / Honey Sir — CMD / Director / VP')]}
 ];
 export const currentHierarchy=data=>data?.code==='NCL-JAYANT'&&data.steps?.[0]?.label==='HR Executive'?{...data,steps:data.steps.slice(1)}:data;
 const fail=(m,status=400)=>{throw Object.assign(new Error(m),{status});};

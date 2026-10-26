@@ -19,3 +19,12 @@ test('Jayant starts with HR Manager and saved legacy steps retain remaining assi
  assert.deepEqual((await employeeHierarchy(db,'site-id')).data.steps,steps);
  assert.deepEqual(approvalSteps({approval_steps:data.steps}),data.steps);
 });
+
+test('Nagpur requires sequential site approvals then any one final approver',()=>{
+ const template=hierarchyTemplates.find(t=>t.code==='CMLL-CO');
+ const data=validateHierarchy({...template,enabled:true,steps:template.steps.map((s,i)=>({...s,approvers:i===3?['cmd','vp']:['nagpur-'+i]}))});
+ const a={requested_by:'requester',stage:0,approval_steps:data.steps};
+ assert.throws(()=>nextApproval(a,'nagpur-1','APPROVED'),e=>e.status===403);
+ for(let i=0;i<3;i++){a.stage=i;assert.equal(nextApproval(a,'nagpur-'+i,'APPROVED').state,'PENDING');}
+ a.stage=3;for(const actor of ['cmd','vp'])assert.equal(nextApproval(a,actor,'APPROVED').state,'APPROVED');
+});
