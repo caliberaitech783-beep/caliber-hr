@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import {api,type Module,type RecordRow} from './api';
 import {Records,Approvals} from './Modules';
-const tabs=[['dashboard','Leave Dashboard'],['leaveTypes','Leave Types'],['leavePolicies','Leave Policies'],['leavePeriods','Leave Periods'],['leaveAllocations','Leave Allocation'],['leaveRequests','Leave Requests'],['leaveEncashments','Leave Encashment'],['leaveBlocks','Block List'],['holidays','Holidays']];
+const tabs=[['dashboard','Leave Dashboard'],['leaveTypes','Leave Types'],['leavePeriods','Leave Periods'],['leaveAllocations','Leave Allocation'],['leaveBlocks','Block List'],['holidays','Holidays']];
 const cols:Record<string,string[][]>={
  leaveTypes:[['name','Name'],['code','Code'],['isPaid','Paid'],['maxDaysPerPeriod','Max days'],['carryForwardMax','Carry forward'],['encashable','Encashable']],
  leavePolicies:[['name','Policy'],['leaveTypeId','Leave type'],['accrual','Accrual'],['companyId','Company'],['departmentId','Department'],['category','Group'],['effectiveFrom','Effective from']],
@@ -27,6 +27,11 @@ export default function LeaveMaster({grant,config,actor,canApprove,notice}:{gran
  {['leaveRequests','leaveEncashments'].includes(tab)&&canApprove&&<div className="module-tabs"><button className={!review?'selected':''} onClick={()=>setReview(false)}>Requests</button><button className={review?'selected':''} onClick={()=>setReview(true)}>Approve / reject</button></div>}
  {review?<Approvals grant={grant} actor={actor} notice={notice}/>:<Records key={tab} grant={grant} kind={tab} module={config[tab]} notice={notice} columns={cols[tab]?.map(([key,label])=>({key,label}))} filters={filters[tab]} actionLabel={tab==='leaveRequests'?'Apply leave':tab==='leaveAllocations'?'Allocate':tab==='leaveEncashments'?'Request encashment':tab==='leavePolicies'?'Add / assign policy':undefined}/>}
  </>:<p role="status">This tab is unavailable for your account, or its configuration is still loading.</p>}</>;
+}
+export function LeaveRequests({grant,module,actor,canApprove,notice}:{grant:string;module?:Module;actor:string;canApprove:boolean;notice:(s:string)=>void}){
+ const[review,setReview]=useState(false);
+ if(!module)return <p role="status">Leave Requests is unavailable for your account.</p>;
+ return <><p className="help-text">Save a draft, then submit it for approval. Days include weekends and holidays; a half day counts as 0.5 day.</p>{canApprove&&<div className="module-tabs"><button className={!review?'selected':''} onClick={()=>setReview(false)}>Requests</button><button className={review?'selected':''} onClick={()=>setReview(true)}>Approve / reject</button></div>}{review?<Approvals grant={grant} actor={actor} notice={notice}/>:<Records grant={grant} kind="leaveRequests" module={module} notice={notice} columns={cols.leaveRequests.map(([key,label])=>({key,label}))} filters={filters.leaveRequests} actionLabel="Apply leave"/>}</>;
 }
 async function all(grant:string,kind:string){const rows:RecordRow[]=[];for(let page=1;page<=200;page++){const result=await api<{rows:RecordRow[];total:number}>(grant,`records/${kind}?page=${page}`);rows.push(...result.rows);if(rows.length>=result.total)return rows;}throw new Error('Dashboard exceeds 10,000 records. Use filtered lists.');}
 function LeaveDashboard({grant}:{grant:string}){
