@@ -22,6 +22,7 @@ it('shows employee subtabs and the new operations menus',async()=>{
  fireEvent.click(screen.getByRole('button',{name:'Employee Management'}));
  expect(screen.getByRole('button',{name:'Employee Management'}).getAttribute('aria-pressed')).toBe('true');
  fireEvent.click(screen.getByRole('button',{name:'Payroll Management'}));
+ await screen.findByRole('button',{name:'Salary Schema'});
  for(const name of ['Salary Schema','Payroll Processing','Loan and Advances','Expense Claims']){
   fireEvent.click(screen.getByRole('button',{name}));
   expect(screen.getByRole('heading',{name})).toBeTruthy();

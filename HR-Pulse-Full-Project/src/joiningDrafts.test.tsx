@@ -8,12 +8,12 @@ beforeEach(()=>{memory.clear();vi.mocked(saveJoiningDraft).mockClear();});afterE
 it('autosaves incomplete fields and resumes after unmount without a network call',async()=>{
  const view=render(<EmployeeLocation draftOwner="alice"/>);
  fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
- fireEvent.input(screen.getByLabelText(/^Full Name/),{target:{value:'Resumable employee'}});
+ fireEvent.input(screen.getByLabelText(/^Full Name\s*\*?$/),{target:{value:'Resumable employee'}});
  fireEvent.input(screen.getByLabelText(/^Mobile/),{target:{value:'9876'}});
  await waitFor(()=>expect([...memory.values()][0]?.fields.Mobile[0].value).toBe('9876'));
  view.unmount();render(<EmployeeLocation draftOwner="alice"/>);
  fireEvent.click(screen.getByRole('button',{name:'Draft'}));fireEvent.click(await screen.findByRole('button',{name:'Resume'}));
- expect((screen.getByLabelText(/^Full Name/) as HTMLInputElement).value).toBe('Resumable employee');
+ expect((screen.getByLabelText(/^Full Name\s*\*?$/) as HTMLInputElement).value).toBe('Resumable employee');
  expect((screen.getByLabelText(/^Mobile/) as HTMLInputElement).value).toBe('9876');
  expect(screen.getAllByRole('heading',{name:'Joining & Personal Details'}).length).toBeGreaterThan(0);
 });
@@ -28,7 +28,7 @@ it('preserves repeated field names and checkbox state',()=>{
 it('keeps the draft when employee submission fails offline',async()=>{
  vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('Network unavailable')));
  render(<EmployeeLocation draftOwner="alice" grant="test-grant"/>);
- fireEvent.input(screen.getByLabelText(/^Full Name/),{target:{value:'Offline employee'}});
+ fireEvent.input(screen.getByLabelText(/^Full Name\s*\*?$/),{target:{value:'Offline employee'}});
  fireEvent.input(screen.getByLabelText(/Employee Code/),{target:{value:'TEMP-9'}});
  fireEvent.submit(document.querySelector('form.joining-form')!);
  await screen.findByRole('alert');
