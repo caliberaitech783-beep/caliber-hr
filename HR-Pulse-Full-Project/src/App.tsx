@@ -7,7 +7,7 @@ import {api,pulse,clearSession,savedSession,type Session,type Profile,type Modul
 import {Records,Approvals,Overview,Audit,AccessAdministration} from './Modules';
 import EmployeeLocation from './EmployeeLocation';
 import './modules.css';
-const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Approval Management',ClipboardCheck],['Leave Requests',CalendarDays],['Reports & MIS',FileBarChart],['Administration',ShieldCheck],['Audit Logs',FileBarChart]] as const;
+const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Approval Management',ClipboardCheck],['Reports & MIS',FileBarChart],['Administration',ShieldCheck],['Audit Logs',FileBarChart]] as const;
 const masterGroups=[{name:'B1 · Company & sites',kinds:['companies','clients','regions','sites']},{name:'B2 · Organization',kinds:['departments','grades','designations']},{name:'B3 · Approval workflows',kinds:['workflows']},{name:'B4 · New employee',kinds:['employees']},{name:'B5 · Staff import',kinds:['employees']},{name:'B6 · Shifts',kinds:['shifts']},{name:'B7 · Holiday & leave',kinds:['holidays','leavePolicies','leaveRequests']},{name:'B8 · Approval matrix',kinds:['approvalRules']}];
 function Logo(){return <div className="logo"><span><Activity/></span><b>CALIBER HR</b></div>}
 function Login({onLogin}:{onLogin:(s:Session)=>void}){
@@ -34,7 +34,7 @@ function Workspace({session,logout}:{session:Session;logout:()=>void}){
   const[employeeMenu,setEmployeeMenu]=useState('Employee Management');
   const[payrollMenu,setPayrollMenu]=useState('Salary Schema');
   const[employeeGroup,setEmployeeGroup]=useState<'Corporate / HO'|'OB / COAL'>('Corporate / HO');
-  const access=new Set([...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])]);const permitted=navItems.filter(([name])=>name==='Leave Requests'?(access.has('Holiday & Leave')||access.has('Master Configuration')):access.has(name)||(['Payroll Management','Asset Management','Calendar'].includes(name)&&access.has('Employee Master')));
+  const access=new Set([...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])]);const permitted=navItems.filter(([name])=>access.has(name)||(['Payroll Management','Asset Management','Calendar'].includes(name)&&access.has('Employee Master')));
   async function refreshConfig(){const started=performance.now();try{const value=await api<{profile:Profile;modules:Record<string,Module>}>(session.grant,'config');setConfig(value.modules);setProfile(value.profile);setError('');setNotice(`Data loaded. Time taken: ${((performance.now()-started)/1000).toFixed(1)} sec.`);}catch(err){setError((err as Error).message);}finally{setLoading(false);}}
   useEffect(()=>{void refreshConfig();const timer=setInterval(()=>void refreshConfig(),60000);return()=>clearInterval(timer);},[session.grant]);
   useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),5000);return()=>clearTimeout(timer);},[notice]);
@@ -51,7 +51,6 @@ function Workspace({session,logout}:{session:Session;logout:()=>void}){
     {page==='Payroll Management'&&<><ModuleLanding title={payrollMenu}/></>}
     {page==='Asset Management'&&<ModuleLanding title="Asset Management"/>}
     {page==='Calendar'&&(config.holidays?<Records grant={session.grant} kind="holidays" module={config.holidays} readOnly notice={setNotice}/>:<ModuleLanding title="Calendar"/>)}
-    {page==='Leave Requests'&&<LeaveRequests grant={session.grant} module={config.leaveRequests} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>}
     {page==='Holiday & Leave'&&<><p className="help-text">Leave entitlement uses calendar days, including weekends and holidays. Split requests at the calendar-year boundary.</p><div className="module-tabs">{['leaveRequests','holidays','leavePolicies'].filter(k=>config[k]).map(k=><button key={k} className={kind===k?'selected':''} onClick={()=>setKind(k)}>{config[k].title}</button>)}</div></>}
     {(employeePage||['Master Configuration','Holiday & Leave'].includes(page))&&config[activeKind]&&<Records key={page+activeKind+group} grant={session.grant} kind={activeKind} module={config[activeKind]} readOnly={page==='Employee Directory'} allowDelete={page==='Employee Onboarding'||page==='Employee Directory'} importFirst={page==='Master Configuration'&&group===4} notice={setNotice}/>}
     {page==='Approval Management'&&<Approvals grant={session.grant} actor={profile.actor||''} notice={setNotice}/>}
