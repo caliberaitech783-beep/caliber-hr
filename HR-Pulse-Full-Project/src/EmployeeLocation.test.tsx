@@ -8,6 +8,11 @@ describe('Corporate / HO import headers',()=>{
  it('extracts the main Aadhaar fields from OCR text',()=>{
   expect(aadhaarDetails('APURVA PRIYADARSHINI KOPULWAR\nDOB: 06/12/2000\nFEMALE\nC/O: Dyaninath Kopulwar\nAddress: Chandrapur, Maharashtra - 442507\n8573 5149 3646')).toMatchObject({name:'APURVA PRIYADARSHINI KOPULWAR',dob:'2000-12-06',gender:'Female',uid:'857351493646',relationName:'Dyaninath Kopulwar',address:expect.stringContaining('Chandrapur')});
  });
+ it('extracts letter-style Aadhaar details without an Address label',()=>{
+  const result=aadhaarDetails('Government of India\nTo\nSanskar Vinod Manohare\nS/O: Vinod Manohare\nplot no-18\ngorewada road\nutthan nagar\nNatraj Society\nKatolroad\nNagpur Maharashtra - 440013\n9595554841\nYour Aadhaar No.\n2631 8416 3169\nSanskar Vinod Manohare\nDOB: 23/03/2001\nMALE');
+  expect(result).toMatchObject({name:'Sanskar Vinod Manohare',relationName:'Vinod Manohare',dob:'2001-03-23',gender:'Male',uid:'263184163169'});
+  expect(result.address).toContain('plot no-18');expect(result.address).toContain('440013');expect(result.address).not.toContain('9595554841');
+ });
  it('accepts the supplied Employee Code-first format and ignores trailing blank columns',()=>{
   const uploaded=[officeHeaders[0],officeHeaders[2],officeHeaders[1],...officeHeaders.slice(3),'','',''];
   expect(validCorporateOfficeHeaders(uploaded)).toBe(true);
