@@ -1,6 +1,6 @@
 import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it} from 'vitest';
-import EmployeeLocation,{aadhaarDetails,corporateOfficeExportGrid,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
+import EmployeeLocation,{aadhaarDetails,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
 const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 
@@ -51,6 +51,18 @@ describe('Corporate / HO import headers',()=>{
   expect(grid[1][2]).toBe('EMP-1');
   expect(grid[1][3]).toBe('Employee One');
   expect(grid[1][48]).toBe('DRAFT');
+ });
+ it('keeps the selected job designation separate from experience and preserves section details',()=>{
+  expect(joiningOfficeData({
+   'Designation':'IT Executive','Designation 1':'Assistant Manager','Designation 2':'',
+   'Qualification 1':'B.Tech','Qualification 2':'','Board / University 1':'VNIT Nagpur',
+   'Family Member Name 1':'Parent One','Date of Birth 1':'1970-05-20',
+   'Employer Name 1':'Example Pvt Ltd','Upload Candidate photo':'candidate.jpg','Upload Aadhaar (masked display)':'aadhaar.pdf',
+  })).toMatchObject({
+   'Designation *':'IT Executive','Previous Designation':'Assistant Manager',Qualification:'B.Tech','Board / University':'VNIT Nagpur',
+   'Family Member Name':'Parent One','Family Date of Birth':'1970-05-20','Employer Name':'Example Pvt Ltd',
+   'Candidate photo':'candidate.jpg','Aadhaar (masked display)':'aadhaar.pdf',
+  });
  });
 });
 
