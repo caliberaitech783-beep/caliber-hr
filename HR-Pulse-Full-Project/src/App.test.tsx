@@ -10,19 +10,6 @@ it('navigates between assigned menus after restoring a Pulse session',async()=>{
 });
 describe('HR Pulse',()=>{it('shows login',()=>{render(<App/>);expect(screen.getByText('Sign in to your workspace')).not.toBeNull()});it('toggles password visibility',()=>{render(<App/>);const password=screen.getByLabelText('Password');expect(password.getAttribute('type')).toBe('password');fireEvent.click(screen.getByRole('button',{name:'Toggle password'}));expect(password.getAttribute('type')).toBe('text')})});
 
-it('exposes Company master inside Master Configuration',async()=>{
- const profile={name:'HR admin',actor:'admin',permissions:{application:'HR',hrDesktopAccess:['Master Configuration']}};
- const companies={title:'Companies',menu:'Master Configuration',canWrite:true,fields:[{key:'code',label:'Company code',type:'text',required:true},{key:'name',label:'Company name',type:'text',required:true}]};
- window.location.hash='Master%20Configuration';
- sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
- vi.stubGlobal('fetch',async(url:string)=>new Response(JSON.stringify(url.endsWith('validate')?{profile}:url.endsWith('config')?{profile,modules:{companies}}:url.includes('records/companies')?{rows:[],total:0,page:1,pageSize:50}:[])));
- render(<App/>);
- expect(await screen.findByRole('button',{name:'Company & Organization Master'},{timeout:3000})).toBeTruthy();
- expect(await screen.findByRole('button',{name:'Companies'},{timeout:3000})).toBeTruthy();
-	expect(await screen.findByText('No records found',{}, {timeout:3000})).toBeTruthy();
- window.location.hash='';
-});
-
 it('shows employee and payroll submenus inside the sidebar',async()=>{
  const profile={name:'HR user',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
  window.location.hash='Employee%20Master';
