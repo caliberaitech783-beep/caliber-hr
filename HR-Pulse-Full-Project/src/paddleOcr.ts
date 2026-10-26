@@ -5,7 +5,17 @@ let queue=Promise.resolve();
 // Official worker mode runs inference on the device, with same-origin static
 // models and runtime files. No hosted OCR API, account or billing key is used.
 async function getEngine(){
- if(!engine)engine=import('@paddleocr/paddleocr-js').then(({PaddleOCR})=>PaddleOCR.create({
+ if(!engine)engine=Promise.all([
+  import('@paddleocr/paddleocr-js'),
+  // The SDK allows 60 seconds for session creation, including WASM loading.
+  // Warm the same-origin HTTP cache first so a slow first download does not
+  // consume that initialization window. Subsequent workers reuse these bytes.
+  ...['ort-wasm-simd-threaded.jsep.mjs','ort-wasm-simd-threaded.jsep.wasm'].map(async file=>{
+   const response=await fetch(new URL('/ocr/runtime/'+file,location.origin));
+   if(!response.ok)throw new Error('The on-device reader could not download. Please retry.');
+   await response.arrayBuffer();
+  }),
+ ]).then(([{PaddleOCR}])=>PaddleOCR.create({
   worker:true,
   textDetectionModelName:'PP-OCRv5_mobile_det',
   textRecognitionModelName:'en_PP-OCRv5_mobile_rec',

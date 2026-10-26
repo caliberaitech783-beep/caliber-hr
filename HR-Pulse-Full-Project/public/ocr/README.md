@@ -23,6 +23,8 @@ The website remains on Azure Static Web Apps Free; do not upgrade the plan or
 introduce a hosted OCR fallback without the user's authorization.
 
 First use downloads the model/runtime assets. Existing browser caching applies.
+The runtime is downloaded into the HTTP cache before starting the SDK's timed
+model initialization, so a slow first download does not consume that deadline.
 Images are not sent to an OCR provider. The app's existing joining-document
 storage/submission behavior is independent of this recognition step.
 

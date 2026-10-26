@@ -1,7 +1,8 @@
-import {afterEach,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({create:vi.fn(),predict:vi.fn()}));
 vi.mock('@paddleocr/paddleocr-js',()=>({PaddleOCR:{create:mocks.create}}));
-afterEach(()=>{vi.resetModules();vi.clearAllMocks();});
+beforeEach(()=>vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,arrayBuffer:async()=>new ArrayBuffer(0)})));
+afterEach(()=>{vi.resetModules();vi.clearAllMocks();vi.unstubAllGlobals();});
 
 it('runs the free worker with same-origin model/runtime assets and reuses it',async()=>{
  mocks.predict.mockResolvedValue([{items:[{text:'Arun Vijay Sharma'},{text:'DOB: 01/02/1990'}]}]);
@@ -17,6 +18,7 @@ it('runs the free worker with same-origin model/runtime assets and reuses it',as
   expect(new URL(url).pathname).toMatch(/^\/ocr\//);
  }
  expect(mocks.predict).toHaveBeenCalledWith(image,expect.any(Object));
+ for(const [url] of vi.mocked(fetch).mock.calls)expect(new URL(String(url)).origin).toBe(location.origin);
 });
 
 it('allows a retry after model initialization fails without using another service',async()=>{
@@ -26,4 +28,11 @@ it('allows a retry after model initialization fails without using another servic
  await expect(readPaddleText(new Blob())).rejects.toThrow('Model unavailable');
  expect(await readPaddleText(new Blob())).toBe('Arun Vijay Sharma');
  expect(mocks.create).toHaveBeenCalledTimes(2);
+});
+
+it('does not start inference or contact a fallback when runtime download fails',async()=>{
+ vi.mocked(fetch).mockResolvedValue({ok:false} as Response);
+ const {readPaddleText}=await import('./paddleOcr');
+ await expect(readPaddleText(new Blob())).rejects.toThrow('could not download');
+ expect(mocks.create).not.toHaveBeenCalled();
 });
