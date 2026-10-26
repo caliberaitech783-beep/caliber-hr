@@ -17,7 +17,10 @@ describe('Corporate / HO import headers',()=>{
   expect(aadhaarDetails('To\n5 eon fee mw\n2 Sanskar Vinod Manohare 1\nS/O: Vinod Manchare\nplot no-18\nNagpur Maharashtra - 440013\nSanskar Vinod Manohare ]\nDOB: 23/03/2001\nMALE')).toMatchObject({name:'Sanskar Vinod Manohare',relationName:'Vinod Manchare'});
  });
  it('extracts a name when OCR joins it onto the DOB line',()=>{
-  expect(aadhaarDetails('Government of India\nStupal Baba Moon DOB: 07/07/2004\nMale\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',dob:'2004-07-07',gender:'Male',uid:'377450392569',relationName:''});
+  expect(aadhaarDetails('Government of India\nStupal Baba Moon DOB: 07/07/2004\nMale\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',dob:'2004-07-07',gender:'Male',uid:'377450392569',relationName:'Baba Moon'});
+ });
+ it('keeps an explicitly printed father name instead of inferring it from the full name',()=>{
+  expect(aadhaarDetails('Stupal Baba Moon\nS/O: Ramesh Moon\nDOB: 07/07/2004\nMale')).toMatchObject({name:'Stupal Baba Moon',relationName:'Ramesh Moon'});
  });
  it('rejects Aadhaar labels misread as a father name and uses the stronger OCR pass',()=>{
   const result=aadhaarDetails('C/O: vmmenoringa AADHAAR\nDOB: 07/04/1998\nFEMALE\n--- next focused pass ---\nAPURVA PRIYADARSHINI KOPULWAR\nD/O: Dyaninath Kopulwar\nDOB: 07/04/1998\nFEMALE');
