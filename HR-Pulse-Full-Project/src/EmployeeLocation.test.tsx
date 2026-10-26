@@ -72,10 +72,13 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('button',{name:'Gallery / Document'})).toBeTruthy();
   const aadhaarInput=screen.getByLabelText('Choose Aadhaar card from gallery');
   for(const format of ['.jpg','.jpeg','.png','.pdf'])expect(aadhaarInput.getAttribute('accept')).toContain(format);
+  fireEvent.change(aadhaarInput,{target:{files:[new File(['aadhaar'],'aadhaar.pdf',{type:'application/pdf'})]}});
   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
   expect((screen.getByLabelText(/^Full Name \*/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/Full Name as per Aadhaar/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/PAN No\./) as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText(/Employee Code/) as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText(/Employment Type/) as HTMLSelectElement).required).toBe(true);
   expect(screen.getByRole('button',{name:'Employee Category'}).getAttribute('aria-required')).toBe('true');
   const employeeCategory=screen.getByRole('button',{name:'Employee Category'});
   fireEvent.click(employeeCategory);
@@ -99,9 +102,10 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('UAN No.')).toBeTruthy();
   expect(screen.getByLabelText('ESIC')).toBeTruthy();
   expect(screen.getByRole('heading',{name:'Job & Posting Details'})).toBeTruthy();
-  expect(screen.getByLabelText('Employment Type')).toBeTruthy();
+  expect(screen.getByLabelText(/Employment Type/)).toBeTruthy();
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
   view.rerender(<EmployeeLocation employeeGroup="OB / COAL"/>);
+  fireEvent.change(screen.getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[new File(['aadhaar'],'aadhaar.pdf',{type:'application/pdf'})]}});
   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
   fireEvent.change(screen.getByLabelText('OB / COAL subtype'),{target:{value:'WCL'}});
   expect(screen.getAllByRole('option',{name:'Sasti OB'}).length).toBeGreaterThan(0);
@@ -118,6 +122,11 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText(/Medical Examination Date/)).toBeTruthy();
   expect(screen.queryByRole('button',{name:/Contract & Policies/})).toBeNull();
   expect(screen.queryByRole('button',{name:/Assets$/})).toBeNull();
+  for(const [name,value] of [['A-Form No.','AF-1'],['Full Name','Employee One'],['Full Name as per Aadhaar','Employee One'],['Employee Code','EMP-1'],['Father / Spouse Name','Parent One'],['Mobile','9876543210'],['Candidate E-mail','employee@example.com'],['Aadhaar No.','123412341234'],['PAN No.','ABCDE1234F']] as const)fireEvent.input(document.querySelector(`[name="${name}"]`)!,{target:{value}});
+  fireEvent.change(screen.getByLabelText(/Joining Date/),{target:{value:'2026-10-26'}});
+  fireEvent.change(screen.getByLabelText(/Shift/),{target:{value:'General'}});
+  fireEvent.change(screen.getByLabelText(/Employment Type/),{target:{value:'Permanent'}});
+  fireEvent.change(screen.getByLabelText(/Medical Examination Date/),{target:{value:'2026-10-26'}});
   fireEvent.click(screen.getByRole('button',{name:/Educational Details/}));
   expect(screen.getByLabelText('Qualification 1')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Family Details/}));

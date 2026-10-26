@@ -7,6 +7,7 @@ import {captureJoiningFields,restoreJoiningFields,saveJoiningDraft} from './join
 beforeEach(()=>{memory.clear();vi.mocked(saveJoiningDraft).mockClear();});afterEach(cleanup);
 it('autosaves incomplete fields and resumes after unmount without a network call',async()=>{
  const view=render(<EmployeeLocation draftOwner="alice"/>);
+ fireEvent.change(screen.getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[new File(['aadhaar'],'aadhaar.pdf',{type:'application/pdf'})]}});
  fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
  fireEvent.input(screen.getByLabelText(/^Full Name\s*\*?$/),{target:{value:'Resumable employee'}});
  fireEvent.input(screen.getByLabelText(/^Mobile/),{target:{value:'9876'}});
