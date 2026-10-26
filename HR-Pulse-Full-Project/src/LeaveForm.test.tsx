@@ -5,7 +5,7 @@ import {Records} from './Modules';
 // @ts-expect-error Shared server schema is JavaScript.
 import {requestFields} from '../server/leave.mjs';
 afterEach(()=>vi.unstubAllGlobals());
-it('shows leave fields, calculates days, accepts audio-only reasons and keeps attachments optional',async()=>{
+it('shows leave fields, calculates days, supports voice typing and keeps attachments optional',async()=>{
  let saved:any;
  vi.stubGlobal('fetch',vi.fn(async(url:string,options:any)=>{
   if(options?.method==='POST'){saved=JSON.parse(options.body);return new Response('{}');}
@@ -20,11 +20,11 @@ it('shows leave fields, calculates days, accepts audio-only reasons and keeps at
  expect(screen.getByLabelText('Name')).toHaveValue('Test Employee');
  expect(screen.getByLabelText('No. of Days')).toHaveValue(3);
  expect(screen.getByLabelText(/Attachment \(optional/)).not.toBeRequired();
- fireEvent.change(screen.getByLabelText('Upload audio reason'),{target:{files:[new File(['audio'],'reason.mp3',{type:'audio/mpeg'})]}});
- await waitFor(()=>expect(screen.getByRole('button',{name:'Remove audio'})).toBeTruthy());
- expect(screen.getByLabelText(/Reason \(write-up\)/)).not.toBeRequired();
+ expect(screen.getByRole('button',{name:'Speak reason'})).toBeTruthy();
+ expect(screen.getByLabelText(/Reason \(write-up\)/)).toBeRequired();
+ fireEvent.change(screen.getByLabelText(/Reason \(write-up\)/),{target:{value:'Medical appointment'}});
  fireEvent.change(screen.getByLabelText(/Reporting to/),{target:{value:'manager'}});
  fireEvent.submit(screen.getByRole('button',{name:'Save to Azure'}).closest('form')!);
- await waitFor(()=>expect(saved?.reasonAudio).toMatch(/^data:audio\/mpeg;base64,/));
+ await waitFor(()=>expect(saved?.name).toBe('Medical appointment'));
  expect(saved.approver).toBe('manager');expect(saved.attachment).toBeUndefined();
 });
