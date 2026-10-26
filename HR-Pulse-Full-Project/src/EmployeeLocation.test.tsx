@@ -16,6 +16,10 @@ describe('Corporate / HO import headers',()=>{
  it('removes OCR border noise around the employee name',()=>{
   expect(aadhaarDetails('To\n5 eon fee mw\n2 Sanskar Vinod Manohare 1\nS/O: Vinod Manchare\nplot no-18\nNagpur Maharashtra - 440013\nSanskar Vinod Manohare ]\nDOB: 23/03/2001\nMALE')).toMatchObject({name:'Sanskar Vinod Manohare',relationName:'Vinod Manchare'});
  });
+ it('rejects Aadhaar labels misread as a father name and uses the stronger OCR pass',()=>{
+  const result=aadhaarDetails('C/O: vmmenoringa AADHAAR\nDOB: 07/04/1998\nFEMALE\n--- next focused pass ---\nAPURVA PRIYADARSHINI KOPULWAR\nD/O: Dyaninath Kopulwar\nDOB: 07/04/1998\nFEMALE');
+  expect(result).toMatchObject({name:'APURVA PRIYADARSHINI KOPULWAR',relationName:'Dyaninath Kopulwar',dob:'1998-04-07',gender:'Female'});
+ });
  it('accepts the supplied Employee Code-first format and ignores trailing blank columns',()=>{
   const uploaded=[officeHeaders[0],officeHeaders[2],officeHeaders[1],...officeHeaders.slice(3),'','',''];
   expect(validCorporateOfficeHeaders(uploaded)).toBe(true);
