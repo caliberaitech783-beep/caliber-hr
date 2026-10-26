@@ -7,7 +7,7 @@ const cols:Record<string,string[][]>={
  leavePolicies:[['name','Policy'],['leaveTypeId','Leave type'],['accrual','Accrual'],['companyId','Company'],['departmentId','Department'],['category','Group'],['effectiveFrom','Effective from']],
  leavePeriods:[['name','Period'],['fromDate','From'],['toDate','To']],
  leaveAllocations:[['employeeId','Employee'],['name','Name'],['leaveTypeId','Leave type'],['allocated','Allocated'],['used','Used'],['reserved','Pending'],['balance','Balance'],['periodId','Period']],
- leaveRequests:[['code','Request ID'],['employeeId','Employee'],['leaveTypeId','Type'],['fromDate','From'],['toDate','To'],['days','Days'],['name','Reason'],['approver','Requested approver']],
+ leaveRequests:[['fromDate','Date (from)'],['toDate','Date (to)'],['employeeId','Employee ID'],['employeeName','Name'],['companyId','Company'],['name','Reason (write-up)'],['reasonAudio','Reason (audio)'],['days','No. of Days'],['approver','Reporting to'],['attachment','Attachment']],
  leaveEncashments:[['employeeId','Employee'],['leaveTypeId','Type'],['days','Days'],['amount','Amount']],
  leaveBlocks:[['name','Name'],['fromDate','From'],['toDate','To'],['siteId','Location'],['departmentId','Department'],['reason','Reason']],
  holidays:[['name','Name'],['day','DAY'],['date','date'],['siteId','siteId'],['holidayType','holidayType']],

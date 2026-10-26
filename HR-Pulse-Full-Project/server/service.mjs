@@ -44,6 +44,12 @@ export function createService(pool) {
     if (linked.designationId?.data.departmentId && data.departmentId && linked.designationId.data.departmentId!==data.departmentId)throw problem('Designation must belong to the selected department');
     if (linked.designationId?.data.gradeId && data.gradeId && linked.designationId.data.gradeId!==data.gradeId)throw problem('Grade must match the selected designation');
     if (linked.employeeId && linked.policyId && linked.employeeId.data.companyId!==linked.policyId.data.companyId) throw problem('Leave policy must belong to the employee company');
+    if(kind==='leaveRequests'&&linked.employeeId){
+      const employee=linked.employeeId;
+      if(data.companyId&&data.companyId!==employee.data.companyId)throw problem('Company must match the selected employee');
+      data.employeeName=employee.name;
+      data.companyId=employee.data.companyId||'';
+    }
     await checkLeave(db,kind,data,linked,id);
     if(kind==='leaveRequests') {
       const overlap=await db.query("SELECT 1 FROM hr_records WHERE kind='leaveRequests' AND status IN ('PENDING','APPROVED') AND data->>'employeeId'=$1 AND data->>'fromDate'<=$2 AND data->>'toDate'>=$3 AND id<>$4",[data.employeeId,data.toDate,data.fromDate,id||randomUUID()]);

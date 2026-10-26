@@ -14,9 +14,10 @@ export const leaveModules={
  leaveEncashments:m('Leave Encashment',[t('code','Request ID'),t('name','Reason',true),r('employeeId','Employee','employees',true),r('leaveTypeId','Leave type','leaveTypes',true),r('periodId','Period','leavePeriods',true),n('days','Days',true),t('approver','Approver Pulse username (optional; otherwise policy workflow)')],{autoCode:true}),
  leaveBlocks:m('Block List',[...base,d('fromDate','From',true),d('toDate','To',true),r('siteId','Location (blank = all)','sites'),r('departmentId','Department (blank = all)','departments'),t('reason','Reason',true)]),
 };
-export const requestFields=[t('code','Request ID'),t('name','Reason',true),r('employeeId','Employee','employees',true),r('leaveTypeId','Leave type','leaveTypes'),r('policyId','Leave policy','leavePolicies',true),r('periodId','Period','leavePeriods'),d('fromDate','From date',true),d('toDate','To date',true),yn('halfDay','Half day'),t('approver','Approver Pulse username (optional; otherwise policy workflow)'),{key:'attachment',label:'Attachment (PDF, PNG or JPEG, up to 500 KB)',type:'attachment'}];
+export const requestFields=[t('code','Request ID'),d('fromDate','Date (from)',true),d('toDate','Date (to)',true),r('employeeId','Employee ID','employees',true),t('employeeName','Name'),r('companyId','Company','companies'),t('name','Reason (write-up)',true),{key:'reasonAudio',label:'Reason (audio, up to 500 KB)',type:'audio'},n('days','No. of Days'),t('approver','Reporting to (Pulse username; blank uses policy workflow)'),{key:'attachment',label:'Attachment (optional; PDF, PNG or JPEG, up to 500 KB)',type:'attachment'},r('leaveTypeId','Leave type','leaveTypes'),r('policyId','Leave policy','leavePolicies',true),r('periodId','Period','leavePeriods'),yn('halfDay','Half day')];
 export const policyFields=[...base,r('leaveTypeId','Leave type','leaveTypes'),n('annualDays','Annual entitlement (days)',true),r('companyId','Company','companies',true),r('departmentId','Applies to department (blank = all)','departments'),s('category','Applies to employment group',['Permanent','Contract','Trainee','Consultant']),s('accrual','Accrual rule',['Annual allocation','Monthly','Manual']),d('effectiveFrom','Effective from')];
 export function prepareLeave(kind,input){
+ if(kind==='leaveRequests'&&input.reasonAudio&&!String(input.name||'').trim())input={...input,name:'Audio reason'};
  if(['leaveAllocations','leaveEncashments','leaveRequests'].includes(kind)&&!input.code)input={...input,code:'LR-'+randomUUID().slice(0,18)};
  return input;
 }
@@ -62,8 +63,7 @@ export async function checkLeave(db,kind,data,linked,id){
   if(linked.periodId&&(data.fromDate<linked.periodId.data.fromDate||data.toDate>linked.periodId.data.toDate))fail('Request dates must fall within the selected period');
   const blocks=(await db.query("SELECT data FROM hr_records WHERE kind='leaveBlocks' AND status='ACTIVE' AND data->>'fromDate'<=$1 AND data->>'toDate'>=$2",[data.toDate,data.fromDate])).rows;
   if(blocks.some(({data:b})=>(!b.siteId||b.siteId===employee.siteId)&&(!b.departmentId||b.departmentId===employee.departmentId)))fail('Requested dates overlap a blocked leave period');
-  const threshold=linked.leaveTypeId?.data.requiresDocumentAfterDays;
-  if(threshold!==undefined&&threshold!==''&&data.days>Number(threshold)&&!data.attachment)fail('An attachment is required for this leave duration');
+  // Supporting attachments are optional for employee leave requests.
  }
  if(kind==='leaveEncashments'&&linked.leaveTypeId?.data.encashable!=='Yes')fail('This leave type cannot be encashed');
  if(['leaveRequests','leaveEncashments'].includes(kind)&&data.leaveTypeId&&data.periodId){

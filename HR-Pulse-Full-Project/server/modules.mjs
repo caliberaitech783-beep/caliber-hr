@@ -45,6 +45,11 @@ export function validate(kind, input) {
   const data = {};
   for (const field of modules[kind].fields) {
     const raw = input[field.key];
+    if(field.type==='audio'){
+      if(!raw){data[field.key]='';continue;}
+      if(typeof raw!=='string'||!/^data:audio\/(mpeg|mp3|mp4|wav|x-wav|webm|ogg)(;codecs=[a-z0-9-]+)?;base64,[A-Za-z0-9+/]+={0,2}$/.test(raw)||raw.length>690000)throw Object.assign(new Error('Use an MP3, M4A, WAV, WebM or OGG audio file up to 500 KB'),{status:400});
+      data[field.key]=raw;continue;
+    }
     if(field.type==='attachment'){
       if(!raw){data[field.key]='';continue;}
       if(typeof raw!=='string'||!/^data:(application\/pdf|image\/png|image\/jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(raw)||raw.length>690000)throw Object.assign(new Error('Use a PDF, PNG or JPEG attachment up to 500 KB'),{status:400});
