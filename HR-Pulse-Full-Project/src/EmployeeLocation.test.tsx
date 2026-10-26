@@ -22,6 +22,9 @@ describe('Corporate / HO import headers',()=>{
  it('extracts the English name when OCR merges it with Hindi text',()=>{
   expect(aadhaarDetails('भारत सरकार\nस्तूपल बाबा मून Stupal Baba Moon\nजन्म तिथि Stupal Baba Moon DOB: 07/07/2004\nपुरुष Male\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',relationName:'Baba Moon',dob:'2004-07-07',gender:'Male'});
  });
+ it('rejects fragmented OCR noise instead of filling a false name',()=>{
+  expect(aadhaarDetails('Government of India\nSw NE A Ee\nDOB: 07/07/2004\nMale\n3774 5039 2569')).toMatchObject({name:'',relationName:'',dob:'2004-07-07',gender:'Male'});
+ });
  it('keeps an explicitly printed father name instead of inferring it from the full name',()=>{
   expect(aadhaarDetails('Stupal Baba Moon\nS/O: Ramesh Moon\nDOB: 07/07/2004\nMale')).toMatchObject({name:'Stupal Baba Moon',relationName:'Ramesh Moon'});
  });
