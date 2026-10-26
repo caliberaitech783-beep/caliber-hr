@@ -13,6 +13,9 @@ describe('Corporate / HO import headers',()=>{
   expect(result).toMatchObject({name:'Sanskar Vinod Manohare',relationName:'Vinod Manohare',dob:'2001-03-23',gender:'Male',uid:'263184163169'});
   expect(result.address).toContain('plot no-18');expect(result.address).toContain('440013');expect(result.address).not.toContain('9595554841');
  });
+ it('removes OCR border noise around the employee name',()=>{
+  expect(aadhaarDetails('To\n5 eon fee mw\n2 Sanskar Vinod Manohare 1\nS/O: Vinod Manchare\nplot no-18\nNagpur Maharashtra - 440013\nSanskar Vinod Manohare ]\nDOB: 23/03/2001\nMALE')).toMatchObject({name:'Sanskar Vinod Manohare',relationName:'Vinod Manchare'});
+ });
  it('accepts the supplied Employee Code-first format and ignores trailing blank columns',()=>{
   const uploaded=[officeHeaders[0],officeHeaders[2],officeHeaders[1],...officeHeaders.slice(3),'','',''];
   expect(validCorporateOfficeHeaders(uploaded)).toBe(true);
