@@ -1,5 +1,5 @@
-import {fireEvent,render,screen} from '@testing-library/react';
-import {describe,expect,it} from 'vitest';
+import {fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {describe,expect,it,vi} from 'vitest';
 import EmployeeLocation,{aadhaarDetails,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
 const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
@@ -80,6 +80,12 @@ describe('Corporate / HO import headers',()=>{
 });
 
 describe('Employee Master tabs',()=>{
+ it('loads only finally approved employees for Update Existing Employee',async()=>{
+  const fetchMock=vi.fn(async(_url:string)=>new Response(JSON.stringify({rows:[]})));vi.stubGlobal('fetch',fetchMock);
+  render(<EmployeeLocation grant="test-grant"/>);fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
+  await waitFor(()=>expect(fetchMock).toHaveBeenCalled());
+  expect(fetchMock.mock.calls.some(([url])=>String(url).includes('records/employees?page=1&search=&status=ACTIVE'))).toBe(true);
+ });
  it('shows the requested tabs and the complete joining workflow',()=>{
   const view=render(<EmployeeLocation/>);
   const labels=['Add Temp. Employee','Update Existing Employee','Employee Verify','Completed Form','Reports'];
