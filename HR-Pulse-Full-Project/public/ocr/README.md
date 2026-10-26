@@ -14,7 +14,7 @@ Source URLs:
 - https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv5_mobile_det_onnx_infer.tar
 - https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/en_PP-OCRv5_mobile_rec_onnx_infer.tar
 
-The prebuild/predev script copies ONNX runtime assets from the locked dependency.
+The build/dev preparation script copies ONNX runtime assets from the locked dependency.
 Model downloads and WASM requests use this site's origin. Recognition runs in
 the browser's official PaddleOCR worker, using CPU/WASM with one thread.
 No OCR API key, paid inference endpoint, new server or subscription is used.
