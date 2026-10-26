@@ -77,9 +77,11 @@ describe('Employee Master tabs',()=>{
   expect((screen.getByLabelText(/Full Name as per Aadhaar/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/PAN No\./) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/Employee Category/) as HTMLSelectElement).required).toBe(true);
-  const joiningCategory=screen.getByLabelText(/Joining Category/);
-  fireEvent.keyDown(joiningCategory,{key:'Enter'});
-  expect(document.activeElement).toBe(screen.getByLabelText(/A-Form No\./));
+  const employeeCategory=screen.getByLabelText(/Employee Category/);
+  expect(fireEvent.keyDown(employeeCategory,{key:'Enter'})).toBe(true);
+  fireEvent.change(employeeCategory,{target:{value:'Staff'}});
+  fireEvent.keyDown(employeeCategory,{key:'Enter'});
+  expect(document.activeElement).toBe(screen.getByLabelText(/Reporting To/));
   expect((screen.getByLabelText(/A-Form No\./) as HTMLInputElement).required).toBe(false);
   fireEvent.change(screen.getByLabelText('Corporate / HO subtype'),{target:{value:'Corporate'}});
   fireEvent.change(screen.getByLabelText('Corporate / HO site'),{target:{value:'KSR'}});
