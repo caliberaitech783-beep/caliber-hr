@@ -124,8 +124,13 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+  expect(screen.queryByRole('columnheader',{name:'Mandatory / Conditional'})).toBeNull();
   for(const input of screen.getAllByLabelText(/^Upload /))expect(input.getAttribute('accept')).toBe('.jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf');
-  expect(screen.getByLabelText('Upload Candidate photo')).toBeTruthy();
+  expect((screen.getByLabelText('Upload Candidate photo') as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText('Upload Aadhaar (masked display)') as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText('Upload PAN') as HTMLInputElement).required).toBe(false);
+  expect(screen.getAllByRole('button',{name:'Preview'}).every(button=>(button as HTMLButtonElement).disabled)).toBe(true);
+  expect(screen.getAllByRole('button',{name:'Remove'}).every(button=>(button as HTMLButtonElement).disabled)).toBe(true);
   expect(screen.getByLabelText('Upload VTC certificate')).toBeTruthy();
   expect(screen.getByLabelText('Upload Medical fitness certificate')).toBeTruthy();
   expect(screen.getByLabelText('Upload Driving licence')).toBeTruthy();
