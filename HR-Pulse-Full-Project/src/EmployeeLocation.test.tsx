@@ -213,7 +213,7 @@ describe('Employee Master tabs',()=>{
   view.rerender(<EmployeeLocation employeeGroup="Corporate / HO"/>);
   fireEvent.click(screen.getByRole('button',{name:'Reports'}));
   expect(screen.getByRole('button',{name:'Region Employee Details'})).toBeTruthy();
-  expect(screen.getByRole('button',{name:'Department & Designation'})).toBeTruthy();
+  expect(screen.queryByRole('button',{name:'Department & Designation'})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Region Employee Details'}));
   expect(screen.getAllByRole('option',{name:'Nagpur CO'}).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('option',{name:'Chandrapur HO'}).length).toBeGreaterThan(0);
