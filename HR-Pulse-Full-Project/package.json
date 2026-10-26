@@ -7,14 +7,16 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prebuild": "node scripts/prepare-ocr-runtime.mjs",
+    "predev": "node scripts/prepare-ocr-runtime.mjs"
   },
   "dependencies": {
+    "@paddleocr/paddleocr-js": "0.4.2",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "tesseract.js": "^7.0.0",
     "typescript": "latest",
     "vite": "latest",
     "xlsx": "^0.18.5"
