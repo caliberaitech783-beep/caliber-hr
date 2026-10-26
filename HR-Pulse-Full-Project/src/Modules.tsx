@@ -2,18 +2,18 @@ import {HolidaySites} from './HolidaySites';
 import {useEffect,useState,type FormEvent} from 'react';
 import {Download,Plus,RefreshCw,Search,Upload,X} from 'lucide-react';
 import {api,csv,download,prepareImport,type Module,type RecordRow,type Lookup} from './api';
-type Props={columns?:{key:string;label:string}[];filters?:{key:string;label:string;reference?:string;type?:string}[];actionLabel?:string;grant:string;kind:string;module:Module;readOnly?:boolean;importFirst?:boolean;notice:(s:string)=>void};
+type Props={columns?:{key:string;label:string}[];filters?:{key:string;label:string;reference?:string;type?:string}[];actionLabel?:string;grant:string;kind:string;module:Module;readOnly?:boolean;allowDelete?:boolean;importFirst?:boolean;notice:(s:string)=>void};
 type Listing={siteOptions?:string[];rows:RecordRow[];total:number;page:number;pageSize:number};
 const statuses=['CANCELLED','DRAFT','PENDING','ACTIVE','APPROVED','REJECTED','INACTIVE'];
 function ErrorBox({message}:{message:string}){return message?<p className="error" role="alert">{message}</p>:null;}
 function Status({value}:{value:string}){return <span className={'record-status status-'+value.toLowerCase()}>{value}</span>;}
-export function Records({columns,filters,actionLabel,grant,kind,module,readOnly=false,importFirst=false,notice}:Props){
+export function Records({columns,filters,actionLabel,grant,kind,module,readOnly=false,allowDelete=false,importFirst=false,notice}:Props){
   const[list,setList]=useState<Listing>({rows:[],total:0,page:1,pageSize:50}),[lookups,setLookups]=useState<Lookup[]>([]),[page,setPage]=useState(1),[query,setQuery]=useState(''),[search,setSearch]=useState(''),[status,setStatus]=useState(''),[loading,setLoading]=useState(true),[error,setError]=useState(''),[busy,setBusy]=useState(false),[editor,setEditor]=useState<RecordRow|null|undefined>(undefined),[importing,setImporting]=useState(importFirst),[records,setRecords]=useState<Record<string,string>[]>([]),[filename,setFilename]=useState(''),[confirm,setConfirm]=useState<{row:RecordRow;action:string}|null>(null);
   const[filterValues,setFilterValues]=useState<Record<string,string>>({});
   const[deletion,setDeletion]=useState<{records:{id:string;version:number}[];label:string}|null>(null);
   const[deleteText,setDeleteText]=useState('');
   const deletable=writableDelete();
-  function writableDelete(){return module.canWrite&&!readOnly&&['holidays','leaveTypes','leavePolicies','leavePeriods','leaveAllocations','leaveRequests','leaveEncashments','leaveBlocks'].includes(kind);}
+  function writableDelete(){return module.canWrite&&(!readOnly||allowDelete)&&['employees','holidays','leaveTypes','leavePolicies','leavePeriods','leaveAllocations','leaveRequests','leaveEncashments','leaveBlocks'].includes(kind);}
   async function prepareDelete(){setBusy(true);setError('');try{const result=await api<{records:{id:string;version:number}[]}>(grant,`deletion/${kind}/preview`,'POST',{});setDeleteText('');setDeletion({...result,label:'all records in '+module.title});}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   async function removeRecords(){if(!deletion)return;setBusy(true);try{const result=await api<{deleted:number}>(grant,`deletion/${kind}/confirm`,'POST',{records:deletion.records});setDeletion(null);notice(`${result.deleted} records deleted`);await load();}catch(e){setError((e as Error).message);setDeletion(null);}finally{setBusy(false);}}
   const extraQuery=new URLSearchParams(filterValues).toString();

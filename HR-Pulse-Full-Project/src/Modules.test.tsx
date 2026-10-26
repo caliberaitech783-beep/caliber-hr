@@ -17,8 +17,9 @@ describe('database-backed record forms',()=>{
  });
  it('directory mode exposes no add, import, submit or deactivate controls',async()=>{
   vi.stubGlobal('fetch',async(url:string)=>new Response(JSON.stringify(url.endsWith('/lookups')?[]:{rows:[{id:'one',code:'E001',name:'Example employee',status:'DRAFT',version:1,data:{},updated_at:'2026-10-22T00:00:00Z'}],total:1,page:1,pageSize:50})));
-  render(<Records grant={'a'.repeat(43)} kind="employees" module={companyModule} readOnly notice={()=>{}}/>);await screen.findByText('Example employee');
+  render(<Records grant={'a'.repeat(43)} kind="employees" module={companyModule} readOnly allowDelete notice={()=>{}}/>);await screen.findByText('Example employee');
   for(const name of ['Add record','Import CSV','Submit','Deactivate'])expect(screen.queryByRole('button',{name})).toBeNull();
+  expect(screen.getByRole('button',{name:'Delete all'})).toBeTruthy();
  });
 });
 it('requires typed confirmation and deletes the preview snapshot across pages',async()=>{

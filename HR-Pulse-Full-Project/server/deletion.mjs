@@ -1,9 +1,9 @@
 import {canWrite} from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
 import {balance} from './leave.mjs';
-export const deletableKinds=['holidays','leaveTypes','leavePolicies','leavePeriods','leaveAllocations','leaveRequests','leaveEncashments','leaveBlocks'];
+export const deletableKinds=['employees','holidays','leaveTypes','leavePolicies','leavePeriods','leaveAllocations','leaveRequests','leaveEncashments','leaveBlocks'];
 const fail=(message,status=409)=>{throw Object.assign(new Error(message),{status});};
-function authorize(profile,kind){if(!deletableKinds.includes(kind))fail('Deletion is not supported for this module',400);if(!canWrite(profile,kind))fail('Your permissions do not allow deletion',403);if(assignedSites(profile)!==null&&!['holidays','leaveBlocks','leaveAllocations','leaveRequests','leaveEncashments'].includes(kind))fail('Global masters require access to all sites',403);}
+function authorize(profile,kind){if(!deletableKinds.includes(kind))fail('Deletion is not supported for this module',400);if(!canWrite(profile,kind))fail('Your permissions do not allow deletion',403);if(assignedSites(profile)!==null&&!['employees','holidays','leaveBlocks','leaveAllocations','leaveRequests','leaveEncashments'].includes(kind))fail('Global masters require access to all sites',403);}
 export function createDeletion(pool){return {
  async deletePreview(profile,kind){authorize(profile,kind);const rows=(await pool.query('SELECT r.id,r.version FROM hr_records r WHERE r.kind=$1 AND '+scopeSql('r','$2','$3')+' ORDER BY r.id LIMIT 10001',[kind,await siteIds(pool,profile),profile.actor])).rows;if(rows.length>10000)fail('Delete individual records first; bulk deletion supports 10,000 records');return {records:rows};},
  async deleteRecords(profile,kind,input){authorize(profile,kind);const targets=input.records;if(!Array.isArray(targets)||!targets.length||targets.length>10000||targets.some(r=>!r||!/^[0-9a-f-]{36}$/i.test(r.id)||!Number.isInteger(r.version))||new Set(targets.map(r=>r.id)).size!==targets.length)fail('Invalid deletion selection',400);
