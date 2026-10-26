@@ -1,6 +1,6 @@
 import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it} from 'vitest';
-import EmployeeLocation,{aadhaarDetails,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
+import EmployeeLocation,{aadhaarDetails,confirmedAadhaarDetails,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
 const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 
@@ -17,16 +17,24 @@ describe('Corporate / HO import headers',()=>{
   expect(aadhaarDetails('To\n5 eon fee mw\n2 Sanskar Vinod Manohare 1\nS/O: Vinod Manchare\nplot no-18\nNagpur Maharashtra - 440013\nSanskar Vinod Manohare ]\nDOB: 23/03/2001\nMALE')).toMatchObject({name:'Sanskar Vinod Manohare',relationName:'Vinod Manchare'});
  });
  it('extracts a name when OCR joins it onto the DOB line',()=>{
-  expect(aadhaarDetails('Government of India\nStupal Baba Moon DOB: 07/07/2004\nMale\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',dob:'2004-07-07',gender:'Male',uid:'377450392569',relationName:'Baba Moon'});
+  expect(aadhaarDetails('Government of India\nStupal Baba Moon DOB: 07/07/2004\nMale\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',dob:'2004-07-07',gender:'Male',uid:'377450392569',relationName:''});
  });
  it('extracts the English name when OCR merges it with Hindi text',()=>{
-  expect(aadhaarDetails('भारत सरकार\nस्तूपल बाबा मून Stupal Baba Moon\nजन्म तिथि Stupal Baba Moon DOB: 07/07/2004\nपुरुष Male\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',relationName:'Baba Moon',dob:'2004-07-07',gender:'Male'});
+  expect(aadhaarDetails('भारत सरकार\nस्तूपल बाबा मून Stupal Baba Moon\nजन्म तिथि Stupal Baba Moon DOB: 07/07/2004\nपुरुष Male\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',relationName:'',dob:'2004-07-07',gender:'Male'});
  });
  it('rejects fragmented OCR noise instead of filling a false name',()=>{
   expect(aadhaarDetails('Government of India\nSw NE A Ee\nDOB: 07/07/2004\nMale\n3774 5039 2569')).toMatchObject({name:'',relationName:'',dob:'2004-07-07',gender:'Male'});
  });
  it('keeps an explicitly printed father name instead of inferring it from the full name',()=>{
   expect(aadhaarDetails('Stupal Baba Moon\nS/O: Ramesh Moon\nDOB: 07/07/2004\nMale')).toMatchObject({name:'Stupal Baba Moon',relationName:'Ramesh Moon'});
+ });
+ it('does not repair a surname without repeated holder-name evidence',()=>{
+  expect(aadhaarDetails('To\nArun Vijay Sharma\nS/O: Vijay Sharme\nDOB: 01/02/1990').relationName).toBe('Vijay Sharme');
+ });
+ it('preserves different printed given names and QR relationship data',()=>{
+  const holder='To\nArun Vijay Sharma\nArun Vijay Sharma\nDOB: 01/02/1990';
+  expect(aadhaarDetails(`${holder}\nS/O: Ajay Sharma`).relationName).toBe('Ajay Sharma');
+  expect(aadhaarDetails(`${holder}\nco="S/O: Vijay Sharme"`).relationName).toBe('Vijay Sharme');
  });
  it('rejects Aadhaar labels misread as a father name and uses the stronger OCR pass',()=>{
   const result=aadhaarDetails('C/O: vmmenoringa AADHAAR\nDOB: 07/04/1998\nFEMALE\n--- next focused pass ---\nAPURVA PRIYADARSHINI KOPULWAR\nD/O: Dyaninath Kopulwar\nDOB: 07/04/1998\nFEMALE');
@@ -224,4 +232,44 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Chandrapur HO'}).length).toBeGreaterThan(0);
   expect(screen.getByText('Sign in to load Pulse C-Directory.')).toBeTruthy();
  },15000);
+});
+
+
+describe('Aadhaar autofill confidence',()=>{
+ const pass='To\nArun Vijay Sharma\nS/O: Vijay Sharma\nDOB: 23/03/2001\nMALE';
+ it('requires agreement from at least two separate passes',()=>{
+  expect(confirmedAadhaarDetails([pass]).relationName).toBe('');
+  expect(confirmedAadhaarDetails([pass,pass])).toMatchObject({name:'Arun Vijay Sharma',relationName:'Vijay Sharma',dob:'2001-03-23'});
+ });
+ it('leaves conflicting names and dates blank even when a majority agrees',()=>{
+  const wrong=pass.replaceAll('Sharma','Sharme').replace('23/03','20/03');
+  expect(confirmedAadhaarDetails([pass,pass,wrong])).toMatchObject({name:'',relationName:'',dob:'',gender:'Male'});
+ });
+ it('does not substitute a holder surname for a different printed relation surname',()=>{
+  const different=pass.replace('S/O: Vijay Sharma','W/O: Vijay Sharme');
+  expect(confirmedAadhaarDetails([different,different]).relationName).toBe('Vijay Sharme');
+ });
+ it('does not infer a relationship when none is printed',()=>{
+  const front=pass.replace('S/O: Vijay Sharma\n','');
+  expect(confirmedAadhaarDetails([front,front]).relationName).toBe('');
+ });
+ it('ignores issue and download dates and validates calendar dates',()=>{
+  expect(aadhaarDetails('Download Date: 19/11/2020\nIssue Date: 10/09/2020\n'+pass).dob).toBe('2001-03-23');
+  for(const date of ['31/02/2001','00/03/2001','23/13/2001','23/03/2999'])expect(aadhaarDetails('DOB: '+date).dob).toBe('');
+  expect(aadhaarDetails('Issue Date: 10/09/2020').dob).toBe('');
+ });
+ it('rejects conflicting birth dates within a pass',()=>{
+  expect(aadhaarDetails(pass+'\nDOB: 20/03/2001').dob).toBe('');
+ });
+ it('rejects conflicting relationships within a pass',()=>{
+  const conflict=pass+'\nS/O: Vijay Sharme';
+  expect(confirmedAadhaarDetails([conflict,conflict]).relationName).toBe('');
+ });
+ it('does not treat a care-of address contact as a father or spouse',()=>{
+  const careOf=pass.replace('S/O:', 'C/O:');
+  expect(confirmedAadhaarDetails([careOf,careOf]).relationName).toBe('');
+ });
+ it('does not mistake relationship letters inside a holder name for a label',()=>{
+  expect(aadhaarDetails('Somesh Kumar\nDOB: 01/01/1990').relationName).toBe('');
+ });
 });
