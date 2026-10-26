@@ -191,7 +191,8 @@ export function createService(pool) {
           const officeData=input.__officeData;delete input.__officeData;
           if(officeData&&(!officeData.constructor||officeData.constructor!==Object))throw problem(`Row ${count+1}: Corporate / HO employee data is invalid`);
           if(!input.companyId){
-            const companies=await db.query("SELECT id FROM hr_records WHERE kind='companies' AND status IN ('ACTIVE','APPROVED') ORDER BY created_at LIMIT 2");
+            const companies=await db.query("SELECT id FROM hr_records WHERE kind='companies' AND status IN ('ACTIVE','APPROVED') ORDER BY (lower(code)='cmll') DESC,created_at LIMIT 2");
+            if(companies.rowCount>1){const cmll=await db.query("SELECT id FROM hr_records WHERE kind='companies' AND lower(code)='cmll' AND status IN ('ACTIVE','APPROVED') LIMIT 2");if(cmll.rowCount===1)companies.rows=[cmll.rows[0]];companies.rowCount=cmll.rowCount;}
             if(companies.rowCount!==1)throw problem(`Row ${count+1}: configure exactly one active company before importing the Corporate / HO format`);
             input.companyId=companies.rows[0].id;
           }

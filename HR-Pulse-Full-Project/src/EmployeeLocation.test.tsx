@@ -47,7 +47,8 @@ describe('Corporate / HO import headers',()=>{
    {id:'shift-1',kind:'shifts',code:'GEN',name:'General'},
   ]);
   expect(rows[0]).toMatchObject({companyId:'company-1',siteId:'site-1',departmentId:'',designationId:'designation-1',gradeId:'grade-1',shiftId:'shift-1'});
-  expect(()=>resolveCorporateReferences([{}],[])).toThrow(/exactly one active Company/);
+  expect(resolveCorporateReferences([{}],[{id:'old-company',kind:'companies',code:'OLD',name:'Old company'},{id:'company-1',kind:'companies',code:'CMLL',name:'Caliber Mining and Logistics'}])[0]).toMatchObject({companyId:'company-1'});
+  expect(()=>resolveCorporateReferences([{}],[])).toThrow(/CMLL Company master/);
  });
  it('normalizes spreadsheet employment categories for the API',()=>{
   expect(normalizeEmploymentCategory('PERMANENT')).toBe('Permanent');
