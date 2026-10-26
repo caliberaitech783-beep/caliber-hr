@@ -63,7 +63,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.queryByText(/Approval Tracker/i)).toBeNull();
   expect(screen.getByRole('heading',{name:'Upload Aadhaar Card'})).toBeTruthy();
   expect(screen.queryByText('Fill Data by Candidate')).toBeNull();
-  expect(screen.getByLabelText(/Full Name/)).toBeTruthy();
+  expect(screen.getByLabelText(/^Full Name \*/)).toBeTruthy();
   expect(screen.getByLabelText(/Employee Code/)).toBeTruthy();
   expect(screen.getByLabelText('Employee group')).toBeTruthy();
   expect(screen.getByRole('button',{name:'Upload Aadhaar'})).toBeTruthy();
@@ -73,6 +73,14 @@ describe('Employee Master tabs',()=>{
   const aadhaarInput=screen.getByLabelText('Choose Aadhaar card from gallery');
   for(const format of ['.jpg','.jpeg','.png','.pdf'])expect(aadhaarInput.getAttribute('accept')).toContain(format);
   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+  expect((screen.getByLabelText(/^Full Name \*/) as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText(/Full Name as per Aadhaar/) as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText(/PAN No\./) as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText(/Employee Category/) as HTMLSelectElement).required).toBe(true);
+  const joiningCategory=screen.getByLabelText(/Joining Category/);
+  fireEvent.keyDown(joiningCategory,{key:'Enter'});
+  expect(document.activeElement).toBe(screen.getByLabelText(/A-Form No\./));
+  expect((screen.getByLabelText(/A-Form No\./) as HTMLInputElement).required).toBe(false);
   fireEvent.change(screen.getByLabelText('Corporate / HO subtype'),{target:{value:'Corporate'}});
   fireEvent.change(screen.getByLabelText('Corporate / HO site'),{target:{value:'KSR'}});
   fireEvent.change(screen.getByLabelText('Department'),{target:{value:'Production'}});
@@ -100,7 +108,9 @@ describe('Employee Master tabs',()=>{
   expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('WCL');
   expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('Sasti OB');
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
-  fireEvent.change(screen.getByLabelText('Employee Category'),{target:{value:'Driver'}});
+  fireEvent.change(screen.getByLabelText(/Employee Category/),{target:{value:'Driver'}});
+  expect((screen.getByLabelText(/Employee Category/) as HTMLSelectElement).value).toBe('Driver');
+  expect((screen.getByLabelText(/A-Form No\./) as HTMLInputElement).required).toBe(true);
   expect(screen.queryByRole('button',{name:/Mine Compliance/})).toBeNull();
   expect(screen.getByRole('heading',{name:/Mine Compliance/})).toBeTruthy();
   expect(screen.getByLabelText(/Medical Examination Date/)).toBeTruthy();
