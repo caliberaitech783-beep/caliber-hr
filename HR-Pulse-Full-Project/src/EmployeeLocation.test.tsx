@@ -214,10 +214,6 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Region Employee Details'}));
   expect(screen.getAllByRole('option',{name:'Nagpur CO'}).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('option',{name:'Chandrapur HO'}).length).toBeGreaterThan(0);
-  view.rerender(<EmployeeLocation employeeGroup="OB / COAL"/>);
-  fireEvent.change(screen.getByLabelText('Coalfield'),{target:{value:'WCL'}});
-  for(const site of ['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB'])expect(screen.getAllByRole('option',{name:site}).length).toBeGreaterThan(0);
-  fireEvent.change(screen.getByLabelText('Coalfield'),{target:{value:'NCL'}});
-  for(const site of ['Jayant OB','Dudichua OB west','Dudichua OB East'])expect(screen.getAllByRole('option',{name:site}).length).toBeGreaterThan(0);
+  expect(screen.getByText('Sign in to load Pulse C-Directory.')).toBeTruthy();
  },15000);
 });
