@@ -22,9 +22,19 @@ test('Jayant starts with HR Manager and saved legacy steps retain remaining assi
 
 test('Nagpur requires sequential site approvals then any one final approver',()=>{
  const template=hierarchyTemplates.find(t=>t.code==='CMLL-CO');
- const data=validateHierarchy({...template,enabled:true,steps:template.steps.map((s,i)=>({...s,approvers:i===3?['cmd','vp']:['nagpur-'+i]}))});
+ const data=validateHierarchy({...template,enabled:true,steps:template.steps.map((s,i)=>({...s,approvers:i===2?['cmd','vp']:['nagpur-'+i]}))});
  const a={requested_by:'requester',stage:0,approval_steps:data.steps};
  assert.throws(()=>nextApproval(a,'nagpur-1','APPROVED'),e=>e.status===403);
- for(let i=0;i<3;i++){a.stage=i;assert.equal(nextApproval(a,'nagpur-'+i,'APPROVED').state,'PENDING');}
- a.stage=3;for(const actor of ['cmd','vp'])assert.equal(nextApproval(a,actor,'APPROVED').state,'APPROVED');
+ for(let i=0;i<2;i++){a.stage=i;assert.equal(nextApproval(a,'nagpur-'+i,'APPROVED').state,'PENDING');}
+ a.stage=2;for(const actor of ['cmd','vp'])assert.equal(nextApproval(a,actor,'APPROVED').state,'APPROVED');
+});
+
+test('saved Nagpur hierarchy removes HOD while preserving assigned usernames',async()=>{
+ const {currentHierarchy}=await import('./joining-hierarchy.mjs');
+ const template=hierarchyTemplates.find(t=>t.code==='CMLL-CO');
+ assert.deepEqual(template.steps.map(s=>s.label),['HR Executive','HR Manager','Final approval — any one']);
+ const steps=template.steps.map((s,i)=>({...s,approvers:['assigned-'+i]}));
+ const saved={...template,steps:[steps[0],{stage:1,label:'HOD',approvers:[]},...steps.slice(1)]};
+ assert.deepEqual(currentHierarchy(saved).steps,steps);
+ assert.equal(saved.steps.length,4);
 });
