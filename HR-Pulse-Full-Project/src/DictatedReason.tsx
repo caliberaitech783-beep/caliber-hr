@@ -1,0 +1,11 @@
+import {useEffect,useRef,useState} from 'react';
+import {Mic,Square} from 'lucide-react';
+type Recognition={lang:string;continuous:boolean;interimResults:boolean;onresult:((e:{results:ArrayLike<{isFinal:boolean;0:{transcript:string}}>})=>void)|null;onerror:((e:{error:string})=>void)|null;onend:(()=>void)|null;start:()=>void;stop:()=>void;abort:()=>void};
+export default function DictatedReason({value,disabled,change}:{value:string;disabled:boolean;change:(v:string)=>void}){
+ const[active,setActive]=useState(false),[message,setMessage]=useState('');const recognition=useRef<Recognition|null>(null),latest=useRef(value);latest.current=value;
+ useEffect(()=>()=>{const r=recognition.current;if(r){r.onresult=null;r.onerror=null;r.onend=null;r.abort();}},[]);
+ useEffect(()=>{if(disabled)recognition.current?.stop();},[disabled]);
+ function toggle(){if(active){recognition.current?.stop();return;}const w=window as unknown as {SpeechRecognition?:new()=>Recognition;webkitSpeechRecognition?:new()=>Recognition};const Constructor=w.SpeechRecognition||w.webkitSpeechRecognition;if(!Constructor){setMessage('Voice typing is unavailable in this browser. Please type your reason.');return;}
+ const r=new Constructor();recognition.current=r;r.lang='en-IN';r.continuous=false;r.interimResults=false;r.onresult=e=>{const transcript=Array.from(e.results).filter(x=>x.isFinal).map(x=>x[0].transcript).join(' ').trim();if(transcript)change((latest.current+' '+transcript).trim().slice(0,300));};r.onerror=e=>{setActive(false);setMessage(e.error==='not-allowed'?'Allow microphone access to use voice typing. You can also type your reason.':'Voice typing stopped. Please try again or type your reason.');};r.onend=()=>setActive(false);setMessage('');try{r.start();setActive(true);}catch{setActive(false);setMessage('Unable to start the microphone. Please try again.');}}
+ return <span><textarea aria-label="Reason (write-up)" required maxLength={300} disabled={disabled} value={value} onChange={e=>change(e.target.value)}/><button type="button" disabled={disabled} aria-label={active?'Stop dictation':'Speak reason'} onClick={toggle}>{active?<Square size={16}/>:<Mic size={16}/>} {active?'Stop listening':'Speak reason'}</button>{active&&<small role="status">Listening…</small>}{message&&<small role="status">{message}</small>}</span>;
+}
