@@ -42,8 +42,9 @@ describe('Corporate / HO import headers',()=>{
 describe('Employee Master tabs',()=>{
  it('shows the requested tabs and the complete joining workflow',()=>{
   const view=render(<EmployeeLocation/>);
-  const labels=['Add Temp. Employee','Update Existing Employee','Employee Verify','Completed Form','T to P C.Id','Reports'];
-  expect(labels.map(label=>screen.getByRole('button',{name:label}))).toHaveLength(6);
+  const labels=['Add Temp. Employee','Update Existing Employee','Employee Verify','Completed Form','Reports'];
+  expect(labels.map(label=>screen.getByRole('button',{name:label}))).toHaveLength(5);
+  expect(screen.queryByRole('button',{name:'T to P C.Id'})).toBeNull();
   expect(screen.getByRole('button',{name:'Import'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
   expect(screen.getByRole('menuitem',{name:/Download as PDF/})).toBeTruthy();
@@ -65,7 +66,9 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('button',{name:'Upload Aadhaar'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Upload Aadhaar'}));
   expect(screen.getByRole('button',{name:'Camera'})).toBeTruthy();
-  expect(screen.getByRole('button',{name:'Gallery'})).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Gallery / Document'})).toBeTruthy();
+  const aadhaarInput=screen.getByLabelText('Choose Aadhaar card from gallery');
+  for(const format of ['.jpg','.jpeg','.png','.pdf'])expect(aadhaarInput.getAttribute('accept')).toContain(format);
   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
   fireEvent.change(screen.getByLabelText('Corporate / HO subtype'),{target:{value:'Corporate'}});
   fireEvent.change(screen.getByLabelText('Corporate / HO site'),{target:{value:'KSR'}});
