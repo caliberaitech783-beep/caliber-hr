@@ -9,3 +9,10 @@ for(const actor of ['reviewer','viewer'])it(`readable employee details and appro
  expect(screen.getByText('Employee joining details')).toBeTruthy();expect(screen.getByText('Test Person')).toBeTruthy();expect(screen.queryByText('officeData')).toBeNull();
  expect((screen.getByRole('button',{name:'Approve'}) as HTMLButtonElement).disabled).toBe(actor!=='reviewer');
 });
+for(const completed of [true,false])it(`separates completed forms: ${completed}`,async()=>{
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify(['PENDING','APPROVED'].map((state,i)=>({id:String(i),kind:'employees',code:state+'-code',name:state,state,stage:0,approvers:['reviewer'],requested_by:'maker',history:[],data:{}})))));
+ render(<Approvals grant="test" actor="reviewer" kind="employees" completed={completed} notice={()=>{}}/>);
+ await screen.findByText(completed?/APPROVED-code/:/PENDING-code/);
+ expect(screen.queryByText(completed?/PENDING-code/:/APPROVED-code/)).toBeNull();
+});
+
