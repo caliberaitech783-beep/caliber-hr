@@ -72,12 +72,17 @@ export function createService(pool) {
     data=validate(kind,input);
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);
-    const status=['employees','leaveRequests','leaveEncashments'].includes(kind)?'DRAFT':'ACTIVE';
+    const status=kind==='holidays'?'PENDING':['employees','leaveRequests','leaveEncashments'].includes(kind)?'DRAFT':'ACTIVE';
     let result;
     if(id) result=await db.query('UPDATE hr_records SET code=$1,name=$2,data=$3,status=$4,version=version+1,updated_by=$5,updated_at=now() WHERE id=$6 RETURNING *',[data.code,data.name,data,status,profile.actor,id]);
     else result=await db.query('INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *',[randomUUID(),kind,data.code,data.name,data,status,profile.actor]);
     const row=result.rows[0];
     await audit(db,profile.actor,id?'UPDATE':'CREATE',kind,row.id,{code:row.code,fields:Object.keys(data)});
+    if(kind==='holidays'){
+      const steps=[{stage:1,label:'HR Manager — holiday approval',approvers:['vinodpinjarkar']}];
+      await db.query('INSERT INTO hr_approvals(id,record_id,approvers,requested_by,record_snapshot,approval_steps) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),row.id,JSON.stringify(['vinodpinjarkar']),profile.actor,{code:row.code,name:row.name,data:row.data},JSON.stringify(steps)]);
+      await audit(db,profile.actor,'SUBMIT',kind,row.id,{approver:'vinodpinjarkar',stages:1});
+    }
     return row;
   }
   async function submitRecord(db,profile,kind,id,version){
@@ -217,7 +222,7 @@ export function createService(pool) {
         const state=next.state;
         const history=[...approval.history,{actor:profile.actor,stage:approval.stage+1,decision:input.decision,comments,at:new Date().toISOString()}];
         await db.query('UPDATE hr_approvals SET stage=$1,state=$2,history=$3,version=version+1,updated_at=now() WHERE id=$4',[stage,state,JSON.stringify(history),id]);
-        if(state!=='PENDING')await db.query('UPDATE hr_records SET status=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[state==='APPROVED'&&record.kind==='employees'?'ACTIVE':state,profile.actor,record.id]);
+        if(state!=='PENDING')await db.query('UPDATE hr_records SET status=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[state==='APPROVED'&&['employees','holidays'].includes(record.kind)?'ACTIVE':state,profile.actor,record.id]);
         await audit(db,profile.actor,input.decision,record.kind,record.id,{stage:approval.stage+1,comments});return {state};
       });
     },
