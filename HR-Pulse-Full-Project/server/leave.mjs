@@ -8,7 +8,7 @@ const yn=(key,label,required=false)=>s(key,label,['Yes','No'],required);
 const m=(title,fields,extra={})=>({title,menu:'Holiday & Leave',fields,...extra});
 const base=[t('code','Code',true),t('name','Name',true)];
 export const leaveModules={
- leaveTypes:m('Leave Types',[...base,yn('isPaid','Paid',true),n('maxDaysPerPeriod','Maximum days per period',true),n('carryForwardMax','Maximum carry forward'),yn('encashable','Encashable',true),n('requiresDocumentAfterDays','Document required after days')]),
+ leaveTypes:m('Leave Types',[...base,t('description','Description'),s('isPaid','Paid',['Yes','No','Not configured'],true),n('maxDaysPerPeriod','Maximum days per period',true),n('carryForwardMax','Maximum carry forward'),yn('encashable','Encashable',true),n('requiresDocumentAfterDays','Document required after days')]),
  leavePeriods:m('Leave Periods',[...base,d('fromDate','From',true),d('toDate','To',true)]),
  leaveAllocations:m('Leave Allocation',[t('code','Allocation ID'),t('name','Description',true),r('employeeId','Employee','employees',true),r('leaveTypeId','Leave type','leaveTypes',true),r('periodId','Period','leavePeriods',true),n('allocated','Allocated days',true)],{autoCode:true}),
  leaveEncashments:m('Leave Encashment',[t('code','Request ID'),t('name','Reason',true),r('employeeId','Employee','employees',true),r('leaveTypeId','Leave type','leaveTypes',true),r('periodId','Period','leavePeriods',true),n('days','Days',true),t('approver','Approver Pulse username (optional; otherwise policy workflow)')],{autoCode:true}),

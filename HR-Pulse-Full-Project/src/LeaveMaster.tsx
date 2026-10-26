@@ -3,7 +3,7 @@ import {api,type Module,type RecordRow} from './api';
 import {Records,Approvals} from './Modules';
 const tabs=[['dashboard','Leave Dashboard'],['leaveTypes','Leave Types'],['leavePeriods','Leave Periods'],['leaveAllocations','Leave Allocation'],['leaveBlocks','Block List'],['holidays','Holidays']];
 const cols:Record<string,string[][]>={
- leaveTypes:[['name','Name'],['code','Code'],['isPaid','Paid'],['maxDaysPerPeriod','Max days'],['carryForwardMax','Carry forward'],['encashable','Encashable']],
+ leaveTypes:[['name','Name'],['description','Description'],['code','Code'],['isPaid','Paid'],['maxDaysPerPeriod','Max days'],['carryForwardMax','Carry forward'],['encashable','Encashable']],
  leavePolicies:[['name','Policy'],['leaveTypeId','Leave type'],['accrual','Accrual'],['companyId','Company'],['departmentId','Department'],['category','Group'],['effectiveFrom','Effective from']],
  leavePeriods:[['name','Period'],['fromDate','From'],['toDate','To']],
  leaveAllocations:[['employeeId','Employee'],['name','Name'],['leaveTypeId','Leave type'],['allocated','Allocated'],['used','Used'],['reserved','Pending'],['balance','Balance'],['periodId','Period']],
