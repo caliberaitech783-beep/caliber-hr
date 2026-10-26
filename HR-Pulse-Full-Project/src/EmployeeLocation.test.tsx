@@ -17,10 +17,10 @@ describe('Corporate / HO import headers',()=>{
   expect(aadhaarDetails('To\n5 eon fee mw\n2 Sanskar Vinod Manohare 1\nS/O: Vinod Manchare\nplot no-18\nNagpur Maharashtra - 440013\nSanskar Vinod Manohare ]\nDOB: 23/03/2001\nMALE')).toMatchObject({name:'Sanskar Vinod Manohare',relationName:'Vinod Manchare'});
  });
  it('extracts a name when OCR joins it onto the DOB line',()=>{
-  expect(aadhaarDetails('Government of India\nStupal Baba Moon DOB: 07/07/2004\nMale\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',dob:'2004-07-07',gender:'Male',uid:'377450392569',relationName:'Baba Moon'});
+  expect(aadhaarDetails('Government of India\nStupal Baba Moon DOB: 07/07/2004\nMale\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',dob:'2004-07-07',gender:'Male',uid:'377450392569',relationName:''});
  });
  it('extracts the English name when OCR merges it with Hindi text',()=>{
-  expect(aadhaarDetails('भारत सरकार\nस्तूपल बाबा मून Stupal Baba Moon\nजन्म तिथि Stupal Baba Moon DOB: 07/07/2004\nपुरुष Male\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',relationName:'Baba Moon',dob:'2004-07-07',gender:'Male'});
+  expect(aadhaarDetails('भारत सरकार\nस्तूपल बाबा मून Stupal Baba Moon\nजन्म तिथि Stupal Baba Moon DOB: 07/07/2004\nपुरुष Male\n3774 5039 2569')).toMatchObject({name:'Stupal Baba Moon',relationName:'',dob:'2004-07-07',gender:'Male'});
  });
  it('rejects fragmented OCR noise instead of filling a false name',()=>{
   expect(aadhaarDetails('Government of India\nSw NE A Ee\nDOB: 07/07/2004\nMale\n3774 5039 2569')).toMatchObject({name:'',relationName:'',dob:'2004-07-07',gender:'Male'});
@@ -231,4 +231,21 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Chandrapur HO'}).length).toBeGreaterThan(0);
   expect(screen.getByText('Sign in to load Pulse C-Directory.')).toBeTruthy();
  },15000);
+});
+
+
+describe('Aadhaar printed field positions',()=>{
+ it('prefers the holder name above DOB over repeated names in the address',()=>{
+  const text='To\nOther Person Name\nS/O: Sanjay Umate\nOther Person Name\nAddress: D/O: Sanjay Umate, House 12\nNagpur Maharashtra 440013\nमयुरी संजय उमाटे\nMayuri Sanjay Umate\nजन्म तारीख/DOB: 07/04/1998\nFEMALE';
+  expect(aadhaarDetails(text)).toMatchObject({name:'Mayuri Sanjay Umate',relationName:'Sanjay Umate',dob:'1998-04-07',address:expect.stringContaining('D/O: Sanjay Umate')});
+ });
+ it('reads the S/O line and includes it in a letter address',()=>{
+  expect(aadhaarDetails('To\nArun Vijay Sharma\nS/O: Vijay Sharma\nHouse 12\nNagpur 440013\nArun Vijay Sharma\nDOB: 01/02/1990')).toMatchObject({name:'Arun Vijay Sharma',relationName:'Vijay Sharma',address:expect.stringContaining('S/O: Vijay Sharma')});
+ });
+ it('does not use an address relationship as the holder name when immediately above DOB',()=>{
+  expect(aadhaarDetails('To\nArun Vijay Sharma\nS/O: Vijay Sharma\nDOB: 01/02/1990').name).toBe('Arun Vijay Sharma');
+ });
+ it('does not guess a father name from the holder name on a front-only card',()=>{
+  expect(aadhaarDetails('Mayuri Sanjay Umate\nDOB: 07/04/1998\nFEMALE')).toMatchObject({name:'Mayuri Sanjay Umate',relationName:''});
+ });
 });
