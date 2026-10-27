@@ -2,7 +2,7 @@ import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
-import {balance,checkLeave,employeeLeaveKinds} from './leave.mjs';
+import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
 import { randomUUID } from 'node:crypto';
 import { modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
@@ -100,14 +100,14 @@ export function createService(pool) {
         await references(db,kind,record.data,id);
         let companyId=record.data.companyId,siteId=record.data.siteId;
         if(['leaveRequests','leaveEncashments'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;}
-        const hierarchy=kind==='employees'?await employeeHierarchy(db,siteId):null;
+        const hierarchy=['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
         const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
         const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
-        if(!hierarchy&&!rules.length&&!record.data.approver)throw problem('Configure an active approval-matrix rule for this module before submitting',409);
+        if(!hierarchy&&!rules.length&&(kind==='leaveRequests'||!record.data.approver))throw problem('Configure an active approval-matrix rule for this module before submitting',409);
         if(!hierarchy&&rules.length>1&&weight(rules[0])===weight(rules[1]))throw problem('Approval rules overlap. Resolve the approval matrix before submitting.',409);
         const workflow=hierarchy||(!rules.length&&record.data.approver?{id:null,data:{approvers:record.data.approver}}:(await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind='workflows' AND status='ACTIVE'",[rules[0].data.workflowId])).rows[0]);
         if(!workflow)throw problem('The configured workflow is not active',409);
-        const steps=hierarchy?hierarchy.data.steps:workflow.data.approvers.split(',').map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
+        const steps=hierarchy?hierarchy.data.steps:kind==='leaveRequests'?leaveApprovalSteps(workflow):workflow.data.approvers.split(',').map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
         const approvers=steps.flatMap(s=>s.approvers);
         if(approvers.includes(profile.actor))throw problem('The requester cannot be an approver in their own workflow. Configure another approver.',409);
         const snapshot={code:record.code,name:record.name,data:{...record.data}};

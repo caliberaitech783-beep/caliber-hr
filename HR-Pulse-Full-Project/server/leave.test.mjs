@@ -16,7 +16,7 @@ test('display-active imported allocations do not credit balances',async()=>{cons
 test('leave reason accepts written text or safe audio and preserves employee fields',()=>{
  const audio='data:audio/mpeg;base64,SGVsbG8=';
  const saved=validate('leaveRequests',{...req,name:'',reasonAudio:audio,employeeName:'Employee name',companyId:'company',approver:'MANAGER'});
- assert.equal(saved.name,'Audio reason');assert.equal(saved.reasonAudio,audio);assert.equal(saved.employeeName,'Employee name');assert.equal(saved.companyId,'company');assert.equal(saved.approver,'manager');assert.equal(saved.attachment,'');
+ assert.equal(saved.name,'Audio reason');assert.equal(saved.reasonAudio,audio);assert.equal(saved.employeeName,'Employee name');assert.equal(saved.companyId,'company');assert.equal(saved.approver,'');assert.equal(saved.attachment,'');
  assert.throws(()=>validate('leaveRequests',{...req,name:''}),/required/);
  for(const reasonAudio of ['data:text/html;base64,SGVsbG8=','data:audio/mpeg;base64,'+'A'.repeat(700000)])assert.throws(()=>validate('leaveRequests',{...req,reasonAudio}),/audio/);
 });

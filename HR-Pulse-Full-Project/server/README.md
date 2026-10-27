@@ -126,3 +126,13 @@ Master Configuration includes a dedicated nine-tab leave workspace. It supports 
 Accrual frequency and carry-forward fields are configuration only until business rules are confirmed; allocations are currently manual or CSV-based. Encashment tracks days and approval, without calculating pay or initiating payments. Attendance and working-on-holiday requests are not integrated. Existing legacy leave requests without a type/period continue using their annual-policy limit.
 
 Run `node --test *.test.mjs` in server and the frontend test/build scripts. `verify-database.mjs` additionally checks allocation balances, pending cancellation, encashment approval, site isolation and transactional imports in a rollback-only database transaction. Azure database verification completed on 23 October 2026 with all fixtures rolled back. The temporary verification setting was removed afterward.
+
+Leave requests use the employee's configured joining-site hierarchy. Dudhichua East,
+Dudhichua West and Jayant follow Site HR Manager, Project Manager, Regional HR,
+then CMD / Directors / VPs. Either assigned Regional HR and any assigned final
+approver can decide their respective step. The crossed-out Jayant HR Executive
+step remains omitted. Other sites without a supported hierarchy require a leave
+matrix workflow: first username is RHR; remaining usernames share the final
+Directors step. Requests cannot supply a single-approver override. Approval steps
+are snapshotted at submission; existing pending requests retain their original
+approval history and routing.

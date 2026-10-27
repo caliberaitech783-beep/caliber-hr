@@ -24,8 +24,8 @@ it('shows leave fields, calculates days, accepts dictated text reasons and keeps
  expect(screen.getByRole('button',{name:'Speak reason'})).toBeTruthy();
  expect(screen.getByLabelText('Reason (write-up)')).toBeRequired();
  fireEvent.change(screen.getByLabelText('Reason (write-up)'),{target:{value:'Medical appointment'}});
- fireEvent.change(screen.getByLabelText(/Reporting to/),{target:{value:'manager'}});
+ expect(screen.queryByLabelText(/Reporting to/)).toBeNull();
  fireEvent.submit(screen.getByRole('button',{name:'Save to Azure'}).closest('form')!);
  await waitFor(()=>expect(saved?.name).toBe('Medical appointment'));
- expect(saved.approver).toBe('manager');expect(saved.attachment).toBeUndefined();
+ expect(saved.approver).toBeUndefined();expect(saved.attachment).toBeUndefined();
 });

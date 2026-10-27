@@ -1,4 +1,10 @@
 import {randomUUID} from 'node:crypto';
+export function leaveApprovalSteps(workflow){
+ const users=String(workflow?.data?.approvers||'').split(',').map(value=>value.trim().toLowerCase());
+ if(users.length<2||users.some(value=>!/^[-a-z0-9_.@]{1,100}$/.test(value))||new Set(users).size!==users.length)
+  throw Object.assign(new Error('Configure the site hierarchy or a leave workflow with the Region HR Head first and Director usernames next.'),{status:409});
+ return [{stage:1,label:'RHR (Region HR Head)',approvers:[users[0]]},{stage:2,label:'Directors — final approval (any one)',approvers:users.slice(1)}];
+}
 const t=(key,label,required=false)=>({key,label,type:'text',required});
 const n=(key,label,required=false)=>({key,label,type:'number',min:0,required});
 const d=(key,label,required=false)=>({key,label,type:'date',required});
@@ -14,7 +20,7 @@ export const leaveModules={
  leaveEncashments:m('Leave Encashment',[t('code','Request ID'),t('name','Reason',true),r('employeeId','Employee','employees',true),r('leaveTypeId','Leave type','leaveTypes',true),r('periodId','Period','leavePeriods',true),n('days','Days',true),t('approver','Approver Pulse username (optional; otherwise policy workflow)')],{autoCode:true}),
  leaveBlocks:m('Block List',[...base,d('fromDate','From',true),d('toDate','To',true),r('siteId','Location (blank = all)','sites'),r('departmentId','Department (blank = all)','departments'),t('reason','Reason',true)]),
 };
-export const requestFields=[t('code','Request ID'),d('fromDate','Date (from)',true),d('toDate','Date (to)',true),r('employeeId','Employee ID','employees',true),t('employeeName','Name'),r('companyId','Company','companies'),t('name','Reason (write-up)',true),{key:'reasonAudio',label:'Reason (audio, up to 500 KB)',type:'audio'},n('days','No. of Days'),t('approver','Reporting to (Pulse username; blank uses policy workflow)'),{key:'attachment',label:'Attachment (optional; PDF, PNG or JPEG, up to 500 KB)',type:'attachment'},r('leaveTypeId','Leave type','leaveTypes'),r('policyId','Leave policy','leavePolicies',true),r('periodId','Period','leavePeriods'),yn('halfDay','Half day')];
+export const requestFields=[t('code','Request ID'),d('fromDate','Date (from)',true),d('toDate','Date (to)',true),r('employeeId','Employee ID','employees',true),t('employeeName','Name'),r('companyId','Company','companies'),t('name','Reason (write-up)',true),{key:'reasonAudio',label:'Reason (audio, up to 500 KB)',type:'audio'},n('days','No. of Days'),{key:'attachment',label:'Attachment (optional; PDF, PNG or JPEG, up to 500 KB)',type:'attachment'},r('leaveTypeId','Leave type','leaveTypes'),r('policyId','Leave policy','leavePolicies',true),r('periodId','Period','leavePeriods'),yn('halfDay','Half day')];
 export const policyFields=[...base,r('leaveTypeId','Leave type','leaveTypes'),n('annualDays','Annual entitlement (days)',true),r('companyId','Company','companies',true),r('departmentId','Applies to department (blank = all)','departments'),s('category','Applies to employment group',['Permanent','Contract','Trainee','Consultant']),s('accrual','Accrual rule',['Annual allocation','Monthly','Manual']),d('effectiveFrom','Effective from')];
 export function prepareLeave(kind,input){
  if(kind==='leaveRequests'&&input.reasonAudio&&!String(input.name||'').trim())input={...input,name:'Audio reason'};
