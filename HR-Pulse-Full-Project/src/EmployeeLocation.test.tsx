@@ -130,7 +130,7 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('option',{name:'Staff'}));
   expect(screen.getByRole('button',{name:'Employee Category'}).textContent).toContain('Staff');
   expect((screen.getByLabelText(/A-Form No\./) as HTMLInputElement).required).toBe(false);
-  fireEvent.change(screen.getByLabelText('Corporate / HO subtype'),{target:{value:'Corporate'}});
+  fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'CMLL'}});
   fireEvent.change(screen.getByLabelText('Corporate / HO site'),{target:{value:'KSR'}});
   fireEvent.change(screen.getAllByLabelText('Department').find(element=>!element.hasAttribute('name'))!,{target:{value:'Production'}});
   expect(screen.getAllByRole('option',{name:'Operations'}).length).toBeGreaterThan(0);
@@ -139,7 +139,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Production Manager'}).length).toBeGreaterThan(0);
   expect(screen.queryByRole('option',{name:'Maintenance Manager'})).toBeNull();
   fireEvent.change(screen.getAllByLabelText('Designation').find(element=>!element.hasAttribute('name'))!,{target:{value:'Production Manager'}});
-  expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('CORPORATE');
+  expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('CMLL');
   expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('KSR');
   expect((screen.getAllByLabelText(/Department/).at(-1) as HTMLSelectElement).value).toBe('Production');
   expect((screen.getAllByLabelText(/Sub-department/).at(-1) as HTMLSelectElement).value).toBe('Operations');
