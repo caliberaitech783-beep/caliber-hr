@@ -133,7 +133,7 @@ const mineComplianceSheet={name:'Mine Compliance (OB / COAL where applicable)',c
 function employeeSheetsFor(employeeGroup:'Corporate / HO'|'OB / COAL'){return employeeGroup==='OB / COAL'?[...employeeSheets.slice(0,2),mineComplianceSheet,...employeeSheets.slice(2)]:employeeSheets;}
 const conditionalDocuments=new Set(['VTC certificate','Medical fitness certificate','Driving licence','Operator competency certificate']);
 const corporateSubtypes=['Nagpur CO','Chandrapur HO','KSR'];
-const regionSites:Record<string,string[]>=new Proxy({WCL:['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB','Hindustan Lalpeth OC','CMPL SCR JV'],NCL:['Jayant OB','Dudichua OB west','Dudichua OB East']},{get:(target,key:string)=>target[key as keyof typeof target]||[]});
+const regionSites:Record<string,string[]>=new Proxy({WCL:['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB','Hindustan Lalpeth OC'],NCL:['Jayant OB','Dudichua OB west','Dudichua OB East']},{get:(target,key:string)=>target[key as keyof typeof target]||[]});
 const departmentStructure:Record<string,{subdepartments:string[];designations:string[]}>= {
  Production:{subdepartments:['Operations','Plant Operations','Output Monitoring'],designations:['Production Manager','Production Engineer','Production Supervisor','Production Executive']},
  Maintenance:{subdepartments:['Preventive Maintenance','Breakdown Maintenance'],designations:['Maintenance Manager','Maintenance Engineer','Maintenance Supervisor','Technician']},
