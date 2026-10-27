@@ -20,7 +20,7 @@ export const leaveModules={
  leaveEncashments:m('Leave Encashment',[t('code','Request ID'),t('name','Reason',true),r('employeeId','Employee','employees',true),r('leaveTypeId','Leave type','leaveTypes',true),r('periodId','Period','leavePeriods',true),n('days','Days',true),t('approver','Approver Pulse username (optional; otherwise policy workflow)')],{autoCode:true}),
  leaveBlocks:m('Block List',[...base,d('fromDate','From',true),d('toDate','To',true),r('siteId','Location (blank = all)','sites'),r('departmentId','Department (blank = all)','departments'),t('reason','Reason',true)]),
 };
-export const requestFields=[t('code','Request ID'),d('fromDate','Date (from)',true),d('toDate','Date (to)',true),r('employeeId','Employee ID','employees',true),t('employeeName','Name'),r('companyId','Company','companies'),t('name','Reason (write-up)',true),{key:'reasonAudio',label:'Reason (audio, up to 500 KB)',type:'audio'},n('days','No. of Days'),{key:'attachment',label:'Attachment (optional; PDF, PNG or JPEG, up to 500 KB)',type:'attachment'},r('leaveTypeId','Leave type','leaveTypes'),r('policyId','Leave policy','leavePolicies',true),r('periodId','Period','leavePeriods'),yn('halfDay','Half day')];
+export const requestFields=[t('code','Request ID'),d('fromDate','Date (from)',true),d('toDate','Date (to)',true),r('employeeId','Employee ID','employees',true),t('employeeName','Name'),r('companyId','Company','companies'),t('name','Reason (write-up)',true),{key:'reasonAudio',label:'Reason (audio, up to 500 KB)',type:'audio'},n('days','No. of Days'),{key:'attachment',label:'Attachment (optional; PDF, PNG or JPEG, up to 500 KB)',type:'attachment'},r('leaveTypeId','Leave type','leaveTypes'),r('policyId','Leave policy','leavePolicies'),r('periodId','Period','leavePeriods'),yn('halfDay','Half day')];
 export const policyFields=[...base,r('leaveTypeId','Leave type','leaveTypes'),n('annualDays','Annual entitlement (days)',true),r('companyId','Company','companies',true),r('departmentId','Applies to department (blank = all)','departments'),s('category','Applies to employment group',['Permanent','Contract','Trainee','Consultant']),s('accrual','Accrual rule',['Annual allocation','Monthly','Manual']),d('effectiveFrom','Effective from')];
 export function prepareLeave(kind,input){
  if(kind==='leaveRequests'&&input.reasonAudio&&!String(input.name||'').trim())input={...input,name:'Audio reason'};
@@ -61,6 +61,7 @@ export async function checkLeave(db,kind,data,linked,id){
  }
  if(kind==='leaveRequests'){
   const policy=linked.policyId?.data||{},employee=linked.employeeId?.data||{};
+  if(!data.policyId&&(!data.leaveTypeId||!data.periodId))fail('Select a leave type and period');
   if(policy.leaveTypeId&&policy.leaveTypeId!==data.leaveTypeId)fail('Select the leave type configured by this policy');
   if(data.leaveTypeId&&!data.periodId)fail('Select a leave period');
   if(data.periodId&&!data.leaveTypeId)fail('Select a leave type');

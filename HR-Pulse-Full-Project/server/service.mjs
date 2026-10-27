@@ -60,7 +60,7 @@ export function createService(pool) {
       const year=data.fromDate.slice(0,4);
       if(!data.periodId&&year!==data.toDate.slice(0,4))throw problem('Split leave requests across calendar years');
       const used=await db.query("SELECT COALESCE(SUM(COALESCE((data->>'days')::numeric, (data->>'toDate')::date-(data->>'fromDate')::date+1)),0) AS days FROM hr_records WHERE kind='leaveRequests' AND status IN ('PENDING','APPROVED') AND data->>'employeeId'=$1 AND data->>'policyId'=$2 AND (CASE WHEN $5='' THEN left(data->>'fromDate',4)=$3 ELSE data->>'periodId'=$5 END) AND id<>$4",[data.employeeId,data.policyId,year,id||randomUUID(),data.periodId||'']);
-      if(days+Number(used.rows[0].days)>Number(linked.policyId.data.annualDays))throw problem('Leave exceeds the configured annual entitlement');
+      if(linked.policyId&&days+Number(used.rows[0].days)>Number(linked.policyId.data.annualDays))throw problem('Leave exceeds the configured annual entitlement');
     }
   }
   async function save(db,profile,kind,input,id) {
