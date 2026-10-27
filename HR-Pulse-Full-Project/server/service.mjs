@@ -1,5 +1,6 @@
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './joining-hierarchy.mjs';
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
+import {createEmployeeDocuments} from './employee-documents.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
@@ -9,6 +10,7 @@ import {assignedSites,siteIds,scopeSql} from './scope.mjs';
 export function problem(message,status=400) { return Object.assign(new Error(message),{status}); }
 const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || '');
 export function createService(pool) {
+  const employeeDocuments=createEmployeeDocuments(pool);
   const audit = (db,actor,action,kind,id,detail={}) => db.query('INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,$3,$4,$5)',[actor,action,kind,id,detail]);
   async function transaction(fn) {
     const db=await pool.connect();
@@ -120,7 +122,7 @@ export function createService(pool) {
         await audit(db,profile.actor,'SUBMIT',kind,id,{workflowId:workflow.id,stages:steps.length});
         return {status:'PENDING'};
   }
-  return {
+  return {...employeeDocuments,
     ...createDeletion(pool),
     ...createHierarchies(pool),
     ...createHolidayDocuments(pool),
