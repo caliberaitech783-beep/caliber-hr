@@ -131,7 +131,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('button',{name:'Employee Category'}).textContent).toContain('Staff');
   expect((screen.getByLabelText(/A-Form No\./) as HTMLInputElement).required).toBe(false);
   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'CMLL'}});
-  fireEvent.change(screen.getByLabelText('Corporate / HO site'),{target:{value:'KSR'}});
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'Nagpur Corporate Office'}});
   fireEvent.change(screen.getAllByLabelText('Department').find(element=>!element.hasAttribute('name'))!,{target:{value:'Production'}});
   expect(screen.getAllByRole('option',{name:'Operations'}).length).toBeGreaterThan(0);
   expect(screen.queryByRole('option',{name:'Preventive Maintenance'})).toBeNull();
@@ -139,8 +139,8 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Production Manager'}).length).toBeGreaterThan(0);
   expect(screen.queryByRole('option',{name:'Maintenance Manager'})).toBeNull();
   fireEvent.change(screen.getAllByLabelText('Designation').find(element=>!element.hasAttribute('name'))!,{target:{value:'Production Manager'}});
-  expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('CMLL');
-  expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('KSR');
+  expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('CORPORATE');
+  expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('Nagpur CO');
   expect((screen.getAllByLabelText(/Department/).at(-1) as HTMLSelectElement).value).toBe('Production');
   expect((screen.getAllByLabelText(/Sub-department/).at(-1) as HTMLSelectElement).value).toBe('Operations');
   expect((document.querySelector('select[name="Designation"]') as HTMLSelectElement).value).toBe('Production Manager');
@@ -159,9 +159,9 @@ describe('Employee Master tabs',()=>{
   view.rerender(<EmployeeLocation employeeGroup="OB / COAL"/>);
   fireEvent.change(screen.getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[new File(['aadhaar'],'aadhaar.pdf',{type:'application/pdf'})]}});
   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
-  fireEvent.change(screen.getByLabelText('OB / COAL subtype'),{target:{value:'WCL'}});
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
   expect(screen.getAllByRole('option',{name:'Sasti OB'}).length).toBeGreaterThan(0);
-  fireEvent.change(screen.getByLabelText('OB / COAL site'),{target:{value:'Sasti OB'}});
+  fireEvent.change(screen.getByLabelText('Select site'),{target:{value:'Sasti OB'}});
   expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('WCL');
   expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('Sasti OB');
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
@@ -206,9 +206,9 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Upload Driving licence')).toBeTruthy();
   expect(screen.getByLabelText('Upload Operator competency certificate')).toBeTruthy();
   view.rerender(<EmployeeLocation employeeGroup="Corporate / HO"/>);
-  expect(screen.getAllByRole('option',{name:'Nagpur CO'}).length).toBeGreaterThan(0);
-  expect(screen.getAllByRole('option',{name:'Chandrapur HO'}).length).toBeGreaterThan(0);
-  expect(screen.getByRole('option',{name:'KSR'})).toBeTruthy();
+  expect(screen.getAllByRole('option',{name:'Nagpur Corporate Office'}).length).toBeGreaterThan(0);
+  expect(screen.getAllByRole('option',{name:'Chandrapur Head Office'}).length).toBeGreaterThan(0);
+  expect(screen.getByRole('option',{name:'KSR FREIGHT CARRIERS'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
   expect(screen.queryByLabelText('Upload VTC certificate')).toBeNull();
   expect(screen.queryByLabelText('Upload Signed offer letter')).toBeNull();
@@ -230,9 +230,9 @@ describe('Employee Master tabs',()=>{
   view.rerender(<EmployeeLocation employeeGroup="OB / COAL"/>);
   expect(screen.getByRole('option',{name:'WCL'})).toBeTruthy();
   expect(screen.getByRole('option',{name:'NCL'})).toBeTruthy();
-  fireEvent.change(screen.getByLabelText('OB / COAL subtype'),{target:{value:'WCL'}});
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
   for(const site of ['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB'])expect(screen.getAllByRole('option',{name:site}).length).toBeGreaterThan(0);
-  fireEvent.change(screen.getByLabelText('OB / COAL subtype'),{target:{value:'NCL'}});
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'NCL'}});
   for(const site of ['Jayant OB','Dudichua OB west','Dudichua OB East'])expect(screen.getAllByRole('option',{name:site}).length).toBeGreaterThan(0);
   expect(screen.getByRole('button',{name:/Mine Compliance/})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Mine Compliance/}));
@@ -242,8 +242,8 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('button',{name:'Region Employee Details'})).toBeTruthy();
   expect(screen.queryByRole('button',{name:'Department & Designation'})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Region Employee Details'}));
-  expect(screen.getAllByRole('option',{name:'Nagpur CO'}).length).toBeGreaterThan(0);
-  expect(screen.getAllByRole('option',{name:'Chandrapur HO'}).length).toBeGreaterThan(0);
+  expect(screen.getAllByRole('option',{name:'Nagpur Corporate Office'}).length).toBeGreaterThan(0);
+  expect(screen.getAllByRole('option',{name:'Chandrapur Head Office'}).length).toBeGreaterThan(0);
   expect(screen.getByText('Sign in to load Pulse C-Directory.')).toBeTruthy();
  },15000);
 });
