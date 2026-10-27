@@ -136,14 +136,14 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Operations'}).length).toBeGreaterThan(0);
   expect(screen.queryByRole('option',{name:'Preventive Maintenance'})).toBeNull();
   fireEvent.change(screen.getAllByLabelText('Sub-department').find(element=>!element.hasAttribute('name'))!,{target:{value:'Operations'}});
-  expect(screen.getAllByRole('option',{name:'Production Manager'}).length).toBeGreaterThan(0);
-  expect(screen.queryByRole('option',{name:'Maintenance Manager'})).toBeNull();
-  fireEvent.change(screen.getAllByLabelText('Designation').find(element=>!element.hasAttribute('name'))!,{target:{value:'Production Manager'}});
+  expect(screen.getAllByRole('option',{name:'Manager'}).length).toBeGreaterThan(0);
+  expect(screen.queryByRole('option',{name:'Technician'})).toBeNull();
+  fireEvent.change(screen.getAllByLabelText('Designation').find(element=>!element.hasAttribute('name'))!,{target:{value:'Manager'}});
   expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('CORPORATE');
   expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('Nagpur CO');
   expect((screen.getAllByLabelText(/Department/).at(-1) as HTMLSelectElement).value).toBe('Production');
   expect((screen.getAllByLabelText(/Sub-department/).at(-1) as HTMLSelectElement).value).toBe('Operations');
-  expect((document.querySelector('select[name="Designation"]') as HTMLSelectElement).value).toBe('Production Manager');
+  expect((document.querySelector('select[name="Designation"]') as HTMLSelectElement).value).toBe('Manager');
   expect(screen.getByLabelText('UAN No.')).toBeTruthy();
   expect(screen.getByLabelText('ESIC')).toBeTruthy();
   expect(screen.getByRole('heading',{name:'Job & Posting Details'})).toBeTruthy();
