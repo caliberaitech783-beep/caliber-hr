@@ -5,6 +5,7 @@ const date = (key, label, required = false) => ({ key, label, type: 'date', requ
 const select = (key, label, options, required = false) => ({ key, label, type: 'select', options, required });
 const module = (title, menu, fields) => ({ title, menu, fields });
 export const modules = {
+  employeeTransfers: module('Employee transfers','Employee Master',[text('code','Transfer reference',true),text('name','Transfer title',true),ref('employeeId','Employee','employees',true),date('transferDate','Transfer date',true),ref('fromSiteId','From location','sites',true),ref('toSiteId','To location','sites',true),ref('fromCompanyId','From company','companies',true),ref('toCompanyId','To company','companies',true),text('fromDesignation','From designation',true),text('toDesignation','To designation',true),text('fromManager','From reporting manager',true),text('toManager','To reporting manager',true)]),
   companies: module('Companies', 'Master Configuration', [text('code','Company code',true),text('name','Company name',true),text('address','Registered address'),text('email','Company email')]),
   clients: module('Clients','Master Configuration',[text('code','Client code',true),text('name','Client name',true),text('contact','Contact details')]),
   regions: module('Regions','Master Configuration',[text('code','Region code',true),text('name','Region name',true),text('state','State',true)]),
