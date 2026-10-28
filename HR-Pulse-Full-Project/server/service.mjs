@@ -10,14 +10,16 @@ import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.
 import { randomUUID } from 'node:crypto';
 import { modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
+import {createTelegramNotifier} from './telegram-notifications.mjs';
 export function problem(message,status=400) { return Object.assign(new Error(message),{status}); }
 const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || '');
-export function createService(pool) {
+export function createService(pool,{telegram=createTelegramNotifier()}={}) {
   const employeeDocuments=createEmployeeDocuments(pool);
   const audit = (db,actor,action,kind,id,detail={}) => db.query('INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,$3,$4,$5)',[actor,action,kind,id,detail]);
   async function transaction(fn) {
+    const afterCommit=[];
     const db=await pool.connect();
-    try { await db.query('BEGIN'); const result=await fn(db); await db.query('COMMIT'); return result; }
+    try { await db.query('BEGIN'); const result=await fn(db,effect=>afterCommit.push(effect)); await db.query('COMMIT');for(const effect of afterCommit)try{await effect();}catch(error){console.error('Post-commit notification failed',error instanceof Error?error.message:error);}return result; }
     catch(error) { await db.query('ROLLBACK'); throw error; }
     finally { db.release(); }
   }
@@ -97,7 +99,7 @@ export function createService(pool) {
     }
     return row;
   }
-  async function submitRecord(db,profile,kind,id,version){
+   async function submitRecord(db,profile,kind,id,version,afterCommit){
         const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
         if(!record)throw problem('Record not found',404);
         if(record.data.__importDraft==='true')throw problem('Resolve the imported draft and save it before submitting',409);
@@ -127,6 +129,7 @@ export function createService(pool) {
         if(telegramFlow)await queueTelegram(db,approvalId+':submitted',[telegramFlow.siteHr,telegramFlow.regionalHr],leaveMessage(record,'Awaiting Site HR approval'));
         await db.query("UPDATE hr_records SET status='PENDING',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2",[profile.actor,id]);
         await audit(db,profile.actor,'SUBMIT',kind,id,{workflowId:workflow.id,stages:steps.length});
+         if(kind==='employees'&&hierarchy?.code==='CMLL-CO')afterCommit?.(()=>telegram.approvalRequested({siteCode:hierarchy.code,record:snapshot,step:steps[0],stage:1,total:steps.length,requestedBy:profile.actor}));
         return {status:'PENDING'};
   }
   return {...createTelegram(pool),...createAssets(pool),...employeeDocuments,
@@ -162,7 +165,7 @@ export function createService(pool) {
     async save(profile,kind,data,id) {return transaction(db=>save(db,profile,kind,data,id));},
     async cancel(profile,kind,id,version){
       authorize(profile,kind,true);if(!['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)||!uuid(id))throw problem('Invalid cancellation');
-      return transaction(async db=>{
+       return transaction(async(db,afterCommit)=>{
         await db.query("SELECT id FROM hr_approvals WHERE record_id=$1 AND state='PENDING' FOR UPDATE",[id]);
         const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
         if(!record)throw problem('Record not found',404);
@@ -181,7 +184,7 @@ export function createService(pool) {
     },
     async deactivate(profile,kind,id,version) {
       authorize(profile,kind,true);if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind))throw problem('Use Cancel for requests',409);if(!uuid(id))throw problem('Invalid record ID');
-      return transaction(async db=>{
+      return transaction(async(db,afterCommit)=>{
         const current=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
         if(!current)throw problem('Record not found',404);
         await locationAccess(db,profile,kind,current.data,id);
@@ -195,7 +198,7 @@ export function createService(pool) {
     async importEmployees(profile,records,submitForApproval=false) {
       authorize(profile,'employees',true);
       if(!Array.isArray(records)||!records.length||records.length>500)throw problem('Import 1–500 rows at a time');
-      return transaction(async db=>{
+      return transaction(async(db,afterCommit)=>{
         let count=0,submitted=0;
         for(const record of records){
           const input={...record};
@@ -214,13 +217,13 @@ export function createService(pool) {
               input[field.key]=found.rows[0].id;
             }
           }
-          try { const saved=await save(db,profile,'employees',input);if(officeData)await db.query("UPDATE hr_records SET data=data||jsonb_build_object('officeData',$1::jsonb) WHERE id=$2",[JSON.stringify(officeData),saved.id]);if(submitForApproval){const configured=await db.query("SELECT 1 FROM hr_records h JOIN hr_records s ON s.code=h.code WHERE h.kind='joiningHierarchies' AND h.status='ACTIVE' AND s.kind='sites' AND s.id::text=$1",[saved.data.siteId||'']);if(configured.rowCount){await submitRecord(db,profile,'employees',saved.id,saved.version);submitted++;}} } catch(error){throw problem(`Row ${count+1}: ${error.code==='23505'?'employee number already exists':error.status?error.message:'unable to save this row'}`,error.status||400);}
+           try { const saved=await save(db,profile,'employees',input);if(officeData)await db.query("UPDATE hr_records SET data=data||jsonb_build_object('officeData',$1::jsonb) WHERE id=$2",[JSON.stringify(officeData),saved.id]);if(submitForApproval){const configured=await db.query("SELECT 1 FROM hr_records h JOIN hr_records s ON s.code=h.code WHERE h.kind='joiningHierarchies' AND h.status='ACTIVE' AND s.kind='sites' AND s.id::text=$1",[saved.data.siteId||'']);if(configured.rowCount){await submitRecord(db,profile,'employees',saved.id,saved.version,afterCommit);submitted++;}} } catch(error){throw problem(`Row ${count+1}: ${error.code==='23505'?'employee number already exists':error.status?error.message:'unable to save this row'}`,error.status||400);}
           count++;
         }
         return {imported:count,submitted,status:submitted===count?'PENDING':'DRAFT'};
       });
     },
-    async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction(db=>submitRecord(db,profile,kind,id,version));},
+    async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction((db,afterCommit)=>submitRecord(db,profile,kind,id,version,afterCommit));},
     async approvals(profile) {
       if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
       return (await pool.query("SELECT a.*,r.kind,a.record_snapshot->>'code' AS code,a.record_snapshot->>'name' AS name,a.record_snapshot->'data' AS data,(a.record_snapshot ? 'telegramFlow') AS telegram_flow FROM hr_approvals a JOIN hr_records r ON r.id=a.record_id WHERE (a.approvers ? $1 OR a.requested_by=$1) AND "+scopeSql('r','$2')+" ORDER BY a.created_at DESC LIMIT 200",[profile.actor,await siteIds(pool,profile)])).rows;
@@ -229,7 +232,7 @@ export function createService(pool) {
       if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
       if(!uuid(id)||!['APPROVED','REJECTED'].includes(input.decision))throw problem('Invalid approval decision');
       const comments=String(input.comments||'').trim();if(comments.length>2000||input.decision==='REJECTED'&&!comments)throw problem('A rejection reason is required (maximum 2000 characters)');
-      return transaction(async db=>{
+      return transaction(async(db,afterCommit)=>{
         const approval=(await db.query('SELECT * FROM hr_approvals WHERE id=$1 FOR UPDATE',[id])).rows[0];
         if(!approval)throw problem('Approval not found',404);
         if(approval.state!=='PENDING'||approval.version!==Number(input.version))throw problem('This approval has changed. Reload it.',409);
@@ -261,6 +264,7 @@ export function createService(pool) {
           await queueTelegram(db,id+':decision:'+approval.version,recipients,leaveMessage(record,status));
         }
         await audit(db,profile.actor,input.decision,record.kind,record.id,{stage:approval.stage+1,comments,...(handoverActor?{chargeEmployeeId:record.data.chargeEmployeeId}:{})});return {state};
+         if(record.kind==='employees'&&state==='PENDING'){const site=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[record.data.siteId||''])).rows[0],steps=approvalSteps(approval),step=steps[stage];if(site?.code==='CMLL-CO')afterCommit?.(()=>telegram.approvalRequested({siteCode:site.code,record:approval.record_snapshot,step,stage:stage+1,total:steps.length,requestedBy:approval.requested_by,previousApprover:profile.actor}));}
       });
     },
     async summary(profile) {
