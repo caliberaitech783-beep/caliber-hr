@@ -22,3 +22,7 @@ export const departmentStructure:Record<string,{subdepartments:string[];designat
  Driver:{subdepartments:['Heavy Vehicles','Light Vehicles','Passenger Transport','Service Vehicles'],designations:['Volvo Driver','Eicher Driver','LMV Driver','Tipper Driver','Service Van Driver','Bus Driver','Water tanker driver']},
  Operator:{subdepartments:['Heavy Earth Moving Machinery (HEMM)','Drilling','Loading & Hauling'],designations:['Loader Operator','Dumper Operator','Grader Operator','Drill Operator','Excavator Operator']},
 };
+
+export function joiningDesignations(department: string): string[] {
+ return department ? departmentStructure[department]?.designations || [] : [...new Set(Object.values(departmentStructure).flatMap(value => value.designations))];
+}
