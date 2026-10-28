@@ -2,7 +2,7 @@ import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
 import EmployeeLocation,{aadhaarDetails,matchChecklistDocument,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
-const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
+const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Reference Name','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Mess Deduction','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 
 describe('Corporate / HO import headers',()=>{
  it('extracts the main Aadhaar fields from OCR text',()=>{
@@ -63,7 +63,7 @@ describe('Corporate / HO import headers',()=>{
   expect(grid[1][1]).toBe('CORPORATE');
   expect(grid[1][2]).toBe('EMP-1');
   expect(grid[1][3]).toBe('Employee One');
-  expect(grid[1][48]).toBe('DRAFT');
+  expect(grid[1][50]).toBe('DRAFT');
  });
  it('keeps the selected job designation separate from experience and preserves section details',()=>{
   expect(joiningOfficeData({
@@ -146,6 +146,8 @@ describe('Employee Master tabs',()=>{
   expect((document.querySelector('select[name="Designation"]') as HTMLSelectElement).value).toBe('Manager');
   expect(screen.getByLabelText('UAN No.')).toBeTruthy();
   expect(screen.getByLabelText('ESIC')).toBeTruthy();
+  expect(screen.getByLabelText('Reference Name')).toBeTruthy();
+  expect(screen.getByLabelText('Mess Deduction')).toBeTruthy();
   expect(screen.getByRole('heading',{name:'Job & Posting Details'})).toBeTruthy();
   expect(screen.getByRole('heading',{name:'Bank Details'})).toBeTruthy();
   expect(screen.getByLabelText('Bank Name')).toBeTruthy();
