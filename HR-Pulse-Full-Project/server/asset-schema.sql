@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS hr_asset_categories(id uuid PRIMARY KEY,name text NOT NULL UNIQUE,prefix text NOT NULL UNIQUE,data jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS hr_asset_counters(prefix text PRIMARY KEY,value bigint NOT NULL);
+CREATE TABLE IF NOT EXISTS hr_asset_lookups(id uuid PRIMARY KEY,kind text NOT NULL CHECK(kind IN ('vendor','condition')),name text NOT NULL,UNIQUE(kind,name));
+CREATE TABLE IF NOT EXISTS hr_asset_register(id uuid PRIMARY KEY,tag text NOT NULL UNIQUE,category_id uuid NOT NULL REFERENCES hr_asset_categories(id),serial text,site_id uuid NOT NULL REFERENCES hr_records(id),employee_id uuid REFERENCES hr_records(id),status text NOT NULL CHECK(status IN ('Available','Assigned','Under Repair','Lost','Disposed')),data jsonb NOT NULL,version integer NOT NULL DEFAULT 1,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),CHECK((status='Assigned')=(employee_id IS NOT NULL)));
+CREATE UNIQUE INDEX IF NOT EXISTS hr_asset_serial_unique ON hr_asset_register(lower(serial)) WHERE serial IS NOT NULL;
+CREATE INDEX IF NOT EXISTS hr_asset_employee ON hr_asset_register(employee_id);
+CREATE TABLE IF NOT EXISTS hr_asset_movements(id uuid PRIMARY KEY,asset_id uuid NOT NULL REFERENCES hr_asset_register(id),action text NOT NULL,actor text NOT NULL,occurred_at timestamptz NOT NULL DEFAULT now(),data jsonb NOT NULL);
+CREATE OR REPLACE FUNCTION hr_asset_history_immutable() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Asset history is append-only'; END $$;
+DROP TRIGGER IF EXISTS hr_asset_history_guard ON hr_asset_movements;
+CREATE TRIGGER hr_asset_history_guard BEFORE UPDATE OR DELETE ON hr_asset_movements FOR EACH ROW EXECUTE FUNCTION hr_asset_history_immutable();
+CREATE TABLE IF NOT EXISTS hr_asset_reminders(day date NOT NULL,asset_id uuid NOT NULL REFERENCES hr_asset_register(id),kind text NOT NULL,data jsonb NOT NULL,PRIMARY KEY(day,asset_id,kind));
+CREATE TABLE IF NOT EXISTS hr_asset_settings(id integer PRIMARY KEY CHECK(id=1),block_fnf boolean NOT NULL DEFAULT true);
+INSERT INTO hr_asset_settings(id) VALUES(1) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS hr_asset_fnf_checks(id uuid PRIMARY KEY,employee_id uuid NOT NULL REFERENCES hr_records(id),actor text NOT NULL,checked_at timestamptz NOT NULL DEFAULT now(),data jsonb NOT NULL);

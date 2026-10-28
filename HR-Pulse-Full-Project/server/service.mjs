@@ -1,3 +1,4 @@
+import {createAssets} from './assets.mjs';
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './joining-hierarchy.mjs';
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
@@ -122,7 +123,7 @@ export function createService(pool) {
         await audit(db,profile.actor,'SUBMIT',kind,id,{workflowId:workflow.id,stages:steps.length});
         return {status:'PENDING'};
   }
-  return {...employeeDocuments,
+  return {...createAssets(pool),...employeeDocuments,
     ...createDeletion(pool),
     ...createHierarchies(pool),
     ...createHolidayDocuments(pool),

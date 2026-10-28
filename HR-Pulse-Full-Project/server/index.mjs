@@ -1,3 +1,4 @@
+import {seedAssets,assetReminders} from './assets.mjs';
 import pg from 'pg';
 import { DefaultAzureCredential } from '@azure/identity';
 import { createApi } from './app.mjs';
@@ -28,6 +29,11 @@ const pool = new pg.Pool({
 });
 pool.on('error', () => console.error('HR database pool connection error'));
 await pool.query(await readFile(new URL('./schema.sql',import.meta.url),'utf8'));
+await pool.query(await readFile(new URL('./asset-schema.sql',import.meta.url),'utf8'));
+await seedAssets(pool);
+const refreshAssetReminders=()=>assetReminders(pool).catch(()=>console.error('Asset reminder refresh failed'));
+await refreshAssetReminders();
+const assetReminderTimer=setInterval(refreshAssetReminders,60*60*1000);assetReminderTimer.unref();
 if(process.env.HR_VERIFY_DATABASE==='true')await verifyDatabase(pool);
 const server = createApi({ query: sql => pool.query(sql), service:createService(pool), authenticate, allowedOrigin: process.env.FRONTEND_ORIGIN });
 server.listen(Number(process.env.PORT || 8080), '0.0.0.0');

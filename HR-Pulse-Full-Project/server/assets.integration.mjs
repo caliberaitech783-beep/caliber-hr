@@ -1,0 +1,31 @@
+import pg from 'pg';
+import {readFile} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
+import assert from 'node:assert/strict';
+import {createAssets,seedAssets,assetReminders} from './assets.mjs';
+import {nextTag} from './asset-domain.mjs';
+if(process.env.HR_ASSET_VERIFY_DATABASE!=='true')throw Error('Set HR_ASSET_VERIFY_DATABASE=true to run database integration checks');
+const pool=new pg.Pool({host:process.env.PGHOST,database:process.env.PGDATABASE,user:process.env.PGUSER,password:process.env.PGPASSWORD,ssl:{rejectUnauthorized:true},max:4});
+await pool.query(await readFile(new URL('./asset-schema.sql',import.meta.url),'utf8'));await seedAssets(pool);
+const prefix='VERIFY'+Date.now();try{const tags=await Promise.all(Array.from({length:12},()=>nextTag(pool,prefix)));assert.equal(new Set(tags).size,12);assert.ok(tags.includes(prefix+'-0001'));}finally{await pool.query('DELETE FROM hr_asset_counters WHERE prefix=$1',[prefix]);}
+const c=await pool.connect();let seq=0;const stack=[];const db={release(){},query(s,a){if(s==='BEGIN'){const key='asset_test_'+(++seq);stack.push(key);return c.query('SAVEPOINT '+key);}if(s==='COMMIT')return c.query('RELEASE SAVEPOINT '+stack.pop());if(s==='ROLLBACK')return c.query('ROLLBACK TO SAVEPOINT '+stack.pop());return c.query(s,a);}};const service=createAssets({query:(s,a)=>c.query(s,a),connect:async()=>db});const profile={actor:'asset-verification',assignedRole:'Admin',permissions:{}};
+try{await c.query('BEGIN');const site=(await c.query("SELECT id FROM hr_records WHERE kind='sites' AND status='ACTIVE' LIMIT 1")).rows[0].id;const employee=randomUUID();await c.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES($1,'employees',$2,'Asset test employee',$3,'ACTIVE','test','test')",[employee,'ASSET-TEST-'+employee,{siteId:site,pulseUsername:'asset-test-self'}]);
+ const category=(await c.query("SELECT id FROM hr_asset_categories WHERE prefix='LAP'")).rows[0].id;
+ const created=await service.assetApi(profile,'register','POST',{categoryId:category,name:'Test laptop',serial:randomUUID(),siteId:site,condition:'New',purchaseDate:'2020-01-01',purchaseCost:10000,warrantyExpiry:'2099-01-01',custom:{}});
+ let detail=await service.assetApi(profile,'detail/'+created.id,'GET');assert.equal(detail.status,'Available');
+ await service.assetApi(profile,'move/'+created.id,'POST',{version:detail.version,action:'Issue',employeeId:employee,expectedReturn:'2020-02-01'});
+ await assert.rejects(service.assetApi(profile,'move/'+created.id,'POST',{version:1,action:'Issue',employeeId:employee}),e=>e.status===409);
+ let clear=await service.assetApi(profile,'employee/'+employee,'GET');assert.equal(clear.pending,1);
+ await assert.rejects(service.assetApi(profile,'fnf-check','POST',{employeeId:employee}),e=>e.status===422);
+ const self={actor:'asset-test-self',assignedRole:'Employee',permissions:{}};assert.equal((await service.assetApi(self,'register','GET')).length,1);
+ await assert.rejects(service.assetApi({...self,actor:'someone-else'},'register','GET'),e=>e.status===403);
+ await assert.rejects(service.assetApi({...profile,permissions:{site:'NONEXISTENT'}},'detail/'+created.id,'GET'),e=>e.status===403);
+ await assetReminders(c);assert.equal((await service.assetApi(profile,'reminders','GET')).some(r=>r.asset_id===created.id),true);
+ detail=await service.assetApi(profile,'detail/'+created.id,'GET');await service.assetApi(profile,'move/'+created.id,'POST',{version:detail.version,action:'Return',toRepair:true});
+ detail=await service.assetApi(profile,'detail/'+created.id,'GET');assert.equal(detail.status,'Under Repair');
+ await assert.rejects(service.assetApi(profile,'move/'+created.id,'POST',{version:detail.version,action:'Issue',employeeId:employee}),e=>e.status===422);
+ await service.assetApi(profile,'move/'+created.id,'POST',{version:detail.version,action:'Repair done'});
+ assert.equal((await service.assetApi(profile,'fnf-check','POST',{employeeId:employee})).eligible,true);
+ await c.query('SAVEPOINT immutable_test');await assert.rejects(c.query('DELETE FROM hr_asset_movements WHERE asset_id=$1',[created.id]),/append-only/);await c.query('ROLLBACK TO SAVEPOINT immutable_test');
+ await c.query('ROLLBACK');console.log('PASS: 12 concurrent unique tags; create/issue/return/repair; version conflicts; F&F block; self/site permissions; daily reminders; immutable history. Test fixtures rolled back.');
+}catch(e){await c.query('ROLLBACK');console.error(e.message);process.exitCode=1;}finally{c.release();await pool.end();}
