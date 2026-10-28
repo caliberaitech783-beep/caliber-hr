@@ -7,7 +7,7 @@ import {api,pulse,clearSession,savedSession,type Session,type Profile,type Modul
 import {Records,Approvals,Overview,Audit,AccessAdministration} from './Modules';
 import EmployeeLocation from './EmployeeLocation';
 import './modules.css';
-const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Approval Management',ClipboardCheck],['Reports & MIS',FileBarChart],['Administration',ShieldCheck],['Audit Logs',FileBarChart]] as const;
+const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Approval Management',ClipboardCheck],['Reports & MIS',FileBarChart],['Audit Logs',FileBarChart]] as const;
 const masterGroups=[{name:'B1 · Company & sites',kinds:['companies','clients','regions','sites']},{name:'B2 · Organization',kinds:['departments','grades','designations']},{name:'B3 · Approval workflows',kinds:['workflows']},{name:'B4 · New employee',kinds:['employees']},{name:'B5 · Staff import',kinds:['employees']},{name:'B6 · Shifts',kinds:['shifts']},{name:'B7 · Holiday & leave',kinds:['holidays','leavePolicies','leaveRequests']},{name:'B8 · Approval matrix',kinds:['approvalRules']}];
 function Logo(){return <div className="logo"><span><Activity/></span><b>CALIBER HR</b></div>}
 function Login({onLogin}:{onLogin:(s:Session)=>void}){
