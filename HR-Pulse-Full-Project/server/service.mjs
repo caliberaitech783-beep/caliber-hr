@@ -28,7 +28,7 @@ export function createService(pool) {
     if(kind==='holidays'&&site&&!ids.includes(site))site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND (code=$1 OR name=$1)",[site])).rows.find(r=>ids.includes(r.id))?.id;
     if(kind==='sites')site=id;
     if(['employeeTransfers','outDutyRequests'].includes(kind)||employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
-    if(!['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers','outDutyRequests'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
+    if(!['assets','employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers','outDutyRequests'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
     if(!ids.includes(site))throw problem('This record is outside your assigned Pulse site',403);
   }
   async function references(db,kind,data,id) {

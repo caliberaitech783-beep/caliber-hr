@@ -5,6 +5,7 @@ const date = (key, label, required = false) => ({ key, label, type: 'date', requ
 const select = (key, label, options, required = false) => ({ key, label, type: 'select', options, required });
 const module = (title, menu, fields) => ({ title, menu, fields });
 export const modules = {
+  assets: module('Assets','Asset Management',[text('code','Asset code',true),text('name','Asset name',true),ref('siteId','Locations','sites',true),text('department','Departments'),text('vendor','Vendors'),text('condition','Conditions'),text('assetStatus','Asset Status'),text('employeeStatus','Employee Status'),text('movementAction','Movement Action'),text('assetGroup','Asset Group'),text('depreciationMethod','Dep. Method'),text('disposalMethod','Disposal Method')]),
   outDutyRequests: module('Out Duty Form','Employee Master',[text('code','OD reference',true),text('name','Employee name',true),ref('employeeId','Employee ID','employees',true),text('designation','Designation',true),text('department','Department',true),ref('siteId','Site / Location','sites',true),date('outDutyDate','From date',true),date('toDate','To date',true),text('purpose','Purpose of out duty',true),text('visitLocation','Location / Place to visit',true),text('authorityName','Authority name'),text('authoritySignature','Reporting to'),text('employeeSignature','Employee signature (typed name)'),date('signatureDate','Signature date')]),
   employeeTransfers: module('Employee transfers','Employee Master',[text('code','Transfer reference',true),text('name','Transfer title',true),ref('employeeId','Employee','employees',true),date('transferDate','Transfer date',true),ref('fromSiteId','From location','sites',true),ref('toSiteId','To location','sites',true),ref('fromCompanyId','From company','companies',true),ref('toCompanyId','To company','companies',true),text('fromDesignation','From designation',true),text('toDesignation','To designation',true),text('fromManager','From reporting manager',true),text('toManager','To reporting manager',true)]),
   companies: module('Companies', 'Master Configuration', [text('code','Company code',true),text('name','Company name',true),text('address','Registered address'),text('email','Company email')]),
@@ -27,16 +28,18 @@ modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
 modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared','Gazetted','Gazetted (General)','Paid (PH)']));
 modules.approvalRules.fields.find(f=>f.key==='target').options.push('leaveEncashments');
-export const menus = ['Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management','Shift Management','Holiday & Leave','Reports & MIS','Administration','Audit Logs'];
+export const menus = ['Asset Management','Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management','Shift Management','Holiday & Leave','Reports & MIS','Administration','Audit Logs'];
 export function grantedMenus(profile) { return new Set([...(profile.permissions?.hrDesktopAccess || []),...(profile.permissions?.hrMobileAccess || [])].filter(x => menus.includes(x))); }
 export function canRead(profile, kind) {
   const granted = grantedMenus(profile);
+  if(kind==='assets')return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if (kind === 'employees') return ['Employee Master','Employee Onboarding','Employee Directory','Reports & MIS'].some(x=>granted.has(x));
   if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;
   return modules[kind] && (granted.has(modules[kind].menu) || granted.has('Master Configuration'));
 }
 export function canWrite(profile, kind) {
   const granted = grantedMenus(profile);
+  if(kind==='assets')return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if (kind === 'employees') return granted.has('Employee Master') || granted.has('Employee Onboarding');
   if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;
   return modules[kind] && (granted.has(modules[kind].menu) || granted.has('Master Configuration'));

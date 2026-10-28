@@ -31,7 +31,7 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
   expect(screen.getByRole('heading',{name})).toBeTruthy();
  }
  fireEvent.click(screen.getByRole('button',{name:'Asset Management'}));
- expect(screen.getByRole('heading',{name:'Asset Management',level:2})).toBeTruthy();
+ expect(screen.getByRole('heading',{name:'Asset Management',level:1})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Calendar'}));
  expect(screen.getByRole('heading',{name:'Calendar',level:2})).toBeTruthy();
  window.location.hash='';
