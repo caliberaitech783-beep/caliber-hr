@@ -1,6 +1,6 @@
 import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
-import EmployeeLocation,{aadhaarDetails,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
+import EmployeeLocation,{aadhaarDetails,matchChecklistDocument,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
 const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 
@@ -269,3 +269,5 @@ describe('Aadhaar printed field positions',()=>{
   expect(aadhaarDetails('Mayuri Sanjay Umate\nDOB: 07/04/1998\nFEMALE')).toMatchObject({name:'Mayuri Sanjay Umate',relationName:''});
  });
 });
+
+it('matches bulk file names to checklist documents',()=>{const names=['Candidate photo','Aadhaar (masked display)','PAN','Education certificates','Bank proof / cancelled cheque'];expect(matchChecklistDocument('Rahul_PAN.pdf',names)).toBe('PAN');expect(matchChecklistDocument('aadhar-card.jpg',names)).toBe('Aadhaar (masked display)');expect(matchChecklistDocument('passport photo.png',names)).toBe('Candidate photo');expect(matchChecklistDocument('10th marksheet.pdf',names)).toBe('Education certificates');expect(matchChecklistDocument('cancelled cheque.jpg',names)).toBe('Bank proof / cancelled cheque');expect(matchChecklistDocument('company.pdf',names)).toBeUndefined();expect(matchChecklistDocument('driving licence.pdf',names)).toBeUndefined();});
