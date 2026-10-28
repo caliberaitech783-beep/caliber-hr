@@ -37,3 +37,13 @@ test('liveness does not need the database and API rejects writes', async () => {
     assert.equal((await fetch(`${url}/api/employees`)).status, 404);
   });
 });
+
+test('all asset import routes exist and require authentication', async () => {
+  await withApi(() => { throw new Error('must not query'); }, async url => {
+    for (const kind of ['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances']) {
+      const response = await fetch(`${url}/api/import/${kind}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({records:[]})});
+      assert.equal(response.status,401,kind);
+    }
+    assert.equal((await fetch(`${url}/api/import/unknown`,{method:'POST'})).status,404);
+  });
+});
