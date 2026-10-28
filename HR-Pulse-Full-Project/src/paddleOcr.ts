@@ -11,7 +11,7 @@ async function getEngine(){
   // Warm the same-origin HTTP cache first so a slow first download does not
   // consume that initialization window. Subsequent workers reuse these bytes.
   ...['ort-wasm-simd-threaded.jsep.mjs','ort-wasm-simd-threaded.jsep.wasm'].map(async file=>{
-   const response=await fetch(new URL('/ocr/runtime/'+file,location.origin));
+   const response=await fetch(new URL('/ocr/runtime/'+file,location.origin),{signal:AbortSignal.timeout(90000)});
    if(!response.ok)throw new Error('The on-device reader could not download. Please retry.');
    await response.arrayBuffer();
   }),
@@ -28,9 +28,35 @@ async function getEngine(){
 export function readPaddleText(image:Blob):Promise<string>{
  const result=queue.then(async()=>{
   const ocr=await getEngine();
-  const [result]=await ocr.predict(image,{textDetLimitSideLen:1600,textDetLimitType:'max',textRecScoreThresh:.5});
-  return result.items.map(item=>item.text).join('\n');
+  try{
+   const [result]=await ocr.predict(image,{textDetLimitSideLen:1600,textDetLimitType:'max',textRecScoreThresh:.5});
+   return result.items.map(item=>item.text).join('\n');
+  }catch(error){
+   // A crashed worker/session must not poison every subsequent pass or retry.
+   engine=undefined;
+   try{await ocr.dispose();}catch{/* Preserve the original reading error. */}
+   throw error;
+  }
  });
  queue=result.then(()=>{},()=>{});
  return result;
+}
+
+export function ocrErrorMessage(error:unknown){
+ const message=error instanceof Error?error.message:String(error);
+ if(/download|fetch|network|HTTP|load.*(?:module|script)/i.test(message))return 'The OCR files could not download. Check your connection and retry. (OCR_DOWNLOAD)';
+ if(/timeout|timed out|abort/i.test(message))return 'The on-device reader took too long to start or read this image. Retry after the first download completes. (OCR_TIMEOUT)';
+ if(/memory|alloc|out of bounds/i.test(message))return 'The browser ran out of memory while reading. Close unused tabs or use a smaller image and retry. (OCR_MEMORY)';
+ if(/WebAssembly|wasm|Worker|OffscreenCanvas|not supported/i.test(message))return 'The browser could not run the on-device reader. Update Chrome or Edge and retry. (OCR_BROWSER)';
+ return 'The on-device reader could not process this image. Retry with a clear JPG or PNG, or enter the details manually. (OCR_PROCESSING)';
+}
+
+export async function readPaddlePasses(sources:Blob[],existingTexts:string[]=[]){
+ const texts=existingTexts.filter(text=>text.trim()),failures:unknown[]=[];
+ for(const source of sources){
+  try{const text=await readPaddleText(source);if(text.trim())texts.push(text);}
+  catch(error){failures.push(error);}
+ }
+ if(!texts.length&&failures.length)throw failures[0];
+ return {text:texts.join('\n'),warning:failures.length?`Some reading attempts failed; successful readings were kept. ${ocrErrorMessage(failures[0])}`:''};
 }
