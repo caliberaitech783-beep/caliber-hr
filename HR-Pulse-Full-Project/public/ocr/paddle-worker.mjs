@@ -12,7 +12,7 @@ async function preload(event){
   return url===runtimeUrl?Promise.resolve(new Response(wasm,{headers:{'Content-Type':'application/wasm'}})):nativeFetch(input,options);
  };
  try{
-  await import('./runtime/paddle-sdk-worker.js');
+  await import('./runtime/paddle-sdk-worker.js?v=20261028-2');
   const handle=self.onmessage;
   for(const message of waiting.splice(0))handle.call(self,message);
  }catch(error){setTimeout(()=>{throw error;});}

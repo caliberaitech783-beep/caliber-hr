@@ -29,7 +29,7 @@ it('transfers the downloaded runtime to the worker instead of relying on shared 
  mocks.predict.mockResolvedValue([{items:[]}]);
  const {readPaddleText}=await import('./paddleOcr');await readPaddleText(new Blob());
  mocks.create.mock.calls[0][0].worker.createWorker();
- expect(Worker).toHaveBeenCalledWith(new URL('/ocr/paddle-worker.mjs',location.origin),{type:'module'});
+ expect(Worker).toHaveBeenCalledWith(new URL('/ocr/paddle-worker.mjs?v=20261028-2',location.origin),{type:'module'});
  const [message,transfers]=postMessage.mock.calls[0];
  expect(message.kind).toBe('ocr-runtime');
  expect([...new Uint8Array(message.wasm)]).toEqual([0,97,115,109]);
@@ -49,7 +49,7 @@ it('allows a retry after model initialization fails without using another servic
 it('does not start inference or contact a fallback when runtime download fails',async()=>{
  vi.mocked(fetch).mockResolvedValue({ok:false} as Response);
  const {readPaddleText}=await import('./paddleOcr');
- await expect(readPaddleText(new Blob())).rejects.toThrow('could not download');
+ await expect(readPaddleText(new Blob())).rejects.toThrow('download failed');
  expect(mocks.create).not.toHaveBeenCalled();
 });
 
@@ -73,7 +73,8 @@ it('recovers from a failed initial pass and keeps a later successful pass',async
   .mockResolvedValue({predict:mocks.predict});
  mocks.predict.mockResolvedValue([{items:[{text:'DOB: 01/02/1990'}]}]);
  const {readPaddlePasses}=await import('./paddleOcr');
- expect(await readPaddlePasses([new Blob(),new Blob()])).toMatchObject({text:'DOB: 01/02/1990',warning:expect.stringContaining('OCR_TIMEOUT')});
+ expect(await readPaddlePasses([new Blob(),new Blob()])).toMatchObject({text:'DOB: 01/02/1990',warning:expect.stringContaining('OCR_DETECTION_STARTUP')});
+ expect(fetch).toHaveBeenCalledTimes(2);
 });
 
 it('keeps native readings even when every OCR pass fails',async()=>{
@@ -91,4 +92,7 @@ it('reports complete failures and permits a later upload to retry',async()=>{
  expect(ocrErrorMessage(new Error('Failed to fetch'))).toContain('OCR_DOWNLOAD');
  expect(ocrErrorMessage(new Error('Worker not supported'))).toContain('OCR_BROWSER');
  expect(ocrErrorMessage(new Error('private image text'))).not.toContain('private image text');
+ expect(ocrErrorMessage(new Error('Detection model timed out after 180s'))).toContain('OCR_DETECTION_STARTUP v2');
+ expect(ocrErrorMessage(new Error('Recognition model timed out after 180s'))).toContain('OCR_RECOGNITION_STARTUP v2');
+ expect(ocrErrorMessage(new Error('OCR runtime download failed or timed out'))).toContain('OCR_DOWNLOAD');
 });
