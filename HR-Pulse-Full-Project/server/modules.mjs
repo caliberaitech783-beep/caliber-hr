@@ -5,7 +5,7 @@ const date = (key, label, required = false) => ({ key, label, type: 'date', requ
 const select = (key, label, options, required = false) => ({ key, label, type: 'select', options, required });
 const module = (title, menu, fields) => ({ title, menu, fields });
 export const modules = {
-  outDutyRequests: module('Out Duty Form','Employee Master',[text('code','OD reference',true),text('name','Employee name',true),ref('employeeId','Employee ID','employees',true),text('designation','Designation',true),text('department','Department',true),ref('siteId','Site / Location','sites',true),date('outDutyDate','Date of out duty',true),text('purpose','Purpose of out duty',true),text('visitLocation','Location / Place to visit',true),text('authorityName','Authority name'),text('authoritySignature','Authority signature (typed name)'),text('employeeSignature','Employee signature (typed name)'),date('signatureDate','Signature date')]),
+  outDutyRequests: module('Out Duty Form','Employee Master',[text('code','OD reference',true),text('name','Employee name',true),ref('employeeId','Employee ID','employees',true),text('designation','Designation',true),text('department','Department',true),ref('siteId','Site / Location','sites',true),date('outDutyDate','From date',true),date('toDate','To date',true),text('purpose','Purpose of out duty',true),text('visitLocation','Location / Place to visit',true),text('authorityName','Authority name'),text('authoritySignature','Reporting to'),text('employeeSignature','Employee signature (typed name)'),date('signatureDate','Signature date')]),
   employeeTransfers: module('Employee transfers','Employee Master',[text('code','Transfer reference',true),text('name','Transfer title',true),ref('employeeId','Employee','employees',true),date('transferDate','Transfer date',true),ref('fromSiteId','From location','sites',true),ref('toSiteId','To location','sites',true),ref('fromCompanyId','From company','companies',true),ref('toCompanyId','To company','companies',true),text('fromDesignation','From designation',true),text('toDesignation','To designation',true),text('fromManager','From reporting manager',true),text('toManager','To reporting manager',true)]),
   companies: module('Companies', 'Master Configuration', [text('code','Company code',true),text('name','Company name',true),text('address','Registered address'),text('email','Company email')]),
   clients: module('Clients','Master Configuration',[text('code','Client code',true),text('name','Client name',true),text('contact','Contact details')]),
@@ -68,6 +68,7 @@ export function validate(kind, input) {
     if (field.key === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw Object.assign(new Error('Email is invalid'),{status:400});
     data[field.key] = field.type === 'number' ? Number(value) : value;
   }
+  if (kind==='outDutyRequests' && data.outDutyDate > data.toDate) throw Object.assign(new Error('To date must be on or after from date'),{status:400});
   if (data.fromDate && data.toDate && data.fromDate > data.toDate) throw Object.assign(new Error('End date must be on or after start date'),{status:400});
   if (data.dateOfBirth && data.dateOfBirth >= new Date().toISOString().slice(0,10)) throw Object.assign(new Error('Date of birth must be in the past'),{status:400});
   if (kind === 'workflows') {

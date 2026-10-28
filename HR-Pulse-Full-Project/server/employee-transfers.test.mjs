@@ -1,10 +1,11 @@
+import {validate} from './modules.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createService} from './service.mjs';
 
 for(const kind of ['employeeTransfers','outDutyRequests'])test(kind+' drafts respect employee site scope and never change the employee posting',async()=>{
  const id='00000000-0000-4000-8000-000000000001';
- const input={code:'TR-1',name:'Transfer',employeeId:id,transferDate:'2026-10-27',outDutyDate:'2026-10-28',designation:'Operator',department:'Operations',siteId:id,purpose:'Site meeting',visitLocation:'Nagpur',fromSiteId:id,toSiteId:id,fromCompanyId:id,toCompanyId:id,fromDesignation:'Operator',toDesignation:'Supervisor',fromManager:'Manager A',toManager:'Manager B'};
+ const input={code:'TR-1',name:'Transfer',employeeId:id,transferDate:'2026-10-27',outDutyDate:'2026-10-28',toDate:'2026-10-29',designation:'Operator',department:'Operations',siteId:id,purpose:'Site meeting',visitLocation:'Nagpur',fromSiteId:id,toSiteId:id,fromCompanyId:id,toCompanyId:id,fromDesignation:'Operator',toDesignation:'Supervisor',fromManager:'Manager A',toManager:'Manager B'};
  let employeeSite=id;const writes=[];
  const db={release(){},async query(sql,args){
   if(sql.startsWith('SELECT id FROM hr_records'))return {rows:[{id}]};
@@ -16,6 +17,7 @@ for(const kind of ['employeeTransfers','outDutyRequests'])test(kind+' drafts res
  }};
  const service=createService({connect:async()=>db});
  const profile={actor:'hr',permissions:{hrDesktopAccess:['Employee Master'],site:'Site A'}};
+ if(kind==='outDutyRequests')assert.throws(()=>validate(kind,{...input,toDate:'2026-10-27'}),/To date/);
  const result=await service.save(profile,kind,input);
  assert.equal(result.status,'DRAFT');
  assert.equal(writes.length,2); // Transfer record and audit entry only.
