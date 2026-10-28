@@ -5,6 +5,7 @@ const date = (key, label, required = false) => ({ key, label, type: 'date', requ
 const select = (key, label, options, required = false) => ({ key, label, type: 'select', options, required });
 const module = (title, menu, fields) => ({ title, menu, fields });
 export const modules = {
+  calendarEvents: module('Calendar events','Calendar',[text('code','Event reference',true),text('name','Event title',true),date('date','Date',true),select('eventType','Type',['Birthday','Work anniversary','Meeting','Event','Training','Holiday'],true),ref('siteId','Location','sites',true),text('details','Details')]),
   assetCategories: module('Category Master','Asset Management',[text('code','Tag Prefix',true),text('name','Category',true),text('group','Group'),text('extraDetails','Extra details to capture'),{key:'activeAssets',label:'Assets (active)',type:'number',min:0}]),
   assetEmployees: module('Employee Master','Asset Management',[text('code','Record reference',true),ref('employeeId','Emp Code','employees',true),text('name','Employee Name',true),text('department','Department'),text('designation','Designation'),ref('siteId','Location','sites',true),text('email','Work Email'),text('employmentStatus','Employment Status'),date('lastWorkingDay','Last Working Day'),{key:'assetsHeld',label:'Assets Held',type:'number',min:0},text('remarks','Remarks')]),
   assetAllocationLog: module('Allocation Log','Asset Management',[text('code','Log reference',true),date('date','Date',true),ref('assetId','Asset Tag','assets',true),text('name','Asset Name',true),text('action','Action',true),ref('employeeId','Emp Code','employees',true),text('employeeName','Employee Name',true),ref('fromEmployeeId','From Emp Code (transfer)','employees'),text('condition','Condition'),text('vendorMethod','Vendor / Method'),text('remarks','Remarks')]),
@@ -32,10 +33,11 @@ modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
 modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared','Gazetted','Gazetted (General)','Paid (PH)']));
 modules.approvalRules.fields.find(f=>f.key==='target').options.push('leaveEncashments');
-export const menus = ['Asset Management','Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management','Shift Management','Holiday & Leave','Reports & MIS','Administration','Audit Logs'];
+export const menus = ['Calendar','Asset Management','Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management','Shift Management','Holiday & Leave','Reports & MIS','Administration','Audit Logs'];
 export function grantedMenus(profile) { return new Set([...(profile.permissions?.hrDesktopAccess || []),...(profile.permissions?.hrMobileAccess || [])].filter(x => menus.includes(x))); }
 export function canRead(profile, kind) {
   const granted = grantedMenus(profile);
+  if(kind==='calendarEvents')return ['Calendar','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if (kind === 'employees') return ['Employee Master','Employee Onboarding','Employee Directory','Reports & MIS'].some(x=>granted.has(x));
   if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;
@@ -43,6 +45,7 @@ export function canRead(profile, kind) {
 }
 export function canWrite(profile, kind) {
   const granted = grantedMenus(profile);
+  if(kind==='calendarEvents')return ['Calendar','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if (kind === 'employees') return granted.has('Employee Master') || granted.has('Employee Onboarding');
   if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;

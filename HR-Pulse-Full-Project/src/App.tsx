@@ -1,3 +1,4 @@
+import HRCalendar from './HRCalendar';
 import AssetManagement from './AssetManagement';
 import HierarchyMaster from './HierarchyMaster';
 import LeaveMaster,{LeaveRequests} from './LeaveMaster';
@@ -51,7 +52,7 @@ function Workspace({session,logout}:{session:Session;logout:()=>void}){
     {page==='Master Configuration'&&<><div className="module-tabs master-groups">{masterGroups.map((g,i)=>g.kinds.some(k=>config[k])&&<button key={g.name} className={group===i?'selected':''} onClick={()=>{setGroup(i);setKind(g.kinds.find(k=>config[k])||'');}}>{g.name}</button>)}</div><div className="module-tabs">{groups.map(k=><button key={k} className={kind===k?'selected':''} onClick={()=>setKind(k)}>{config[k].title}</button>)}</div></>}
     {page==='Payroll Management'&&<><ModuleLanding title={payrollMenu}/></>}
     {page==='Asset Management'&&<AssetManagement grant={session.grant} config={config} notice={setNotice}/>}
-    {page==='Calendar'&&(config.holidays?<Records grant={session.grant} kind="holidays" module={config.holidays} readOnly notice={setNotice}/>:<ModuleLanding title="Calendar"/>)}
+    {page==='Calendar'&&<HRCalendar grant={session.grant} config={config}/>}
     {page==='Holiday & Leave'&&<><p className="help-text">Leave entitlement uses calendar days, including weekends and holidays. Split requests at the calendar-year boundary.</p><div className="module-tabs">{['leaveRequests','holidays','leavePolicies'].filter(k=>config[k]).map(k=><button key={k} className={kind===k?'selected':''} onClick={()=>setKind(k)}>{config[k].title}</button>)}</div></>}
     {(employeePage||['Master Configuration','Holiday & Leave'].includes(page))&&config[activeKind]&&<Records key={page+activeKind+group} grant={session.grant} kind={activeKind} module={config[activeKind]} readOnly={page==='Employee Directory'} allowDelete={page==='Employee Onboarding'||page==='Employee Directory'} importFirst={page==='Master Configuration'&&group===4} notice={setNotice}/>}
     {page==='Approval Management'&&<Approvals grant={session.grant} actor={profile.actor||''} notice={setNotice}/>}
