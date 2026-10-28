@@ -1,5 +1,10 @@
 import {describe,it,expect} from 'vitest';
 import {csv,parseCsv,prepareImport} from './api';
+it('accepts visible asset export labels and ignores display metadata',()=>{
+ const fields=[{key:'siteId',label:'Locations',type:'reference'},{key:'assetStatus',label:'Asset Status',type:'text'}];
+ expect(prepareImport('Locations,Asset Status,Status,Last updated\nNagpur,Available,ACTIVE,today',fields)).toEqual([{siteId:'Nagpur',assetStatus:'Available'}]);
+ expect(()=>prepareImport('siteId,Locations\na,b',fields)).toThrow('Duplicate CSV column');
+});
 describe('employee CSV',()=>{
   it('round trips commas, quotes, multiline addresses and empty fields',()=>{const rows=[{code:'E001',name:'A, "B"',address:'First line\nSecond line',mobile:''}];expect(parseCsv(csv(Object.keys(rows[0]),rows))).toEqual(rows);});
   it('rejects malformed rows and duplicate headings',()=>{expect(()=>parseCsv('code,name\nE1')).toThrow();expect(()=>parseCsv('code,code\na,b')).toThrow();expect(()=>parseCsv('code,name\na,"b')).toThrow();});

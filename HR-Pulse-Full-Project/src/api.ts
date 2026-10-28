@@ -28,8 +28,10 @@ export function parseCsv(source:string){
   const keys=rows.shift()?.map(x=>x.trim())||[];if(!keys.length||new Set(keys).size!==keys.length)throw new Error('CSV must have unique column headings');
   return rows.map((values,i)=>{if(values.length!==keys.length)throw new Error(`CSV row ${i+2} has the wrong number of columns`);return Object.fromEntries(keys.map((key,j)=>[key,values[j]]));});
 }
-export function prepareImport(source:string,fields:Field[]){
- const rows=parseCsv(source),allowed=new Set(fields.map(f=>f.key));
+export function prepareImport(source:string,fields:Field[],columns:{key:string;label:string}[]=[]){
+ const normalize=(s:string)=>s.trim().toLowerCase();
+ const aliases=new Map([...fields.flatMap(f=>[[normalize(f.key),f.key],[normalize(f.label),f.key]]),...columns.map(c=>[normalize(c.label),c.key]),['status','status'],['updatedat','updatedAt'],['last updated','updatedAt']] as [string,string][]);
+ const rows=parseCsv(source).map(row=>{const mapped:Record<string,string>={};for(const [key,value] of Object.entries(row)){const target=aliases.get(normalize(key))||key;if(target in mapped)throw new Error('Duplicate CSV column: '+key);mapped[target]=value;}return mapped;}),allowed=new Set(fields.map(f=>f.key));
  const metadata=new Set(['status','updatedAt']);
  const unknown=Object.keys(rows[0]||{}).filter(k=>!allowed.has(k)&&!metadata.has(k));
  if(unknown.length)throw new Error('Unknown CSV columns: '+unknown.join(', '));
