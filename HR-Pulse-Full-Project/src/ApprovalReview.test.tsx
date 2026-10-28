@@ -14,5 +14,6 @@ for(const completed of [true,false])it(`separates completed forms: ${completed}`
  render(<Approvals grant="test" actor="reviewer" kind="employees" completed={completed} notice={()=>{}}/>);
  await screen.findByText(completed?/APPROVED-code/:/PENDING-code/);
  expect(screen.queryByText(completed?/PENDING-code/:/APPROVED-code/)).toBeNull();
+ if(completed){expect(screen.getByRole('button',{name:'View Offer Letter'})).toBeTruthy();expect(screen.getByRole('button',{name:'View Appointment Letter'})).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'View Offer Letter'}));expect(screen.getByRole('dialog',{name:/Offer Letter/})).toBeTruthy();}
 });
 
