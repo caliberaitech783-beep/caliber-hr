@@ -47,3 +47,9 @@ test('all asset import routes exist and require authentication', async () => {
     assert.equal((await fetch(`${url}/api/import/unknown`,{method:'POST'})).status,404);
   });
 });
+
+test('Aadhaar scan requires authentication before any paid request',async()=>{
+ await withApi(()=>{throw Error('must not query');},async url=>{
+  assert.equal((await fetch(url+'/api/aadhaar/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
+ });
+});

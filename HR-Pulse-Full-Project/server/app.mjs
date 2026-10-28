@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { problem } from './service.mjs';
+import {createAadhaarReader} from './aadhaar-ocr.mjs';
 async function body(req) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw problem('JSON content type required',415);
   let size=0; const chunks=[];
@@ -7,7 +8,7 @@ async function body(req) {
   try { const value=JSON.parse(Buffer.concat(chunks).toString()); if(!value||typeof value!=='object'||Array.isArray(value))throw new Error(); return value; }
   catch { throw problem('A valid JSON object is required'); }
 }
-export function createApi({ query, service, authenticate=async()=>null, allowedOrigin='https://hrpulse.cmll.in' }) {
+export function createApi({ query, service, authenticate=async()=>null, allowedOrigin='https://hrpulse.cmll.in', readAadhaar=createAadhaarReader() }) {
   return createServer(async(req,res)=>{
     const send=(status,data)=>res.writeHead(status).end(JSON.stringify(data));
     res.setHeader('Cache-Control','no-store'); res.setHeader('Content-Type','application/json');
@@ -35,10 +36,14 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const masterImport=path.match(/^\/api\/import\/(assets|assetCategories|assetEmployees|assetAllocationLog|assetExitClearances|holidays|leaveTypes|leavePolicies|leavePeriods|leaveAllocations|leaveRequests|leaveEncashments|leaveBlocks)$/);
       const decision=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/decision$/);
       const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
-      if(!assetRoute&&!documents&&!employeeDocuments&&!deletion&&!masterImport&&!record&&!decision&&!simple[path]&&path!=='/api/import/employees')return send(404,{error:'Not found'});
+      if(!assetRoute&&!documents&&!employeeDocuments&&!deletion&&!masterImport&&!record&&!decision&&!simple[path]&&path!=='/api/import/employees'&&path!=='/api/aadhaar/scan')return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
       if(!profile)return send(401,{error:'Sign in with your Caliber Pulse account to continue'});
+      if(path==='/api/aadhaar/scan'){
+        if(req.method!=='POST')throw problem('Method not allowed',405);
+        return send(200,await readAadhaar(profile,await body(req)));
+      }
       if(!service)throw problem('Service unavailable',503);
       let result;
       if(assetRoute&&['GET','POST'].includes(req.method))result=await service.assetApi(profile,assetRoute,req.method,req.method==='POST'?await body(req):{},url.searchParams);
