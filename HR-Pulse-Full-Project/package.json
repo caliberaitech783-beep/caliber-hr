@@ -12,6 +12,7 @@
   "dependencies": {
     "@paddleocr/paddleocr-js": "0.4.2",
     "@vitejs/plugin-react": "latest",
+    "html2canvas": "1.4.1",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
