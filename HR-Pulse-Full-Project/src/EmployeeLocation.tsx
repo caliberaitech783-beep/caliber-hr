@@ -1,3 +1,4 @@
+import {departmentStructure} from './joiningDepartments';
 import {readPaddlePasses} from './paddleOcr';
 import {readGeminiAadhaar} from './geminiOcr';
 import PulseDirectoryReport from './PulseDirectoryReport';
@@ -139,30 +140,6 @@ function employeeSheetsFor(employeeGroup:'Corporate / HO'|'OB / COAL'){return em
 const conditionalDocuments=new Set(['VTC certificate','Medical fitness certificate','Driving licence','Operator competency certificate']);
 const corporateSubtypes=['Nagpur CO','Chandrapur HO','KSR'];
 const regionSites:Record<string,string[]>=new Proxy({WCL:['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB','Hindustan Lalpeth OC'],NCL:['Jayant OB','Dudichua OB west','Dudichua OB East']},{get:(target,key:string)=>target[key as keyof typeof target]||[]});
-const departmentStructure:Record<string,{subdepartments:string[];designations:string[]}>= {
- Production:{subdepartments:['Operations','Plant Operations','Output Monitoring'],designations:['Manager','Engineer','Supervisor','Executive']},
- Maintenance:{subdepartments:['Preventive Maintenance','Breakdown Maintenance'],designations:['Manager','Engineer','Supervisor','Technician']},
- HSD:{subdepartments:['Fuel Management','Fuel Dispensing','Fuel Reconciliation'],designations:['Manager','Fuel Supervisor','Fuel Operator','Fuel Attendant']},
- Procurement:{subdepartments:['Purchase','Vendor Management','Material Sourcing'],designations:['Manager','Officer','Executive']},
- 'Human Resources':{subdepartments:['Recruitment','Payroll','HR Operations','Training'],designations:['Manager','Executive','Officer','Recruiter']},
- Administration:{subdepartments:['Office Administration','Facilities','Housekeeping'],designations:['Manager','Officer','Executive','Office Assistant']},
- EHS:{subdepartments:['Environment','Health','Safety','Statutory Compliance'],designations:['EHS Manager','Safety Officer','Safety Supervisor','Environmental Officer']},
- Mechanical:{subdepartments:['Mechanical Workshop','Equipment Maintenance'],designations:['Manager','Engineer','Fitter','Mechanic']},
- Logistics:{subdepartments:['Transportation','Fleet Operations','Dispatch'],designations:['Manager','Transport Officer','Fleet Supervisor','Dispatcher']},
- Billing:{subdepartments:['Client Billing','Vendor Billing','Invoice Processing'],designations:['Manager','Executive','Officer']},
- Management:{subdepartments:['Operations Management','Site Management','Corporate Management'],designations:['CMD','Managing Director','General Manager','Deputy General Manager','VP(MINING)','Site In-Charge','Company secretary','INTERN']},
- Accounts:{subdepartments:['Accounts Payable','Accounts Receivable','Bookkeeping'],designations:['CA','Manager','Accountant','Executive']},
- 'Information Technology':{subdepartments:['IT Support','Software','Network Administration'],designations:['Manager','System Administrator','Executive','Support Engineer']},
- 'Mining (Coal)':{subdepartments:['Mine Operations','Overburden','Coal Production','Mine Planning'],designations:['Manager','Engineer','Mining Sirdar','Overman','Mine Supervisor']},
- 'RTO & Insurance':{subdepartments:['Vehicle Registration','Permit','Insurance Claims'],designations:['RTO Executive','Insurance Executive','Compliance Officer']},
- Banking:{subdepartments:['Salary Accounts','Bank Reconciliation','CSP Coordination'],designations:['Coordinator','Executive','Bank Reconciliation Executive']},
- Finance:{subdepartments:['Budgeting','Financial Planning','Treasury'],designations:['Manager','Executive','Financial Analyst']},
- Store:{subdepartments:['Inventory','Material Receipt','Material Issue'],designations:['Manager','Officer','Storekeeper','Inventory Executive']},
- Electrical:{subdepartments:['Electrical Maintenance','Power Systems','Equipment Electricals'],designations:['Manager','Engineer','Electrician','Supervisor']},
- Tender:{subdepartments:['Tender Preparation','Bid Management','Contract Documentation'],designations:['Manager','Executive','Bid Coordinator','Contract Executive']},
- Driver:{subdepartments:['Heavy Vehicles','Light Vehicles','Passenger Transport','Service Vehicles'],designations:['Volvo Driver','Eicher Driver','LMV Driver','Tipper Driver','Service Van Driver','Bus Driver','Water tanker driver']},
- Operator:{subdepartments:['Heavy Earth Moving Machinery (HEMM)','Drilling','Loading & Hauling'],designations:['Loader Operator','Dumper Operator','Grader Operator','Drill Operator','Excavator Operator']},
-};
 const departmentOptions=Object.keys(departmentStructure);
 type FormDefaults={company?:string;region?:string;joiningCategory:string;site:string;siteOptions?:string[];department:string;subdepartment:string;designation:string};
 
