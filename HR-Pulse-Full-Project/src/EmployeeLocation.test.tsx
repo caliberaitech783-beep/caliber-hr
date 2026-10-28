@@ -94,7 +94,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('button',{name:'Import'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
   expect(screen.getByRole('menuitem',{name:/Download as PDF/})).toBeTruthy();
-  expect(screen.getByRole('menuitem',{name:/Download as Excel/})).toBeTruthy();
+  expect(screen.queryByRole('menuitem',{name:/Download as Excel/})).toBeNull();
   expect(screen.getByRole('menuitem',{name:/Smart Print/})).toBeTruthy();
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.csv');
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xlsx');
