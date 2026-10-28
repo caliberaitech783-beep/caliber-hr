@@ -1,3 +1,4 @@
+import {seedTelegram,deliverTelegram} from './telegram.mjs';
 import {seedAssets,assetReminders} from './assets.mjs';
 import pg from 'pg';
 import { DefaultAzureCredential } from '@azure/identity';
@@ -31,6 +32,10 @@ pool.on('error', () => console.error('HR database pool connection error'));
 await pool.query(await readFile(new URL('./schema.sql',import.meta.url),'utf8'));
 await pool.query(await readFile(new URL('./asset-schema.sql',import.meta.url),'utf8'));
 await seedAssets(pool);
+await pool.query(await readFile(new URL('./telegram-schema.sql',import.meta.url),'utf8'));
+await seedTelegram(pool);
+let telegramSending=false;
+const telegramTimer=setInterval(async()=>{if(telegramSending)return;telegramSending=true;try{await deliverTelegram(pool);}catch{console.error('Telegram delivery sweep failed');}finally{telegramSending=false;}},5000);telegramTimer.unref();
 const refreshAssetReminders=()=>assetReminders(pool).catch(()=>console.error('Asset reminder refresh failed'));
 await refreshAssetReminders();
 const assetReminderTimer=setInterval(refreshAssetReminders,60*60*1000);assetReminderTimer.unref();

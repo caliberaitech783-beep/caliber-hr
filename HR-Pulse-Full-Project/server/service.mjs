@@ -1,3 +1,4 @@
+import {createTelegram,telegramLeaveFlow,telegramSteps,queueTelegram,leaveMessage,employeeActor} from './telegram.mjs';
 import {odApprovalWorkflow} from './out-duty.mjs';
 import {createAssets} from './assets.mjs';
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './joining-hierarchy.mjs';
@@ -105,7 +106,8 @@ export function createService(pool) {
         await references(db,kind,record.data,id);
         let companyId=record.data.companyId,siteId=record.data.siteId;
         if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;}
-        const hierarchy=kind==='outDutyRequests'?odApprovalWorkflow():['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
+        const telegramFlow=kind==='leaveRequests'?await telegramLeaveFlow(db,siteId):null;
+        const hierarchy=telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow)}}:kind==='outDutyRequests'?odApprovalWorkflow():['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
         const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
         const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
         if(!hierarchy&&!rules.length&&(kind==='leaveRequests'||!record.data.approver))throw problem('Configure an active approval-matrix rule for this module before submitting',409);
@@ -115,17 +117,19 @@ export function createService(pool) {
         const steps=hierarchy?hierarchy.data.steps:kind==='leaveRequests'?leaveApprovalSteps(workflow):workflow.data.approvers.split(',').map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
         const approvers=steps.flatMap(s=>s.approvers);
         if(approvers.includes(profile.actor))throw problem('The requester cannot be an approver in their own workflow. Configure another approver.',409);
-        const snapshot={code:record.code,name:record.name,data:{...record.data}};
+        const snapshot={code:record.code,name:record.name,data:{...record.data},...(telegramFlow?{telegramFlow}:{})};
         for(const field of modules[kind].fields.filter(x=>x.type==='reference'))if(record.data[field.key]){
           const ref=(await db.query('SELECT code,name FROM hr_records WHERE id=$1',[record.data[field.key]])).rows[0];
           if(ref)snapshot.data[field.key]=`${ref.code} · ${ref.name}`;
         }
-        await db.query('INSERT INTO hr_approvals(id,record_id,approvers,requested_by,record_snapshot,approval_steps) VALUES($1,$2,$3,$4,$5,$6)',[randomUUID(),id,JSON.stringify(approvers),profile.actor,snapshot,JSON.stringify(steps)]);
+        const approvalId=randomUUID();
+        await db.query('INSERT INTO hr_approvals(id,record_id,approvers,requested_by,record_snapshot,approval_steps) VALUES($1,$2,$3,$4,$5,$6)',[approvalId,id,JSON.stringify(approvers),profile.actor,snapshot,JSON.stringify(steps)]);
+        if(telegramFlow)await queueTelegram(db,approvalId+':submitted',[telegramFlow.siteHr,telegramFlow.regionalHr],leaveMessage(record,'Awaiting Site HR approval'));
         await db.query("UPDATE hr_records SET status='PENDING',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2",[profile.actor,id]);
         await audit(db,profile.actor,'SUBMIT',kind,id,{workflowId:workflow.id,stages:steps.length});
         return {status:'PENDING'};
   }
-  return {...createAssets(pool),...employeeDocuments,
+  return {...createTelegram(pool),...createAssets(pool),...employeeDocuments,
     ...createDeletion(pool),
     ...createHierarchies(pool),
     ...createHolidayDocuments(pool),
@@ -150,6 +154,7 @@ export function createService(pool) {
     async lookups(profile) {
       if(!grantedMenus(profile).size)throw problem('No HR permissions assigned',403);
       const kinds=[...new Set(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).flatMap(([,config])=>config.fields.filter(x=>x.type==='reference').map(x=>x.reference)))];
+      if(grantedMenus(profile).has('Approval Management')&&!kinds.includes('employees'))kinds.push('employees');
       if(canRead(profile,'outDutyRequests'))for(const kind of ['departments','designations','sites'])if(!kinds.includes(kind))kinds.push(kind);
       const result=await pool.query("SELECT r.id,r.kind,r.code,r.name,CASE WHEN r.kind='designations' THEN r.data->>'departmentId' END AS department_id FROM hr_records r WHERE r.kind=ANY($1) AND r.status IN ('ACTIVE','APPROVED') AND "+scopeSql('r','$2')+" ORDER BY r.name LIMIT 10000",[kinds,await siteIds(pool,profile)]);
       return result.rows;
@@ -218,7 +223,7 @@ export function createService(pool) {
     async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction(db=>submitRecord(db,profile,kind,id,version));},
     async approvals(profile) {
       if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
-      return (await pool.query("SELECT a.*,r.kind,a.record_snapshot->>'code' AS code,a.record_snapshot->>'name' AS name,a.record_snapshot->'data' AS data FROM hr_approvals a JOIN hr_records r ON r.id=a.record_id WHERE (a.approvers ? $1 OR a.requested_by=$1) AND "+scopeSql('r','$2')+" ORDER BY a.created_at DESC LIMIT 200",[profile.actor,await siteIds(pool,profile)])).rows;
+      return (await pool.query("SELECT a.*,r.kind,a.record_snapshot->>'code' AS code,a.record_snapshot->>'name' AS name,a.record_snapshot->'data' AS data,(a.record_snapshot ? 'telegramFlow') AS telegram_flow FROM hr_approvals a JOIN hr_records r ON r.id=a.record_id WHERE (a.approvers ? $1 OR a.requested_by=$1) AND "+scopeSql('r','$2')+" ORDER BY a.created_at DESC LIMIT 200",[profile.actor,await siteIds(pool,profile)])).rows;
     },
     async decide(profile,id,input) {
       if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
@@ -231,12 +236,31 @@ export function createService(pool) {
         const next=nextApproval(approval,profile.actor,input.decision);
         const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 FOR UPDATE',[approval.record_id])).rows[0];
         await locationAccess(db,profile,record.kind,record.data,record.id);
+        const flow=approval.record_snapshot?.telegramFlow;
+        let handoverActor='';
+        if(flow&&input.decision==='APPROVED'&&next.state==='APPROVED'){
+          if(!uuid(input.chargeEmployeeId)||input.chargeEmployeeId===record.data.employeeId)throw problem('Select another active employee to take charge',422);
+          const handover=(await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind='employees' AND status IN ('ACTIVE','APPROVED') FOR SHARE",[input.chargeEmployeeId])).rows[0];
+          if(!handover||/exited|terminated|inactive/i.test(String(handover.data.employmentStatus||handover.data.officeData?.Status||'')))throw problem('Choose an active employee to take charge',422);
+          await locationAccess(db,profile,'employees',handover.data,handover.id);
+          handoverActor=await employeeActor(db,handover.id);
+          if(!handoverActor)throw problem('Link the selected employee to their Pulse username in Telegram Hierarchy first',422);
+          record.data={...record.data,chargeEmployeeId:handover.id,chargeHandedOverTo:handover.name};
+          await db.query('UPDATE hr_records SET data=$1 WHERE id=$2',[record.data,record.id]);
+          await db.query("UPDATE hr_approvals SET record_snapshot=jsonb_set(record_snapshot,'{data,chargeHandedOverTo}',to_jsonb($1::text)) WHERE id=$2",[handover.name,id]);
+        }
         const stage=next.stage;
         const state=next.state;
         const history=[...approval.history,{actor:profile.actor,stage:approval.stage+1,decision:input.decision,comments,at:new Date().toISOString()}];
         await db.query('UPDATE hr_approvals SET stage=$1,state=$2,history=$3,version=version+1,updated_at=now() WHERE id=$4',[stage,state,JSON.stringify(history),id]);
         if(state!=='PENDING')await db.query('UPDATE hr_records SET status=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[state==='APPROVED'&&['employees','holidays'].includes(record.kind)?'ACTIVE':state,profile.actor,record.id]);
-        await audit(db,profile.actor,input.decision,record.kind,record.id,{stage:approval.stage+1,comments});return {state};
+        if(flow){
+          const employee=await employeeActor(db,record.data.employeeId,approval.requested_by);
+          const recipients=state==='APPROVED'?[employee,flow.siteHr,...flow.directors,handoverActor]:state==='REJECTED'?[employee,flow.siteHr,flow.regionalHr]:[employee,flow.regionalHr];
+          const status=state==='APPROVED'?'Approved by Regional HR. Charge handed over to '+record.data.chargeHandedOverTo:state==='REJECTED'?'Rejected: '+comments:'Approved by Site HR; awaiting Regional HR';
+          await queueTelegram(db,id+':decision:'+approval.version,recipients,leaveMessage(record,status));
+        }
+        await audit(db,profile.actor,input.decision,record.kind,record.id,{stage:approval.stage+1,comments,...(handoverActor?{chargeEmployeeId:record.data.chargeEmployeeId}:{})});return {state};
       });
     },
     async summary(profile) {
