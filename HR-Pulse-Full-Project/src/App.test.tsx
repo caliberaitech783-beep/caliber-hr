@@ -18,7 +18,7 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  render(<App/>);
  await screen.findByRole('button',{name:'Attendance Management'});
  const sidebar=screen.getByRole('complementary');
- expect(within(sidebar).getByRole('button',{name:'Leave Management'})).toBeTruthy();
+ expect(within(sidebar).getByRole('button',{name:'Leave/OD Management'})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Attendance Management'}));
  expect(screen.getByRole('heading',{name:'Attendance Management'})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Employee Management'}));
