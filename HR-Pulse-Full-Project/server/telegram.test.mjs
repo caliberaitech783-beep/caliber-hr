@@ -37,3 +37,12 @@ test('unconnected recipients remain queued without sending',async()=>{
  const db={release(){},async query(s,v){writes.push(s);return {rows:s.startsWith('SELECT o.')?[{id:1,chat_id:null}]:[]};}};
  try{await deliverTelegram({connect:async()=>db},async()=>{sent++;});assert.equal(sent,0);assert.ok(writes.some(s=>s.includes('Recipient has not connected')));}finally{if(previous===undefined)delete process.env.TELEGRAM_BOT_TOKEN;else process.env.TELEGRAM_BOT_TOKEN=previous;}
 });
+test('multiple HR users allow any one per stage and reject cross-stage overlap',()=>{
+ const c=validateTelegramHierarchy({...config,siteHr:' AMITSINGH, APURVAKOPULWAR,amitsingh ',regionalHr:'VINODPINJARKAR, MAYURIUMATE'});
+ const steps=telegramSteps(c);assert.deepEqual(steps[0].approvers,['amitsingh','apurvakopulwar']);assert.deepEqual(steps[1].approvers,['vinodpinjarkar','mayuriumate']);
+ for(const site of steps[0].approvers){const a={requested_by:'employee',stage:0,approval_steps:steps};const first=nextApproval(a,site,'APPROVED');assert.equal(first.stage,1);assert.equal(first.state,'PENDING');for(const regional of steps[1].approvers)assert.equal(nextApproval({...a,...first},regional,'APPROVED').state,'APPROVED');assert.throws(()=>nextApproval({...a,...first},site,'APPROVED'),e=>e.status===403);}
+ assert.throws(()=>validateTelegramHierarchy({...config,siteHr:'amit,vinod',regionalHr:'vinod,mayuri'}));
+});
+test('notifications expand comma-separated HR groups to individual recipients',async()=>{
+ const actors=[];await queueTelegram({query:async(_s,v)=>actors.push(v[1])},'event',['amit,apurva','vinod,mayuri','AMIT'],'message');assert.deepEqual(actors,['amit','apurva','vinod','mayuri']);
+});

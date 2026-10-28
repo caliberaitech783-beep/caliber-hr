@@ -4,19 +4,20 @@ import {assignedSites} from './scope.mjs';
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const username=value=>String(value||'').trim().toLowerCase();
+export const telegramUsers=value=>[...new Set((Array.isArray(value)?value:String(value||'').split(',')).map(username).filter(Boolean))];
 export function validateTelegramHierarchy(input){
- const siteHr=username(input.siteHr),regionalHr=username(input.regionalHr);
- const directors=[...new Set((Array.isArray(input.directors)?input.directors:String(input.directors||'').split(',')).map(username).filter(Boolean))];
- if(![siteHr,regionalHr,...directors].every(x=>/^[-a-z0-9_.@]{1,100}$/.test(x))||siteHr===regionalHr||!directors.length||directors.length>20)fail('Enter distinct Site HR and Regional HR Pulse usernames and 1–20 director usernames.');
- return {siteHr,regionalHr,directors,enabled:input.enabled===true};
+ const siteUsers=telegramUsers(input.siteHr),regionalUsers=telegramUsers(input.regionalHr),directors=telegramUsers(input.directors);
+ if([siteUsers,regionalUsers,directors].some(users=>!users.length||users.length>20)||![...siteUsers,...regionalUsers,...directors].every(x=>/^[-a-z0-9_.@]{1,100}$/.test(x)))fail('Enter 1–20 valid comma-separated Pulse usernames for each role.');
+ if(siteUsers.some(actor=>regionalUsers.includes(actor)))fail('Site HR and Regional HR must use different approvers.');
+ return {siteHr:siteUsers.join(','),regionalHr:regionalUsers.join(','),directors,enabled:input.enabled===true};
 }
-export function telegramSteps(config){return [{stage:1,label:'Site HR',approvers:[config.siteHr]},{stage:2,label:'Regional HR — final approval',approvers:[config.regionalHr]}];}
+export function telegramSteps(config){return [{stage:1,label:'Site HR — any one',approvers:telegramUsers(config.siteHr)},{stage:2,label:'Regional HR — final approval, any one',approvers:telegramUsers(config.regionalHr)}];}
 export async function telegramLeaveFlow(db,siteId){const row=(await db.query('SELECT data FROM hr_telegram_hierarchies WHERE site_id=$1',[siteId])).rows[0];return row?.data.enabled?row.data:null;}
 export async function seedTelegram(db){
  const data={siteHr:'amitsingh',regionalHr:'vinodpinjarkar',directors:['manishchadda','mohitchadda','rahulchadda'],enabled:true};
  await db.query("INSERT INTO hr_telegram_hierarchies(site_id,data,updated_by) SELECT id,$1,'initial-configuration' FROM hr_records WHERE kind='sites' AND code='NCL-JAYANT' ON CONFLICT DO NOTHING",[data]);
 }
-export async function queueTelegram(db,eventKey,actors,message){for(const actor of new Set(actors.filter(Boolean).map(username)))await db.query('INSERT INTO hr_telegram_outbox(event_key,actor,message) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[eventKey,actor,message]);}
+export async function queueTelegram(db,eventKey,actors,message){for(const actor of new Set(actors.flatMap(telegramUsers)))await db.query('INSERT INTO hr_telegram_outbox(event_key,actor,message) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[eventKey,actor,message]);}
 export function leaveMessage(record,status){return `Leave request ${record.code}\nEmployee: ${record.data.employeeName||record.name}\nDates: ${record.data.fromDate} to ${record.data.toDate}\nStatus: ${status}`;}
 export async function employeeActor(db,employeeId,fallback='') {const r=(await db.query("SELECT data FROM hr_records WHERE id=$1 AND kind='employees'",[employeeId])).rows[0];return username(r?.data.pulseUsername||r?.data.username||fallback);}
 export function webhookSecretValid(actual,expected){if(!expected||typeof actual!=='string')return false;const a=Buffer.from(actual),b=Buffer.from(expected);return a.length===b.length&&timingSafeEqual(a,b);}

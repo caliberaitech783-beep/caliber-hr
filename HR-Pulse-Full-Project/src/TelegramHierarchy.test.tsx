@@ -8,8 +8,8 @@ it('loads Jayant routing and saves changes from the website',async()=>{
  vi.mocked(api).mockImplementation(async(_grant,path)=>path==='telegram/account'?{connected:false,configured:true,botUsername:'LeaveRequestt_Bot'}:path==='telegram/hierarchies'?data:{saved:true});
  render(<TelegramHierarchy grant="test"/>);
  await screen.findByText('Jayant OB');fireEvent.change(screen.getByLabelText('Site'),{target:{value:'site'}});
- expect(screen.getByLabelText('Site HR — Pulse username')).toHaveProperty('value','amitsingh');
- fireEvent.change(screen.getByLabelText('Regional HR — Pulse username'),{target:{value:'newhr'}});
+ expect(screen.getByLabelText('Site HR — comma-separated Pulse usernames')).toHaveProperty('value','amitsingh');
+ fireEvent.change(screen.getByLabelText('Regional HR — comma-separated Pulse usernames'),{target:{value:'newhr'}});
  fireEvent.click(screen.getByRole('button',{name:'Save hierarchy'}));
  await waitFor(()=>expect(api).toHaveBeenCalledWith('test','telegram/hierarchies','POST',expect.objectContaining({siteId:'site',regionalHr:'newhr',version:1})));
 });
