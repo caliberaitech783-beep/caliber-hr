@@ -27,8 +27,8 @@ export function createService(pool) {
     let site=data.siteId;
     if(kind==='holidays'&&site&&!ids.includes(site))site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND (code=$1 OR name=$1)",[site])).rows.find(r=>ids.includes(r.id))?.id;
     if(kind==='sites')site=id;
-    if(kind==='employeeTransfers'||employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
-    if(!['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
+    if(['employeeTransfers','outDutyRequests'].includes(kind)||employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
+    if(!['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers','outDutyRequests'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
     if(!ids.includes(site))throw problem('This record is outside your assigned Pulse site',403);
   }
   async function references(db,kind,data,id) {
@@ -80,7 +80,7 @@ export function createService(pool) {
     data=validate(kind,input);
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);
-    const status=kind==='employeeTransfers'?'DRAFT':kind==='holidays'?'PENDING':['employees','leaveRequests','leaveEncashments'].includes(kind)?'DRAFT':'ACTIVE';
+    const status=['employeeTransfers','outDutyRequests'].includes(kind)?'DRAFT':kind==='holidays'?'PENDING':['employees','leaveRequests','leaveEncashments'].includes(kind)?'DRAFT':'ACTIVE';
     let result;
     if(id) result=await db.query('UPDATE hr_records SET code=$1,name=$2,data=$3,status=$4,version=version+1,updated_by=$5,updated_at=now() WHERE id=$6 RETURNING *',[data.code,data.name,data,status,profile.actor,id]);
     else result=await db.query('INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *',[randomUUID(),kind,data.code,data.name,data,status,profile.actor]);
