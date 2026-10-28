@@ -1,8 +1,8 @@
-import {fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
 import EmployeeLocation,{aadhaarDetails,matchChecklistDocument,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
-const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Reference Name','Reference Details','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Mess Deduction','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
+const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Reference Type','Reference Name','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Mess Deduction','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 
 describe('Corporate / HO import headers',()=>{
  it('extracts the main Aadhaar fields from OCR text',()=>{
@@ -146,12 +146,11 @@ describe('Employee Master tabs',()=>{
   expect((document.querySelector('select[name="Designation"]') as HTMLSelectElement).value).toBe('Manager');
   expect(screen.getByLabelText('UAN No.')).toBeTruthy();
   expect(screen.getByLabelText('ESIC')).toBeTruthy();
-  const referenceName=screen.getByLabelText('Reference Name');
-  expect(screen.queryByLabelText('Reference Details')).toBeNull();
-  for(const option of ['RHR CMLL','Supervisor CMLL','Others'])expect(screen.getByRole('option',{name:option})).toBeTruthy();
-  fireEvent.change(referenceName,{target:{value:'RHR CMLL'}});
-  expect((screen.getByLabelText('Reference Details') as HTMLInputElement).value).toBe('');
-  expect(screen.getByLabelText('Mess Deduction')).toBeTruthy();
+  expect(screen.getByLabelText('Reference Name')).toBeTruthy();
+  const referenceType=screen.getByLabelText('Reference Type');
+  expect(within(referenceType).queryAllByRole('option').map(option=>option.textContent)).toEqual(['Select','Regional HR Manager','Supervisor','Driver','Others']);
+  const messDeduction=screen.getByLabelText('Mess Deduction');
+  expect(within(messDeduction).queryAllByRole('option').map(option=>option.textContent)).toEqual(['Select','Yes','No']);
   expect(screen.getByRole('heading',{name:'Job & Posting Details'})).toBeTruthy();
   expect(screen.getByRole('heading',{name:'Bank Details'})).toBeTruthy();
   expect(screen.getByLabelText('Bank Name')).toBeTruthy();
