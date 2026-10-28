@@ -48,7 +48,7 @@ describe('Corporate / HO import headers',()=>{
   ]);
   expect(rows[0]).toMatchObject({companyId:'company-1',siteId:'site-1',departmentId:'',designationId:'designation-1',gradeId:'grade-1',shiftId:'shift-1'});
   expect(resolveCorporateReferences([{}],[{id:'old-company',kind:'companies',code:'OLD',name:'Old company'},{id:'company-1',kind:'companies',code:'CMLL',name:'Caliber Mining and Logistics'}])[0]).toMatchObject({companyId:'company-1'});
-  expect(()=>resolveCorporateReferences([{}],[])).toThrow(/CMLL Company master/);
+  expect(()=>resolveCorporateReferences([{}],[])).toThrow(/Caliber Mining And Logistics Ltd Company master/);
  });
  it('normalizes spreadsheet employment categories for the API',()=>{
   expect(normalizeEmploymentCategory('PERMANENT')).toBe('Permanent');
@@ -130,7 +130,7 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('option',{name:'Staff'}));
   expect(screen.getByRole('button',{name:'Employee Category'}).textContent).toContain('Staff');
   expect((screen.getByLabelText(/A-Form No\./) as HTMLInputElement).required).toBe(false);
-  fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'CMLL'}});
+  fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'Nagpur Corporate Office'}});
   fireEvent.change(screen.getAllByLabelText('Department').find(element=>!element.hasAttribute('name'))!,{target:{value:'Production'}});
   expect(screen.getAllByRole('option',{name:'Operations'}).length).toBeGreaterThan(0);

@@ -46,7 +46,7 @@ One engine serves all modules. Submission resolves one active non-conflicting ru
 - Phase 5: shift, holiday and leave configuration and employee transactions.
 - Phase 6: reports, automated authorization/workflow/security tests and Azure deployment assets.
 
-## Decisions requiring CMLL confirmation
+## Decisions requiring Caliber Mining And Logistics Ltd confirmation
 
 - Exact eight grade codes/ranks; employee-number format; authoritative role holders and self-approval exceptions.
 - Password/SSO/MFA policy and Azure Entra ID preference; session duration and lockout policy.
