@@ -166,7 +166,7 @@ export function createService(pool) {
       });
     },
     async importMasters(profile,kind,records){
-      if(!['holidays','leaveTypes','leavePolicies','leavePeriods','leaveAllocations','leaveRequests','leaveEncashments','leaveBlocks'].includes(kind))throw problem('Unsupported import');
+      if(!['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances','holidays','leaveTypes','leavePolicies','leavePeriods','leaveAllocations','leaveRequests','leaveEncashments','leaveBlocks'].includes(kind))throw problem('Unsupported import');
       authorize(profile,kind,true);if(!Array.isArray(records)||!records.length||records.length>500)throw problem('Import 1–500 rows');
       return transaction(db=>importWithDrafts(db,profile,kind,records,input=>save(db,profile,kind,input)));
     },

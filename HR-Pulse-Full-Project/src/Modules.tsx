@@ -1,3 +1,4 @@
+import {assetPrintHtml} from './assetPrint';
 import DictatedReason from './DictatedReason';
 
 import {HolidaySites} from './HolidaySites';
@@ -39,6 +40,7 @@ export function Records({columns,filters,actionLabel,grant,kind,module,readOnly=
 
   const extraQuery=new URLSearchParams(filterValues).toString();
 
+  const assetKind=['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind);
   const requestKind=['leaveRequests','leaveEncashments'].includes(kind);
 
   const writable=module.canWrite&&!readOnly;
@@ -51,9 +53,22 @@ export function Records({columns,filters,actionLabel,grant,kind,module,readOnly=
 
   async function exportAll(){setBusy(true);setError('');try{let current=1;const all:Record<string,unknown>[]=[];while(true){const result=await api<Listing>(grant,`records/${kind}?page=${current}&search=${encodeURIComponent(search)}&status=${status}&${extraQuery}`);all.push(...result.rows.map(row=>({...row.data,status:row.status,updatedAt:row.updated_at})));if(all.length>=result.total||!result.rows.length)break;if(current++>=200)throw new Error('Export is limited to 10,000 records. Narrow your search.');}const out=all.map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,module.fields.find(f=>f.key===key)?.type==='reference'?byId.get(String(value))?.code||value:value])));download(`${kind}-${new Date().toISOString().slice(0,10)}.csv`,csv([...module.fields.filter(f=>!['attachment','audio'].includes(f.type)).map(f=>f.key),'status','updatedAt'],out));notice(`Exported ${all.length} records`);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 
+  async function smartPrint(){
+    const preview=window.open('','_blank');if(!preview){setError('Allow pop-ups to open the print preview.');return;}
+    preview.document.body.textContent='Preparing print preview…';setBusy(true);setError('');
+    try{const rows:Record<string,unknown>[]=[];for(let current=1;current<=200;current++){
+      const result=await api<Listing>(grant,`records/${kind}?page=${current}&search=${encodeURIComponent(search)}&status=${status}&${extraQuery}`);
+      rows.push(...result.rows.map(row=>({...row.data,code:row.code,name:row.name,status:row.status})));
+      if(rows.length>=result.total||!result.rows.length)break;if(current===200)throw new Error('Print is limited to 10,000 records. Narrow your search.');
+    }
+    const resolved=rows.map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>{const ref=byId.get(String(value));return [key,ref?`${ref.code} · ${ref.name}`:value];})));
+    preview.document.open();preview.document.write(assetPrintHtml(module.title,[...(columns||[{key:'code',label:'Code'},{key:'name',label:'Name'}]),{key:'status',label:'Status'}],resolved));preview.document.close();preview.focus();
+    }catch(e){preview.close();setError((e as Error).message);}finally{setBusy(false);}
+  }
+
   async function action(){if(!confirm)return;setBusy(true);try{await api(grant,`records/${kind}/${confirm.row.id}/${confirm.action}`,'POST',{version:confirm.row.version});setConfirm(null);notice(confirm.action==='submit'?'Submitted for approval':confirm.action==='cancel'?'Request cancelled':'Record disabled');await load();}catch(e){setError((e as Error).message);setConfirm(null);}finally{setBusy(false);}}
 
-  return <section className="data-card"><div className="data-heading"><div><h2>{module.title}</h2><p>{kind==='employees'?'Create drafts, review details, then submit for approval. Editing an active employee creates a new draft.':kind==='leaveRequests'?'Employee submits → Site HR Manager → Project Manager → Regional HR → CMD / Directors / VPs, using the configured site hierarchy.':kind==='holidays'?'New and updated holidays are sent to HR Manager VinodPinjarkar for approval before becoming active.':kind==='workflows'?'Approvers must have Approval Management access in Pulse. Use their exact approval username from HR Administration.':kind==='approvalRules'?'Site rules take precedence over company rules, then global rules. Overlapping rules must be resolved.':'Changes are saved to Azure with an audit entry.'}</p></div><div className="toolbar-buttons">{deletable&&<button disabled={busy||loading} onClick={()=>void prepareDelete()}>Delete all</button>}<button disabled={busy||loading} onClick={()=>void exportAll()}><Download/>Export CSV</button>{['employees','holidays','leaveTypes','leavePolicies','leavePeriods','leaveAllocations','leaveRequests','leaveEncashments','leaveBlocks'].includes(kind)&&writable&&<button onClick={()=>setImporting(!importing)}><Upload/>Import CSV</button>}{writable&&<button className="primary" onClick={()=>setEditor(null)}><Plus/>{actionLabel||'Add record'}</button>}</div></div>
+  return <section className="data-card"><div className="data-heading"><div><h2>{module.title}</h2><p>{kind==='employees'?'Create drafts, review details, then submit for approval. Editing an active employee creates a new draft.':kind==='leaveRequests'?'Employee submits → Site HR Manager → Project Manager → Regional HR → CMD / Directors / VPs, using the configured site hierarchy.':kind==='holidays'?'New and updated holidays are sent to HR Manager VinodPinjarkar for approval before becoming active.':kind==='workflows'?'Approvers must have Approval Management access in Pulse. Use their exact approval username from HR Administration.':kind==='approvalRules'?'Site rules take precedence over company rules, then global rules. Overlapping rules must be resolved.':'Changes are saved to Azure with an audit entry.'}</p></div><div className="toolbar-buttons">{deletable&&<button disabled={busy||loading} onClick={()=>void prepareDelete()}>Delete all</button>}<button disabled={busy||loading} onClick={()=>void exportAll()}><Download/>Export CSV</button>{assetKind&&<button disabled={busy||loading} onClick={()=>void smartPrint()}>Smart Print</button>}{(assetKind||['employees','holidays','leaveTypes','leavePolicies','leavePeriods','leaveAllocations','leaveRequests','leaveEncashments','leaveBlocks'].includes(kind))&&writable&&<button onClick={()=>setImporting(!importing)}><Upload/>Import CSV</button>}{writable&&<button className="primary" onClick={()=>setEditor(null)}><Plus/>{actionLabel||'Add record'}</button>}</div></div>
 
     {kind==='holidays'&&<HolidaySites grant={grant} writable={writable} group={filterValues.holidayGroup||''} site={filterValues.holidaySite||''} select={(holidayGroup,holidaySite)=>{setPage(1);setFilterValues({...filterValues,siteId:'',holidayGroup,holidaySite});}}/>}
 
