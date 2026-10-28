@@ -78,6 +78,7 @@ export function createService(pool) {
       if(!(existing.data.__importDraft==='true'&&existing.created_by===profile.actor))await locationAccess(db,profile,kind,existing.data,id);
     }
     if(existing?.data.__importDraft==='true')input=await resolveImportReferences(db,kind,input);
+    if(kind==='outDutyRequests')input={...input,code:existing?.code||'OD-'+randomUUID()};
     data=validate(kind,input);
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);
@@ -148,7 +149,8 @@ export function createService(pool) {
     async lookups(profile) {
       if(!grantedMenus(profile).size)throw problem('No HR permissions assigned',403);
       const kinds=[...new Set(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).flatMap(([,config])=>config.fields.filter(x=>x.type==='reference').map(x=>x.reference)))];
-      const result=await pool.query("SELECT r.id,r.kind,r.code,r.name FROM hr_records r WHERE r.kind=ANY($1) AND r.status IN ('ACTIVE','APPROVED') AND "+scopeSql('r','$2')+" ORDER BY r.name LIMIT 10000",[kinds,await siteIds(pool,profile)]);
+      if(canRead(profile,'outDutyRequests'))for(const kind of ['departments','designations','sites'])if(!kinds.includes(kind))kinds.push(kind);
+      const result=await pool.query("SELECT r.id,r.kind,r.code,r.name,CASE WHEN r.kind='designations' THEN r.data->>'departmentId' END AS department_id FROM hr_records r WHERE r.kind=ANY($1) AND r.status IN ('ACTIVE','APPROVED') AND "+scopeSql('r','$2')+" ORDER BY r.name LIMIT 10000",[kinds,await siteIds(pool,profile)]);
       return result.rows;
     },
     async save(profile,kind,data,id) {return transaction(db=>save(db,profile,kind,data,id));},

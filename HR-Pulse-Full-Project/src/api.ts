@@ -4,7 +4,7 @@ export type Session={grant:string;profile:Profile};
 export type Field={key:string;label:string;type:string;required?:boolean;reference?:string;options?:string[];min?:number};
 export type Module={autoCode?:boolean;title:string;menu:string;fields:Field[];canWrite:boolean};
 export type RecordRow={id:string;kind:string;code:string;name:string;data:Record<string,string|number>;status:string;version:number;updated_at:string};
-export type Lookup={id:string;kind:string;code:string;name:string};
+export type Lookup={department_id?:string;id:string;kind:string;code:string;name:string};
 export async function pulse(action:string,data:object){
   const response=await fetch('https://pulse.cmll.in/api/integrations/hr/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),redirect:'error',signal:AbortSignal.timeout(15000)});
   const result=await response.json();if(!response.ok)throw new Error(result.error||'Unable to sign in');return result;

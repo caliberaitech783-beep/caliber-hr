@@ -29,6 +29,7 @@ export const modules = {
   approvalRules: module('Approval matrix','Master Configuration',[text('code','Rule code',true),text('name','Rule name',true),select('target','Module',['employees','leaveRequests'],true),ref('workflowId','Workflow','workflows',true),ref('companyId','Company (blank = all)','companies'),ref('siteId','Site (blank = all)','sites')]),
 };
 Object.assign(modules,leaveModules);
+modules.outDutyRequests.autoCode=true;
 modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
 modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared','Gazetted','Gazetted (General)','Paid (PH)']));
