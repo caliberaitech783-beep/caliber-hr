@@ -5,6 +5,10 @@ const date = (key, label, required = false) => ({ key, label, type: 'date', requ
 const select = (key, label, options, required = false) => ({ key, label, type: 'select', options, required });
 const module = (title, menu, fields) => ({ title, menu, fields });
 export const modules = {
+  assetCategories: module('Category Master','Asset Management',[text('code','Tag Prefix',true),text('name','Category',true),text('group','Group'),text('extraDetails','Extra details to capture'),{key:'activeAssets',label:'Assets (active)',type:'number',min:0}]),
+  assetEmployees: module('Employee Master','Asset Management',[text('code','Record reference',true),ref('employeeId','Emp Code','employees',true),text('name','Employee Name',true),text('department','Department'),text('designation','Designation'),ref('siteId','Location','sites',true),text('email','Work Email'),text('employmentStatus','Employment Status'),date('lastWorkingDay','Last Working Day'),{key:'assetsHeld',label:'Assets Held',type:'number',min:0},text('remarks','Remarks')]),
+  assetAllocationLog: module('Allocation Log','Asset Management',[text('code','Log reference',true),date('date','Date',true),ref('assetId','Asset Tag','assets',true),text('name','Asset Name',true),text('action','Action',true),ref('employeeId','Emp Code','employees',true),text('employeeName','Employee Name',true),ref('fromEmployeeId','From Emp Code (transfer)','employees'),text('condition','Condition'),text('vendorMethod','Vendor / Method'),text('remarks','Remarks')]),
+  assetExitClearances: module('Exit Clearance','Asset Management',[text('code','Clearance reference',true),ref('employeeId','Emp Code','employees',true),text('name','Employee Name',true),text('department','Department'),text('employmentStatus','Employment Status'),date('lastWorkingDay','Last Working Day'),{key:'assetsHeld',label:'Assets Held',type:'number',min:0},text('valueHeld','Value Held (₹)'),text('assetTagsHeld','Asset Tags Held'),text('clearance','Clearance')]),
   assets: module('Assets','Asset Management',[text('code','Asset code',true),text('name','Asset name',true),ref('siteId','Locations','sites',true),text('department','Departments'),text('vendor','Vendors'),text('condition','Conditions'),text('assetStatus','Asset Status'),text('employeeStatus','Employee Status'),text('movementAction','Movement Action'),text('assetGroup','Asset Group'),text('depreciationMethod','Dep. Method'),text('disposalMethod','Disposal Method')]),
   outDutyRequests: module('Out Duty Form','Employee Master',[text('code','OD reference',true),text('name','Employee name',true),ref('employeeId','Employee ID','employees',true),text('designation','Designation',true),text('department','Department',true),ref('siteId','Site / Location','sites',true),date('outDutyDate','From date',true),date('toDate','To date',true),text('purpose','Purpose of out duty',true),text('visitLocation','Location / Place to visit',true),text('authorityName','Authority name'),text('authoritySignature','Reporting to'),text('employeeSignature','Employee signature (typed name)'),date('signatureDate','Signature date')]),
   employeeTransfers: module('Employee transfers','Employee Master',[text('code','Transfer reference',true),text('name','Transfer title',true),ref('employeeId','Employee','employees',true),date('transferDate','Transfer date',true),ref('fromSiteId','From location','sites',true),ref('toSiteId','To location','sites',true),ref('fromCompanyId','From company','companies',true),ref('toCompanyId','To company','companies',true),text('fromDesignation','From designation',true),text('toDesignation','To designation',true),text('fromManager','From reporting manager',true),text('toManager','To reporting manager',true)]),
@@ -32,14 +36,14 @@ export const menus = ['Asset Management','Dashboard','Employee Master','Master C
 export function grantedMenus(profile) { return new Set([...(profile.permissions?.hrDesktopAccess || []),...(profile.permissions?.hrMobileAccess || [])].filter(x => menus.includes(x))); }
 export function canRead(profile, kind) {
   const granted = grantedMenus(profile);
-  if(kind==='assets')return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
+  if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if (kind === 'employees') return ['Employee Master','Employee Onboarding','Employee Directory','Reports & MIS'].some(x=>granted.has(x));
   if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;
   return modules[kind] && (granted.has(modules[kind].menu) || granted.has('Master Configuration'));
 }
 export function canWrite(profile, kind) {
   const granted = grantedMenus(profile);
-  if(kind==='assets')return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
+  if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if (kind === 'employees') return granted.has('Employee Master') || granted.has('Employee Onboarding');
   if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;
   return modules[kind] && (granted.has(modules[kind].menu) || granted.has('Master Configuration'));

@@ -1,3 +1,4 @@
+import AssetManagement from './AssetManagement';
 import HierarchyMaster from './HierarchyMaster';
 import LeaveMaster,{LeaveRequests} from './LeaveMaster';
 import ShiftMaster from './ShiftMaster';
@@ -49,7 +50,7 @@ function Workspace({session,logout}:{session:Session;logout:()=>void}){
     {(page==='Dashboard'||page==='Reports & MIS')&&<Overview grant={session.grant} report={page==='Reports & MIS'} onEmployees={()=>navigate('Employee Directory')} showEmployees={access.has('Employee Directory')}/>}
     {page==='Master Configuration'&&<><div className="module-tabs master-groups">{masterGroups.map((g,i)=>g.kinds.some(k=>config[k])&&<button key={g.name} className={group===i?'selected':''} onClick={()=>{setGroup(i);setKind(g.kinds.find(k=>config[k])||'');}}>{g.name}</button>)}</div><div className="module-tabs">{groups.map(k=><button key={k} className={kind===k?'selected':''} onClick={()=>setKind(k)}>{config[k].title}</button>)}</div></>}
     {page==='Payroll Management'&&<><ModuleLanding title={payrollMenu}/></>}
-    {page==='Asset Management'&&(config.assets?<Records grant={session.grant} kind="assets" module={config.assets} notice={setNotice} actionLabel="Add asset" columns={[['siteId','Locations'],['department','Departments'],['vendor','Vendors'],['condition','Conditions'],['assetStatus','Asset Status'],['employeeStatus','Employee Status'],['movementAction','Movement Action'],['assetGroup','Asset Group'],['depreciationMethod','Dep. Method'],['disposalMethod','Disposal Method']].map(([key,label])=>({key,label}))}/>:<p role="status">Loading asset configuration...</p>)}
+    {page==='Asset Management'&&<AssetManagement grant={session.grant} config={config} notice={setNotice}/>}
     {page==='Calendar'&&(config.holidays?<Records grant={session.grant} kind="holidays" module={config.holidays} readOnly notice={setNotice}/>:<ModuleLanding title="Calendar"/>)}
     {page==='Holiday & Leave'&&<><p className="help-text">Leave entitlement uses calendar days, including weekends and holidays. Split requests at the calendar-year boundary.</p><div className="module-tabs">{['leaveRequests','holidays','leavePolicies'].filter(k=>config[k]).map(k=><button key={k} className={kind===k?'selected':''} onClick={()=>setKind(k)}>{config[k].title}</button>)}</div></>}
     {(employeePage||['Master Configuration','Holiday & Leave'].includes(page))&&config[activeKind]&&<Records key={page+activeKind+group} grant={session.grant} kind={activeKind} module={config[activeKind]} readOnly={page==='Employee Directory'} allowDelete={page==='Employee Onboarding'||page==='Employee Directory'} importFirst={page==='Master Configuration'&&group===4} notice={setNotice}/>}
