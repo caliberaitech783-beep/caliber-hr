@@ -62,3 +62,4 @@
 
 nav button .chev{flex-shrink:0;transition:transform .2s}nav button .chev.expanded{transform:rotate(180deg)}
 .joining-field input:disabled,.joining-field select:disabled,.joining-field textarea:disabled{background:#c8c8c8;border-color:#b4b4b4;color:#1f1a24;-webkit-text-fill-color:#1f1a24;opacity:1;cursor:not-allowed}
+.bulk-upload-button{display:inline-flex;align-items:center;gap:8px;border:1px solid #d8cce3;border-radius:9px;background:#fff;color:#5b2d91;padding:10px 16px;font-weight:700;white-space:nowrap}.bulk-upload-button svg{width:17px;height:17px}.bulk-upload-button:hover{background:#f6f1fb}.bulk-documents{margin-top:20px}.bulk-documents h4{font:700 14px Manrope;margin:0 0 10px;color:#271637}

@@ -204,6 +204,11 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Upload VTC certificate')).toBeTruthy();
   expect(screen.getByLabelText('Upload Medical fitness certificate')).toBeTruthy();
   expect(screen.getByLabelText('Upload Driving licence')).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Bulk Upload'})).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Bulk upload documents'),{target:{files:[new File(['a'],'offer.pdf',{type:'application/pdf'}),new File(['b'],'photo.png',{type:'image/png'})]}});
+  expect(screen.getByText('Bulk uploaded documents (2)')).toBeTruthy();
+  fireEvent.click(screen.getAllByRole('button',{name:'Remove'}).filter(button=>!(button as HTMLButtonElement).disabled)[0]);
+  expect(screen.getByText('Bulk uploaded documents (1)')).toBeTruthy();expect(screen.getByText('photo.png')).toBeTruthy();expect(screen.queryByText('offer.pdf')).toBeNull();
   expect(screen.getByLabelText('Upload Operator competency certificate')).toBeTruthy();
   view.rerender(<EmployeeLocation employeeGroup="Corporate / HO"/>);
   expect(screen.getAllByRole('option',{name:'Nagpur Corporate Office'}).length).toBeGreaterThan(0);
