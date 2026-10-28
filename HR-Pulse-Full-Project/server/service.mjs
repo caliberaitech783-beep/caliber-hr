@@ -1,3 +1,4 @@
+import {odApprovalWorkflow} from './out-duty.mjs';
 import {createAssets} from './assets.mjs';
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './joining-hierarchy.mjs';
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
@@ -72,7 +73,7 @@ export function createService(pool) {
       existing=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
       if(!existing)throw problem('Record not found',404);
       if(existing.version!==Number(input.version))throw problem('This record changed. Reload it before saving.',409);
-      if(['leaveRequests','leaveEncashments'].includes(kind)&&['APPROVED','CANCELLED','INACTIVE'].includes(existing.status))throw problem('Finalized requests cannot be edited',409);
+      if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)&&['APPROVED','CANCELLED','INACTIVE'].includes(existing.status))throw problem('Finalized requests cannot be edited',409);
       if(kind==='leaveAllocations'&&existing.data.__importDraft!=='true'&&['employeeId','leaveTypeId','periodId'].some(key=>existing.data[key]!==input[key]))throw problem('Allocation employee, type and period cannot be changed. Create another allocation instead.',409);
       if(existing.status==='PENDING')throw problem('A record awaiting approval cannot be edited',409);
       if(!(existing.data.__importDraft==='true'&&existing.created_by===profile.actor))await locationAccess(db,profile,kind,existing.data,id);
@@ -82,7 +83,7 @@ export function createService(pool) {
     data=validate(kind,input);
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);
-    const status=['employeeTransfers','outDutyRequests'].includes(kind)?'DRAFT':kind==='holidays'?'PENDING':['employees','leaveRequests','leaveEncashments'].includes(kind)?'DRAFT':'ACTIVE';
+    const status=['employeeTransfers','outDutyRequests'].includes(kind)?'DRAFT':kind==='holidays'?'PENDING':['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)?'DRAFT':'ACTIVE';
     let result;
     if(id) result=await db.query('UPDATE hr_records SET code=$1,name=$2,data=$3,status=$4,version=version+1,updated_by=$5,updated_at=now() WHERE id=$6 RETURNING *',[data.code,data.name,data,status,profile.actor,id]);
     else result=await db.query('INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *',[randomUUID(),kind,data.code,data.name,data,status,profile.actor]);
@@ -103,8 +104,8 @@ export function createService(pool) {
         await locationAccess(db,profile,kind,record.data,id);
         await references(db,kind,record.data,id);
         let companyId=record.data.companyId,siteId=record.data.siteId;
-        if(['leaveRequests','leaveEncashments'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;}
-        const hierarchy=['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
+        if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;}
+        const hierarchy=kind==='outDutyRequests'?odApprovalWorkflow():['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
         const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
         const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
         if(!hierarchy&&!rules.length&&(kind==='leaveRequests'||!record.data.approver))throw problem('Configure an active approval-matrix rule for this module before submitting',409);
@@ -128,7 +129,7 @@ export function createService(pool) {
     ...createDeletion(pool),
     ...createHierarchies(pool),
     ...createHolidayDocuments(pool),
-    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments'].includes(kind))}]))}; },
+    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests'].includes(kind))}]))}; },
     async list(profile,kind,params) {
       authorize(profile,kind);
       const page=Math.max(1,Math.min(10000,Number(params.get('page'))||1));
@@ -155,7 +156,7 @@ export function createService(pool) {
     },
     async save(profile,kind,data,id) {return transaction(db=>save(db,profile,kind,data,id));},
     async cancel(profile,kind,id,version){
-      authorize(profile,kind,true);if(!['leaveRequests','leaveEncashments'].includes(kind)||!uuid(id))throw problem('Invalid cancellation');
+      authorize(profile,kind,true);if(!['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)||!uuid(id))throw problem('Invalid cancellation');
       return transaction(async db=>{
         await db.query("SELECT id FROM hr_approvals WHERE record_id=$1 AND state='PENDING' FOR UPDATE",[id]);
         const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
@@ -174,7 +175,7 @@ export function createService(pool) {
       return transaction(db=>importWithDrafts(db,profile,kind,records,input=>save(db,profile,kind,input)));
     },
     async deactivate(profile,kind,id,version) {
-      authorize(profile,kind,true);if(['leaveRequests','leaveEncashments'].includes(kind))throw problem('Use Cancel for requests',409);if(!uuid(id))throw problem('Invalid record ID');
+      authorize(profile,kind,true);if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind))throw problem('Use Cancel for requests',409);if(!uuid(id))throw problem('Invalid record ID');
       return transaction(async db=>{
         const current=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
         if(!current)throw problem('Record not found',404);
@@ -214,7 +215,7 @@ export function createService(pool) {
         return {imported:count,submitted,status:submitted===count?'PENDING':'DRAFT'};
       });
     },
-    async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction(db=>submitRecord(db,profile,kind,id,version));},
+    async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction(db=>submitRecord(db,profile,kind,id,version));},
     async approvals(profile) {
       if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
       return (await pool.query("SELECT a.*,r.kind,a.record_snapshot->>'code' AS code,a.record_snapshot->>'name' AS name,a.record_snapshot->'data' AS data FROM hr_approvals a JOIN hr_records r ON r.id=a.record_id WHERE (a.approvers ? $1 OR a.requested_by=$1) AND "+scopeSql('r','$2')+" ORDER BY a.created_at DESC LIMIT 200",[profile.actor,await siteIds(pool,profile)])).rows;
