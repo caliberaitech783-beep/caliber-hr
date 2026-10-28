@@ -23,8 +23,12 @@ The website remains on Azure Static Web Apps Free; do not upgrade the plan or
 introduce a hosted OCR fallback without the user's authorization.
 
 First use downloads the model/runtime assets. Existing browser caching applies.
-The runtime is downloaded into the HTTP cache before starting the SDK's timed
-model initialization, so a slow first download does not consume that deadline.
+The runtime downloads before timed model initialization (up to five minutes for
+the first download), then its bytes are transferred directly into the worker.
+The worker supplies them locally to WASM, avoiding a second network download or
+dependence on shared HTTP caching. The build script copies the official SDK
+worker and adapts only its two session initialization limits from 60 to 180
+seconds for slower devices, with a guard against unexpected upstream changes.
 Images are not sent to an OCR provider. The app's existing joining-document
 storage/submission behavior is independent of this recognition step.
 

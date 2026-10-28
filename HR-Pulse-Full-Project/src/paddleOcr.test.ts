@@ -12,13 +12,29 @@ it('runs the free worker with same-origin model/runtime assets and reuses it',as
  await readPaddleText(image);
  expect(mocks.create).toHaveBeenCalledTimes(1);
  const options=mocks.create.mock.calls[0][0];
- expect(options.worker).toBe(true);
+ expect(options.worker.createWorker).toBeTypeOf('function');
  for(const url of [options.textDetectionModelAsset.url,options.textRecognitionModelAsset.url,options.ortOptions.wasmPaths]){
   expect(new URL(url).origin).toBe(location.origin);
   expect(new URL(url).pathname).toMatch(/^\/ocr\//);
  }
  expect(mocks.predict).toHaveBeenCalledWith(image,expect.any(Object));
  for(const [url] of vi.mocked(fetch).mock.calls)expect(new URL(String(url)).origin).toBe(location.origin);
+});
+
+it('transfers the downloaded runtime to the worker instead of relying on shared HTTP cache',async()=>{
+ const wasm=new Uint8Array([0,97,115,109]).buffer,postMessage=vi.fn();
+ vi.stubGlobal('Worker',vi.fn(function(){return {postMessage};}));
+ vi.mocked(fetch).mockImplementation(async input=>({ok:true,arrayBuffer:async()=>String(input).endsWith('.wasm')?wasm:new ArrayBuffer(0)} as Response));
+ mocks.create.mockResolvedValue({predict:mocks.predict});
+ mocks.predict.mockResolvedValue([{items:[]}]);
+ const {readPaddleText}=await import('./paddleOcr');await readPaddleText(new Blob());
+ mocks.create.mock.calls[0][0].worker.createWorker();
+ expect(Worker).toHaveBeenCalledWith(new URL('/ocr/paddle-worker.mjs',location.origin),{type:'module'});
+ const [message,transfers]=postMessage.mock.calls[0];
+ expect(message.kind).toBe('ocr-runtime');
+ expect([...new Uint8Array(message.wasm)]).toEqual([0,97,115,109]);
+ expect(message.wasm).not.toBe(wasm);
+ expect(transfers).toEqual([message.wasm]);
 });
 
 it('allows a retry after model initialization fails without using another service',async()=>{

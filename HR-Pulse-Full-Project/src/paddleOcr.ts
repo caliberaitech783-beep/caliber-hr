@@ -7,16 +7,20 @@ let queue=Promise.resolve();
 async function getEngine(){
  if(!engine)engine=Promise.all([
   import('@paddleocr/paddleocr-js'),
-  // The SDK allows 60 seconds for session creation, including WASM loading.
-  // Warm the same-origin HTTP cache first so a slow first download does not
-  // consume that initialization window. Subsequent workers reuse these bytes.
+  // Complete the first download outside model startup, then transfer the WASM
+  // bytes to the worker. Do not depend on HTTP cache sharing across contexts.
   ...['ort-wasm-simd-threaded.jsep.mjs','ort-wasm-simd-threaded.jsep.wasm'].map(async file=>{
-   const response=await fetch(new URL('/ocr/runtime/'+file,location.origin),{signal:AbortSignal.timeout(90000)});
+   const response=await fetch(new URL('/ocr/runtime/'+file,location.origin),{signal:AbortSignal.timeout(300000)});
    if(!response.ok)throw new Error('The on-device reader could not download. Please retry.');
-   await response.arrayBuffer();
+   return response.arrayBuffer();
   }),
- ]).then(([{PaddleOCR}])=>PaddleOCR.create({
-  worker:true,
+ ]).then(([{PaddleOCR},,wasm])=>PaddleOCR.create({
+  worker:{createWorker:()=>{
+   const worker=new Worker(new URL('/ocr/paddle-worker.mjs',location.origin),{type:'module'});
+   const copy=wasm.slice(0);
+   worker.postMessage({kind:'ocr-runtime',wasm:copy},[copy]);
+   return worker;
+  }},
   textDetectionModelName:'PP-OCRv5_mobile_det',
   textRecognitionModelName:'en_PP-OCRv5_mobile_rec',
   textDetectionModelAsset:{url:new URL('/ocr/PP-OCRv5_mobile_det.tar',location.origin).href},
