@@ -151,9 +151,12 @@ describe('Employee Master tabs',()=>{
   expect((document.querySelector('select[name="Designation"]') as HTMLSelectElement).value).toBe('Manager');
   expect(screen.getByLabelText('UAN No.')).toBeTruthy();
   expect(screen.getByLabelText('ESIC')).toBeTruthy();
-  expect(screen.getByLabelText('Reference Name')).toBeTruthy();
-  const referenceType=screen.getByLabelText('Reference Type');
+  expect((screen.getByLabelText(/Reference Name/) as HTMLInputElement).required).toBe(true);
+  const referenceType=screen.getByLabelText(/Reference Type/);
+  expect((referenceType as HTMLSelectElement).required).toBe(true);
   expect(within(referenceType).queryAllByRole('option').map(option=>option.textContent)).toEqual(['Select','Regional HR Manager','Supervisor','Driver','Others']);
+  expect((screen.getByLabelText(/Emergency Contact Name/) as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText(/Emergency Contact Number/) as HTMLInputElement).required).toBe(true);
   const messDeduction=screen.getByLabelText('Mess Deduction');
   expect(within(messDeduction).queryAllByRole('option').map(option=>option.textContent)).toEqual(['Select','Yes','No']);
   expect(screen.getByRole('heading',{name:'Job & Posting Details'})).toBeTruthy();
@@ -188,7 +191,9 @@ describe('Employee Master tabs',()=>{
   expect(screen.queryByRole('button',{name:/Mine Compliance/})).toBeNull();
   expect(screen.getByRole('heading',{name:/Mine Compliance/})).toBeTruthy();
   expect(screen.getByLabelText(/Medical Examination Date/)).toBeTruthy();
-  expect(screen.getByLabelText(/Driving Licence No/)).toBeTruthy();
+  expect((screen.getByLabelText(/Driving Licence No/) as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText(/DL Issue Date/) as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText(/DL Valid Upto/) as HTMLInputElement).required).toBe(true);
   expect(screen.queryByRole('button',{name:/Contract & Policies/})).toBeNull();
   expect(screen.queryByRole('button',{name:/Assets$/})).toBeNull();
   for(const [name,value] of [['A-Form No.','AF-1'],['Full Name','Employee One'],['Full Name as per Aadhaar','Employee One'],['Employee Code','EMP-1'],['Father / Spouse Name','Parent One'],['Mobile','9876543210'],['Candidate E-mail','employee@example.com'],['Aadhaar No.','123412341234'],['PAN No.','ABCDE1234F']] as const)fireEvent.input(document.querySelector(`[name="${name}"]`)!,{target:{value}});
