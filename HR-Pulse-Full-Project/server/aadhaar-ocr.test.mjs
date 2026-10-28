@@ -5,6 +5,10 @@ const profile={actor:'tester',permissions:{hrDesktopAccess:['Employee Master']}}
 const input={mime:'image/jpeg',content:Buffer.from([255,216,255,224]).toString('base64')};
 const fields={name:'Test Person',dob:'2000-02-29',gender:'Female',uid:'',address:'D/O: Test Parent',relationName:'Test Parent',relationType:'D/O'};
 const success=()=>new Response(JSON.stringify({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(fields)}]}}]}));
+test('sends PDF bytes through native document understanding',async()=>{
+ const read=createAadhaarReader({apiKey:'test',fetchImpl:async(url,options)=>{const part=JSON.parse(options.body).contents[0].parts[0].inlineData;assert.equal(part.mimeType,'application/pdf');assert.ok(Buffer.from(part.data,'base64').toString().startsWith('%PDF-'));return success();}});
+ assert.equal((await read(profile,{mime:'application/pdf',content:Buffer.from('%PDF-1.7\nexample').toString('base64')})).details.name,fields.name);
+});
 test('uses a server-only key and structured extraction in one request',async()=>{
  let calls=0;
  const read=createAadhaarReader({apiKey:'test-secret',fetchImpl:async(url,options)=>{calls++;assert.ok(url.endsWith(':generateContent'));assert.ok(!url.includes('test-secret'));assert.equal(options.headers['x-goog-api-key'],'test-secret');const body=JSON.parse(options.body);assert.equal(body.generationConfig.responseMimeType,'application/json');assert.equal(body.contents[0].parts[0].inlineData.data,input.content);return success();}});

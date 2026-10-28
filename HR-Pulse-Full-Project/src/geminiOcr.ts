@@ -1,6 +1,10 @@
 import {API,clearSession} from './api';
 export type AadhaarDetails={name:string;dob:string;gender:string;uid:string;address:string;relationName:string};
 async function prepareImage(file:File):Promise<Blob>{
+ if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){
+  if(file.size>1_300_000)throw new Error('Use an Aadhaar PDF smaller than 1.3 MB, or upload clear JPG/PNG images of its pages.');
+  return new Blob([file],{type:'application/pdf'});
+ }
  if(file.size>20_000_000)throw new Error('Use an Aadhaar image smaller than 20 MB.');
  const bitmap=await createImageBitmap(file);
  try{
