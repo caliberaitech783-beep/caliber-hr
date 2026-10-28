@@ -1,7 +1,7 @@
 .asset-master-lists{background:#f3f6f5;padding:24px;border-radius:16px;display:grid;gap:20px;color:#18332f}
 .asset-master-intro h3{margin:0 0 8px;font-size:24px}.asset-master-intro p{margin:0;color:#60716d}
 .asset-master-card{background:#fff;border:1px solid #dae2df;border-radius:14px;padding:20px;min-width:0}
-.asset-master-card header{display:flex;align-items:center;justify-content:space-between;gap:16px}.asset-master-card h3{margin:0;font-size:17px}.asset-master-card header span{color:#60716d;font-size:14px}
+.asset-master-card .asset-master-card-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.asset-master-card h3{margin:0;font-size:17px}.asset-master-card .asset-master-card-heading span{color:#60716d;font-size:14px}
 .asset-master-card p{margin:10px 0 16px;color:#60716d;font-size:14px}
 .asset-master-chips{display:flex;flex-wrap:wrap;gap:8px}
 .asset-master-lists .asset-master-chips button{width:auto;min-width:0;border:1px solid #dce4e1;background:#eff3f1;color:#213c36;padding:7px 13px;border-radius:24px;white-space:normal;overflow-wrap:anywhere;text-align:left}
