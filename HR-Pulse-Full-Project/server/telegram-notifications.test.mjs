@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {createTelegramNotifier,nagpurApprovalMessage} from './telegram-notifications.mjs';
+import {createTelegramNotifier,nagpurApprovalMessage,nagpurDecisionMessage} from './telegram-notifications.mjs';
 
 const input={siteCode:'CMLL-CO',record:{code:'EMP-01',name:'Employee One',data:{officeData:{'Department *':'Human Resources','Designation *':'HR Executive'}}},step:{label:'HR Executive',approvers:['apurvakopulwar']},stage:1,total:3,requestedBy:'sitehr'};
 
@@ -16,9 +16,19 @@ test('sends only Nagpur messages to configured current approvers',async()=>{
  assert.deepEqual(await notifier.approvalRequested({...input,siteCode:'CMLL-HO'}),{sent:0,skipped:true});assert.equal(calls.length,1);
 });
 
+test('formats and sends approved and rejected employee decisions to all Nagpur approvers',async()=>{
+ const approved=nagpurDecisionMessage({...input,state:'APPROVED',approver:'stupal',decidedAt:'29/10/2026, 11:00:00 am'});
+ assert.match(approved,/^✅ Employee Approved/);assert.match(approved,/Status: APPROVED/);assert.doesNotMatch(approved,/Reason:/);
+ const rejected=nagpurDecisionMessage({...input,state:'REJECTED',approver:'apurvakopulwar',comments:'Documents incomplete',decidedAt:'29/10/2026, 11:05:00 am'});
+ assert.match(rejected,/^❌ Employee Rejected/);assert.match(rejected,/Reason: Documents incomplete/);assert.match(rejected,/Status: REJECTED/);
+ const calls=[],notifier=createTelegramNotifier({token:'secret',recipients:{mayuriumate:'1',stupal:'2',apurvakopulwar:'3'},fetchImpl:async(_url,options)=>{calls.push(JSON.parse(options.body));return {ok:true,status:200};}});
+ assert.deepEqual(await notifier.finalDecision({...input,state:'APPROVED',approver:'stupal',decidedAt:'now',recipients:['mayuriumate','stupal','apurvakopulwar','stupal']}),{sent:3,skipped:false});
+ assert.deepEqual(calls.map(call=>call.chat_id),['1','2','3']);
+});
+
 test('queues the next-stage employee notification before returning the approval result',async()=>{
  const source=await readFile(new URL('./service.mjs',import.meta.url),'utf8');
- const notification=source.lastIndexOf("if(record.kind==='employees'&&state==='PENDING')");
+ const notification=source.lastIndexOf("if(record.kind==='employees')");
  const result=source.indexOf('return {state};',notification);
  assert.ok(notification>=0&&result>notification,'next-stage notification must be reachable before decide returns');
 });

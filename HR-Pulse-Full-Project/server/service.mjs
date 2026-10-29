@@ -264,7 +264,13 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
           await queueTelegram(db,id+':decision:'+approval.version,recipients,leaveMessage(record,status));
         }
         await audit(db,profile.actor,input.decision,record.kind,record.id,{stage:approval.stage+1,comments,...(handoverActor?{chargeEmployeeId:record.data.chargeEmployeeId}:{})});
-        if(record.kind==='employees'&&state==='PENDING'){const site=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[record.data.siteId||''])).rows[0],steps=approvalSteps(approval),step=steps[stage];if(site?.code==='CMLL-CO')afterCommit?.(()=>telegram.approvalRequested({siteCode:site.code,record:approval.record_snapshot,step,stage:stage+1,total:steps.length,requestedBy:approval.requested_by,previousApprover:profile.actor}));}
+        if(record.kind==='employees'){
+          const site=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[record.data.siteId||''])).rows[0],steps=approvalSteps(approval);
+          if(site?.code==='CMLL-CO'){
+            if(state==='PENDING'){const step=steps[stage];afterCommit?.(()=>telegram.approvalRequested({siteCode:site.code,record:approval.record_snapshot,step,stage:stage+1,total:steps.length,requestedBy:approval.requested_by,previousApprover:profile.actor}));}
+            else afterCommit?.(()=>telegram.finalDecision({siteCode:site.code,record:approval.record_snapshot,state,approver:profile.actor,comments,decidedAt:new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}),recipients:steps.flatMap(step=>step.approvers)}));
+          }
+        }
         return {state};
       });
     },
