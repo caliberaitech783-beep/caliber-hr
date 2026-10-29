@@ -127,7 +127,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         }
         const approvalId=randomUUID();
         await db.query('INSERT INTO hr_approvals(id,record_id,approvers,requested_by,record_snapshot,approval_steps) VALUES($1,$2,$3,$4,$5,$6)',[approvalId,id,JSON.stringify(approvers),profile.actor,snapshot,JSON.stringify(steps)]);
-        if(telegramFlow)await queueTelegram(db,approvalId+':submitted',[telegramFlow.siteHr,telegramFlow.regionalHr],leaveMessage(record,'SUBMITTED',{siteName:telegramSiteName}));
+        if(telegramFlow)await queueTelegram(db,approvalId+':submitted',[telegramFlow.siteHr,telegramFlow.regionalHr],leaveMessage(record,'SUBMITTED',{siteName:telegramSiteName,firstRole:telegramFlow.firstRole}));
         await db.query("UPDATE hr_records SET status='PENDING',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2",[profile.actor,id]);
         await audit(db,profile.actor,'SUBMIT',kind,id,{workflowId:workflow.id,stages:steps.length});
          if(kind==='employees'&&hierarchy?.code==='CMLL-CO')afterCommit?.(()=>telegram.approvalRequested({siteCode:hierarchy.code,record:snapshot,step:steps[0],stage:1,total:steps.length,requestedBy:profile.actor}));
@@ -263,7 +263,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
           const recipients=state==='APPROVED'?[employee,flow.siteHr,...flow.directors,handoverActor]:state==='REJECTED'?[employee,flow.siteHr,flow.regionalHr]:[employee,flow.regionalHr];
           const siteName=approval.record_snapshot.telegramSiteName||(await db.query("SELECT s.name FROM hr_records e JOIN hr_records s ON s.id::text=e.data->>'siteId' AND s.kind='sites' WHERE e.id::text=$1 AND e.kind='employees'",[record.data.employeeId||''])).rows[0]?.name;
           const account=(await db.query('SELECT telegram_user_id FROM hr_telegram_accounts WHERE actor=$1',[profile.actor])).rows[0];
-          await queueTelegram(db,id+':decision:'+approval.version,recipients,leaveMessage(record,state,{siteName,actor:profile.actor,name:profile.name,telegramId:account?.telegram_user_id,at:history.at(-1).at,comments}));
+          await queueTelegram(db,id+':decision:'+approval.version,recipients,leaveMessage(record,state,{siteName,firstRole:flow.firstRole,actor:profile.actor,name:profile.name,telegramId:account?.telegram_user_id,at:history.at(-1).at,comments}));
         }
         await audit(db,profile.actor,input.decision,record.kind,record.id,{stage:approval.stage+1,comments,...(handoverActor?{chargeEmployeeId:record.data.chargeEmployeeId}:{})});
         if(record.kind==='employees'){

@@ -12,6 +12,18 @@ test('leave templates distinguish intermediate approval and include verified dec
  const submitted=leaveMessage(record,'SUBMITTED',{siteName:'Jayant OB'});assert.match(submitted,/🏢 Site Name: Jayant OB/);assert.match(submitted,/Awaiting Site HR/);assert.doesNotMatch(submitted,/Approved By/);
 });
 import {nextApproval} from './joining-hierarchy.mjs';
+import {telegramLeaveFlow} from './telegram.mjs';
+test('office leave routes use HOD before Regional HR, with directors notification-only',async()=>{
+ for(const code of ['CMLL-CO','CMLL-HO','NCL-JAYANT']){
+  const flow=await telegramLeaveFlow({query:async()=>({rows:[{code,data:{siteHr:'hod',regionalHr:'hr',directors:['director'],enabled:true}}]})},'site');
+  const firstRole=code==='NCL-JAYANT'?'Site HR':'HOD';
+  assert.equal(flow.firstRole,firstRole);
+  const steps=telegramSteps(flow);assert.equal(steps.length,2);assert.equal(steps[0].label,firstRole+' — any one');assert.deepEqual(steps[1].approvers,['hr']);
+  const record={code:'LR-1',name:'Employee',data:{fromDate:'2026-10-29',toDate:'2026-10-30'}};
+  assert.ok(leaveMessage(record,'SUBMITTED',{firstRole}).includes('Awaiting '+firstRole+' approval'));
+  assert.ok(leaveMessage(record,'PENDING',{firstRole}).includes(firstRole.toUpperCase()+' APPROVED'));
+ }
+});
 const config={siteHr:'AMITSINGH',regionalHr:'VINODPINJARKAR',directors:'MANISHCHADDA,MOHITCHADDA,RAHULCHADDA',enabled:true};
 test('Jayant route normalizes usernames and directors are notification-only',()=>{
  const c=validateTelegramHierarchy(config);assert.equal(c.siteHr,'amitsingh');assert.equal(c.directors.length,3);

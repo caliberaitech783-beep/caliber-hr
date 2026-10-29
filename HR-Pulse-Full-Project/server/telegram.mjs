@@ -11,8 +11,8 @@ export function validateTelegramHierarchy(input){
  if(siteUsers.some(actor=>regionalUsers.includes(actor)))fail('Site HR and Regional HR must use different approvers.');
  return {siteHr:siteUsers.join(','),regionalHr:regionalUsers.join(','),directors,enabled:input.enabled===true};
 }
-export function telegramSteps(config){return [{stage:1,label:'Site HR — any one',approvers:telegramUsers(config.siteHr)},{stage:2,label:'Regional HR — final approval, any one',approvers:telegramUsers(config.regionalHr)}];}
-export async function telegramLeaveFlow(db,siteId){const row=(await db.query('SELECT data FROM hr_telegram_hierarchies WHERE site_id=$1',[siteId])).rows[0];return row?.data.enabled?row.data:null;}
+export function telegramSteps(config){return [{stage:1,label:`${config.firstRole||'Site HR'} — any one`,approvers:telegramUsers(config.siteHr)},{stage:2,label:'Regional HR — final approval, any one',approvers:telegramUsers(config.regionalHr)}];}
+export async function telegramLeaveFlow(db,siteId){const row=(await db.query('SELECT h.data,s.code FROM hr_telegram_hierarchies h JOIN hr_records s ON s.id=h.site_id WHERE site_id=$1',[siteId])).rows[0];return row?.data.enabled?{...row.data,firstRole:['CMLL-CO','CMLL-HO'].includes(row.code)?'HOD':'Site HR'}:null;}
 export async function seedTelegram(db){
  const data={siteHr:'amitsingh',regionalHr:'vinodpinjarkar',directors:['manishchadda','mohitchadda','rahulchadda'],enabled:true};
  await db.query("INSERT INTO hr_telegram_hierarchies(site_id,data,updated_by) SELECT id,$1,'initial-configuration' FROM hr_records WHERE kind='sites' AND code='NCL-JAYANT' ON CONFLICT DO NOTHING",[data]);
@@ -20,14 +20,15 @@ export async function seedTelegram(db){
 export async function queueTelegram(db,eventKey,actors,message){for(const actor of new Set(actors.flatMap(telegramUsers)))await db.query('INSERT INTO hr_telegram_outbox(event_key,actor,message) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[eventKey,actor,message]);}
 export function leaveMessage(record,status,details={}){
  const date=value=>value?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Kolkata'}).format(new Date(value)):'Not available';
- const headings={SUBMITTED:'📩 LEAVE REQUEST SUBMITTED',PENDING:'✅ LEAVE REQUEST — SITE HR APPROVED',APPROVED:'✅ LEAVE REQUEST APPROVED',REJECTED:'❌ LEAVE REQUEST REJECTED'};
+ const firstRole=details.firstRole||'Site HR';
+ const headings={SUBMITTED:'📩 LEAVE REQUEST SUBMITTED',PENDING:`✅ LEAVE REQUEST — ${firstRole.toUpperCase()} APPROVED`,APPROVED:'✅ LEAVE REQUEST APPROVED',REJECTED:'❌ LEAVE REQUEST REJECTED'};
  const lines=[headings[status]||'📩 LEAVE REQUEST UPDATE','',`🏢 Site Name: ${details.siteName||'Not available'}`,`🆔 Request ID: ${record.code}`,`👤 Employee: ${record.data.employeeName||record.name}`,`📅 Leave Dates: ${date(record.data.fromDate)} to ${date(record.data.toDate)}`];
  if(details.actor){
   const rejected=status==='REJECTED';
   const at=new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}).format(new Date(details.at));
   lines.push('',`${rejected?'❌ Rejected':'✅ Approved'} By: ${details.name||details.actor}`,`🆔 ${rejected?'Reviewer':'Approver'} Telegram ID: ${details.telegramId||'Not connected'}`,`📅 ${rejected?'Rejection':'Approval'} Date: ${at} IST`);
  }
- if(status==='SUBMITTED')lines.push('','⏳ Awaiting Site HR approval');
+ if(status==='SUBMITTED')lines.push('',`⏳ Awaiting ${firstRole} approval`);
  if(status==='PENDING')lines.push('','⏳ Awaiting Regional HR approval');
  if(status==='REJECTED'&&details.comments)lines.push(`📝 Reason: ${details.comments}`);
  if(status==='APPROVED'&&record.data.chargeHandedOverTo)lines.push(`🤝 Charge handed over to: ${record.data.chargeHandedOverTo}`);
