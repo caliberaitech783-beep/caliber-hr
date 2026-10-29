@@ -4,12 +4,12 @@ import {createHash} from 'node:crypto';
 import {createTelegram,validateTelegramHierarchy,telegramSteps,webhookSecretValid,queueTelegram,deliverTelegram,leaveMessage} from './telegram.mjs';
 test('leave templates distinguish intermediate approval and include verified decision details',()=>{
  const record={code:'LR-1024',name:'Test Employee',data:{fromDate:'2026-10-29',toDate:'2026-10-30',chargeHandedOverTo:'Colleague'}};
- const details={actor:'hr',name:'HR Manager',telegramId:'123456',at:'2026-10-29T10:00:00Z',comments:'Dates unavailable'};
+ const details={siteName:'Nagpur CO',actor:'hr',name:'HR Manager',telegramId:'123456',at:'2026-10-29T10:00:00Z',comments:'Dates unavailable'};
  const approved=leaveMessage(record,'APPROVED',details);
- for(const text of ['✅ LEAVE REQUEST APPROVED','Request ID: LR-1024','Employee: Test Employee','Approved By: HR Manager','Approver Telegram ID: 123456','03:30:00 pm IST','Status: APPROVED','Charge handed over to: Colleague'])assert.ok(approved.includes(text),text);
+ for(const text of ['✅ LEAVE REQUEST APPROVED','🏢 Site Name: Nagpur CO','Request ID: LR-1024','Employee: Test Employee','Approved By: HR Manager','Approver Telegram ID: 123456','03:30:00 pm IST','Status: APPROVED','Charge handed over to: Colleague'])assert.ok(approved.includes(text),text);
  const pending=leaveMessage(record,'PENDING',details);assert.match(pending,/Awaiting Regional HR approval/);assert.match(pending,/Status: PENDING/);
  const rejected=leaveMessage(record,'REJECTED',{...details,telegramId:null});assert.match(rejected,/Rejected By: HR Manager/);assert.match(rejected,/Not connected/);assert.match(rejected,/Dates unavailable/);
- const submitted=leaveMessage(record,'SUBMITTED');assert.match(submitted,/Awaiting Site HR/);assert.doesNotMatch(submitted,/Approved By/);
+ const submitted=leaveMessage(record,'SUBMITTED',{siteName:'Jayant OB'});assert.match(submitted,/🏢 Site Name: Jayant OB/);assert.match(submitted,/Awaiting Site HR/);assert.doesNotMatch(submitted,/Approved By/);
 });
 import {nextApproval} from './joining-hierarchy.mjs';
 const config={siteHr:'AMITSINGH',regionalHr:'VINODPINJARKAR',directors:'MANISHCHADDA,MOHITCHADDA,RAHULCHADDA',enabled:true};
