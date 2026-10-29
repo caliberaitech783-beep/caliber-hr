@@ -18,7 +18,22 @@ export async function seedTelegram(db){
  await db.query("INSERT INTO hr_telegram_hierarchies(site_id,data,updated_by) SELECT id,$1,'initial-configuration' FROM hr_records WHERE kind='sites' AND code='NCL-JAYANT' ON CONFLICT DO NOTHING",[data]);
 }
 export async function queueTelegram(db,eventKey,actors,message){for(const actor of new Set(actors.flatMap(telegramUsers)))await db.query('INSERT INTO hr_telegram_outbox(event_key,actor,message) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[eventKey,actor,message]);}
-export function leaveMessage(record,status){return `Leave request ${record.code}\nEmployee: ${record.data.employeeName||record.name}\nDates: ${record.data.fromDate} to ${record.data.toDate}\nStatus: ${status}`;}
+export function leaveMessage(record,status,details={}){
+ const date=value=>value?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Kolkata'}).format(new Date(value)):'Not available';
+ const headings={SUBMITTED:'📩 LEAVE REQUEST SUBMITTED',PENDING:'✅ LEAVE REQUEST — SITE HR APPROVED',APPROVED:'✅ LEAVE REQUEST APPROVED',REJECTED:'❌ LEAVE REQUEST REJECTED'};
+ const lines=[headings[status]||'📩 LEAVE REQUEST UPDATE','',`🆔 Request ID: ${record.code}`,`👤 Employee: ${record.data.employeeName||record.name}`,`📅 Leave Dates: ${date(record.data.fromDate)} to ${date(record.data.toDate)}`];
+ if(details.actor){
+  const rejected=status==='REJECTED';
+  const at=new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}).format(new Date(details.at));
+  lines.push('',`${rejected?'❌ Rejected':'✅ Approved'} By: ${details.name||details.actor}`,`🆔 ${rejected?'Reviewer':'Approver'} Telegram ID: ${details.telegramId||'Not connected'}`,`📅 ${rejected?'Rejection':'Approval'} Date: ${at} IST`);
+ }
+ if(status==='SUBMITTED')lines.push('','⏳ Awaiting Site HR approval');
+ if(status==='PENDING')lines.push('','⏳ Awaiting Regional HR approval');
+ if(status==='REJECTED'&&details.comments)lines.push(`📝 Reason: ${details.comments}`);
+ if(status==='APPROVED'&&record.data.chargeHandedOverTo)lines.push(`🤝 Charge handed over to: ${record.data.chargeHandedOverTo}`);
+ lines.push('',`📊 Status: ${status}`);
+ return lines.join('\n');
+}
 export async function employeeActor(db,employeeId,fallback='') {const r=(await db.query("SELECT data FROM hr_records WHERE id=$1 AND kind='employees'",[employeeId])).rows[0];return username(r?.data.pulseUsername||r?.data.username||fallback);}
 export function webhookSecretValid(actual,expected){if(!expected||typeof actual!=='string')return false;const a=Buffer.from(actual),b=Buffer.from(expected);return a.length===b.length&&timingSafeEqual(a,b);}
 export function createTelegram(pool){
