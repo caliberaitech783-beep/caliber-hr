@@ -157,7 +157,7 @@ describe('Employee Master tabs',()=>{
   expect(within(referenceType).queryAllByRole('option').map(option=>option.textContent)).toEqual(['Select','Regional HR Manager','Supervisor','Driver','Others']);
   expect((screen.getByLabelText(/Emergency Contact Name/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/Emergency Contact Number/) as HTMLInputElement).required).toBe(true);
-  const messDeduction=screen.getByLabelText('Mess Deduction');
+  const messDeduction=screen.getByLabelText(/^Mess Deduction/);
   expect(within(messDeduction).queryAllByRole('option').map(option=>option.textContent)).toEqual(['Select','Yes','No']);
   expect(screen.getByRole('heading',{name:'Job & Posting Details'})).toBeTruthy();
   expect(screen.getByRole('heading',{name:'Bank Details'})).toBeTruthy();
