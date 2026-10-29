@@ -4,18 +4,18 @@ import {leaveApprovalSteps} from './leave.mjs';
 import {nextApproval,hierarchyTemplates,employeeHierarchy} from './joining-hierarchy.mjs';
 
 for(const code of ['NCL-DUDE','NCL-DUDW','NCL-JAYANT'])test(`${code}: leave follows all site steps, either regional HR and any final approver`,async()=>{
- const template=hierarchyTemplates.find(row=>row.code===code);
- const steps=template.steps.map((step,index)=>({...step,approvers:index===2?['regional-hr-one','regional-hr-two']:index===3?['director-one','director-two']:['site-'+index]}));
+ const template=hierarchyTemplates.find(row=>row.code===code),last=template.steps.length-1;
+ const steps=template.steps.map((step,index)=>({...step,approvers:index===last-1?['regional-hr-one','regional-hr-two']:index===last?['director-one','director-two']:['site-'+index]}));
  const db={query:async sql=>({rows:sql.startsWith('SELECT code')?[{code}]:[{data:{...template,steps}}]})};
  const hierarchy=await employeeHierarchy(db,'site-id');
  const approval={requested_by:'employee',stage:0,approval_steps:hierarchy.data.steps};
- assert.equal(approval.approval_steps.length,4);
- for(let stage=0;stage<4;stage++){
+ assert.equal(approval.approval_steps.length,5);
+ for(let stage=0;stage<=last;stage++){
   approval.stage=stage;
   assert.throws(()=>nextApproval(approval,'employee','APPROVED'),e=>e.status===403);
-  if(stage<3)assert.throws(()=>nextApproval(approval,'director-one','APPROVED'),e=>e.status===403);
+  if(stage<last)assert.throws(()=>nextApproval(approval,'director-one','APPROVED'),e=>e.status===403);
   for(const actor of steps[stage].approvers){
-   assert.deepEqual(nextApproval(approval,actor,'APPROVED'),{stage:stage+1,state:stage===3?'APPROVED':'PENDING'});
+   assert.deepEqual(nextApproval(approval,actor,'APPROVED'),{stage:stage+1,state:stage===last?'APPROVED':'PENDING'});
    assert.equal(nextApproval(approval,actor,'REJECTED').state,'REJECTED');
   }
  }
