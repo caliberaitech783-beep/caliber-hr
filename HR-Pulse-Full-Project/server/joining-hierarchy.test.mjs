@@ -41,7 +41,7 @@ test('saved Nagpur hierarchy removes HOD while preserving assigned usernames',as
 
 test('NCL and WCL add Driver Trainer after Project Manager; Nagpur does not',()=>{
  for(const t of hierarchyTemplates)assert.deepEqual(t.steps.slice(1,3).map(s=>s.label),["NCL","WCL"].includes(t.group)?['Project Manager','Driver Trainer']:t.steps.slice(1,3).map(s=>s.label));
- assert.deepEqual(hierarchyTemplates.filter(t=>t.group==='WCL').map(t=>t.name),['Sasti OB','Dhoptala OB','Gauri Pauni OB','Majri OB']);
+ assert.deepEqual(hierarchyTemplates.filter(t=>t.group==='WCL').map(t=>t.name),['Sasti OB','Dhoptala OB','Gauri Pauni OB','Majri OB','Hindustan Lalpeth OC']);
  assert.ok(!hierarchyTemplates.find(t=>t.code==='CMLL-CO').steps.some(s=>s.label==='Driver Trainer'));
 });
 test('saved NCL hierarchies show an empty Driver Trainer step after Project Manager',()=>{
@@ -56,3 +56,5 @@ test('WCL sites keep the previous flow until their hierarchy is enabled',async()
  const ncl={query:async sql=>({rows:sql.startsWith('SELECT code')?[{code:'NCL-JAYANT'}]:[]})};
  await assert.rejects(employeeHierarchy(ncl,'site-id'),e=>e.status===409);
 });
+
+test('Chandrapur HO appears in its own group and starts unassigned',()=>{const t=hierarchyTemplates.find(t=>t.code==='CMLL-HO');assert.equal(t.group,'Chandrapur HO');assert.equal(t.name,'Chandrapur HO');assert.ok(t.steps.every(s=>!s.approvers.length));});

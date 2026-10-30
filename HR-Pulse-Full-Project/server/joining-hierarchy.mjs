@@ -12,6 +12,8 @@ export const hierarchyTemplates=[
  wclSite('WCL-DHOPTALA','Dhoptala OB'),
  wclSite('WCL-GAURI','Gauri Pauni OB'),
  wclSite('WCL-MAJRI','Majri OB'),
+ wclSite('WCL-LALPETH','Hindustan Lalpeth OC'),
+ {code:'CMLL-HO',name:'Chandrapur HO',group:'Chandrapur HO',steps:[step(1,'HR Executive','To be confirmed'),step(1,'HR Manager','To be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]},
  {code:'CMLL-CO',name:'Nagpur Office',group:'CO/HO',steps:[step(1,'HR Executive','Mayuri Umate'),step(1,'HR Manager','Vinod Pinjarkar'),step(2,'Final approval — any one','Mohit Chadda / Manish Chadda / Rahul Chadda / Honey Sir — CMD / Director / VP')]}
 ];
 export const currentHierarchy=data=>data?.code==='NCL-JAYANT'&&data.steps?.[0]?.label==='HR Executive'?{...data,steps:data.steps.slice(1)}:data?.code==='CMLL-CO'&&data.steps?.some(s=>s.label==='HOD')?{...data,steps:data.steps.filter(s=>s.label!=='HOD')}:data;
@@ -27,7 +29,7 @@ export function validateHierarchy(input){
 }
 export const approvalSteps=a=>a.approval_steps?.length?a.approval_steps:a.approvers.map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
 export function nextApproval(approval,actor,decision){const steps=approvalSteps(approval);if(approval.requested_by===actor||!steps[approval.stage]?.approvers.includes(actor))fail('Only a current assigned approver may decide; self-approval is prohibited',403);const stage=approval.stage+1;return {stage,state:decision==='REJECTED'?'REJECTED':stage===steps.length?'APPROVED':'PENDING'};}
-export async function employeeHierarchy(db,siteId){if(!siteId)return null;const site=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId])).rows[0];if(!hierarchyTemplates.some(t=>t.code===site?.code))return null;const row=(await db.query("SELECT * FROM hr_records WHERE kind='joiningHierarchies' AND code=$1 AND status='ACTIVE'",[site.code])).rows[0];if(!row){if(site.code.startsWith('WCL-'))return null;fail('Assign approver usernames and enable this site hierarchy before submitting',409);}return {...row,data:currentHierarchy(row.data)};}
+export async function employeeHierarchy(db,siteId){if(!siteId)return null;const site=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId])).rows[0];if(!hierarchyTemplates.some(t=>t.code===site?.code))return null;const row=(await db.query("SELECT * FROM hr_records WHERE kind='joiningHierarchies' AND code=$1 AND status='ACTIVE'",[site.code])).rows[0];if(!row){if(site.code.startsWith('WCL-')||site.code==='CMLL-HO')return null;fail('Assign approver usernames and enable this site hierarchy before submitting',409);}return {...row,data:currentHierarchy(row.data)};}
 export function createHierarchies(pool){
  function access(profile,write=false){if(!grantedMenus(profile).has('Master Configuration'))fail('Master Configuration permission required',403);if(write&&assignedSites(profile)!==null)fail('Hierarchy editing requires unrestricted site access',403);}
  return {
