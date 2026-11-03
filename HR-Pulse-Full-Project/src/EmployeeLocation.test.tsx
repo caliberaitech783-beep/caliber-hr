@@ -274,7 +274,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('option',{name:'WCL'})).toBeTruthy();
   expect(screen.getByRole('option',{name:'NCL'})).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
-  for(const site of ['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB'])expect(screen.getAllByRole('option',{name:site}).length).toBeGreaterThan(0);
+  for(const site of ['Sasti OB','Dhoptala OB 2nd','Majri OB','Gauri Pauni OB 2nd','Lalpeth OB'])expect(screen.getAllByRole('option',{name:site}).length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'NCL'}});
   for(const site of ['Jayant OB','Dudichua OB west','Dudichua OB East'])expect(screen.getAllByRole('option',{name:site}).length).toBeGreaterThan(0);
   expect(screen.getByRole('button',{name:/Mine Compliance/})).toBeTruthy();
