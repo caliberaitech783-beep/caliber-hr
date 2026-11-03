@@ -9,13 +9,27 @@ function Rows({rows}:{rows:Row[]}){return <tbody>{rows.map(([l,v,sub,cls],i)=><t
 function F({label,required,hint,children,id,hidden}:{label:string;required?:boolean;hint?:ReactNode;children:ReactNode;id:string;hidden?:boolean}){
  return <label className="joining-field salary-field" htmlFor={id} hidden={hidden}><span>{label}{required&&<b> *</b>}</span>{children}{hint&&<small className="salary-hint">{hint}</small>}</label>}
 
-export default function SalaryFields({enforce=true}:{enforce?:boolean}){
+/* Links the top-bar selection (group / company / region / site) and the form's Resident + Gender fields to the salary fields. */
+export type SalaryDefaults={employeeGroup?:'Corporate / HO'|'OB / COAL';company?:string;region?:string;site?:string};
+const MESS_SITE_FOR:Record<string,string>={'Sasti OB':'Sasti OB','Dhoptala OB':'Dhoptala OB','Majri OB':'Majri OB','Gauri Pauni OB':'Gouri Pauni OB','Jayant OB East':'Jayant OB East','Jayant OB West':'Jayant OB West','Dudhichua OB East':'Dhudhichua OB East','Dudhichua OB West':'Dhudhichua OB West'};
+const PT_STATE_FOR:Record<string,string>={WCL:'Maharashtra',NCL:'Madhya Pradesh','Corporate / HO':'Maharashtra'};
+export function salaryAutoFill(d:SalaryDefaults,gender:string,resident:string){
+ const corporate=d.employeeGroup==='Corporate / HO';
+ return {'Salary Type':corporate?(/^f/i.test(gender)?'STDW':'STD'):'HPC','Site / Project':MESS_SITE_FOR[d.site||'']||'','PT State':PT_STATE_FOR[d.region||'']||PT_STATE_FOR[corporate?'Corporate / HO':'']||'',
+  'Accommodation Category':/local$/i.test(resident)&&!/non-local/i.test(resident)?'NonCamp':resident?'Camp':''};}
+export default function SalaryFields({enforce=true,defaults={}}:{enforce?:boolean;defaults?:SalaryDefaults}){
  /* DOM-driven on purpose: the joining form restores and persists field values directly on the inputs,
     so the salary fields read their values from the DOM (like the original HTML) instead of React state. */
  const box=useRef<HTMLDivElement>(null),[,tick]=useState(0),[open,setOpen]=useState(false),sites=useMemo(loadMessSites,[]);
  const read=(name:string)=>(box.current?.querySelector<HTMLInputElement|HTMLSelectElement>(`[name="${name}"]`)?.value)||'';
  const sync=()=>tick(n=>n+1);
- useEffect(()=>{const t=setTimeout(sync,0);const form=box.current?.closest('form');form?.addEventListener('change',sync);form?.addEventListener('input',sync);return()=>{clearTimeout(t);form?.removeEventListener('change',sync);form?.removeEventListener('input',sync);};},[]);
+ const formValue=(name:string)=>(box.current?.closest('form')?.querySelector<HTMLInputElement|HTMLSelectElement>(`[name="${name}"]`)?.value)||'';
+ /* Auto-fill from the top bar: only fields the user has not set by hand (data-auto marks values we filled). */
+ const autoFill=()=>{const fill=salaryAutoFill(defaults,formValue('Gender'),formValue('Resident'));let changed=false;
+  for(const [name,value] of Object.entries(fill)){const el=box.current?.querySelector<HTMLSelectElement>(`select[name="${name}"]`);if(!el||!value)continue;const manual=el.value&&el.dataset.auto!==el.value;if(manual||el.value===value)continue;if(![...el.options].some(o=>o.value===value))continue;el.value=value;el.dataset.auto=value;changed=true;}
+  if(changed)sync();};
+ useEffect(()=>{const t=setTimeout(()=>{autoFill();sync();},0);const form=box.current?.closest('form');const onChange=()=>{autoFill();sync();};form?.addEventListener('change',onChange);form?.addEventListener('input',sync);return()=>{clearTimeout(t);form?.removeEventListener('change',onChange);form?.removeEventListener('input',sync);};},[]);
+ useEffect(()=>{autoFill();},[defaults.employeeGroup,defaults.company,defaults.region,defaults.site]);
  const stype=read('Salary Type') as SalaryType,cat=read('Skill Category'),gn=read('Monthly Gross Salary'),site=read('Site / Project'),acc=read('Accommodation Category')||'Camp',plan=read('Mess Plan'),sp=read('Special Approval (food)'),state=read('PT State')||PT_STATES[0];
  const st=isStd(stype),r=+cat||0,sal=+String(gn).replace(/[^0-9]/g,'')||0,S=siteInfo(site,sites),hasPlan=!st&&!!stype&&!!S?.plans,sp0=specialRates(site,sites),hasSp=!st&&stype==='NON'&&sp0.length>1;
  const fr=foodRule(site,stype,acc,hasSp?sp:'',hasPlan?plan:'',sites),typeLabel=SALARY_TYPES.find(x=>x.value===stype)?.label||'',catLabel=SKILL_CATEGORIES.find(x=>String(x.value)===cat)?.label||'';
@@ -36,7 +50,7 @@ export default function SalaryFields({enforce=true}:{enforce?:boolean}){
   <F id="gross-salary-26" label="Gross Salary (for 26 days)" hint="Actual gross each month = Wage Rate × Paid Days" hidden={stype!=='HPC'}><input id="gross-salary-26" name="Gross Salary (for 26 days)" className="salary-ro" readOnly value={r?`${fmt(r*26)}  (${fmt(r)} × 26)`:''} placeholder="Auto: Wage Rate × Paid Days"/></F>
   <F id="monthly-gross-salary" label="Monthly Gross Salary" required={enforce} hint={st?'Monthly gross – split into Basic 50%, HRA, Medical, Special Allowance; paid on paid days':'Fixed salary – paid as (Salary ÷ month days, rounded to ₹) × paid days'} hidden={!(stype==='NON'||st)}>
    <input id="monthly-gross-salary" name="Monthly Gross Salary" required={enforce&&(stype==='NON'||st)} inputMode="numeric" placeholder="₹" defaultValue="" onInput={sync}/></F>
-  <F id="site-project" label="Site / Project" required={enforce} hint={S?`Company: ${S.company}`+(S.plans?' · mess plan site – choose per day or per month below':''):'Company is picked from the site master'}>
+  <F id="site-project" label="Site / Project" required={enforce} hint={S?`Company: ${S.company}`+(S.plans?' · mess plan site – choose per day or per month below':''):(defaults.company?`Company: ${defaults.company}`:'Auto from the site selected above')}>
    <select id="site-project" name="Site / Project" required={enforce} defaultValue="" onChange={sync}><option value="">Select</option>{sites.map(k=><option key={k.site}>{k.site}</option>)}</select></F>
   <F id="accommodation-category" label="Accommodation Category" required={enforce} hint="Decides the food (mess) deduction at the site" hidden={st||hasPlan}>
    <select id="accommodation-category" name="Accommodation Category" defaultValue="Camp" onChange={sync}><option value="Camp">Camp (Non-local)</option><option value="NonCamp">Non-Camp (Local)</option></select></F>
