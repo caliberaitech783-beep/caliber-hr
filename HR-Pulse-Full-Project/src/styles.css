@@ -84,3 +84,4 @@ nav button .chev{flex-shrink:0;transition:transform .2s}nav button .chev.expande
 .salary-dwt{max-height:300px;overflow:auto}.salary-dwt th{position:sticky;top:0;font-size:11px;padding:7px 8px}.salary-dwt td{padding:5px 8px;font-size:12.5px}.salary-dwt tr.cur td{background:#fff4dd;font-weight:700}.salary-dwt tr.lim td{border-top:2px solid #f2a541}
 .salary-note{font-size:11.5px;color:#7a7590;padding:0 22px 16px}
 @media(max-width:900px){.salary-mi{grid-template-columns:repeat(2,1fr)}.salary-cols,.salary-tot{grid-template-columns:1fr}.salary-ytd div[style]{grid-column:auto!important}}
+.salary-fields{display:contents}.salary-fields>[hidden]{display:none!important}

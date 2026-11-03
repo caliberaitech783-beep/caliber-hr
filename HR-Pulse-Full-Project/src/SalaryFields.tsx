@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState,type ReactNode} from 'react';
+import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react';
 import {X} from 'lucide-react';
 import {CFG,MESS_PLANS,PT_STATES,R,SALARY_TYPES,SCH,SKILL_CATEGORIES,compute,fmt,fmt2,foodRule,isStd,loadMessSites,siteInfo,specialRates,type CalcInput,type SalaryType} from './salaryCalc';
 
@@ -6,48 +6,53 @@ type Row=[string,number,string?,string?];
 const row=(l:string,v:number,sub='',cls=''):Row=>[l,v,sub,cls];
 function Rows({rows}:{rows:Row[]}){return <tbody>{rows.map(([l,v,sub,cls],i)=><tr key={i} className={cls}><td>{l}{sub&&<small>{sub}</small>}</td><td className="r">{fmt(v)}</td></tr>)}</tbody>}
 
-function F({label,required,hint,children,id}:{label:string;required?:boolean;hint?:ReactNode;children:ReactNode;id:string}){
- return <label className="joining-field salary-field" htmlFor={id}><span>{label}{required&&<b> *</b>}</span>{children}{hint&&<small className="salary-hint">{hint}</small>}</label>}
+function F({label,required,hint,children,id,hidden}:{label:string;required?:boolean;hint?:ReactNode;children:ReactNode;id:string;hidden?:boolean}){
+ return <label className="joining-field salary-field" htmlFor={id} hidden={hidden}><span>{label}{required&&<b> *</b>}</span>{children}{hint&&<small className="salary-hint">{hint}</small>}</label>}
 
 export default function SalaryFields({enforce=true}:{enforce?:boolean}){
- const[stype,setStype]=useState<SalaryType>(''),[cat,setCat]=useState(''),[gn,setGn]=useState(''),[site,setSite]=useState(''),[acc,setAcc]=useState('Camp'),[plan,setPlan]=useState(''),[sp,setSp]=useState(''),[state,setState]=useState('Madhya Pradesh'),[open,setOpen]=useState(false);
- const sites=useMemo(loadMessSites,[]),st=isStd(stype),r=+cat||0,sal=+String(gn).replace(/[^0-9]/g,'')||0,S=siteInfo(site,sites),hasPlan=!st&&!!stype&&!!S?.plans,sp0=specialRates(site,sites),hasSp=!st&&stype==='NON'&&sp0.length>1;
- useEffect(()=>{if(!hasPlan)setPlan('');},[hasPlan]);useEffect(()=>{if(!hasSp)setSp('');},[hasSp]);
- const fr=foodRule(site,stype,acc,sp,plan,sites),typeLabel=SALARY_TYPES.find(x=>x.value===stype)?.label||'',catLabel=SKILL_CATEGORIES.find(x=>String(x.value)===cat)?.label||'';
+ /* DOM-driven on purpose: the joining form restores and persists field values directly on the inputs,
+    so the salary fields read their values from the DOM (like the original HTML) instead of React state. */
+ const box=useRef<HTMLDivElement>(null),[,tick]=useState(0),[open,setOpen]=useState(false),sites=useMemo(loadMessSites,[]);
+ const read=(name:string)=>(box.current?.querySelector<HTMLInputElement|HTMLSelectElement>(`[name="${name}"]`)?.value)||'';
+ const sync=()=>tick(n=>n+1);
+ useEffect(()=>{const t=setTimeout(sync,0);const form=box.current?.closest('form');form?.addEventListener('change',sync);form?.addEventListener('input',sync);return()=>{clearTimeout(t);form?.removeEventListener('change',sync);form?.removeEventListener('input',sync);};},[]);
+ const stype=read('Salary Type') as SalaryType,cat=read('Skill Category'),gn=read('Monthly Gross Salary'),site=read('Site / Project'),acc=read('Accommodation Category')||'Camp',plan=read('Mess Plan'),sp=read('Special Approval (food)'),state=read('PT State')||PT_STATES[0];
+ const st=isStd(stype),r=+cat||0,sal=+String(gn).replace(/[^0-9]/g,'')||0,S=siteInfo(site,sites),hasPlan=!st&&!!stype&&!!S?.plans,sp0=specialRates(site,sites),hasSp=!st&&stype==='NON'&&sp0.length>1;
+ const fr=foodRule(site,stype,acc,hasSp?sp:'',hasPlan?plan:'',sites),typeLabel=SALARY_TYPES.find(x=>x.value===stype)?.label||'',catLabel=SKILL_CATEGORIES.find(x=>String(x.value)===cat)?.label||'';
  const base:CalcInput={r,sal,md:31,pd:26,month:10,oi:0,ot:0,ph:0,od:0,site,acc,sp,plan,state};
  let preview:ReactNode=null;
  if(stype==='HPC'&&r){const x=compute(stype,base);preview=<><span><b>HPC Rate</b> · 26 days</span><span>Basic <b>{fmt(x.basic)}</b></span><span>EPF <b>{fmt(x.pf)}</b></span><span>Food <b>{fmt(x.mess)}</b></span></>;}
  else if(stype==='NON'&&r&&sal){const x=compute(stype,base);preview=<><span><b>Non-HPC</b> · 26 of 31 days</span><span>Per day <b>{fmt(x.perday)}</b></span><span>Earnings <b>{fmt(x.earn)}</b> = {x.unit.toFixed(2)} unit days</span><span>Basic <b>{fmt(x.basic)}</b> + OA <b>{fmt(x.oa)}</b></span></>;}
  else if(st&&sal){const x=compute(stype,{...base,pd:31});preview=<><span><b>{SCH[stype].name}</b> · full month</span><span>Basic <b>{fmt(x.basic)}</b></span><span>HRA <b>{fmt(x.hra)}</b></span><span>Medical <b>{fmt(x.med)}</b></span><span>Special <b>{fmt(x.spl)}</b></span><span>PF <b>{fmt(x.pf)}</b> · ESIC <b>{fmt(x.esic)}</b></span></>;}
  const canOpen=!!stype&&(st||!!cat)&&(stype==='HPC'||!!sal);
- return <>
+ return <div className="salary-fields" ref={box}>
   <F id="salary-type" label="Salary Type" required={enforce}>
-   <select id="salary-type" name="Salary Type" required={enforce} value={stype} onChange={e=>setStype(e.target.value as SalaryType)}><option value="">Select</option>{SALARY_TYPES.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
-   <input type="hidden" name="Salary Structure / Scheme" value={typeLabel}/>
+   <select id="salary-type" name="Salary Type" required={enforce} defaultValue="" onChange={sync}><option value="">Select</option>{SALARY_TYPES.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
+   <input type="hidden" name="Salary Structure / Scheme" value={typeLabel} readOnly/>
    <small className="salary-hint">Decides which salary master and calculation are used</small></F>
-  {!st&&<F id="skill-category" label="Skill Category" required={enforce} hint="As per HPC wage rate master">
-   <select id="skill-category" name="Skill Category" required={enforce} value={cat} onChange={e=>setCat(e.target.value)}><option value="">Select</option>{SKILL_CATEGORIES.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></F>}
-  {!st&&<F id="govt-wage-rate" label="Govt Wage Rate (per day)"><input id="govt-wage-rate" name="Govt Wage Rate (per day)" className="salary-ro" readOnly value={r?fmt(r)+' / day':''} placeholder="Auto from Skill Category"/></F>}
-  {stype==='HPC'&&<F id="gross-salary-26" label="Gross Salary (for 26 days)" hint="Actual gross each month = Wage Rate × Paid Days"><input id="gross-salary-26" name="Gross Salary (for 26 days)" className="salary-ro" readOnly value={r?`${fmt(r*26)}  (${fmt(r)} × 26)`:''} placeholder="Auto: Wage Rate × Paid Days"/></F>}
-  {(stype==='NON'||st)&&<F id="monthly-gross-salary" label="Monthly Gross Salary" required={enforce} hint={st?'Monthly gross – split into Basic 50%, HRA, Medical, Special Allowance; paid on paid days':'Fixed salary – paid as (Salary ÷ month days, rounded to ₹) × paid days'}>
-   <input id="monthly-gross-salary" name="Monthly Gross Salary" required={enforce} inputMode="numeric" placeholder="₹" value={gn} onChange={e=>setGn(e.target.value)}/></F>}
+  <F id="skill-category" label="Skill Category" required={enforce} hint="As per HPC wage rate master" hidden={st}>
+   <select id="skill-category" name="Skill Category" required={enforce&&!st} defaultValue="" onChange={sync}><option value="">Select</option>{SKILL_CATEGORIES.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></F>
+  <F id="govt-wage-rate" label="Govt Wage Rate (per day)" hidden={st}><input id="govt-wage-rate" name="Govt Wage Rate (per day)" className="salary-ro" readOnly value={r?fmt(r)+' / day':''} placeholder="Auto from Skill Category"/></F>
+  <F id="gross-salary-26" label="Gross Salary (for 26 days)" hint="Actual gross each month = Wage Rate × Paid Days" hidden={stype!=='HPC'}><input id="gross-salary-26" name="Gross Salary (for 26 days)" className="salary-ro" readOnly value={r?`${fmt(r*26)}  (${fmt(r)} × 26)`:''} placeholder="Auto: Wage Rate × Paid Days"/></F>
+  <F id="monthly-gross-salary" label="Monthly Gross Salary" required={enforce} hint={st?'Monthly gross – split into Basic 50%, HRA, Medical, Special Allowance; paid on paid days':'Fixed salary – paid as (Salary ÷ month days, rounded to ₹) × paid days'} hidden={!(stype==='NON'||st)}>
+   <input id="monthly-gross-salary" name="Monthly Gross Salary" required={enforce&&(stype==='NON'||st)} inputMode="numeric" placeholder="₹" defaultValue="" onInput={sync}/></F>
   <F id="site-project" label="Site / Project" required={enforce} hint={S?`Company: ${S.company}`+(S.plans?' · mess plan site – choose per day or per month below':''):'Company is picked from the site master'}>
-   <select id="site-project" name="Site / Project" required={enforce} value={site} onChange={e=>setSite(e.target.value)}><option value="">Select</option>{sites.map(k=><option key={k.site}>{k.site}</option>)}</select></F>
-  {!st&&!hasPlan&&<F id="accommodation-category" label="Accommodation Category" required={enforce} hint="Decides the food (mess) deduction at the site">
-   <select id="accommodation-category" name="Accommodation Category" value={acc} onChange={e=>setAcc(e.target.value)}><option value="Camp">Camp (Non-local)</option><option value="NonCamp">Non-Camp (Local)</option></select></F>}
-  {!st&&<F id="mess-deduction" label="Food (Mess) Deduction" hint={fr?`Food: ${fr.food} · ${fr.rem}`:'HPC / Non-HPC only – from the site-wise food deduction master'}>
-   <input id="mess-deduction" name="Mess Deduction" className="salary-ro" readOnly value={fr?.label||''} placeholder="Auto from Site + Category + Salary Type"/></F>}
-  {hasPlan&&<F id="mess-plan" label="Mess Plan" required={enforce} hint="Per day = rate × paid days · Per month = fixed amount">
-   <select id="mess-plan" name="Mess Plan" required={enforce} value={plan} onChange={e=>setPlan(e.target.value)}><option value="">Select</option>{MESS_PLANS.map(p=><option key={p.id} value={p.id}>{p.label}</option>)}</select></F>}
-  {hasSp&&<F id="special-approval" label="Special Approval (food)" hint="Individual rate approved for this worker">
-   <select id="special-approval" name="Special Approval (food)" value={sp} onChange={e=>setSp(e.target.value)}><option value="">None – as per site master</option>{sp0.slice(1).map(p=><option key={p.id} value={p.id}>₹{p.r} per day – {p.rem}</option>)}</select></F>}
+   <select id="site-project" name="Site / Project" required={enforce} defaultValue="" onChange={sync}><option value="">Select</option>{sites.map(k=><option key={k.site}>{k.site}</option>)}</select></F>
+  <F id="accommodation-category" label="Accommodation Category" required={enforce} hint="Decides the food (mess) deduction at the site" hidden={st||hasPlan}>
+   <select id="accommodation-category" name="Accommodation Category" defaultValue="Camp" onChange={sync}><option value="Camp">Camp (Non-local)</option><option value="NonCamp">Non-Camp (Local)</option></select></F>
+  <F id="mess-deduction" label="Food (Mess) Deduction" hint={fr?`Food: ${fr.food} · ${fr.rem}`:'HPC / Non-HPC only – from the site-wise food deduction master'} hidden={st}>
+   <input id="mess-deduction" name="Mess Deduction" className="salary-ro" readOnly value={fr?.label||''} placeholder="Auto from Site + Category + Salary Type"/></F>
+  <F id="mess-plan" label="Mess Plan" required={enforce} hint="Per day = rate × paid days · Per month = fixed amount" hidden={!hasPlan}>
+   <select id="mess-plan" name="Mess Plan" required={enforce&&hasPlan} defaultValue="" onChange={sync}><option value="">Select</option>{MESS_PLANS.map(p=><option key={p.id} value={p.id}>{p.label}</option>)}</select></F>
+  <F id="special-approval" label="Special Approval (food)" hint="Individual rate approved for this worker" hidden={!hasSp}>
+   <select id="special-approval" name="Special Approval (food)" defaultValue="" onChange={sync}><option value="">None – as per site master</option>{sp0.slice(1).map(p=><option key={p.id} value={p.id}>₹{p.r} per day – {p.rem}</option>)}</select></F>
   <F id="pt-state" label="PT State" required={enforce} hint="Professional Tax slab from PT Master (state-wise)">
-   <select id="pt-state" name="PT State" value={state} onChange={e=>setState(e.target.value)}>{PT_STATES.map(s=><option key={s}>{s}</option>)}</select></F>
+   <select id="pt-state" name="PT State" defaultValue={PT_STATES[0]} onChange={sync}>{PT_STATES.map(s=><option key={s}>{s}</option>)}</select></F>
   <div className={'salary-preview'+(canOpen?' ready':'')} role={canOpen?'button':undefined} tabIndex={canOpen?0:-1} onClick={()=>canOpen&&setOpen(true)} onKeyDown={e=>{if(canOpen&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setOpen(true);}}}>
    {preview?<><div className="salary-preview-chips">{preview}</div><span className="salary-preview-link">View full salary summary ›</span></>:<span><b>Salary preview</b> – select Salary Type and fill the salary fields</span>}
   </div>
-  {open&&<SalarySummary stype={stype} r={r} sal={sal} site={site} acc={acc} sp={sp} plan={plan} state={state} catLabel={catLabel} onClose={()=>setOpen(false)}/>}
- </>}
+  {open&&<SalarySummary stype={stype} r={r} sal={sal} site={site} acc={acc} sp={hasSp?sp:''} plan={hasPlan?plan:''} state={state} catLabel={catLabel} onClose={()=>setOpen(false)}/>}
+ </div>}
 
 type SummaryProps={stype:string;r:number;sal:number;site:string;acc:string;sp:string;plan:string;state:string;catLabel:string;onClose:()=>void};
 function SalarySummary({stype:t,r,sal,site,acc,sp,plan,state,catLabel,onClose}:SummaryProps){
