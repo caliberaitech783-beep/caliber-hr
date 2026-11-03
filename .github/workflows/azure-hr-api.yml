@@ -1,0 +1,56 @@
+name: Deploy HR API to Azure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'HR-Pulse-Full-Project/server/**'
+      - '.github/workflows/azure-hr-api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hr-api-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: HR-Pulse-Full-Project/server/pnpm-lock.yaml
+      - name: Install locked dependencies
+        working-directory: HR-Pulse-Full-Project/server
+        run: pnpm install --frozen-lockfile
+      - name: Test API
+        working-directory: HR-Pulse-Full-Project/server
+        run: node --test app.test.mjs security.test.mjs joining-hierarchy.test.mjs
+      - name: Prepare deployment package
+        working-directory: HR-Pulse-Full-Project/server
+        run: |
+          rm -rf node_modules
+          pnpm install --frozen-lockfile --prod --node-linker=hoisted
+          rm -f bootstrap.mjs *.test.mjs
+          printf '{"commit":"%s","host":"azure-app-service"}\n' "$GITHUB_SHA" > release.json
+      - name: Deploy to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: hr-api-cmll-783
+          publish-profile: ${{ secrets.AZURE_HR_API_PUBLISH_PROFILE }}
+          package: HR-Pulse-Full-Project/server
+      - name: Check health
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS https://hr-api-cmll-783.azurewebsites.net/api/health > /dev/null; then echo "API healthy"; exit 0; fi
+            sleep 10
+          done
+          echo "API did not report healthy in time"; exit 1
