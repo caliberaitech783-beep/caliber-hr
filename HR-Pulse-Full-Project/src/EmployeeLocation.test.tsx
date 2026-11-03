@@ -399,6 +399,8 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('button',{name:'Remove'}).every(button=>(button as HTMLButtonElement).disabled)).toBe(true);
   expect(screen.getByLabelText('Upload VTC certificate')).toBeTruthy();
   expect(screen.getByLabelText('Upload Medical fitness certificate')).toBeTruthy();
+  expect((screen.getByLabelText('Upload VTC certificate') as HTMLInputElement).required).toBe(false);
+  expect((screen.getByLabelText('Upload Medical fitness certificate') as HTMLInputElement).required).toBe(false);
   expect(screen.getByLabelText('Upload Driving licence')).toBeTruthy();
   expect(screen.getByRole('button',{name:'Bulk Upload'})).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Bulk upload documents'),{target:{files:[new File(['a'],'offer.pdf',{type:'application/pdf'}),new File(['b'],'photo.png',{type:'image/png'})]}});
@@ -414,7 +416,8 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Chandrapur Head Office'}).length).toBeGreaterThan(0);
   expect(screen.getByRole('option',{name:'KSR FREIGHT CARRIERS'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
-  expect(screen.queryByLabelText('Upload VTC certificate')).toBeNull();
+  expect((screen.getByLabelText('Upload VTC certificate') as HTMLInputElement).required).toBe(false);
+  expect((screen.getByLabelText('Upload Medical fitness certificate') as HTMLInputElement).required).toBe(false);
   expect(screen.queryByLabelText('Upload Signed offer letter')).toBeNull();
   expect(screen.queryByLabelText('Upload Signed appointment letter')).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
