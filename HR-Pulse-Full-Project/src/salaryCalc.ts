@@ -27,7 +27,8 @@ const HPC_CAMP:MessRule={category:'Camp',duty:'HPC',rate:205,per:'day',food:'All
 const FIX_CAMP:MessRule={category:'Camp',duty:'Fixed',rate:null,per:'day',food:'Allowed',remark:'Fixed Rate (12 hrs duty)'};
 const HPC_NONCAMP_NO:MessRule={category:'NonCamp',duty:'HPC',rate:null,per:'day',food:'Not Allowed',remark:'Only for HPC Rate (8 hrs duty)'};
 export const DEFAULT_MESS_SITES:MessSite[]=[
- {site:'Jayant OB',company:'CMLL',plans:true,rules:[]},
+ {site:'Jayant OB East',company:'CMLL',plans:true,rules:[]},
+ {site:'Jayant OB West',company:'CMLL',plans:true,rules:[]},
  {site:'Dhudhichua OB West',company:'CMLL',plans:true,rules:[]},
  {site:'Dhudhichua OB East',company:'CMLL',plans:true,rules:[]},
  {site:'Majri OB',company:'CMLL',plans:false,rules:[HPC_CAMP,{category:'NonCamp',duty:'HPC',rate:102.5,per:'day',food:'Allowed',remark:'Only for HPC Rate (8 hrs duty)'},FIX_CAMP]},
