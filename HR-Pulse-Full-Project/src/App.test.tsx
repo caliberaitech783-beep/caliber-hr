@@ -36,3 +36,24 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  expect(screen.getByRole('heading',{name:'HR Calendar',level:2})).toBeTruthy();
  window.location.hash='';
 });
+
+ it('opens the existing hierarchy setup screens from Approval Master',async()=>{
+  const profile={name:'HR administrator',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Master Configuration']}};
+  window.location.hash='Approval%20Master';
+  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
+  const fetchMock=vi.fn(async(url:string)=>new Response(JSON.stringify(url.endsWith('validate')?{profile}:url.endsWith('config')?{profile,modules:{}}:url.endsWith('telegram/account')?{configured:false,connected:false}:url.endsWith('telegram/hierarchies')?{sites:[],accounts:[],employees:[],deliveries:[]}:url.endsWith('hierarchies')?{rows:[],canWrite:true}:{})));
+  vi.stubGlobal('fetch',fetchMock);
+  render(<App/>);
+  expect(await screen.findByRole('button',{name:'Approval Master'})).toBeTruthy();
+  await screen.findByRole('heading',{name:'Joining Approval Hierarchy'});
+  fireEvent.click(screen.getByRole('button',{name:'Leave'}));
+  await screen.findByRole('heading',{name:'Leave Approval Hierarchy'});
+  expect(await screen.findByRole('button',{name:'Save hierarchy'})).toBeTruthy();
+  expect(fetchMock.mock.calls.some(([url])=>url.endsWith('telegram/hierarchies'))).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:'OD'}));
+  expect(screen.getByRole('heading',{name:'OD Approval Hierarchy'})).toBeTruthy();
+  expect(screen.getByText(/HOD \(APURVAKOPULWAR\).*Regional HR \(MAYURIUMATE\)/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'Hierarchy'}));
+  await screen.findByRole('heading',{name:'Joining Approval Hierarchy'});
+  window.location.hash='';
+ });
