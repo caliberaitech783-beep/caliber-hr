@@ -80,6 +80,46 @@ describe('Corporate / HO import headers',()=>{
 });
 
 describe('Employee Master tabs',()=>{
+ it('prints and exports loaded employee details after the print document loads',async()=>{
+  const rows=[{id:'employee-1',kind:'employees',code:'EMP-PRINT',name:'Employee <img src=x>',data:{officeData:{'Mobile *':'9876543210'}},status:'ACTIVE',version:1}];
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({rows}))));
+  const windows:any[]=[];
+  const open=vi.spyOn(window,'open').mockImplementation(()=>{
+   const popup={opener:window,onload:null,document:document.implementation.createHTMLDocument(),focus:vi.fn(),print:vi.fn()};
+   windows.push(popup);return popup as unknown as Window;
+  });
+  try{
+   render(<EmployeeLocation grant="test-grant"/>);
+   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
+   await screen.findByText('EMP-PRINT');
+   for(const action of ['Smart Print','Download as PDF']){
+    fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
+    fireEvent.click(screen.getByRole('menuitem',{name:action}));
+    expect(open).toHaveBeenLastCalledWith('','_blank');
+    const popup=windows.at(-1);
+    expect(popup.opener).toBeNull();
+    expect(popup.document.body.textContent).toContain('EMP-PRINT');
+    expect(popup.document.body.textContent).toContain('Employee <img src=x>');
+    expect(popup.document.body.textContent).toContain('9876543210');
+    expect(popup.document.querySelector('img')).toBeNull();
+    expect(popup.print).not.toHaveBeenCalled();
+    popup.onload();
+    expect(popup.focus).toHaveBeenCalledOnce();
+    expect(popup.print).toHaveBeenCalledOnce();
+   }
+  }finally{open.mockRestore();vi.unstubAllGlobals();}
+ });
+ it('explains how to recover when the browser blocks print or PDF export',()=>{
+  const open=vi.spyOn(window,'open').mockReturnValue(null);
+  try{
+   render(<EmployeeLocation/>);
+   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
+   fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
+   fireEvent.click(screen.getByRole('menuitem',{name:'Smart Print'}));
+   expect(screen.getByText(/The print window was blocked/)).toBeTruthy();
+  }finally{open.mockRestore();}
+ });
+
  it('filters WCL sites by company and clears an incompatible selected site',()=>{
   render(<EmployeeLocation employeeGroup="OB / COAL"/>);
   const company=screen.getByLabelText('Select company');
