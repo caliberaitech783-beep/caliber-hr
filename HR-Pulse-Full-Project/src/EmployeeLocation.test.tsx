@@ -152,7 +152,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.queryByRole('option',{name:'Technician'})).toBeNull();
   fireEvent.change(screen.getAllByLabelText('Designation').find(element=>!element.hasAttribute('name'))!,{target:{value:'Manager'}});
   expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('CORPORATE');
-  expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('Nagpur CO');
+  expect((screen.getAllByLabelText(/^Site\s*\*?$/).at(-1) as HTMLSelectElement).value).toBe('Nagpur CO');
   expect((screen.getAllByLabelText(/Department/).at(-1) as HTMLSelectElement).value).toBe('Production');
   expect((screen.getAllByLabelText(/Sub-department/).at(-1) as HTMLSelectElement).value).toBe('Operations');
   expect((document.querySelector('select[name="Designation"]') as HTMLSelectElement).value).toBe('Manager');
@@ -192,7 +192,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Sasti OB'}).length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Select site'),{target:{value:'Sasti OB'}});
   expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('WCL');
-  expect((screen.getAllByLabelText(/Site/).at(-1) as HTMLSelectElement).value).toBe('Sasti OB');
+  expect((screen.getAllByLabelText(/^Site\s*\*?$/).at(-1) as HTMLSelectElement).value).toBe('Sasti OB');
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Employee Category'}));
   fireEvent.click(screen.getByRole('option',{name:'Staff'}));
