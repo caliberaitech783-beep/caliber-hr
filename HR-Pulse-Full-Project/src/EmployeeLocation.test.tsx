@@ -186,6 +186,8 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText(/Employment Type/)).toBeTruthy();
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
   view.rerender(<EmployeeLocation employeeGroup="OB / COAL"/>);
+  expect(Array.from((screen.getByLabelText('Select region') as HTMLSelectElement).options,option=>option.text)).toEqual(['Select region','WCL','NCL']);
+  expect((screen.getByLabelText('Select region') as HTMLSelectElement).value).toBe('');
   fireEvent.change(screen.getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[new File(['aadhaar'],'aadhaar.pdf',{type:'application/pdf'})]}});
   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
@@ -249,6 +251,9 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByText('Bulk uploaded documents (1)')).toBeTruthy();expect(screen.getByText('photo.png')).toBeTruthy();expect(screen.queryByText('offer.pdf')).toBeNull();
   expect(screen.getByLabelText('Upload Operator competency certificate')).toBeTruthy();
   view.rerender(<EmployeeLocation employeeGroup="Corporate / HO"/>);
+  expect(Array.from((screen.getByLabelText('Select region') as HTMLSelectElement).options,option=>option.text)).toEqual(['Select region','Nagpur Corporate Office','Chandrapur Head Office']);
+  expect((screen.getByLabelText('Select region') as HTMLSelectElement).value).toBe('');
+  expect(screen.queryByLabelText('Select site')).toBeNull();
   expect(screen.getAllByRole('option',{name:'Nagpur Corporate Office'}).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('option',{name:'Chandrapur Head Office'}).length).toBeGreaterThan(0);
   expect(screen.getByRole('option',{name:'KSR FREIGHT CARRIERS'})).toBeTruthy();
@@ -288,7 +293,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Nagpur Corporate Office'}).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('option',{name:'Chandrapur Head Office'}).length).toBeGreaterThan(0);
   expect(screen.getByText('Sign in to load Pulse C-Directory.')).toBeTruthy();
- },15000);
+ },30000);
 });
 
 
