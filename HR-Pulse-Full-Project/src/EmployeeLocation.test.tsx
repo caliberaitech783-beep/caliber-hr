@@ -128,6 +128,14 @@ describe('Employee Master tabs',()=>{
    expect(screen.getByRole('button',{name:'Change Photo'})).toBeTruthy();
    fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
    expect(input.files?.[0]?.name).toBe('candidate.jpg');
+   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+   fireEvent.click(screen.getByRole('button',{name:'Remove candidate photo'}));
+   expect(screen.queryByRole('img',{name:'Candidate photo preview'})).toBeNull();
+   expect(screen.getByRole('button',{name:'Upload Photo'})).toBeTruthy();
+   expect(screen.queryByRole('button',{name:'Remove candidate photo'})).toBeNull();
+   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+   const photoRow=input.closest('tr')!;
+   expect((within(photoRow).getByRole('button',{name:'Preview'}) as HTMLButtonElement).disabled).toBe(true);
   }finally{URL.createObjectURL=originalCreate;URL.revokeObjectURL=originalRevoke;}
  });
 
