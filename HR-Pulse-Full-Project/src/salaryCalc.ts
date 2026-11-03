@@ -17,21 +17,30 @@ export const CFG={days:26,epfRate:.12,epfCeil:25000,epfFixed:3000,std:75000,reba
      'Odisha':[[0,13333,0],[13334,25000,125],[25001,1e12,200,300,3]]} as Record<string,PtRow[]>,   /* states not listed = no PT */
  basicPct:.5,hraPct:.5,medical:1250,esicRate:.0075,esicLimit:21000};
 
-/* Site-wise FOOD (mess) DEDUCTION MASTER – HPC and Non-HPC only. key = SalaryType|Category */
+/* Site-wise FOOD (mess) DEDUCTION MASTER – from MESS_DEDUCTION_SITE_WISE.xlsx. HPC and Non-HPC only. */
 export type FoodRule={t:'day'|'month'|'none';r:number;food:string;rem:string;label?:string;id?:string;by?:string;workers?:number};
-const NOD:FoodRule={t:'none',r:0,food:'Allowed',rem:'No deduction'};
-type Site={co:string;plans?:boolean;rules:Record<string,FoodRule>;special?:FoodRule[]};
-export const SITES:Record<string,Site>={
- 'Mairi OB':{co:'CMLL',rules:{'HPC|Camp':{t:'day',r:205,food:'Allowed',rem:'HPC Rate (8 hrs duty)'},'HPC|NonCamp':{t:'day',r:102.5,food:'Allowed',rem:'HPC Rate (8 hrs duty)'},'NON|Camp':{...NOD,rem:'Fixed Rate (12 hrs duty) – no deduction'}}},
- 'Dhoptala OB':{co:'CMLL',rules:{'HPC|Camp':{t:'day',r:205,food:'Allowed',rem:'HPC Rate (8 hrs duty)'},'HPC|NonCamp':{t:'none',r:0,food:'Not allowed',rem:'HPC Rate – no food, no deduction'},'NON|Camp':{...NOD,rem:'Fixed Rate (12 hrs duty) – no deduction'}}},
- 'Gouri Pauni OB':{co:'CMLL',rules:{'HPC|Camp':{t:'day',r:205,food:'Allowed',rem:'HPC Rate (8 hrs duty)'},'HPC|NonCamp':{t:'none',r:0,food:'Not allowed',rem:'HPC Rate – no food, no deduction'},'NON|Camp':{...NOD,rem:'Fixed Rate (12 hrs duty) – no deduction'}}},
- 'Sasti OB':{co:'CMPL SCR JV',rules:{'HPC|Camp':{t:'day',r:205,food:'Allowed',rem:'HPC Rate (8 hrs duty)'},'HPC|NonCamp':{t:'none',r:0,food:'Not allowed',rem:'HPC Rate – no food, no deduction'},'NON|Camp':{...NOD,rem:'Fixed Rate (12 hrs duty) – no deduction'}},
-   special:[{id:'S100',t:'day',r:100,workers:2,food:'Allowed',rem:'Fixed Rate (12 hrs duty)',by:'PM Sir'},{id:'S70',t:'day',r:70,workers:1,food:'Allowed',rem:'Fixed Rate (12 hrs duty)',by:'PM Sir'}]},
- /* sites with a mess PLAN – worker chooses per-day or per-month (HPC & Non-HPC, Camp & Non-Camp) */
- 'Jayant OB':{co:'',plans:true,rules:{}},
- 'Dhudichua West':{co:'',plans:true,rules:{}},
- 'Dhudichua East':{co:'',plans:true,rules:{}}};
-export const PLANS=[{id:'D113',t:'day',r:113,label:'₹113 per day'},{id:'D150',t:'day',r:150,label:'₹150 per day'},{id:'M500',t:'month',r:500,label:'₹500 per month (fixed)'},{id:'NO',t:'none',r:0,label:'No mess – food not taken'}] as const;
+export type MessRule={category:'Camp'|'NonCamp';duty:'HPC'|'Fixed';rate:number|null;per:'day'|'month';food:'Allowed'|'Not Allowed';remark:string};
+export type MessPlan={id:string;t:'day'|'month'|'none';r:number;label:string};
+export type MessSite={site:string;company:string;plans:boolean;rules:MessRule[]};
+export const MESS_PLANS:MessPlan[]=[{id:'D113',t:'day',r:113,label:'₹113 per day'},{id:'D150',t:'day',r:150,label:'₹150 per day'},{id:'M500',t:'month',r:500,label:'₹500 per month (fixed)'},{id:'NO',t:'none',r:0,label:'No mess – food not taken'}];
+const HPC_CAMP:MessRule={category:'Camp',duty:'HPC',rate:205,per:'day',food:'Allowed',remark:'Only for HPC Rate (8 hrs duty)'};
+const FIX_CAMP:MessRule={category:'Camp',duty:'Fixed',rate:null,per:'day',food:'Allowed',remark:'Fixed Rate (12 hrs duty)'};
+const HPC_NONCAMP_NO:MessRule={category:'NonCamp',duty:'HPC',rate:null,per:'day',food:'Not Allowed',remark:'Only for HPC Rate (8 hrs duty)'};
+export const DEFAULT_MESS_SITES:MessSite[]=[
+ {site:'Jayant OB',company:'CMLL',plans:true,rules:[]},
+ {site:'Dhudhichua OB West',company:'CMLL',plans:true,rules:[]},
+ {site:'Dhudhichua OB East',company:'CMLL',plans:true,rules:[]},
+ {site:'Majri OB',company:'CMLL',plans:false,rules:[HPC_CAMP,{category:'NonCamp',duty:'HPC',rate:102.5,per:'day',food:'Allowed',remark:'Only for HPC Rate (8 hrs duty)'},FIX_CAMP]},
+ {site:'Dhoptala OB',company:'CMLL',plans:false,rules:[HPC_CAMP,HPC_NONCAMP_NO,FIX_CAMP]},
+ {site:'Gouri Pauni OB',company:'CMLL',plans:false,rules:[HPC_CAMP,HPC_NONCAMP_NO,FIX_CAMP]},
+ {site:'Sasti OB',company:'CMPL SCR JV',plans:false,rules:[HPC_CAMP,HPC_NONCAMP_NO,FIX_CAMP,
+  {category:'Camp',duty:'Fixed',rate:100,per:'day',food:'Allowed',remark:'Fixed Rate (12 hrs duty) – special approval'},
+  {category:'Camp',duty:'Fixed',rate:70,per:'day',food:'Allowed',remark:'Fixed Rate (12 hrs duty) – special approval'}]}];
+export function loadMessSites():MessSite[]{return DEFAULT_MESS_SITES;}   /* fixed master – not editable from the app */
+export const siteNames=(sites:MessSite[]=loadMessSites())=>sites.map(s=>s.site);
+export const siteInfo=(site:string,sites:MessSite[]=loadMessSites())=>sites.find(s=>s.site===site)||null;
+/* Non-HPC at a site: the first Fixed-duty rule is the standard one; any further Fixed rules are individually approved special rates */
+export const specialRates=(site:string,sites:MessSite[]=loadMessSites())=>{const S=siteInfo(site,sites);if(!S)return [];return S.rules.filter(r=>r.duty==='Fixed'&&r.rate).map((r,i)=>({id:`SP${i}`,r:r.rate as number,rem:r.remark}));};
 export const SCH:Record<string,{name:string;pf:number;esic:number;pt:number;tds:number}>={
  STD:{name:'Standard Salary',pf:1,esic:1,pt:1,tds:1},STDW:{name:'Standard Salary (Women)',pf:1,esic:1,pt:1,tds:1},WC:{name:'Without Compliance',pf:0,esic:0,pt:0,tds:0}};
 
@@ -43,12 +52,14 @@ export const isStd=(t:string)=>t in SCH;
 export function annTax(ti:number){if(ti<=CFG.rebate)return 0;let t=0;CFG.slabs.forEach((s,i)=>{const nx=CFG.slabs[i+1];if(ti>s[0])t+=(Math.min(ti,nx?nx[0]:ti)-s[0])*s[1];});return Math.min(t,ti-CFG.rebate)*(1+CFG.cess);}
 export function ptKey(state:string,t:string){return state==='Maharashtra'?(t==='STDW'?'Maharashtra – Women':'Maharashtra – Men'):state;}
 export function pt(g:number,key:string,month:number){const rows=CFG.PT[key];if(!rows||!g)return 0;const s=rows.find(x=>g>=x[0]&&g<=x[1]);if(!s)return 0;return s[4]&&month===s[4]?(s[3] as number):s[2];}
-export function foodRule(site:string,t:string,acc:string,spId:string,planId:string):FoodRule|null{const S=SITES[site];if(!S||isStd(t)||!t)return null;
- if(S.plans){const p=PLANS.find(x=>x.id===planId);return p?{t:p.t,r:p.r,id:p.id,label:p.label,food:p.t==='none'?'Not taken':'Allowed',rem:`Mess plan – ${p.t==='day'?'per day × paid days':p.t==='month'?'fixed per month':'no deduction'}`}
+export function foodRule(site:string,t:string,acc:string,spId:string,planId:string,sites:MessSite[]=loadMessSites()):FoodRule|null{const S=siteInfo(site,sites);if(!S||isStd(t)||!t)return null;
+ if(S.plans){const p=MESS_PLANS.find(x=>x.id===planId);return p?{t:p.t,r:p.r,id:p.id,label:p.label,food:p.t==='none'?'Not taken':'Allowed',rem:`Mess plan – ${p.t==='day'?'per day × paid days':p.t==='month'?'fixed per month':'no deduction'}`}
    :{t:'none',r:0,food:'–',rem:'Select a mess plan',label:'Select mess plan (per day / per month)'};}
- if(spId&&S.special){const p=S.special.find(x=>x.id===spId);if(p)return {...p,food:'Allowed',label:`₹${p.r} per day – special approval (${p.by})`};}
- const r=S.rules[`${t}|${acc}`]||S.rules['*']||{...NOD,rem:'Not defined in site master – no deduction'};
- return {...r,label:r.t==='day'?`₹${r.r} per day`:r.t==='month'?`₹${r.r} per month (fixed)`:(r.food==='Not allowed'?'No deduction – food not allowed':'No deduction')};}
+ if(spId&&t==='NON'){const p=specialRates(site,sites).find(x=>x.id===spId);if(p)return {t:'day',r:p.r,id:p.id,food:'Allowed',rem:p.rem,label:`₹${p.r} per day – special approval`};}
+ const duty=t==='HPC'?'HPC':'Fixed',r=S.rules.find(x=>x.duty===duty&&x.category===acc)||(duty==='Fixed'?S.rules.find(x=>x.duty==='Fixed'):undefined);
+ if(!r)return {t:'none',r:0,food:'Allowed',rem:'Not defined in site master – no deduction',label:'No deduction'};
+ const tt=r.rate?(r.per==='month'?'month':'day'):'none';
+ return {t:tt,r:r.rate||0,food:r.food,rem:r.remark,label:tt==='day'?`₹${r.rate} per day`:tt==='month'?`₹${r.rate} per month (fixed)`:(r.food==='Not Allowed'?'No deduction – food not allowed':'No deduction')};}
 export function messAmt(f:FoodRule|null,pd:number){if(!f)return 0;return f.t==='day'?R(f.r*pd):f.t==='month'?f.r:0;}
 export function epf(b:number){return !b?0:(b<=CFG.epfCeil?R(b*CFG.epfRate):CFG.epfFixed);}
 export function expGross(t:string,o:{r:number;sal:number}){return t==='HPC'?o.r*CFG.days:o.sal;}

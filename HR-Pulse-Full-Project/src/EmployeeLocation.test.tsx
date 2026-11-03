@@ -236,7 +236,7 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText(/^Skill Category/),{target:{value:'1341'}});
   expect((screen.getByLabelText(/^Govt Wage Rate/) as HTMLInputElement).value).toBe('₹1,341 / day');
   expect((screen.getByLabelText(/^Gross Salary \(for 26 days\)/) as HTMLInputElement).value).toContain('₹34,866');
-  fireEvent.change(screen.getByLabelText(/^Site \/ Project/),{target:{value:'Mairi OB'}});
+  fireEvent.change(screen.getByLabelText(/^Site \/ Project/),{target:{value:'Majri OB'}});
   expect((screen.getByLabelText(/^Food \(Mess\) Deduction/) as HTMLInputElement).value).toBe('₹205 per day');
   fireEvent.click(screen.getByText('View full salary summary ›'));
   expect(screen.getByRole('dialog',{name:'Salary Summary'})).toBeTruthy();
