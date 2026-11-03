@@ -6,3 +6,13 @@
 .salary-scheme table td small{display:block;font-size:11px;color:#897b95;font-weight:400}.salary-scheme tr.salary-current td{background:#f4edf9}.salary-scheme tr.salary-row,.salary-scheme tr.salary-current{cursor:pointer}
 .salary-sites{margin-top:20px}.salary-sites td{vertical-align:top}.salary-sites tr.salary-site-first td{border-top:2px solid #e4daee}.salary-sites td small{display:block;margin-top:4px}
 @media(max-width:520px){.salary-kvs{grid-template-columns:1fr}}
+.salary-update-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}.salary-update-head h2{margin:0 0 6px;font-size:18px}.salary-update-head p{margin:0;color:#7d7890;font-size:13px}
+.salary-update-actions{display:flex;gap:8px;flex-wrap:wrap}.salary-update-actions .shift-add{margin-top:0}.salary-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 13px;font-weight:600}.salary-btn svg,.salary-save svg{width:15px;height:15px}.salary-save{background:#6a2db8;display:inline-flex;align-items:center;gap:7px}
+.salary-gr{display:flex;align-items:center;gap:8px;margin:0 0 12px;font-size:13px;color:#4b2d83;font-weight:600}.salary-gr svg{width:16px}.salary-gr button{border:0;background:none;color:#b9394c;display:grid;place-items:center;padding:2px}
+.salary-note-field{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;margin-bottom:18px}.salary-note-field textarea{min-height:58px;border:1px solid #ded4e9;border-radius:8px;padding:10px 12px;font:inherit;resize:vertical}
+.salary-update .shift-fields label{font-size:12px}.salary-code{max-width:70px}.salary-changes{margin:0;padding-left:18px;font-size:12.5px;line-height:1.7;color:#3f354b}
+.salary-badge{margin-left:10px;font-size:11px;background:#fff1d6;color:#9a5a00;border-radius:20px;padding:3px 10px;vertical-align:middle}
+.salary-status{display:inline-block;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700}.salary-status.pending{background:#fff1d6;color:#9a5a00}.salary-status.approved{background:#eaf7f0;color:#1e7650}.salary-status.rejected{background:#fff0f2;color:#b5294a}
+.salary-decide{display:flex;flex-direction:column;gap:6px;min-width:170px}.salary-decide .shift-add{margin-top:0;padding:8px 12px}.salary-decide .shift-remove{justify-content:center}
+.salary-gr-md{width:900px}.salary-gr-md iframe{width:100%;height:75vh;border:0}.salary-gr-md img{max-width:100%;display:block;margin:auto}
+.salary-site-actions{white-space:nowrap}.salary-site-actions button{margin-right:4px}.salary-site-foot{display:flex;gap:10px;align-items:center;margin-top:16px}.salary-sites input,.salary-sites select{min-width:110px}

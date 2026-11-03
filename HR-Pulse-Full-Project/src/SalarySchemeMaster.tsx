@@ -2,29 +2,30 @@ import {useState} from 'react';
 import {IndianRupee,Lock} from 'lucide-react';
 import './shift-master.css';
 import './salary-scheme-master.css';
-import {CFG,DEFAULT_MESS_SITES,MESS_PLANS,SKILL_CATEGORIES} from './salaryCalc';
+import {CFG,DEFAULT_MESS_SITES,MESS_PLANS,SCH,SKILL_CATEGORIES} from './salaryCalc';
+import UpdateSalaryScheme from './UpdateSalaryScheme';
 
 /* Read-only view of the salary masters. Values are fixed in salaryCalc.ts (from Salary_Scheme_Master.xlsx
    and MESS_DEDUCTION_SITE_WISE.xlsx) and cannot be changed from the app. */
-const TABS=['HPC Salary','Non-HPC Salary','Standard Salary'] as const;
-const SCHEMES=[{name:'Standard Salary (Corporate / Head Office)',pf:true,esic:true,pt:'As per state',tds:true,remark:'Corporate / head office'},
- {name:'Standard Salary (Women)',pf:true,esic:true,pt:'Women slab where the state has one',tds:true,remark:'Women PT slab picked automatically (e.g. Maharashtra – Women)'},
- {name:'Without Compliance',pf:false,esic:false,pt:'None',tds:false,remark:'Salary paid without statutory deductions'}];
+const TABS=['HPC Salary','Non-HPC Salary','Standard Salary','Update New Salary Scheme'] as const;
+const schemeRows=()=>[{name:'Standard Salary (Corporate / Head Office)',pf:!!SCH.STD.pf,esic:!!SCH.STD.esic,pt:SCH.STD.pt?'As per state':'None',tds:!!SCH.STD.tds,remark:'Corporate / head office'},
+ {name:'Standard Salary (Women)',pf:!!SCH.STDW.pf,esic:!!SCH.STDW.esic,pt:SCH.STDW.pt?'Women slab where the state has one':'None',tds:!!SCH.STDW.tds,remark:'Women PT slab picked automatically (e.g. Maharashtra – Women)'},
+ {name:'Without Compliance',pf:!!SCH.WC.pf,esic:!!SCH.WC.esic,pt:SCH.WC.pt?'As per state':'None',tds:!!SCH.WC.tds,remark:'Salary paid without statutory deductions'}];
 const FY_START='2026-04';
 const inr=(n:number)=>'₹'+n.toLocaleString('en-IN');
 const pct=(n:number)=>(n*100).toLocaleString('en-IN')+'%';
-const WAGE=SKILL_CATEGORIES.map(c=>({code:c.label.split(' – ')[0],category:c.label.split(' – ')[1],rate:c.value}));
-const SLABS=CFG.slabs.map((s,i)=>({from:s[0],to:CFG.slabs[i+1]?.[0]??null,rate:s[1]}));
+const wageRows=()=>SKILL_CATEGORIES.map(c=>({code:c.label.split(' – ')[0],category:c.label.split(' – ')[1],rate:c.value}));
+const slabRows=()=>CFG.slabs.map((s,i)=>({from:s[0],to:CFG.slabs[i+1]?.[0]??null,rate:s[1]}));
 const MONTHS=Array.from({length:12},(_,i)=>{const[y,mo]=FY_START.split('-').map(Number);const d=new Date(y,mo-1+i,1);return {label:d.toLocaleString('en-IN',{month:'short',year:'numeric'}),days:new Date(d.getFullYear(),d.getMonth()+1,0).getDate()};});
 const V=({label,value,note}:{label:string;value:string;note?:string})=><div className="salary-kv"><span>{label}</span><b>{value}</b>{note&&<small>{note}</small>}</div>;
 
-export default function SalarySchemeMaster(){
- const[tab,setTab]=useState<typeof TABS[number]>('HPC Salary'),[scheme,setScheme]=useState(0);
- const sch=SCHEMES[scheme];
+export default function SalarySchemeMaster({actor='',canApprove=false}:{actor?:string;canApprove?:boolean}){
+ const[tab,setTab]=useState<typeof TABS[number]>('HPC Salary'),[scheme,setScheme]=useState(0),[,bump]=useState(0);
+ const SCHEMES=schemeRows(),sch=SCHEMES[scheme],WAGE=wageRows(),SLABS=slabRows();
  return <section className="shift-master salary-scheme">
   <div className="shift-title"><span className="shift-icon"><IndianRupee/></span><div><small>MASTER CONFIGURATION · B5</small><h1>Salary Scheme Master</h1><p>Wage rates, calculation parameters, mess, TDS and scheme rules used by the Employment Details salary fields.</p></div></div>
   <div className="module-tabs salary-tabs" aria-label="Salary scheme menus">{TABS.map(t=><button type="button" key={t} className={tab===t?'selected':''} aria-pressed={tab===t} onClick={()=>setTab(t)}>{t}</button>)}</div>
-  <p className="salary-locked"><Lock/>Fixed master – values are approved and cannot be changed from the app.</p>
+  {tab!=='Update New Salary Scheme'&&<p className="salary-locked"><Lock/>Approved master – values can only change through "Update New Salary Scheme" with Director approval.</p>}
 
   {tab==='HPC Salary'&&<div className="shift-grid">
    <div>
@@ -115,4 +116,5 @@ export default function SalarySchemeMaster(){
       <li><b>PT</b>: {sch.pt}</li><li><b>TDS</b>: {sch.tds?'new regime, year-to-date':'not deducted'}</li><li><b>Net salary</b> = Earned gross total − Total deduction</li></ol></div>
     </div>
    </div></>}
+  {tab==='Update New Salary Scheme'&&<UpdateSalaryScheme actor={actor} canApprove={canApprove} onApplied={()=>bump(n=>n+1)}/>}
  </section>}
