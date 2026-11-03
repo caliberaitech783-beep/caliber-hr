@@ -43,7 +43,6 @@ export default function SalaryFields({enforce=true}:{enforce?:boolean}){
    <select id="special-approval" name="Special Approval (food)" value={sp} onChange={e=>setSp(e.target.value)}><option value="">None – as per site master</option>{S!.special!.map(p=><option key={p.id} value={p.id}>₹{p.r} per day – {p.rem} – approved by {p.by} ({p.workers} worker{(p.workers||0)>1?'s':''})</option>)}</select></F>}
   <F id="pt-state" label="PT State" required={enforce} hint="Professional Tax slab from PT Master (state-wise)">
    <select id="pt-state" name="PT State" value={state} onChange={e=>setState(e.target.value)}>{PT_STATES.map(s=><option key={s}>{s}</option>)}</select></F>
-  <F id="cost-centre-project-code" label="Cost Centre / Project Code"><input id="cost-centre-project-code" name="Cost Centre / Project Code" placeholder="If applicable"/></F>
   <div className={'salary-preview'+(canOpen?' ready':'')} role={canOpen?'button':undefined} tabIndex={canOpen?0:-1} onClick={()=>canOpen&&setOpen(true)} onKeyDown={e=>{if(canOpen&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setOpen(true);}}}>
    {preview?<><div className="salary-preview-chips">{preview}</div><span className="salary-preview-link">View full salary summary ›</span></>:<span><b>Salary preview</b> – select Salary Type and fill the salary fields</span>}
   </div>
