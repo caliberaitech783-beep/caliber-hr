@@ -1,0 +1,8 @@
+.salary-scheme .salary-tabs{margin-bottom:18px}.salary-subtabs{margin-bottom:18px}.salary-subtabs button{font-size:12px}
+.salary-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}.salary-toolbar .shift-add{margin-top:0}.salary-toolbar .shift-remove{padding:10px 14px;margin-left:auto}.salary-dirty{font-size:13px;color:#80738d}.salary-toolbar .shift-success{padding:10px 14px}
+.salary-scheme .shift-card+.shift-card{margin-top:20px}.salary-scheme .shift-fields small{font-weight:400;color:#897b95;font-size:11px;line-height:1.4}
+.salary-save{background:#6a2db8}.salary-save svg{width:16px}.salary-scheme .shift-remove svg{width:15px;height:15px}
+.salary-flow{margin:0;padding-left:20px;font-size:13px;line-height:1.75;color:#3f354b}.salary-flow b{color:#4b2d83}
+.salary-fixed input,.salary-fixed select{min-width:110px}.salary-fixed td{white-space:nowrap}.salary-inline{display:flex;align-items:center;gap:12px;font-size:12px;font-weight:600;margin-bottom:14px}.salary-inline input{width:auto}
+.salary-scheme table td small{display:block;font-size:11px;color:#897b95;font-weight:400}.salary-scheme tr.salary-current td{background:#f4edf9}.salary-scheme tbody tr[class]{cursor:pointer}
+.salary-scheme .shift-table-wrap table input[type=number]{width:120px}
