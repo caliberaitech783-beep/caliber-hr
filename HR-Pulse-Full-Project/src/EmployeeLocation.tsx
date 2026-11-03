@@ -59,7 +59,7 @@ export function joiningOfficeData(values:Record<string,string>){
 const corporateReferences={siteId:'sites',departmentId:'departments',designationId:'designations',gradeId:'grades',shiftId:'shifts'} as const;
 export function resolveCorporateReferences(rows:Record<string,unknown>[],lookups:Lookup[]){
  const companies=lookups.filter(item=>item.kind==='companies'),cmll=companies.filter(item=>item.code.trim().toLowerCase()==='cmll'),company=cmll.length===1?cmll[0]:companies.length===1?companies[0]:null;if(!company)throw new Error('Configure the Caliber Mining And Logistics Ltd Company master before importing the Corporate / HO workbook');
- return rows.map(row=>{const resolved:Record<string,unknown>={...row,companyId:company.id};for(const [field,kind] of Object.entries(corporateReferences)){const value=String(row[field]??'').trim().toLowerCase();if(!value){resolved[field]='';continue;}const siteAliases:Record<string,string>={'dudichua ob east':'ncl-dude','dudhichua ob east':'ncl-dude','dudichua ob west':'ncl-dudw','dudhichua ob west':'ncl-dudw','jayant ob':'ncl-jayant'};const matches=lookups.filter(item=>item.kind===kind&&[item.code,item.name].some(candidate=>candidate.trim().toLowerCase()===value||field==='siteId'&&candidate.trim().toLowerCase()===siteAliases[value]));resolved[field]=matches.length===1?matches[0].id:'';}return resolved;});
+ return rows.map(row=>{const resolved:Record<string,unknown>={...row,companyId:company.id};for(const [field,kind] of Object.entries(corporateReferences)){const value=String(row[field]??'').trim().toLowerCase();if(!value){resolved[field]='';continue;}const siteAliases:Record<string,string>={'dudichua ob east':'ncl-dude','dudhichua ob east':'ncl-dude','dudichua ob west':'ncl-dudw','dudhichua ob west':'ncl-dudw','jayant ob':'ncl-jayant','jayant ob east':'ncl-jayant','jayant ob west':'ncl-jayant'};const matches=lookups.filter(item=>item.kind===kind&&[item.code,item.name].some(candidate=>candidate.trim().toLowerCase()===value||field==='siteId'&&candidate.trim().toLowerCase()===siteAliases[value]));resolved[field]=matches.length===1?matches[0].id:'';}return resolved;});
 }
 const employeeExportColumns=[
  'Joining Category','Employee Code','Full Name','Father / Spouse Name','Date of Birth','Gender','Caste / Category','Identification Mark','Blood Group','Mobile','Alternate Mobile','Candidate E-mail','Aadhaar No.','PAN No.','Present Address','Reference Type','Reference Name','Permanent Address','Emergency Contact Name','Emergency Contact Number',
@@ -157,7 +157,7 @@ function companySiteOptions(company:string,region:string){
  return sites;
 }
 const corporateSubtypes=['Nagpur CO','Chandrapur HO','KSR'];
-const regionSites:Record<string,string[]>=new Proxy({WCL:['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB','Hindustan Lalpeth OC'],NCL:['Jayant OB','Dudichua OB west','Dudichua OB East']},{get:(target,key:string)=>target[key as keyof typeof target]||[]});
+const regionSites:Record<string,string[]>=new Proxy({WCL:['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB','Hindustan Lalpeth OC'],NCL:['Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']},{get:(target,key:string)=>target[key as keyof typeof target]||[]});
 const departmentOptions=Object.keys(departmentStructure);
 type FormDefaults={company?:string;region?:string;joiningCategory:string;site:string;siteOptions?:string[];department:string;subdepartment:string;designation:string};
 
