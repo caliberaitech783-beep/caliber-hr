@@ -1,3 +1,9 @@
+// Form tests exercise file controls without starting the separate OCR engine.
+vi.mock('./paddleOcr',()=>({readPaddlePasses:vi.fn(async()=>({text:'',warning:''})),readPaddleText:vi.fn(async()=>'')}));
+import {writeFile,utils} from 'xlsx';
+import {download,parseCsv} from './api';
+vi.mock('xlsx',async importOriginal=>({...await importOriginal<typeof import('xlsx')>(),writeFile:vi.fn()}));
+vi.mock('./api',async importOriginal=>({...await importOriginal<typeof import('./api')>(),download:vi.fn()}));
 import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
 import EmployeeLocation,{aadhaarDetails,matchChecklistDocument,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
@@ -80,6 +86,73 @@ describe('Corporate / HO import headers',()=>{
 });
 
 describe('Employee Master tabs',()=>{
+ it('keeps empty site dropdowns for Chadda and KSR in both employee groups',()=>{
+  const view=render(<EmployeeLocation employeeGroup="OB / COAL"/>);
+  fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
+  fireEvent.change(screen.getByLabelText('Select site'),{target:{value:'Dhoptala OB'}});
+  const options=(select:HTMLSelectElement)=>Array.from(select.options,option=>option.text);
+  for(const company of ['CHADDA TRADING COMPANY','KSR FREIGHT CARRIERS']){
+   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:company}});
+   for(const region of ['WCL','NCL']){
+    fireEvent.change(screen.getByLabelText('Select region'),{target:{value:region}});
+    const site=screen.getByLabelText('Select site') as HTMLSelectElement;
+    expect(options(site)).toEqual(['Select site']);expect(site.value).toBe('');
+    const posting=document.querySelector('select[name="Site"]') as HTMLSelectElement;
+    expect(options(posting)).toEqual(['Select']);expect(posting.required).toBe(false);
+   }
+  }
+  view.rerender(<EmployeeLocation employeeGroup="Corporate / HO"/>);
+  for(const company of ['CHADDA TRADING COMPANY','KSR FREIGHT CARRIERS']){
+   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:company}});
+   for(const region of ['Nagpur Corporate Office','Chandrapur Head Office']){
+    fireEvent.change(screen.getByLabelText('Select region'),{target:{value:region}});
+    const site=screen.getByLabelText('Select site') as HTMLSelectElement;
+    expect(options(site)).toEqual(['Select site']);expect(site.value).toBe('');
+    expect(options(document.querySelector('select[name="Site"]') as HTMLSelectElement)).toEqual(['Select']);
+   }
+  }
+ });
+
+ it('uploads a candidate photo from the personal-details header into the checklist',()=>{
+  const originalCreate=URL.createObjectURL,originalRevoke=URL.revokeObjectURL;
+  URL.createObjectURL=vi.fn(()=> 'blob:candidate-photo');URL.revokeObjectURL=vi.fn();
+  try{
+   render(<EmployeeLocation/>);
+   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+   const input=screen.getByLabelText('Upload Candidate photo') as HTMLInputElement;
+   const click=vi.spyOn(input,'click');
+   fireEvent.click(screen.getByRole('button',{name:'Upload Photo'}));expect(click).toHaveBeenCalledOnce();
+   fireEvent.change(input,{target:{files:[new File(['photo'],'candidate.jpg',{type:'image/jpeg'})]}});
+   expect(screen.getByRole('img',{name:'Candidate photo preview'}).getAttribute('src')).toBe('blob:candidate-photo');
+   expect(screen.getByRole('button',{name:'Change Photo'})).toBeTruthy();
+   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+   expect(input.files?.[0]?.name).toBe('candidate.jpg');
+  }finally{URL.createObjectURL=originalCreate;URL.revokeObjectURL=originalRevoke;}
+ });
+
+ it('exports the selected employee section as Excel and CSV with loaded values',async()=>{
+  const rows=[{id:'employee-export',kind:'employees',code:'EMP-CSV',name:'Employee, Example',data:{officeData:{'Mobile *':'9876543210'}},status:'ACTIVE',version:1}];
+  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({rows}))));
+  try{
+   render(<EmployeeLocation grant="test-grant"/>);
+   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
+   await screen.findByText('EMP-CSV');
+   fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
+   fireEvent.click(screen.getByRole('menuitem',{name:'Download as Excel'}));
+   const [workbook,fileName]=vi.mocked(writeFile).mock.calls.at(-1)!;
+   expect(fileName).toBe('joining-personal-details.xlsx');
+   const grid=utils.sheet_to_json<string[]>(workbook.Sheets[workbook.SheetNames[0]],{header:1});
+   expect(grid[0]).toContain('Employee Code');
+   expect(grid[1]).toContain('EMP-CSV');expect(grid[1]).toContain('Employee, Example');
+   fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
+   fireEvent.click(screen.getByRole('menuitem',{name:'Download as CSV'}));
+   const [csvName,contents]=vi.mocked(download).mock.calls.at(-1)!;
+   expect(csvName).toBe('joining-personal-details.csv');
+   expect(parseCsv(contents)[0]).toMatchObject({'Employee Code':'EMP-CSV','Full Name *':'Employee, Example','Mobile *':'9876543210'});
+  }finally{vi.unstubAllGlobals();vi.mocked(writeFile).mockClear();vi.mocked(download).mockClear();}
+ });
+
  it('prints and exports loaded employee details after the print document loads',async()=>{
   const rows=[{id:'employee-1',kind:'employees',code:'EMP-PRINT',name:'Employee <img src=x>',data:{officeData:{'Mobile *':'9876543210'}},status:'ACTIVE',version:1}];
   vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({rows}))));
@@ -304,7 +377,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.queryByLabelText('Last Drawn Salary / Reason for Leaving 1')).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
   expect(screen.queryByRole('columnheader',{name:'Mandatory / Conditional'})).toBeNull();
-  for(const input of screen.getAllByLabelText(/^Upload /))expect(input.getAttribute('accept')).toBe('.jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf');
+  for(const input of screen.getAllByLabelText(/^Upload /))expect(input.getAttribute('accept')).toBe(input.getAttribute('aria-label')==='Upload Candidate photo'?'.jpg,.jpeg,.png,image/jpeg,image/png':'.jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf');
   expect((screen.getByLabelText('Upload Candidate photo') as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText('Upload Aadhaar (masked display)') as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText('Upload PAN') as HTMLInputElement).required).toBe(false);
