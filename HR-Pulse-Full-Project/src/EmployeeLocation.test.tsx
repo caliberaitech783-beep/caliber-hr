@@ -80,6 +80,31 @@ describe('Corporate / HO import headers',()=>{
 });
 
 describe('Employee Master tabs',()=>{
+ it('filters WCL sites by company and clears an incompatible selected site',()=>{
+  render(<EmployeeLocation employeeGroup="OB / COAL"/>);
+  const company=screen.getByLabelText('Select company');
+  fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd SCR JV'}});
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
+  const site=screen.getByLabelText('Select site') as HTMLSelectElement;
+  const postingSite=document.querySelector('select[name="Site"]') as HTMLSelectElement;
+  const names=(select:HTMLSelectElement)=>Array.from(select.options,option=>option.text);
+  expect(names(site)).toEqual(['Select site','Sasti OB']);
+  expect(names(postingSite)).toEqual(['Select','Sasti OB']);
+  fireEvent.change(site,{target:{value:'Sasti OB'}});
+  fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd'}});
+  expect(site.value).toBe('');
+  expect(postingSite.value).toBe('');
+  expect(names(site)).toEqual(['Select site','Dhoptala OB 2nd','Majri OB','Gauri Pauni OB 2nd','Lalpeth OB']);
+  expect(names(postingSite)).toEqual(['Select','Dhoptala OB 2nd','Majri OB','Gauri Pauni OB 2nd','Lalpeth OB']);
+  fireEvent.change(site,{target:{value:'Dhoptala OB'}});
+  fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd SCR JV'}});
+  expect(site.value).toBe('');
+  expect(postingSite.value).toBe('');
+  expect(names(site)).toEqual(['Select site','Sasti OB']);
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'NCL'}});
+  expect(names(site)).toEqual(['Select site','Jayant OB','Dudichua OB west','Dudichua OB East']);
+ });
+
  it('loads only finally approved employees for Update Existing Employee',async()=>{
   const fetchMock=vi.fn(async(_url:string)=>new Response(JSON.stringify({rows:[]})));vi.stubGlobal('fetch',fetchMock);
   render(<EmployeeLocation grant="test-grant"/>);fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
