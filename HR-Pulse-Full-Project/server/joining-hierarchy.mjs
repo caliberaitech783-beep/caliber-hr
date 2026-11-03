@@ -7,7 +7,8 @@ const wclSite=(code,name)=>({code,name,group:'WCL',steps:[step(1,'HR Manager','T
 export const hierarchyTemplates=[
  {code:'NCL-DUDE',name:'Dudhichua OB East',group:'NCL',steps:[step(1,'HR Manager','Ankit Tiwari'),step(1,'Project Manager','Ranjit Das'),driverTrainer(),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
  {code:'NCL-DUDW',name:'Dudhichua OB West',group:'NCL',steps:[step(1,'HR Manager','Yogesh Laxman Sathe'),step(1,'Project Manager','Arun Kumar Soni'),driverTrainer(),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
- {code:'NCL-JAYANT',name:'Jayant OB',group:'NCL',steps:[step(1,'HR Manager','Amit Singh'),step(1,'Project Manager','Md. Gulnawaz'),driverTrainer(),step(2,'HR Manager — either one','Vinod — to be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]},
+ {code:'NCL-JAYANT',name:'Jayant OB East',group:'NCL',steps:[step(1,'HR Manager','Amit Singh'),step(1,'Project Manager','Md. Gulnawaz'),driverTrainer(),step(2,'HR Manager — either one','Vinod — to be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]},
+ {code:'NCL-JAYANT-W',name:'Jayant OB West',group:'NCL',steps:[step(1,'HR Manager','To be confirmed'),step(1,'Project Manager','To be confirmed'),driverTrainer(),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
  wclSite('WCL-SASTI','Sasti OB'),
  wclSite('WCL-DHOPTALA','Dhoptala OB'),
  wclSite('WCL-GAURI','Gauri Pauni OB'),
