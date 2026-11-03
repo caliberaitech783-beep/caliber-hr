@@ -293,6 +293,9 @@ describe('Employee Master tabs',()=>{
   expect((screen.getByLabelText('Qualification 1') as HTMLInputElement).placeholder).toBe('Enter qualification');
   fireEvent.click(screen.getByRole('button',{name:/Family Details/}));
   expect(screen.getByLabelText('Family Member Name 1')).toBeTruthy();
+  for(let row=1;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Spouse','Son','Daughter']);
+  fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Mother'}});
+  expect((screen.getByLabelText('Relationship 1') as HTMLSelectElement).value).toBe('Mother');
   expect(screen.getByLabelText('Contact No. 1')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
