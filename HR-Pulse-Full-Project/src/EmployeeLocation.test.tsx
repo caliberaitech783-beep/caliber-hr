@@ -135,6 +135,13 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('option',{name:'Staff'}));
   expect(screen.getByRole('button',{name:'Employee Category'}).textContent).toContain('Staff');
   expect((screen.getByLabelText(/A-Form No\./) as HTMLInputElement).required).toBe(false);
+  const joiningDate=screen.getByLabelText(/Joining Date/) as HTMLInputElement;
+  expect(joiningDate.min).toBe('1000-01-01');
+  expect(joiningDate.max).toBe('9999-12-31');
+  fireEvent.input(joiningDate,{target:{value:'20255-06-15'}});
+  expect(joiningDate.value).toBe('2025-06-15');
+  fireEvent.input(joiningDate,{target:{value:'2026-06-15'}});
+  expect(joiningDate.value).toBe('2026-06-15');
   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'Nagpur Corporate Office'}});
   fireEvent.change(screen.getAllByLabelText('Department').find(element=>!element.hasAttribute('name'))!,{target:{value:'Production'}});
