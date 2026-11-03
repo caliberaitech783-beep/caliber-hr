@@ -1,10 +1,11 @@
 import { createServer } from 'node:http';
 import { problem } from './service.mjs';
+import {sendMail} from './mail.mjs';
 import {createAadhaarReader} from './aadhaar-ocr.mjs';
-async function body(req) {
+async function body(req,limit=2_000_000) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw problem('JSON content type required',415);
   let size=0; const chunks=[];
-  for await (const chunk of req) { size+=chunk.length; if(size>2_000_000)throw problem('Request is too large',413); chunks.push(chunk); }
+  for await (const chunk of req) { size+=chunk.length; if(size>limit)throw problem('Request is too large',413); chunks.push(chunk); }
   try { const value=JSON.parse(Buffer.concat(chunks).toString()); if(!value||typeof value!=='object'||Array.isArray(value))throw new Error(); return value; }
   catch { throw problem('A valid JSON object is required'); }
 }
@@ -38,13 +39,22 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const masterImport=path.match(/^\/api\/import\/(assets|assetCategories|assetEmployees|assetAllocationLog|assetExitClearances|holidays|leaveTypes|leavePolicies|leavePeriods|leaveAllocations|leaveRequests|leaveEncashments|leaveBlocks)$/);
       const decision=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/decision$/);
       const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
-      if(!telegramRoute&&!assetRoute&&!documents&&!employeeDocuments&&!deletion&&!masterImport&&!record&&!decision&&!simple[path]&&path!=='/api/import/employees'&&path!=='/api/aadhaar/scan')return send(404,{error:'Not found'});
+      if(!telegramRoute&&!assetRoute&&!documents&&!employeeDocuments&&!deletion&&!masterImport&&!record&&!decision&&!simple[path]&&path!=='/api/import/employees'&&path!=='/api/aadhaar/scan'&&path!=='/api/letters/email')return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
       if(!profile)return send(401,{error:'Sign in with your Caliber Pulse account to continue'});
       if(path==='/api/aadhaar/scan'){
         if(req.method!=='POST')throw problem('Method not allowed',405);
         return send(200,await readAadhaar(profile,await body(req)));
+      }
+      if(path==='/api/letters/email'){
+        if(req.method!=='POST')throw problem('Method not allowed',405);
+        const letter=await body(req,12_000_000),to=String(letter.to||'').trim();
+        if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to))throw problem('A valid candidate e-mail is required');
+        if(typeof letter.pdfBase64!=='string'||!letter.pdfBase64||!/^[A-Za-z0-9+/=\r\n]+$/.test(letter.pdfBase64))throw problem('Letter PDF is required');
+        const name=String(letter.fileName||'letter.pdf').replace(/[^A-Za-z0-9._-]/g,'_');
+        await sendMail({to,subject:String(letter.subject||'Letter from Caliber Mining And Logistics Ltd').slice(0,200),text:String(letter.text||'').slice(0,5000),attachment:{name,type:'application/pdf',base64:letter.pdfBase64}});
+        return send(200,{ok:true,to});
       }
       if(!service)throw problem('Service unavailable',503);
       let result;

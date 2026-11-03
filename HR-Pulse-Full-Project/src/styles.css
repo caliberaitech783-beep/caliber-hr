@@ -85,3 +85,4 @@ nav button .chev{flex-shrink:0;transition:transform .2s}nav button .chev.expande
 .salary-note{font-size:11.5px;color:#7a7590;padding:0 22px 16px}
 @media(max-width:900px){.salary-mi{grid-template-columns:repeat(2,1fr)}.salary-cols,.salary-tot{grid-template-columns:1fr}.salary-ytd div[style]{grid-column:auto!important}}
 .salary-fields{display:contents}.salary-fields>[hidden]{display:none!important}
+.letter-export-sent{margin:0 0 10px;padding:9px 12px;border-radius:8px;background:#eaf7f0;color:#1e7650;font-size:13px}
