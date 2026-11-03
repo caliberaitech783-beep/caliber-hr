@@ -179,7 +179,7 @@ const mineComplianceSheet={name:'Mine Compliance (OB / COAL where applicable)',c
 function employeeSheetsFor(employeeGroup:'Corporate / HO'|'OB / COAL'){return employeeGroup==='OB / COAL'?[...employeeSheets.slice(0,2),mineComplianceSheet,...employeeSheets.slice(2)]:employeeSheets;}
 const conditionalDocuments=new Set(['VTC certificate','Medical fitness certificate','Driving licence','Operator competency certificate']);
 function companySiteOptions(company:string,region:string){
- if(companiesWithoutSites.has(company))return [];
+ if(companiesWithoutSites.has(company)||company==='Caliber Mining And Logistics Ltd SCR JV'&&region==='NCL')return [];
  const sites=regionSites[region];
  if(region!=='WCL')return sites;
  if(company==='Caliber Mining And Logistics Ltd')return sites.filter(site=>site!=='Sasti OB');

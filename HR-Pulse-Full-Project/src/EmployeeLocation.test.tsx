@@ -223,6 +223,11 @@ describe('Employee Master tabs',()=>{
   expect(postingSite.value).toBe('');
   expect(names(site)).toEqual(['Select site','Sasti OB']);
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'NCL'}});
+  expect(names(site)).toEqual(['Select site']);
+  expect(names(postingSite)).toEqual(['Select']);
+  expect(postingSite.required).toBe(false);
+  expect(site.value).toBe('');
+  fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd'}});
   expect(names(site)).toEqual(['Select site','Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']);
   expect(names(postingSite)).toEqual(['Select','Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']);
  });
