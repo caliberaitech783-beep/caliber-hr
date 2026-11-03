@@ -71,9 +71,9 @@ export default function SalaryFields({enforce=true,defaults={}}:{enforce?:boolea
 type SummaryProps={stype:string;r:number;sal:number;site:string;acc:string;sp:string;plan:string;state:string;catLabel:string;onClose:()=>void};
 function SalarySummary({stype:t,r,sal,site,acc,sp,plan,state,catLabel,onClose}:SummaryProps){
  const st=isStd(t),non=t==='NON',hpc=t==='HPC';
- const[mon,setMon]=useState('2026-10'),[p,setP]=useState('22'),[wo,setWo]=useState('4'),[lv,setLv]=useState('0'),[pdIn,setPdIn]=useState('26'),[oi,setOi]=useState('0'),[ot,setOt]=useState('0'),[ph,setPh]=useState('0'),[od,setOd]=useState('0'),[mb,setMb]=useState<string|null>(null),[yg,setYg]=useState(''),[yt,setYt]=useState(''),[ex,setEx]=useState(''),[dwm,setDwm]=useState<number|null>(null);
+ const[mon,setMon]=useState('2026-10'),[p,setP]=useState(''),[wo,setWo]=useState('0'),[lv,setLv]=useState('0'),[pdIn,setPdIn]=useState('26'),[oi,setOi]=useState('0'),[ot,setOt]=useState('0'),[ph,setPh]=useState('0'),[od,setOd]=useState('0'),[mb,setMb]=useState<string|null>(null),[yg,setYg]=useState(''),[yt,setYt]=useState(''),[ex,setEx]=useState(''),[dwm,setDwm]=useState<number|null>(null);
  const[y,m]=mon.split('-').map(Number),md=new Date(y||2026,m||1,0).getDate(),fyM=((m||1)-4+12)%12,mbVal=mb===null?fyM:Math.min(+mb||0,fyM);
- const P=+p||0,WO=hpc||non?0:(+wo||0),LV=+lv||0,sum=non?(+pdIn||0):P+WO+LV,pd=Math.min(sum,md);
+ const P=p===''?md:(+p||0),WO=hpc||non?0:(+wo||0),LV=+lv||0,sum=non?(+pdIn||0):P+WO+LV,pd=Math.min(sum,md);
  const num=(v:string)=>v===''?null:+v;
  const o:CalcInput={ytd:{mb:mbVal,g:num(yg),t:num(yt)},exp:num(ex)||0,r,sal,md,pd,month:m,oi:+oi||0,ot:+ot||0,ph:+ph||0,od:+od||0,site,acc,sp,plan,state};
  const x=useMemo(()=>compute(t,o),[t,JSON.stringify(o)]);
@@ -108,7 +108,7 @@ function SalarySummary({stype:t,r,sal,site,acc,sp,plan,state,catLabel,onClose}:S
   <div className="salary-mi">
    <div><label>Payroll month</label><input type="month" value={mon} onChange={e=>setMon(e.target.value)}/></div>
    <div><label>Month days</label><input readOnly value={md}/></div>
-   {!non&&ni('P – Present',p,setP,{min:0,max:md})}
+   {!non&&ni('P – Present',p===''?String(md):p,setP,{min:0,max:md})}
    {!non&&!hpc&&ni('WO – Week off',wo,setWo,{min:0,max:md})}
    {!non&&ni('Leave (paid)',lv,setLv,{min:0,max:md})}
    <div><label>{non?'Paid days':'Total paid days'}</label>{non?<input type="number" min={0} max={md} className={sum>md?'bad':''} value={pdIn} onChange={e=>setPdIn(e.target.value)}/>:<input readOnly className={sum>md?'bad':''} value={pd}/>}</div>
