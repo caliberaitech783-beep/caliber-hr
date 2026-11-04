@@ -27,11 +27,18 @@ export default function SalarySchemeMaster({actor='',canApprove=false}:{actor?:s
   <div className="module-tabs salary-tabs" aria-label="Salary scheme menus">{TABS.map(t=><button type="button" key={t} className={tab===t?'selected':''} aria-pressed={tab===t} onClick={()=>setTab(t)}>{t}</button>)}</div>
   {tab!=='Update New Salary Scheme'&&<p className="salary-locked"><Lock/>Approved master – values can only change through "Update New Salary Scheme" with Director approval.</p>}
 
-  {tab==='HPC Salary'&&<div className="shift-grid">
+  {tab==='HPC Salary'&&<><div className="shift-grid">
    <div>
     <div className="shift-card"><h2>1. HPC wage rate master (per day)</h2><div className="shift-table-wrap"><table><thead><tr><th>Code</th><th>Category</th><th>Daily wage rate (₹)</th><th>Gross for {CFG.days} days</th></tr></thead><tbody>
      {WAGE.map(w=><tr key={w.code}><td><b>{w.code}</b></td><td>{w.category}</td><td>{inr(w.rate)}</td><td>{inr(w.rate*CFG.days)}</td></tr>)}
     </tbody></table></div><p className="shift-footnote">Source: HPC (High Power Committee) rates. Govt Wage Rate on the joining form is picked from this table by Skill Category.</p></div>
+   </div>
+   <div>
+    <div className="shift-card salary-order"><h2>Wage rate order (source)</h2><a href="/hpc-wage-rate-order.jpg" target="_blank" rel="noreferrer"><img src="/hpc-wage-rate-order.jpg" alt="Coal India Limited office order dated 12.10.2026 revising contractors' workers wage rates with VDA, effective 01.10.2026 to 31.03.2027"/></a><p className="shift-footnote">CIL office order ref. CIL/C-5B/JBCCI/JC/VDA/47 dated 12.10.2026 – rates incl. VDA effective 01.10.2026 to 31.03.2027 (Unskilled ₹1,341 · Semi-Skilled ₹1,375 · Skilled ₹1,409 · Highly Skilled ₹1,443). Click to open full size.</p></div>
+   </div>
+  </div>
+  <div className="shift-grid" style={{marginTop:20}}>
+   <div>
     <div className="shift-card"><h2>2. Calculation parameters</h2><div className="salary-kvs">
      <V label="Basic days limit" value={String(CFG.days)} note="Earnings up to this many paid days = Basic (A); days above = Other Allowance (B)"/>
      <V label="EPF rate" value={pct(CFG.epfRate)+' of Basic'} note="Applied on Basic when Basic ≤ ceiling"/>
@@ -56,8 +63,7 @@ export default function SalarySchemeMaster({actor='',canApprove=false}:{actor?:s
      <li><b>EPF</b> on Basic: ≤ {inr(CFG.epfCeil)} → {pct(CFG.epfRate)}; above → {inr(CFG.epfFixed)}</li><li><b>ESIC</b> nil (NCL)</li><li><b>PT</b> as per employee PT State (PT Master)</li><li><b>Mess</b> as per site-wise mess master</li>
      <li><b>TDS</b> new regime, year-to-date method</li><li><b>Net</b> = Gross − deductions · <b>Ex-gratia</b> = Wage rate × (OT + PH days) · <b>Payable</b> = Net + Ex-gratia</li></ol></div>
    </div>
-  </div>}
-
+  </div></>}
   {tab==='Non-HPC Salary'&&<div className="shift-grid">
    <div>
     <div className="shift-card"><h2>1. Scheme rules</h2><div className="shift-table-wrap"><table><thead><tr><th>Rule</th><th>Value</th><th>Note</th></tr></thead><tbody>

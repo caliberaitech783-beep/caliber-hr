@@ -16,3 +16,4 @@
 .salary-decide{display:flex;flex-direction:column;gap:6px;min-width:170px}.salary-decide .shift-add{margin-top:0;padding:8px 12px}.salary-decide .shift-remove{justify-content:center}
 .salary-gr-md{width:900px}.salary-gr-md iframe{width:100%;height:75vh;border:0}.salary-gr-md img{max-width:100%;display:block;margin:auto}
 .salary-site-actions{white-space:nowrap}.salary-site-actions button{margin-right:4px}.salary-site-foot{display:flex;gap:10px;align-items:center;margin-top:16px}.salary-sites input,.salary-sites select{min-width:110px}
+.salary-order img{width:100%;height:auto;border:1px solid #e4daee;border-radius:10px;display:block}.salary-order a{display:block}
