@@ -1,0 +1,63 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import LocalEmployeeReviewForm from './LocalEmployeeReviewForm';
+import {Approvals} from './Modules';
+
+afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();localStorage.clear();});
+const record={id:'local-review-1',code:'E1',name:'Original Employee',data:{code:'E1',name:'Original Employee',joiningDate:'2026-11-01',officeData:{'Employee Code':'E1','Full Name *':'Original Employee','Site *':'Original site',Relationship:'Mother','Family Member Name':'Parent'}}};
+it('edits form sections and restores a local copy without network requests',()=>{
+ const fetchMock=vi.fn();vi.stubGlobal('fetch',fetchMock);
+ const first=render(<LocalEmployeeReviewForm record={record} owner="reviewer"/>);
+ fireEvent.change(screen.getByLabelText('Employee Code'),{target:{value:'LOCAL-E2'}});
+ fireEvent.change(screen.getByLabelText('Full Name *'),{target:{value:'Corrected Employee'}});
+ fireEvent.click(screen.getByRole('button',{name:'Job & Posting Details'}));
+ fireEvent.change(screen.getByLabelText('Site *'),{target:{value:'Corrected site'}});
+ fireEvent.click(screen.getByRole('button',{name:'Family Details'}));
+ fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Father'}});
+ fireEvent.click(screen.getByRole('button',{name:'Save Changes Locally'}));
+ expect(screen.getByRole('status').textContent).toContain('Changes saved locally');
+ expect(fetchMock).not.toHaveBeenCalled();
+ first.unmount();
+ const second=render(<LocalEmployeeReviewForm record={record} owner="reviewer"/>);
+ expect((screen.getByLabelText('Employee Code') as HTMLInputElement).value).toBe('LOCAL-E2');
+ expect((screen.getByLabelText('Full Name *') as HTMLInputElement).value).toBe('Corrected Employee');
+ fireEvent.click(screen.getByRole('button',{name:'Job & Posting Details'}));
+ expect((screen.getByLabelText('Site *') as HTMLInputElement).value).toBe('Corrected site');
+ fireEvent.click(screen.getByRole('button',{name:'Family Details'}));
+ expect((screen.getByLabelText('Relationship 1') as HTMLSelectElement).value).toBe('Father');
+ second.unmount();
+ render(<LocalEmployeeReviewForm record={record} owner="another-user"/>);
+ expect((screen.getByLabelText('Employee Code') as HTMLInputElement).value).toBe('E1');
+ expect(fetchMock).not.toHaveBeenCalled();
+});
+it('keeps edits visible when local storage fails',()=>{
+ vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw Error('Storage full');});
+ render(<LocalEmployeeReviewForm record={record} owner="reviewer"/>);
+ fireEvent.change(screen.getByLabelText('Full Name *'),{target:{value:'Keep this edit'}});
+ fireEvent.click(screen.getByRole('button',{name:'Save Changes Locally'}));
+ expect(screen.getByRole('alert').textContent).toContain('Local storage is unavailable or full');
+ expect((screen.getByLabelText('Full Name *') as HTMLInputElement).value).toBe('Keep this edit');
+});
+it('does not apply an older local copy to a changed submission',()=>{
+ const first=render(<LocalEmployeeReviewForm record={record} owner="reviewer"/>);
+ fireEvent.change(screen.getByLabelText('Full Name *'),{target:{value:'Old local correction'}});
+ fireEvent.click(screen.getByRole('button',{name:'Save Changes Locally'}));first.unmount();
+ render(<LocalEmployeeReviewForm record={{...record,name:'New submitted employee',data:{...record.data,officeData:{...record.data.officeData,'Full Name *':'New submitted employee'}}}} owner="reviewer"/>);
+ expect((screen.getByLabelText('Full Name *') as HTMLInputElement).value).toBe('New submitted employee');
+ expect(screen.getByRole('status').textContent).toContain('submitted details changed');
+});
+it('opens, edits and saves a review without new API calls and keeps approval tied to submitted data',async()=>{
+ const approval={...record,kind:'employees',state:'PENDING',stage:0,approvers:['reviewer'],requested_by:'maker',version:1,history:[]};
+ const fetchMock=vi.fn(async()=>new Response(JSON.stringify([approval])));vi.stubGlobal('fetch',fetchMock);
+ render(<Approvals grant="test" actor="reviewer" kind="employees" notice={()=>{}}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'Review'}));
+ const requestCount=fetchMock.mock.calls.length;
+ fireEvent.change(screen.getByLabelText('Full Name *'),{target:{value:'Local correction'}});
+ fireEvent.click(screen.getByRole('button',{name:'Save Changes Locally'}));
+ expect(fetchMock.mock.calls.length).toBe(requestCount);
+ expect((screen.getByRole('button',{name:'Approve'}) as HTMLButtonElement).disabled).toBe(true);
+ fireEvent.click(screen.getByRole('button',{name:'Reset to submitted form'}));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Approve'}) as HTMLButtonElement).disabled).toBe(false));
+ expect((screen.getByLabelText('Full Name *') as HTMLInputElement).value).toBe('Original Employee');
+ expect(fetchMock.mock.calls.length).toBe(requestCount);
+});
