@@ -49,7 +49,7 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
   await screen.findByRole('heading',{name:'Joining Approval Hierarchy'});
   fireEvent.click(screen.getByRole('button',{name:'Leave'}));
   await screen.findByRole('heading',{name:'Leave Approval Hierarchy'});
-  expect(await screen.findByRole('button',{name:'Save hierarchy'})).toBeTruthy();
+  expect(await screen.findByRole('button',{name:'Save leave flow'})).toBeTruthy();
   expect(fetchMock.mock.calls.some(([url])=>url.endsWith('telegram/hierarchies'))).toBe(true);
   fireEvent.click(screen.getByRole('button',{name:'OD'}));
   expect(screen.getByRole('heading',{name:'OD Approval Hierarchy'})).toBeTruthy();
