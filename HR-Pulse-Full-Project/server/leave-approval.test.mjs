@@ -9,7 +9,7 @@ for(const code of ['NCL-DUDE','NCL-DUDW','NCL-JAYANT'])test(`${code}: leave foll
  const db={query:async sql=>({rows:sql.startsWith('SELECT code')?[{code}]:[{data:{...template,steps}}]})};
  const hierarchy=await employeeHierarchy(db,'site-id');
  const approval={requested_by:'employee',stage:0,approval_steps:hierarchy.data.steps};
- assert.equal(approval.approval_steps.length,5);
+ assert.equal(approval.approval_steps.length,6);
  for(let stage=0;stage<=last;stage++){
   approval.stage=stage;
   assert.throws(()=>nextApproval(approval,'employee','APPROVED'),e=>e.status===403);
