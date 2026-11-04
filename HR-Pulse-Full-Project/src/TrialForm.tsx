@@ -18,7 +18,7 @@ function age(dob:string){const d=new Date(dob+'T00:00:00');if(Number.isNaN(d.val
 const digits=(v:string,max:number)=>v.replace(/\D/g,'').slice(0,max);
 
 export default function TrialForm({selection}:{selection:TrialSelection}){
- const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[unlocked,setUnlocked]=useState(false),[stepError,setStepError]=useState('');
+ const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{sessionStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}
  const heading=`${companyShort[selection.company]||selection.company||'CMLL'}  –  ${(selection.site||'SITE').toUpperCase()}`;
  /* After the Aadhaar is read into the hidden joining-style fields, copy them into the trial form and open it. */
@@ -37,14 +37,14 @@ export default function TrialForm({selection}:{selection:TrialSelection}){
  const Radio=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="radio" name={name} value={o}/> {o}</label>)}</span>;
  const YesNo=({name}:{name:string})=><select name={name} defaultValue=""><option value="">Select</option><option>Yes</option><option>No</option></select>;
  return <div className="joining-form trial-form"><form ref={form} noValidate onSubmit={e=>{e.preventDefault();save();}}>
-  <div className="joining-steps" style={{gridTemplateColumns:'repeat(2,minmax(0,1fr))'}}><button type="button" className={step===0?'active':''} onClick={()=>setStep(0)}><i>1</i><span>Upload Aadhaar Card</span></button><button type="button" className={step===1?'active':''} disabled={!unlocked} title={unlocked?undefined:'Upload the Aadhaar image and click Save & Continue first'} onClick={()=>unlocked&&setStep(1)}><i>2</i><span>Trial Joining Form – Driver &amp; Operator</span></button></div>
+  <div className="joining-steps" style={{gridTemplateColumns:'repeat(2,minmax(0,1fr))'}}><button type="button" className={step===0?'active':''} onClick={()=>setStep(0)}><i>1</i><span>Upload Aadhaar Card</span></button><button type="button" className={step===1?'active':''} onClick={()=>setStep(1)}><i>2</i><span>Trial Joining Form – Driver &amp; Operator</span></button></div>
   <div className="joining-card">
    <div hidden={step!==0}>
     <div className="joining-heading"><div><h2>Trial Form – Upload Aadhaar Card</h2><p>Same procedure as the joining form. Candidate name, father's name, date of birth, Aadhaar number and address are filled into the trial form from the Aadhaar.</p></div></div>
     <AadhaarUpload form={form} photo={photo} photo2={photo2} onPhoto={setPhoto} onPhoto2={setPhoto2}/>
     {/* hidden joining-style fields that AadhaarUpload fills */}
     <div hidden>{['Full Name','Full Name as per Aadhaar','Father / Spouse Name','Date of Birth','Gender','Aadhaar No.','Permanent Address'].map(n=><input key={n} name={n} readOnly/>)}</div>
-    {stepError&&<p className="employee-import-error" role="alert">{stepError}</p>}<div className="joining-actions"><button type="button" disabled>Previous</button><button type="button" className="next" onClick={()=>{if(!photo&&!photo2){setStepError('Upload at least one Aadhaar image before continuing.');return;}setStepError('');setUnlocked(true);setStep(1);}}>Save &amp; Continue</button></div>
+    <div className="joining-actions"><button type="button" disabled>Previous</button><button type="button" className="next" onClick={()=>setStep(1)}>Save &amp; Continue</button></div>
    </div>
    <div hidden={step!==1}>
     <div className="tf">
