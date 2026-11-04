@@ -1,59 +1,84 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
+# Deploys the HR API (HR-Pulse-Full-Project/server) to Azure App Service hr-api-cmll-783.
+# Login uses the user-assigned identity that Azure Deployment Center created (federated credentials, no stored password).
 
 name: Build and deploy Node.js app to Azure Web App - hr-api-cmll-783
 
 on:
   push:
-    branches:
-      - 'main'
+    branches: [main]
+    paths:
+      - 'HR-Pulse-Full-Project/server/**'
+      - '.github/workflows/main_hr-api-cmll-783.yml'
   workflow_dispatch:
+
+concurrency:
+  group: hr-api-production
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
-
+      contents: read
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Node.js version
-        uses: actions/setup-node@v3
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
-
+          cache: pnpm
+          cache-dependency-path: HR-Pulse-Full-Project/server/pnpm-lock.yaml
+      - name: Install locked dependencies
+        working-directory: HR-Pulse-Full-Project/server
+        run: pnpm install --frozen-lockfile
+      - name: Test API
+        working-directory: HR-Pulse-Full-Project/server
+        run: node --test app.test.mjs security.test.mjs joining-hierarchy.test.mjs telegram.test.mjs leave-approval.test.mjs
+      - name: Prepare deployment package
+        working-directory: HR-Pulse-Full-Project/server
+        run: |
+          rm -rf node_modules
+          pnpm install --frozen-lockfile --prod --node-linker=hoisted
+          rm -f bootstrap.mjs *.test.mjs
+          printf '{"commit":"%s","host":"azure-app-service"}\n' "$GITHUB_SHA" > release.json
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .
+          path: HR-Pulse-Full-Project/server
+          include-hidden-files: true
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
-
+      id-token: write
+      contents: read
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: node-app
-      
+          path: app
       - name: Login to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_C37CE79234A847D19AFDD5701BFE3EA7 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9846DF1DEBB0406BB6F6FF1E2C39D1BA }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8BF09CD4DD2E4E12A4E95F35F288B3F2 }}
-
-      - name: 'Deploy to Azure Web App'
+      - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'hr-api-cmll-783'
           slot-name: 'Production'
-          package: .
-          
+          package: app
+      - name: Check health
+        run: |
+          for i in $(seq 1 18); do
+            if curl -fsS https://hr-api-cmll-783.azurewebsites.net/api/health > /dev/null; then echo "API healthy"; exit 0; fi
+            sleep 10
+          done
+          echo "API did not report healthy in time"; exit 1
