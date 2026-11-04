@@ -18,13 +18,13 @@ function age(dob:string){const d=new Date(dob+'T00:00:00');if(Number.isNaN(d.val
 const digits=(v:string,max:number)=>v.replace(/\D/g,'').slice(0,max);
 
 export default function TrialForm({selection}:{selection:TrialSelection}){
- const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState('');
+ const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[unlocked,setUnlocked]=useState(false),[stepError,setStepError]=useState('');
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{sessionStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}
  const heading=`${companyShort[selection.company]||selection.company||'CMLL'}  –  ${(selection.site||'SITE').toUpperCase()}`;
  /* After the Aadhaar is read into the hidden joining-style fields, copy them into the trial form and open it. */
  useEffect(()=>{const f=form.current;if(!f)return;const copy=()=>{const v=(n:string)=>(f.elements.namedItem(n) as HTMLInputElement|null)?.value||'';const set=(n:string,val:string)=>{const el=f.elements.namedItem(n) as HTMLInputElement|null;if(el&&!el.value&&val)el.value=val;};
   set('Name of candidate',v('Full Name as per Aadhaar')||v('Full Name'));set("Father's name",v('Father / Spouse Name'));const dob=v('Date of Birth');if(dob)set('Date of birth / Age',`${dob.split('-').reverse().join('/')}${age(dob)?' · '+age(dob):''}`);set('Aadhaar no.',digits(v('Aadhaar No.'),12));set('Address',v('Permanent Address'));
-  if(v('Full Name as per Aadhaar')||v('Aadhaar No.'))setStep(1);};
+  };
   f.addEventListener('change',copy);return()=>f.removeEventListener('change',copy);},[]);
  useEffect(()=>{const f=form.current;if(!f)return;const post=f.elements.namedItem('Post applied for') as RadioNodeList|null;if(post&&!post.value&&['Driver','Operator'].includes(selection.department))post.value=selection.department;},[selection.department,step]);
  function save(){const f=form.current;if(!f)return;setError('');const data:Record<string,string>={};for(const el of Array.from(f.elements)){if(!(el instanceof HTMLInputElement||el instanceof HTMLSelectElement||el instanceof HTMLTextAreaElement)||!el.name||el.type==='file')continue;if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type)){if(el.checked)data[el.name]=(data[el.name]?data[el.name]+', ':'')+el.value;continue;}data[el.name]=el.value;}
@@ -37,14 +37,14 @@ export default function TrialForm({selection}:{selection:TrialSelection}){
  const Radio=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="radio" name={name} value={o}/> {o}</label>)}</span>;
  const YesNo=({name}:{name:string})=><select name={name} defaultValue=""><option value="">Select</option><option>Yes</option><option>No</option></select>;
  return <div className="joining-form trial-form"><form ref={form} noValidate onSubmit={e=>{e.preventDefault();save();}}>
-  <div className="joining-steps" style={{gridTemplateColumns:'repeat(2,minmax(0,1fr))'}}><button type="button" className={step===0?'active':''} onClick={()=>setStep(0)}><i>1</i><span>Upload Aadhaar Card</span></button><button type="button" className={step===1?'active':''} onClick={()=>setStep(1)}><i>2</i><span>Trial Joining Form – Driver &amp; Operator</span></button></div>
+  <div className="joining-steps" style={{gridTemplateColumns:'repeat(2,minmax(0,1fr))'}}><button type="button" className={step===0?'active':''} onClick={()=>setStep(0)}><i>1</i><span>Upload Aadhaar Card</span></button><button type="button" className={step===1?'active':''} disabled={!unlocked} title={unlocked?undefined:'Upload the Aadhaar image and click Save & Continue first'} onClick={()=>unlocked&&setStep(1)}><i>2</i><span>Trial Joining Form – Driver &amp; Operator</span></button></div>
   <div className="joining-card">
    <div hidden={step!==0}>
     <div className="joining-heading"><div><h2>Trial Form – Upload Aadhaar Card</h2><p>Same procedure as the joining form. Candidate name, father's name, date of birth, Aadhaar number and address are filled into the trial form from the Aadhaar.</p></div></div>
     <AadhaarUpload form={form} photo={photo} photo2={photo2} onPhoto={setPhoto} onPhoto2={setPhoto2}/>
     {/* hidden joining-style fields that AadhaarUpload fills */}
     <div hidden>{['Full Name','Full Name as per Aadhaar','Father / Spouse Name','Date of Birth','Gender','Aadhaar No.','Permanent Address'].map(n=><input key={n} name={n} readOnly/>)}</div>
-    <div className="joining-actions"><button type="button" disabled>Previous</button><button type="button" className="next" onClick={()=>setStep(1)}>Save &amp; Continue</button></div>
+    {stepError&&<p className="employee-import-error" role="alert">{stepError}</p>}<div className="joining-actions"><button type="button" disabled>Previous</button><button type="button" className="next" onClick={()=>{if(!photo&&!photo2){setStepError('Upload at least one Aadhaar image before continuing.');return;}setStepError('');setUnlocked(true);setStep(1);}}>Save &amp; Continue</button></div>
    </div>
    <div hidden={step!==1}>
     <div className="tf">
