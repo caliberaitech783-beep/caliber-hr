@@ -6,13 +6,34 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const username=value=>String(value||'').trim().toLowerCase();
 export const telegramUsers=value=>[...new Set((Array.isArray(value)?value:String(value||'').split(',')).map(username).filter(Boolean))];
 export function validateTelegramHierarchy(input){
- const siteUsers=telegramUsers(input.siteHr),regionalUsers=telegramUsers(input.regionalHr),directors=telegramUsers(input.directors);
- if([siteUsers,regionalUsers,directors].some(users=>!users.length||users.length>20)||![...siteUsers,...regionalUsers,...directors].every(x=>/^[-a-z0-9_.@]{1,100}$/.test(x)))fail('Enter 1–20 valid comma-separated Pulse usernames for each role.');
- if(siteUsers.some(actor=>regionalUsers.includes(actor)))fail('Site HR and Regional HR must use different approvers.');
- return {siteHr:siteUsers.join(','),regionalHr:regionalUsers.join(','),directors,enabled:input.enabled===true};
+ const regionalUsers=telegramUsers(input.regionalHr),directors=telegramUsers(input.directors),valid=x=>/^[-a-z0-9_.@]{1,100}$/.test(x);
+ /* Leave flow (two types). office: Employee → HOD (concerned) → Directors → Regional HR. site: HR Manager initiates → HOD (concerned) → PM Sir → Regional HR → Directors. */
+ if(!input.hods&&!input.type){   /* legacy two-stage route: Site HR / HOD → Regional HR */
+  const siteUsers=telegramUsers(input.siteHr);
+  if([siteUsers,regionalUsers,directors].some(users=>!users.length||users.length>20)||![...siteUsers,...regionalUsers,...directors].every(valid))fail('Enter 1–20 valid comma-separated Pulse usernames for each role.');
+  if(siteUsers.some(actor=>regionalUsers.includes(actor)))fail('Site HR and Regional HR must use different approvers.');
+  return {siteHr:siteUsers.join(','),regionalHr:regionalUsers.join(','),directors,enabled:input.enabled===true};
+ }
+ const type=input.type==='office'?'office':'site';
+ const hods={};for(const [department,user] of Object.entries(input.hods&&typeof input.hods==='object'?input.hods:{})){const d=String(department).trim().slice(0,80),u=String(user||'').trim().toLowerCase();if(!d||!u)continue;if(!valid(u))fail(`Enter a valid Pulse username for the HOD of ${d}.`);hods[d]=u;}
+ if(!Object.keys(hods).length)fail('Enter the HOD (concerned) Pulse username for at least one department.');
+ if([regionalUsers,directors].some(users=>!users.length||users.length>20)||![...regionalUsers,...directors].every(valid))fail('Enter 1–20 valid comma-separated Pulse usernames for Regional HR and Directors.');
+ const hrManager=String(input.hrManager||'').trim().toLowerCase(),pm=telegramUsers(input.pm);
+ if(type==='site'){if(!valid(hrManager))fail('Enter the site HR Manager Pulse username (who raises leave requests).');if(!pm.length||pm.length>20||!pm.every(valid))fail('Enter 1–20 valid Pulse usernames for PM Sir.');}
+ const siteUsers=telegramUsers(input.siteHr).filter(valid);
+ return {type,hods,hrManager:type==='site'?hrManager:'',pm:type==='site'?pm.join(','):'',siteHr:siteUsers.join(','),regionalHr:regionalUsers.join(','),directors,enabled:input.enabled===true};
 }
-export function telegramSteps(config){return [{stage:1,label:`${config.firstRole||'Site HR'} — any one`,approvers:telegramUsers(config.siteHr)},{stage:2,label:'Regional HR — final approval, any one',approvers:telegramUsers(config.regionalHr)}];}
-export async function telegramLeaveFlow(db,siteId){const row=(await db.query('SELECT h.data,s.code FROM hr_telegram_hierarchies h JOIN hr_records s ON s.id=h.site_id WHERE site_id=$1',[siteId])).rows[0];return row?.data.enabled?{...row.data,firstRole:['CMLL-CO','CMLL-HO'].includes(row.code)?'HOD':'Site HR'}:null;}
+/* Approval steps for one request. department = the employee's department name (HOD concerned). */
+export function telegramSteps(config,department=''){
+ if(!config.hods||!Object.keys(config.hods).length)return [{stage:1,label:`${config.firstRole||'Site HR'} — any one`,approvers:telegramUsers(config.siteHr)},{stage:2,label:'Regional HR — final approval, any one',approvers:telegramUsers(config.regionalHr)}];   /* legacy route */
+ const key=Object.keys(config.hods).find(k=>k.toLowerCase()===String(department||'').trim().toLowerCase()),hod=key?config.hods[key]:config.hods['*'];
+ if(!hod)fail(`Configure the HOD (concerned) for the ${department||'employee\'s'} department in the leave hierarchy before submitting.`,409);
+ const hodStep={stage:1,label:'HOD (concerned) — any one',approvers:telegramUsers(hod)};
+ return config.type==='office'
+  ?[hodStep,{stage:2,label:'Directors — any one',approvers:config.directors||[]},{stage:3,label:'Regional HR — final approval, any one',approvers:telegramUsers(config.regionalHr)}]
+  :[hodStep,{stage:2,label:'PM Sir — any one',approvers:telegramUsers(config.pm)},{stage:3,label:'Regional HR — any one',approvers:telegramUsers(config.regionalHr)},{stage:4,label:'Directors — final approval, any one',approvers:config.directors||[]}];
+}
+export async function telegramLeaveFlow(db,siteId){const row=(await db.query('SELECT h.data,s.code FROM hr_telegram_hierarchies h JOIN hr_records s ON s.id=h.site_id WHERE site_id=$1',[siteId])).rows[0];return row?.data.enabled?{...row.data,siteCode:row.code,type:row.data.type||(['CMLL-CO','CMLL-HO'].includes(row.code)?'office':'site'),firstRole:row.data.hods?'HOD (concerned)':(['CMLL-CO','CMLL-HO'].includes(row.code)?'HOD':'Site HR')}:null;}
 export async function seedTelegram(db){
  const data={siteHr:'amitsingh',regionalHr:'vinodpinjarkar',directors:['manishchadda','mohitchadda','rahulchadda'],enabled:true};
  await db.query("INSERT INTO hr_telegram_hierarchies(site_id,data,updated_by) SELECT id,$1,'initial-configuration' FROM hr_records WHERE kind='sites' AND code='NCL-JAYANT' ON CONFLICT DO NOTHING",[data]);
@@ -21,7 +42,7 @@ export async function queueTelegram(db,eventKey,actors,message){for(const actor 
 export function leaveMessage(record,status,details={}){
  const date=value=>value?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Kolkata'}).format(new Date(value)):'Not available';
  const firstRole=details.firstRole||'Site HR';
- const headings={SUBMITTED:'📩 LEAVE REQUEST SUBMITTED',PENDING:`✅ LEAVE REQUEST — ${firstRole.toUpperCase()} APPROVED`,APPROVED:'✅ LEAVE REQUEST APPROVED',REJECTED:'❌ LEAVE REQUEST REJECTED'};
+ const headings={SUBMITTED:'📩 LEAVE REQUEST SUBMITTED',PENDING:`✅ LEAVE REQUEST — ${(details.stageRole||firstRole).toUpperCase()} APPROVED`,APPROVED:'✅ LEAVE REQUEST APPROVED',REJECTED:'❌ LEAVE REQUEST REJECTED'};
  const lines=[headings[status]||'📩 LEAVE REQUEST UPDATE','',`🏢 Site Name: ${details.siteName||'Not available'}`,`🆔 Request ID: ${record.code}`,`👤 Employee: ${record.data.employeeName||record.name}`,`📅 Leave Dates: ${date(record.data.fromDate)} to ${date(record.data.toDate)}`];
  if(details.actor){
   const rejected=status==='REJECTED';
@@ -29,7 +50,7 @@ export function leaveMessage(record,status,details={}){
   lines.push('',`${rejected?'❌ Rejected':'✅ Approved'} By: ${details.name||details.actor}`,`🆔 ${rejected?'Reviewer':'Approver'} Telegram ID: ${details.telegramId||'Not connected'}`,`📅 ${rejected?'Rejection':'Approval'} Date: ${at} IST`);
  }
  if(status==='SUBMITTED')lines.push('',`⏳ Awaiting ${firstRole} approval`);
- if(status==='PENDING')lines.push('','⏳ Awaiting Regional HR approval');
+ if(status==='PENDING')lines.push('',`⏳ Awaiting ${details.nextRole||'Regional HR'} approval`);
  if(status==='REJECTED'&&details.comments)lines.push(`📝 Reason: ${details.comments}`);
  if(status==='APPROVED'&&record.data.chargeHandedOverTo)lines.push(`🤝 Charge handed over to: ${record.data.chargeHandedOverTo}`);
  lines.push('',`📊 Status: ${status}`);
@@ -56,7 +77,15 @@ export function createTelegram(pool){
    const accounts=(await pool.query('SELECT actor,linked_at FROM hr_telegram_accounts ORDER BY actor')).rows;
    const deliveries=(await pool.query('SELECT id,actor,state,last_error,sent_at FROM hr_telegram_outbox ORDER BY id DESC LIMIT 50')).rows;
    const employees=(await pool.query("SELECT id,code,name,data->>'pulseUsername' AS actor FROM hr_records WHERE kind='employees' AND status IN ('ACTIVE','APPROVED') ORDER BY name")).rows;
-   return {sites,accounts,deliveries,employees};
+   const departments=(await pool.query("SELECT name FROM hr_records WHERE kind='departments' AND status='ACTIVE' ORDER BY name")).rows.map(r=>r.name);
+   return {sites,accounts,deliveries,employees,departments};
+  }
+  if(route==='my-flow'&&method==='GET'){
+   const me=(await pool.query("SELECT e.data->>'siteId' AS site_id FROM hr_records e WHERE e.kind='employees' AND lower(e.data->>'pulseUsername')=$1 ORDER BY e.updated_at DESC LIMIT 1",[profile.actor])).rows[0];
+   const flow=me?.site_id?await telegramLeaveFlow(pool,me.site_id):null;
+   if(!flow)return {type:null};
+   const site=(await pool.query("SELECT name FROM hr_records WHERE id::text=$1",[me.site_id])).rows[0];
+   return {type:flow.type,siteName:site?.name||'',hrManager:flow.hrManager||'',canInitiate:flow.type!=='site'||!flow.hods||flow.hrManager===profile.actor};
   }
   if(route==='employee-link'&&method==='POST'){
    const actor=username(input.actor);if(!/^[-a-z0-9_.@]{1,100}$/.test(actor))fail('Enter a valid Pulse username');

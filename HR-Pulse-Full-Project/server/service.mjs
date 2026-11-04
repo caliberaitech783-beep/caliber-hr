@@ -107,9 +107,12 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         await locationAccess(db,profile,kind,record.data,id);
         await references(db,kind,record.data,id);
         let companyId=record.data.companyId,siteId=record.data.siteId;
-        if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;}
+        let employeeDepartment='';
+        if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;if(employee?.data.departmentId)employeeDepartment=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='departments'",[String(employee.data.departmentId)])).rows[0]?.name||'';}
         const telegramFlow=kind==='leaveRequests'?await telegramLeaveFlow(db,siteId):null;
-        const hierarchy=telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow)}}:kind==='outDutyRequests'?odApprovalWorkflow():['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
+        /* Site flow: only the site HR Manager raises leave requests (on the employee's behalf). */
+        if(telegramFlow?.type==='site'&&telegramFlow.hods&&telegramFlow.hrManager&&telegramFlow.hrManager!==profile.actor){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'this site';throw problem(`Leave at ${siteName} is raised by the site HR Manager (${telegramFlow.hrManager}). Please contact them to submit this request.`,403);}
+        const hierarchy=telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment)}}:kind==='outDutyRequests'?odApprovalWorkflow():['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
         const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
         const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
         if(!hierarchy&&!rules.length&&(kind==='leaveRequests'||!record.data.approver))throw problem('Configure an active approval-matrix rule for this module before submitting',409);
@@ -127,7 +130,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         }
         const approvalId=randomUUID();
         await db.query('INSERT INTO hr_approvals(id,record_id,approvers,requested_by,record_snapshot,approval_steps) VALUES($1,$2,$3,$4,$5,$6)',[approvalId,id,JSON.stringify(approvers),profile.actor,snapshot,JSON.stringify(steps)]);
-        if(telegramFlow)await queueTelegram(db,approvalId+':submitted',[telegramFlow.siteHr,telegramFlow.regionalHr],leaveMessage(record,'SUBMITTED',{siteName:telegramSiteName,firstRole:telegramFlow.firstRole}));
+        if(telegramFlow)await queueTelegram(db,approvalId+':submitted',telegramFlow.hods?[...steps[0].approvers,telegramFlow.hrManager]:[telegramFlow.siteHr,telegramFlow.regionalHr],leaveMessage(record,'SUBMITTED',{siteName:telegramSiteName,firstRole:telegramFlow.hods?steps[0].label.replace(/ — .*/,''):telegramFlow.firstRole}));
         await db.query("UPDATE hr_records SET status='PENDING',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2",[profile.actor,id]);
         await audit(db,profile.actor,'SUBMIT',kind,id,{workflowId:workflow.id,stages:steps.length});
          if(kind==='employees'&&hierarchy?.code==='CMLL-CO')afterCommit?.(()=>telegram.approvalRequested({siteCode:hierarchy.code,record:snapshot,step:steps[0],stage:1,total:steps.length,requestedBy:profile.actor}));
@@ -260,10 +263,12 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         if(state!=='PENDING')await db.query('UPDATE hr_records SET status=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[state==='APPROVED'&&['employees','holidays'].includes(record.kind)?'ACTIVE':state,profile.actor,record.id]);
         if(flow){
           const employee=await employeeActor(db,record.data.employeeId,approval.requested_by);
-          const recipients=state==='APPROVED'?[employee,flow.siteHr,...flow.directors,handoverActor]:state==='REJECTED'?[employee,flow.siteHr,flow.regionalHr]:[employee,flow.regionalHr];
+          const flowSteps=approvalSteps(approval),stageRole=flowSteps[approval.stage]?.label.replace(/ — .*/,''),nextRole=flowSteps[stage]?.label.replace(/ — .*/,'');
+          const recipients=flow.hods?(state==='APPROVED'?[employee,flow.hrManager,...flowSteps.flatMap(x=>x.approvers),handoverActor]:state==='REJECTED'?[employee,flow.hrManager,flow.regionalHr]:[employee,flow.hrManager,...(flowSteps[stage]?.approvers||[])])
+           :(state==='APPROVED'?[employee,flow.siteHr,...flow.directors,handoverActor]:state==='REJECTED'?[employee,flow.siteHr,flow.regionalHr]:[employee,flow.regionalHr]);
           const siteName=approval.record_snapshot.telegramSiteName||(await db.query("SELECT s.name FROM hr_records e JOIN hr_records s ON s.id::text=e.data->>'siteId' AND s.kind='sites' WHERE e.id::text=$1 AND e.kind='employees'",[record.data.employeeId||''])).rows[0]?.name;
           const account=(await db.query('SELECT telegram_user_id FROM hr_telegram_accounts WHERE actor=$1',[profile.actor])).rows[0];
-          await queueTelegram(db,id+':decision:'+approval.version,recipients,leaveMessage(record,state,{siteName,firstRole:flow.firstRole,actor:profile.actor,name:profile.name,telegramId:account?.telegram_user_id,at:history.at(-1).at,comments}));
+          await queueTelegram(db,id+':decision:'+approval.version,recipients,leaveMessage(record,state,{siteName,firstRole:flow.firstRole,stageRole,nextRole,actor:profile.actor,name:profile.name,telegramId:account?.telegram_user_id,at:history.at(-1).at,comments}));
         }
         await audit(db,profile.actor,input.decision,record.kind,record.id,{stage:approval.stage+1,comments,...(handoverActor?{chargeEmployeeId:record.data.chargeEmployeeId}:{})});
         if(record.kind==='employees'){
