@@ -24,9 +24,10 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  fireEvent.click(screen.getByRole('button',{name:'Employee Management'}));
  expect(screen.getByRole('button',{name:'Employee Management'}).getAttribute('aria-pressed')).toBe('true');
  fireEvent.click(screen.getByRole('button',{name:'Payroll Management'}));
- await screen.findByRole('button',{name:'Salary Schema'});
- expect(within(sidebar).getByRole('button',{name:'Salary Schema'})).toBeTruthy();
- for(const name of ['Salary Schema','Payroll Processing','Loan and Advances','Expense Claims']){
+ await screen.findByRole('button',{name:'Salary Scheme'});
+ expect(within(sidebar).getByRole('button',{name:'Salary Scheme'})).toBeTruthy();
+ expect(screen.getByRole('heading',{name:'Salary Scheme Master'})).toBeTruthy();
+ for(const name of ['Payroll Processing','Loan and Advances','Expense Claims']){
   fireEvent.click(screen.getByRole('button',{name}));
   expect(screen.getByRole('heading',{name})).toBeTruthy();
  }

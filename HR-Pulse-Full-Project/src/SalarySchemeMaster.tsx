@@ -23,7 +23,7 @@ export default function SalarySchemeMaster({actor='',canApprove=false}:{actor?:s
  const[tab,setTab]=useState<typeof TABS[number]>('HPC Salary'),[scheme,setScheme]=useState(0),[,bump]=useState(0);
  const SCHEMES=schemeRows(),sch=SCHEMES[scheme],WAGE=wageRows(),SLABS=slabRows();
  return <section className="shift-master salary-scheme">
-  <div className="shift-title"><span className="shift-icon"><IndianRupee/></span><div><small>MASTER CONFIGURATION · B5</small><h1>Salary Scheme Master</h1><p>Wage rates, calculation parameters, mess, TDS and scheme rules used by the Employment Details salary fields.</p></div></div>
+  <div className="shift-title"><span className="shift-icon"><IndianRupee/></span><div><small>PAYROLL MANAGEMENT · SALARY SCHEME</small><h1>Salary Scheme Master</h1><p>Wage rates, calculation parameters, mess, TDS and scheme rules used by the Employment Details salary fields.</p></div></div>
   <div className="module-tabs salary-tabs" aria-label="Salary scheme menus">{TABS.map(t=><button type="button" key={t} className={tab===t?'selected':''} aria-pressed={tab===t} onClick={()=>setTab(t)}>{t}</button>)}</div>
   {tab!=='Update New Salary Scheme'&&<p className="salary-locked"><Lock/>Approved master – values can only change through "Update New Salary Scheme" with Director approval.</p>}
 
