@@ -5,6 +5,28 @@ import {Approvals} from './Modules';
 
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();localStorage.clear();});
 const record={id:'local-review-1',code:'E1',name:'Original Employee',data:{code:'E1',name:'Original Employee',joiningDate:'2026-11-01',officeData:{'Employee Code':'E1','Full Name *':'Original Employee','Site *':'Original site',Relationship:'Mother','Family Member Name':'Parent'}}};
+it('shows the approved snapshot without edit controls or saved local corrections',()=>{
+ const editable=render(<LocalEmployeeReviewForm record={record} owner="reviewer"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Edit'}));
+ fireEvent.change(screen.getByLabelText('Full Name *'),{target:{value:'Local-only name'}});
+ fireEvent.click(screen.getByRole('button',{name:'Save & Lock'}));editable.unmount();
+ render(<LocalEmployeeReviewForm record={record} owner="reviewer" readOnly/>);
+ expect((screen.getByLabelText('Full Name *') as HTMLInputElement).value).toBe('Original Employee');
+ expect((screen.getByLabelText('Full Name *') as HTMLInputElement).readOnly).toBe(true);
+ expect((screen.getByLabelText('Gender') as HTMLSelectElement).disabled).toBe(true);
+ for(const name of ['Edit','Save & Lock','Cancel','Reset to submitted form'])expect(screen.queryByRole('button',{name})).toBeNull();
+ expect(screen.getByText('Approved form · Read only')).toBeTruthy();
+});
+it('opens completed employee reviews as read-only',async()=>{
+ const approval={...record,kind:'employees',state:'APPROVED',stage:0,approvers:['reviewer'],requested_by:'maker',version:1,history:[]};
+ const fetchMock=vi.fn(async()=>new Response(JSON.stringify([approval])));vi.stubGlobal('fetch',fetchMock);
+ render(<Approvals grant="test" actor="reviewer" kind="employees" completed notice={()=>{}}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'Review'}));
+ expect(screen.getByText('Approved form · Read only')).toBeTruthy();
+ expect(screen.queryByRole('button',{name:'Edit'})).toBeNull();
+ expect((screen.getByLabelText('Full Name *') as HTMLInputElement).readOnly).toBe(true);
+ expect(fetchMock).toHaveBeenCalledTimes(1);
+});
 it('starts locked, supports Edit and Cancel, and locks again after saving',()=>{
  render(<LocalEmployeeReviewForm record={record} owner="reviewer"/>);
  const name=screen.getByLabelText('Full Name *') as HTMLInputElement;
