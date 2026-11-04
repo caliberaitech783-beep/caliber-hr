@@ -1,4 +1,4 @@
-import {createTelegram,telegramLeaveFlow,telegramSteps,queueTelegram,leaveMessage,employeeActor} from './telegram.mjs';
+import {createTelegram,telegramLeaveFlow,odSiteFlow,telegramSteps,queueTelegram,leaveMessage,employeeActor} from './telegram.mjs';
 import {odApprovalWorkflow} from './out-duty.mjs';
 import {createAssets} from './assets.mjs';
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './joining-hierarchy.mjs';
@@ -109,10 +109,10 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         let companyId=record.data.companyId,siteId=record.data.siteId;
         let employeeDepartment='';
         if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;if(employee?.data.departmentId)employeeDepartment=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='departments'",[String(employee.data.departmentId)])).rows[0]?.name||'';}
-        const siteFlow=['leaveRequests','outDutyRequests'].includes(kind)?await telegramLeaveFlow(db,siteId):null,telegramFlow=kind==='leaveRequests'?siteFlow:null;
+        const telegramFlow=kind==='leaveRequests'?await telegramLeaveFlow(db,siteId):null,odFlow=kind==='outDutyRequests'?await odSiteFlow(db,siteId):null,siteFlow=telegramFlow||odFlow;
         /* Site flow: only the site HR Manager raises leave / OD requests (on the employee's behalf). */
         if(siteFlow?.type==='site'&&siteFlow.hods&&siteFlow.hrManager&&siteFlow.hrManager!==profile.actor){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'this site';throw problem(`${kind==='outDutyRequests'?'OD':'Leave'} requests at ${siteName} are raised by the site HR Manager (${siteFlow.hrManager}). Please contact them to submit this request.`,403);}
-        const hierarchy=telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment)}}:kind==='outDutyRequests'?odApprovalWorkflow(siteFlow,employeeDepartment):['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
+        const hierarchy=telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment)}}:kind==='outDutyRequests'?odApprovalWorkflow(odFlow,employeeDepartment):['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
         const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
         const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
         if(!hierarchy&&!rules.length&&(kind==='leaveRequests'||!record.data.approver))throw problem('Configure an active approval-matrix rule for this module before submitting',409);

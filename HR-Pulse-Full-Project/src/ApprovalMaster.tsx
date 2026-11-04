@@ -1,7 +1,6 @@
 import {useState} from 'react';
 import HierarchyMaster from './HierarchyMaster';
 import TelegramHierarchy from './TelegramHierarchy';
-import {ODApprovalHierarchy} from './LeaveMaster';
 
 export default function ApprovalMaster({grant}:{grant:string}){
  const[tab,setTab]=useState('Hierarchy');
@@ -11,6 +10,6 @@ export default function ApprovalMaster({grant}:{grant:string}){
   </div>
   {tab==='Hierarchy'&&<HierarchyMaster grant={grant}/>}
   {tab==='Leave'&&<section aria-label="Leave approval hierarchy"><h2>Leave Approval Flow</h2><p className="help-text">Two routes: <b>Office</b> – Employee → HOD (concerned) → Directors → Regional HR. <b>Site</b> – HR Manager initiates → HOD (concerned) → PM Sir → Regional HR → Directors.</p><TelegramHierarchy grant={grant} leaveOnly/></section>}
-  {tab==='OD'&&<section className="data-card"><h2>OD Approval Hierarchy</h2><ODApprovalHierarchy/><p>Approvers for OD are the same people configured on the Leave tab for each site / office.</p></section>}
+  {tab==='OD'&&<section aria-label="OD approval hierarchy"><h2>OD Approval Flow</h2><p className="help-text">Two routes: <b>Office</b> – Employee initiates → HOD (concerned) → Regional HR. <b>Site</b> – HR Manager (site) initiates → HOD (concerned) → Regional HR.</p><TelegramHierarchy grant={grant} leaveOnly kind="od"/></section>}
  </>;
 }

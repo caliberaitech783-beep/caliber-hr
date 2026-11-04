@@ -52,8 +52,8 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
   expect(await screen.findByRole('button',{name:'Save leave flow'})).toBeTruthy();
   expect(fetchMock.mock.calls.some(([url])=>url.endsWith('telegram/hierarchies'))).toBe(true);
   fireEvent.click(screen.getByRole('button',{name:'OD'}));
-  expect(screen.getByRole('heading',{name:'OD Approval Hierarchy'})).toBeTruthy();
-  expect(screen.getByText(/HOD \(APURVAKOPULWAR\).*Regional HR \(MAYURIUMATE\)/)).toBeTruthy();
+  expect(screen.getByRole('heading',{name:'OD Approval Flow'})).toBeTruthy();
+  expect(await screen.findByRole('button',{name:'Save OD flow'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Hierarchy'}));
   await screen.findByRole('heading',{name:'Joining Approval Hierarchy'});
   window.location.hash='';

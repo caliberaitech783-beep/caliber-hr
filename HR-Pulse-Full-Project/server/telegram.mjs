@@ -23,6 +23,17 @@ export function validateTelegramHierarchy(input){
  const siteUsers=telegramUsers(input.siteHr).filter(valid);
  return {type,hods,hrManager:type==='site'?hrManager:'',pm:type==='site'?pm.join(','):'',siteHr:siteUsers.join(','),regionalHr:regionalUsers.join(','),directors,enabled:input.enabled===true};
 }
+/* OD flow. office: Employee → HOD (concerned) → Regional HR. site: HR Manager initiates → HOD (concerned) → Regional HR. */
+export function validateOdHierarchy(input){
+ const valid=x=>/^[-a-z0-9_.@]{1,100}$/.test(x),type=input.type==='office'?'office':'site',regionalUsers=telegramUsers(input.regionalHr);
+ const hods={};for(const [department,user] of Object.entries(input.hods&&typeof input.hods==='object'?input.hods:{})){const d=String(department).trim().slice(0,80),u=String(user||'').trim().toLowerCase();if(!d||!u)continue;if(!valid(u))fail(`Enter a valid Pulse username for the HOD of ${d}.`);hods[d]=u;}
+ if(!Object.keys(hods).length)fail('Enter the HOD (concerned) Pulse username for at least one department.');
+ if(!regionalUsers.length||regionalUsers.length>20||!regionalUsers.every(valid))fail('Enter 1–20 valid comma-separated Pulse usernames for Regional HR.');
+ const hrManager=String(input.hrManager||'').trim().toLowerCase();if(type==='site'&&!valid(hrManager))fail('Enter the site HR Manager Pulse username (who raises OD requests).');
+ return {type,hods,hrManager:type==='site'?hrManager:'',regionalHr:regionalUsers.join(','),enabled:input.enabled===true};
+}
+/* The site's OD flow when enabled (independent of the leave route being enabled). */
+export async function odSiteFlow(db,siteId){if(!siteId)return null;const row=(await db.query('SELECT h.data,s.code FROM hr_telegram_hierarchies h JOIN hr_records s ON s.id=h.site_id WHERE site_id=$1',[siteId])).rows[0];return row?.data?.od?.enabled?{...row.data.od,siteCode:row.code}:null;}
 /* Approval steps for one request. department = the employee's department name (HOD concerned). */
 export function telegramSteps(config,department=''){
  if(!config.hods||!Object.keys(config.hods).length)return [{stage:1,label:`${config.firstRole||'Site HR'} — any one`,approvers:telegramUsers(config.siteHr)},{stage:2,label:'Regional HR — final approval, any one',approvers:telegramUsers(config.regionalHr)}];   /* legacy route */
@@ -82,10 +93,10 @@ export function createTelegram(pool){
   }
   if(route==='my-flow'&&method==='GET'){
    const me=(await pool.query("SELECT e.data->>'siteId' AS site_id FROM hr_records e WHERE e.kind='employees' AND lower(e.data->>'pulseUsername')=$1 ORDER BY e.updated_at DESC LIMIT 1",[profile.actor])).rows[0];
-   const flow=me?.site_id?await telegramLeaveFlow(pool,me.site_id):null;
-   if(!flow)return {type:null};
-   const site=(await pool.query("SELECT name FROM hr_records WHERE id::text=$1",[me.site_id])).rows[0];
-   return {type:flow.type,siteName:site?.name||'',hrManager:flow.hrManager||'',canInitiate:flow.type!=='site'||!flow.hods||flow.hrManager===profile.actor};
+   const flow=me?.site_id?await telegramLeaveFlow(pool,me.site_id):null,od=me?.site_id?await odSiteFlow(pool,me.site_id):null;
+   const site=me?.site_id?(await pool.query("SELECT name FROM hr_records WHERE id::text=$1",[me.site_id])).rows[0]:null;
+   return {type:flow?.type||null,siteName:site?.name||'',hrManager:flow?.hrManager||'',canInitiate:!flow||flow.type!=='site'||!flow.hods||flow.hrManager===profile.actor,
+    odType:od?.type||null,odHrManager:od?.hrManager||'',odCanInitiate:!od||od.type!=='site'||od.hrManager===profile.actor};
   }
   if(route==='employee-link'&&method==='POST'){
    const actor=username(input.actor);if(!/^[-a-z0-9_.@]{1,100}$/.test(actor))fail('Enter a valid Pulse username');
@@ -97,12 +108,24 @@ export function createTelegram(pool){
     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'LINK_PULSE_USERNAME','employees',$2,$3)",[profile.actor,input.employeeId,{pulseUsername:actor}]);return {saved:true};
    });
   }
-  if(route==='hierarchies'&&method==='POST'){
-   const data=validateTelegramHierarchy(input);return tx(async db=>{
+  if(route==='od-hierarchies'&&method==='POST'){
+   const od=validateOdHierarchy(input);return tx(async db=>{
     await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['telegram-hierarchy:'+input.siteId]);
     if(!(await db.query("SELECT id FROM hr_records WHERE id=$1 AND kind='sites' AND status='ACTIVE'",[input.siteId])).rowCount)fail('Choose an active site');
-    const old=(await db.query('SELECT version FROM hr_telegram_hierarchies WHERE site_id=$1 FOR UPDATE',[input.siteId])).rows[0];
+    const old=(await db.query('SELECT data,version FROM hr_telegram_hierarchies WHERE site_id=$1 FOR UPDATE',[input.siteId])).rows[0];
     if(Number(input.version)!==(old?.version||0))fail('Configuration changed. Reload and try again.',409);
+    const data={...(old?.data||{siteHr:'',regionalHr:'',directors:[],enabled:false}),od};
+    await db.query('INSERT INTO hr_telegram_hierarchies(site_id,data,updated_by) VALUES($1,$2,$3) ON CONFLICT(site_id) DO UPDATE SET data=$2,version=hr_telegram_hierarchies.version+1,updated_by=$3,updated_at=now()',[input.siteId,data,profile.actor]);
+    await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'CONFIGURE_OD_FLOW','sites',$2,$3)",[profile.actor,input.siteId,od]);return {saved:true};
+   });
+  }
+  if(route==='hierarchies'&&method==='POST'){
+   const leaveData=validateTelegramHierarchy(input);return tx(async db=>{
+    await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['telegram-hierarchy:'+input.siteId]);
+    if(!(await db.query("SELECT id FROM hr_records WHERE id=$1 AND kind='sites' AND status='ACTIVE'",[input.siteId])).rowCount)fail('Choose an active site');
+    const old=(await db.query('SELECT data,version FROM hr_telegram_hierarchies WHERE site_id=$1 FOR UPDATE',[input.siteId])).rows[0];
+    if(Number(input.version)!==(old?.version||0))fail('Configuration changed. Reload and try again.',409);
+    const data=old?.data?.od?{...leaveData,od:old.data.od}:leaveData;
     await db.query('INSERT INTO hr_telegram_hierarchies(site_id,data,updated_by) VALUES($1,$2,$3) ON CONFLICT(site_id) DO UPDATE SET data=$2,version=hr_telegram_hierarchies.version+1,updated_by=$3,updated_at=now()',[input.siteId,data,profile.actor]);
     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'CONFIGURE_TELEGRAM','sites',$2,$3)",[profile.actor,input.siteId,data]);return {saved:true};
    });
