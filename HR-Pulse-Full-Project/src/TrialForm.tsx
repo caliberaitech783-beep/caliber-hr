@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {Printer,Save} from 'lucide-react';
 import {AadhaarUpload} from './EmployeeLocation';
 import './trial-form.css';
+import {saveTrialHandoff,type TrialHandoff} from './trialHandoff';
 
 /* Trial Joining Form – Driver & Operator. Mirrors Trial_Joining_Form_Driver_Operator.docx.
    Shown under Employee Master when the top bar's department is Driver or Operator. */
@@ -17,7 +18,7 @@ function nextFormNo(){let n=0;try{n=Number(localStorage.getItem(COUNTER_KEY)||0)
 function age(dob:string){const d=new Date(dob+'T00:00:00');if(Number.isNaN(d.valueOf()))return '';const now=new Date();let a=now.getFullYear()-d.getFullYear();if(now<new Date(now.getFullYear(),d.getMonth(),d.getDate()))a--;return `${a} yrs`;}
 const digits=(v:string,max:number)=>v.replace(/\D/g,'').slice(0,max);
 
-export default function TrialForm({selection}:{selection:TrialSelection}){
+export default function TrialForm({selection,onPassed}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void}){
  const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState('');
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{sessionStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}
  const heading=`${companyShort[selection.company]||selection.company||'CMLL'}  –  ${(selection.site||'SITE').toUpperCase()}`;
@@ -31,7 +32,11 @@ export default function TrialForm({selection}:{selection:TrialSelection}){
   if(!data['Name of candidate']){setError('Candidate name is required.');return;}
   const record={formNo:no.current,heading,...selection,savedAt:new Date().toISOString(),fields:data};
   try{const list=JSON.parse(localStorage.getItem(DRAFT_KEY)||'[]');list.unshift(record);localStorage.setItem(DRAFT_KEY,JSON.stringify(list.slice(0,200)));}catch{/* ignore */}
-  setSaved(`Trial form ${no.current} saved for ${data['Name of candidate']} · ${heading}${data['Result']?' · Result: '+data['Result']:''}.`);}
+  if(data['Result']==='PASS'){const v=(n:string)=>(f.elements.namedItem(n) as HTMLInputElement|null)?.value||'',dobRaw=v('Date of Birth'),post=data['If PASS – recommended for']||data['Post applied for']||selection.department;
+   const fields:Record<string,string>={'Full Name':data['Name of candidate'],'Full Name as per Aadhaar':v('Full Name as per Aadhaar')||data['Name of candidate'],'Father / Spouse Name':data["Father's name"],'Date of Birth':dobRaw,'Gender':v('Gender'),'Mobile':data['Mobile no.'],'Aadhaar No.':data['Aadhaar no.'],'Permanent Address':data['Address'],'Reference Name':data['Referred by'],'Driving Licence No.':data['Driving licence no. & class'],'DL Valid Upto':data['DL valid up to'],'Trial Form No.':no.current,'Trial Result':`PASS – ${post}${data['Machine']?' · '+data['Machine']:''}`};
+   const handoff:TrialHandoff={id:no.current,formNo:no.current,name:data['Name of candidate'],site:selection.site,post,fields};saveTrialHandoff(handoff,{photo,photo2});
+   setSaved(`Trial form ${no.current} saved – PASS. Opening Employee Management with the details filled in…`);setTimeout(()=>onPassed?.(handoff),600);return;}
+  setSaved(`Trial form ${no.current} saved for ${data['Name of candidate']} · ${heading}${data['Result']?' · Result: '+data['Result']+' – candidate not sent to Employee Management':''}.`);}
  const Row=({label,name,children,span}:{label:string;name?:string;children?:React.ReactNode;span?:number})=><tr><td>{label}</td><td colSpan={span}>{children||<input name={name||label}/>}</td></tr>;
  const Chk=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="checkbox" name={name} value={o}/> {o}</label>)}</span>;
  const Radio=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="radio" name={name} value={o}/> {o}</label>)}</span>;

@@ -11,3 +11,4 @@
 .tf-warn{color:#8a1c1c;font-size:12px;margin:6px 0 0;font-weight:600}.trial-form .joining-actions button svg{width:15px;height:15px;vertical-align:-3px}
 .nav-entry .sub-nav button.trial-new{position:relative}
 @media print{body *{visibility:hidden}.tf,.tf *{visibility:visible}.tf{position:absolute;left:0;top:0;width:100%;border:0;padding:0}.tf input{border-bottom-color:#999}}
+.trial-handoff{display:flex;justify-content:space-between;align-items:center;gap:14px;margin:14px 0;padding:12px 16px;border-radius:10px;background:#eaf7f0;color:#1e7650;font-size:13px}.trial-handoff button{border:1px solid #bfe0cd;background:#fff;color:#1e7650;border-radius:8px;padding:8px 12px;font-weight:600}
