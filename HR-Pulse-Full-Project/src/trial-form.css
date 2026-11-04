@@ -1,0 +1,13 @@
+.trial-form .joining-card{padding:24px}.tf{max-width:900px;margin:0 auto;border:1px solid #cfc8dc;padding:26px 30px;background:#fff;font-size:13.5px;color:#111}
+.tf-hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #4b2d83;padding-bottom:8px}.tf-hd b{font-size:18px;letter-spacing:1px}.tf-site{font-size:18px;font-weight:800;color:#4b2d83;background:#efe9fb;border-radius:8px;padding:4px 12px}
+.tf h3{text-align:center;margin:14px 0 2px;font-size:17px;letter-spacing:.5px}.tf-note{text-align:center;color:#8a1c1c;font-weight:600;font-size:12.5px;margin:0 0 14px}
+.tf h4{margin:16px 0 8px;font-size:13px;letter-spacing:.6px;background:#f3f0fa;padding:6px 10px;border-left:4px solid #4b2d83}
+.tf table{width:100%;border-collapse:collapse}.tf td,.tf th{border:1px solid #9d95b0;padding:6px 8px;vertical-align:top;text-align:left}.tf td:first-child{width:36%;font-weight:600;background:#fafafa}
+.tf input:not([type=checkbox]):not([type=radio]),.tf select{width:100%;border:0;border-bottom:1px dashed #b8b0c8;border-radius:0;background:transparent;padding:3px 2px;min-height:0;font:inherit;color:#111}.tf input:focus,.tf select:focus{outline:0;border-bottom-color:#6a2db8;background:#f7f3ff;box-shadow:none}
+.tf input.tf-inline{width:200px;display:inline-block;margin-left:6px}.tf input.tf-ro{color:#4b2d83;font-weight:700}
+.tf-photo{width:150px;text-align:center;color:#8a8699;font-weight:600;vertical-align:middle!important;background:#fafafa}
+.tf-chk label{margin-right:16px;font-weight:500;white-space:nowrap}.tf-chk input{width:auto;margin-right:4px}
+.tf-sign{display:flex;justify-content:space-between;margin-top:34px;font-weight:700;font-size:12.5px}.tf-sign span{border-top:1px solid #333;padding-top:6px;min-width:170px;text-align:center}
+.tf-warn{color:#8a1c1c;font-size:12px;margin:6px 0 0;font-weight:600}.trial-form .joining-actions button svg{width:15px;height:15px;vertical-align:-3px}
+.nav-entry .sub-nav button.trial-new{position:relative}
+@media print{body *{visibility:hidden}.tf,.tf *{visibility:visible}.tf{position:absolute;left:0;top:0;width:100%;border:0;padding:0}.tf input{border-bottom-color:#999}}

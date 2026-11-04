@@ -291,7 +291,7 @@ function JoiningForm({employeeGroup,onSave,defaults,subdepartments,designations,
  </form>;
 }
 
-export default function EmployeeLocation({title='Employee Master',grant,module,notice,employeeGroup='Corporate / HO',onEmployeeGroupChange,draftOwner='',canApprove=false}:{canApprove?:boolean;draftOwner?:string;title?:string;grant?:string;module?:Module;notice?:(message:string)=>void;employeeGroup?:'Corporate / HO'|'OB / COAL';onEmployeeGroupChange?:(value:'Corporate / HO'|'OB / COAL')=>void}){
+export default function EmployeeLocation({title='Employee Master',grant,module,notice,employeeGroup='Corporate / HO',onEmployeeGroupChange,onSelectionChange,draftOwner='',canApprove=false}:{canApprove?:boolean;draftOwner?:string;title?:string;grant?:string;module?:Module;notice?:(message:string)=>void;employeeGroup?:'Corporate / HO'|'OB / COAL';onEmployeeGroupChange?:(value:'Corporate / HO'|'OB / COAL')=>void;onSelectionChange?:(selection:{employeeGroup:'Corporate / HO'|'OB / COAL';company:string;region:string;site:string;department:string;subdepartment:string;designation:string})=>void}){
  const[tab,setTab]=useState('Add Temp. Employee');
  const[draftMode,setDraftMode]=useState<'Create'|'Draft'>('Create'),[drafts,setDrafts]=useState<JoiningDraft[]>([]),[activeDraft,setActiveDraft]=useState<JoiningDraft|undefined>(),[createKey,setCreateKey]=useState(0),[draftError,setDraftError]=useState('');
  async function refreshDrafts(){if(!draftOwner)return;try{setDrafts(await listJoiningDrafts(draftOwner));setDraftError('');}catch(e){setDraftError((e as Error).message);}}
@@ -303,6 +303,7 @@ export default function EmployeeLocation({title='Employee Master',grant,module,n
  const[employeeRegion,setEmployeeRegion]=useState('');
  const[employeeSubtype,setEmployeeSubtype]=useState(''),[employeeSite,setEmployeeSite]=useState('');
  const[employeeDepartment,setEmployeeDepartment]=useState(''),[employeeSubdepartment,setEmployeeSubdepartment]=useState(''),[employeeDesignation,setEmployeeDesignation]=useState('');
+ useEffect(()=>{onSelectionChange?.({employeeGroup,company:employeeSubtype,region:employeeRegion,site:employeeSite,department:employeeDepartment,subdepartment:employeeSubdepartment,designation:employeeDesignation});},[employeeGroup,employeeSubtype,employeeRegion,employeeSite,employeeDepartment,employeeSubdepartment,employeeDesignation]);
  const[type,setType]=useState<keyof typeof locations|''>(''),[location,setLocation]=useState('');
  const importInput=useRef<HTMLInputElement>(null),[importStatus,setImportStatus]=useState(''),[importError,setImportError]=useState(''),[importRows,setImportRows]=useState<Record<string,unknown>[]>([]),[importBusy,setImportBusy]=useState(false);
  const[employees,setEmployees]=useState<RecordRow[]>([]),[employeesLoading,setEmployeesLoading]=useState(false),[employeesError,setEmployeesError]=useState(''),[employeesVersion,setEmployeesVersion]=useState(0),[deleteBusy,setDeleteBusy]=useState(false);
