@@ -1,20 +1,20 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {hierarchyTemplates,validateHierarchy,nextApproval,approvalSteps,createHierarchies,withDriverTrainer,employeeHierarchy} from './joining-hierarchy.mjs';
-const configured=()=>({...hierarchyTemplates[0],enabled:true,steps:hierarchyTemplates[0].steps.map((s,i)=>({...s,approvers:i===3?['hr-one','hr-two']:i===4?['cmd','director','vp']:['site-'+i]}))});
-test('unassigned hierarchies can be saved only as disabled',()=>{assert.equal(validateHierarchy({...hierarchyTemplates[0],enabled:false}).enabled,false);assert.throws(()=>validateHierarchy({...hierarchyTemplates[0],enabled:true}),/Assign/);assert.equal(validateHierarchy(configured()).steps.length,5);});
-test('site approvals stay sequential and either HR and final approver advance once',()=>{const steps=validateHierarchy(configured()).steps;const a={stage:0,requested_by:'requester',approval_steps:steps,approvers:steps.flatMap(s=>s.approvers)};assert.throws(()=>nextApproval(a,'hr-one','APPROVED'),e=>e.status===403);assert.deepEqual(nextApproval(a,'site-0','APPROVED'),{stage:1,state:'PENDING'});a.stage=2;assert.deepEqual(nextApproval(a,'site-2','APPROVED'),{stage:3,state:'PENDING'});a.stage=3;for(const actor of ['hr-one','hr-two'])assert.deepEqual(nextApproval(a,actor,'APPROVED'),{stage:4,state:'PENDING'});a.stage=4;for(const actor of ['cmd','director','vp'])assert.deepEqual(nextApproval(a,actor,'APPROVED'),{stage:5,state:'APPROVED'});assert.throws(()=>nextApproval(a,'hr-two','APPROVED'),e=>e.status===403);assert.equal(nextApproval(a,'cmd','REJECTED').state,'REJECTED');});
+const configured=()=>({...hierarchyTemplates[0],enabled:true,steps:hierarchyTemplates[0].steps.map((s,i)=>({...s,approvers:i===3?['office-one','office-two']:i===4?['hr-one','hr-two']:i===5?['cmd','director','vp']:['site-'+i]}))});
+test('unassigned hierarchies can be saved only as disabled',()=>{assert.equal(validateHierarchy({...hierarchyTemplates[0],enabled:false}).enabled,false);assert.throws(()=>validateHierarchy({...hierarchyTemplates[0],enabled:true}),/Assign/);assert.equal(validateHierarchy(configured()).steps.length,6);});
+test('site approvals stay sequential and either HR and final approver advance once',()=>{const steps=validateHierarchy(configured()).steps;const a={stage:0,requested_by:'requester',approval_steps:steps,approvers:steps.flatMap(s=>s.approvers)};assert.throws(()=>nextApproval(a,'hr-one','APPROVED'),e=>e.status===403);assert.deepEqual(nextApproval(a,'site-0','APPROVED'),{stage:1,state:'PENDING'});a.stage=2;assert.deepEqual(nextApproval(a,'site-2','APPROVED'),{stage:3,state:'PENDING'});a.stage=3;for(const actor of ['office-one','office-two'])assert.deepEqual(nextApproval(a,actor,'APPROVED'),{stage:4,state:'PENDING'});a.stage=4;for(const actor of ['hr-one','hr-two'])assert.deepEqual(nextApproval(a,actor,'APPROVED'),{stage:5,state:'PENDING'});a.stage=5;for(const actor of ['cmd','director','vp'])assert.deepEqual(nextApproval(a,actor,'APPROVED'),{stage:6,state:'APPROVED'});assert.throws(()=>nextApproval(a,'hr-two','APPROVED'),e=>e.status===403);assert.equal(nextApproval(a,'cmd','REJECTED').state,'REJECTED');});
 test('legacy approvals remain compatible and self-approval is blocked',()=>{const a={approvers:['alice','bob'],stage:0,requested_by:'alice'};assert.equal(approvalSteps(a).length,2);assert.throws(()=>nextApproval(a,'alice','APPROVED'),e=>e.status===403);});
 test('rejects duplicate approvers and hierarchy edits by site-restricted users',async()=>{const data=configured();data.steps[1].approvers=['site-0'];assert.throws(()=>validateHierarchy(data),/only one step/);const service=createHierarchies({});await assert.rejects(service.saveHierarchy({permissions:{hrDesktopAccess:['Master Configuration'],site:'NCL-DUDE'}},configured()),e=>e.status===403);});
 
 test('Jayant starts with HR Manager and saved legacy steps retain remaining assignments',async()=>{
  const {currentHierarchy,employeeHierarchy}=await import('./joining-hierarchy.mjs');
  const template=hierarchyTemplates.find(t=>t.code==='NCL-JAYANT');
- assert.equal(template.steps.length,5);assert.equal(template.steps[0].label,'HR Manager');
+ assert.equal(template.steps.length,6);assert.equal(template.steps[0].label,'HR Manager');assert.equal(template.steps[3].label,'Office HR — either one');
  const steps=template.steps.map((s,i)=>({...s,approvers:['user-'+i]}));
  const data={...template,steps:[{stage:1,label:'HR Executive',approvers:['executive']},...steps]};
  assert.deepEqual(currentHierarchy(data).steps,steps);
- assert.equal(data.steps.length,6);
+ assert.equal(data.steps.length,7);
  const db={query:async sql=>({rows:sql.startsWith('SELECT code')?[{code:template.code}]:[{data}]})};
  assert.deepEqual((await employeeHierarchy(db,'site-id')).data.steps,steps);
  assert.deepEqual(approvalSteps({approval_steps:data.steps}),data.steps);
@@ -58,3 +58,11 @@ test('WCL sites keep the previous flow until their hierarchy is enabled',async()
 });
 
 test('Chandrapur HO appears in its own group and starts unassigned',()=>{const t=hierarchyTemplates.find(t=>t.code==='CMLL-HO');assert.equal(t.group,'Chandrapur HO');assert.equal(t.name,'Chandrapur HO');assert.ok(t.steps.every(s=>!s.approvers.length));});
+test('saved NCL/WCL hierarchies show an empty Office HR step before HR Manager — either one',async()=>{
+ const {withOfficeHr}=await import('./joining-hierarchy.mjs');
+ const saved={code:'NCL-JAYANT',group:'NCL',steps:[{stage:1,label:'HR Manager',approvers:['a']},{stage:1,label:'Project Manager',approvers:['b']},{stage:1,label:'Driver Trainer',approvers:['t']},{stage:2,label:'HR Manager — either one',approvers:['c']},{stage:2,label:'Final approval — any one',approvers:['d']}]};
+ const shown=withOfficeHr(saved);
+ assert.deepEqual(shown.steps.map(s=>s.label),['HR Manager','Project Manager','Driver Trainer','Office HR — either one','HR Manager — either one','Final approval — any one']);
+ assert.deepEqual(shown.steps[3].approvers,[]);assert.equal(withOfficeHr(shown),shown);assert.equal(saved.steps.length,5);
+ assert.ok(!withOfficeHr(hierarchyTemplates.find(t=>t.code==='CMLL-CO')).steps.some(s=>s.label==='Office HR — either one'));
+});
