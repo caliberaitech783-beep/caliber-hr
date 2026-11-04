@@ -18,7 +18,7 @@ function age(dob:string){const d=new Date(dob+'T00:00:00');if(Number.isNaN(d.val
 const digits=(v:string,max:number)=>v.replace(/\D/g,'').slice(0,max);
 
 export default function TrialForm({selection}:{selection:TrialSelection}){
- const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),
+ const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState('');
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{sessionStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}
  const heading=`${companyShort[selection.company]||selection.company||'CMLL'}  –  ${(selection.site||'SITE').toUpperCase()}`;
  /* After the Aadhaar is read into the hidden joining-style fields, copy them into the trial form and open it. */
