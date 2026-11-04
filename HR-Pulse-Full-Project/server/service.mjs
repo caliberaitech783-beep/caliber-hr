@@ -1,5 +1,6 @@
 import {createTelegram,telegramLeaveFlow,odSiteFlow,telegramSteps,queueTelegram,leaveMessage,employeeActor} from './telegram.mjs';
 import {odApprovalWorkflow} from './out-duty.mjs';
+import {createTransferFlows,transferWorkflow,applyTransfer} from './employee-transfer-flow.mjs';
 import {createAssets} from './assets.mjs';
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './joining-hierarchy.mjs';
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
@@ -112,7 +113,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         const telegramFlow=kind==='leaveRequests'?await telegramLeaveFlow(db,siteId):null,odFlow=kind==='outDutyRequests'?await odSiteFlow(db,siteId):null,siteFlow=telegramFlow||odFlow;
         /* Site flow: only the site HR Manager raises leave / OD requests (on the employee's behalf). */
         if(siteFlow?.type==='site'&&siteFlow.hods&&siteFlow.hrManager&&siteFlow.hrManager!==profile.actor){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'this site';throw problem(`${kind==='outDutyRequests'?'OD':'Leave'} requests at ${siteName} are raised by the site HR Manager (${siteFlow.hrManager}). Please contact them to submit this request.`,403);}
-        const hierarchy=telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment)}}:kind==='outDutyRequests'?odApprovalWorkflow(odFlow,employeeDepartment):['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
+        const hierarchy=telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment)}}:kind==='outDutyRequests'?odApprovalWorkflow(odFlow,employeeDepartment):kind==='employeeTransfers'?await transferWorkflow(db,record.data.fromSiteId):['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId):null;
         const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
         const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
         if(!hierarchy&&!rules.length&&(kind==='leaveRequests'||!record.data.approver))throw problem('Configure an active approval-matrix rule for this module before submitting',409);
@@ -139,6 +140,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
   return {...createTelegram(pool),...createAssets(pool),...employeeDocuments,
     ...createDeletion(pool),
     ...createHierarchies(pool),
+    ...createTransferFlows(pool),
     ...createHolidayDocuments(pool),
     async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests'].includes(kind))}]))}; },
     async list(profile,kind,params) {
@@ -261,6 +263,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         const history=[...approval.history,{actor:profile.actor,stage:approval.stage+1,decision:input.decision,comments,at:new Date().toISOString()}];
         await db.query('UPDATE hr_approvals SET stage=$1,state=$2,history=$3,version=version+1,updated_at=now() WHERE id=$4',[stage,state,JSON.stringify(history),id]);
         if(state!=='PENDING')await db.query('UPDATE hr_records SET status=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[state==='APPROVED'&&['employees','holidays'].includes(record.kind)?'ACTIVE':state,profile.actor,record.id]);
+        if(state==='APPROVED'&&record.kind==='employeeTransfers')await applyTransfer(db,record,profile.actor);
         if(flow){
           const employee=await employeeActor(db,record.data.employeeId,approval.requested_by);
           const flowSteps=approvalSteps(approval),stageRole=flowSteps[approval.stage]?.label.replace(/ — .*/,''),nextRole=flowSteps[stage]?.label.replace(/ — .*/,'');

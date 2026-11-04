@@ -38,7 +38,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const record=path.match(/^\/api\/records\/([a-zA-Z]+)(?:\/([a-fA-F0-9-]+))?(?:\/(submit|deactivate|cancel))?$/);
       const masterImport=path.match(/^\/api\/import\/(assets|assetCategories|assetEmployees|assetAllocationLog|assetExitClearances|holidays|leaveTypes|leavePolicies|leavePeriods|leaveAllocations|leaveRequests|leaveEncashments|leaveBlocks)$/);
       const decision=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/decision$/);
-      const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
+      const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/transfer-flows':'transferFlows','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
       if(!telegramRoute&&!assetRoute&&!documents&&!employeeDocuments&&!deletion&&!masterImport&&!record&&!decision&&!simple[path]&&path!=='/api/import/employees'&&path!=='/api/aadhaar/scan'&&path!=='/api/letters/email')return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
@@ -64,6 +64,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       else if(employeeDocuments&&['GET','POST'].includes(req.method))result=await service.employeeDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);
       else if(deletion&&req.method==='POST')result=deletion[2]==='preview'?await service.deletePreview(profile,deletion[1]):await service.deleteRecords(profile,deletion[1],await body(req));
       else if(path==='/api/hierarchies'&&req.method==='POST')result=await service.saveHierarchy(profile,await body(req));
+      else if(path==='/api/transfer-flows'&&req.method==='POST')result=await service.saveTransferFlow(profile,await body(req));
       else if(simple[path]&&req.method==='GET')result=await service[simple[path]](profile);
       else if(record){
         const [,kind,id,action]=record;
