@@ -45,7 +45,7 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
    setSaved(`Trial form ${no.current} saved – PASS. Close the Telegram preview to open Employee Management with the details filled in.`);pendingHandoff.current=handoff;return;}
   setSaved(`Trial form ${no.current} saved for ${data['Name of candidate']} · ${heading}${data['Result']?' · Result: '+data['Result']+' – candidate not sent to Employee Management':''}.`);}
  function closePopup(){setPopup(null);const h=pendingHandoff.current;if(h){pendingHandoff.current=null;onPassed?.(h);}}
- const recipientName=(phone:string)=>{try{const list=JSON.parse(sessionStorage.getItem('hrPulse.trialRecipients')||'[]') as {phone:string;name:string}[];return list.find(r=>r.phone===phone)?.name||phone;}catch{return phone;}};
+ const recipientName=(key:string)=>{try{const list=JSON.parse(sessionStorage.getItem('hrPulse.trialRecipients')||'[]') as {phone:string;name:string;actor?:string}[];return list.find(r=>r.phone===key||r.actor===key)?.name||key;}catch{return key;}};
  const Row=({label,name,children,span}:{label:string;name?:string;children?:React.ReactNode;span?:number})=><tr><td>{label}</td><td colSpan={span}>{children||<input name={name||label}/>}</td></tr>;
  const Chk=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="checkbox" name={name} value={o}/> {o}</label>)}</span>;
  const Radio=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="radio" name={name} value={o}/> {o}</label>)}</span>;
@@ -110,7 +110,7 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
  </div>;}
 
 
-type Recipient={phone:string;name:string;connected?:boolean};
+type Recipient={phone:string;name:string;actor?:string;connected?:boolean};
 function TrialRecipients(){
  const[list,setList]=useState<Recipient[]>([]),[bot,setBot]=useState(''),[configured,setConfigured]=useState(true),[links,setLinks]=useState<Record<string,string>>({}),[msg,setMsg]=useState(''),[err,setErr]=useState(''),grant=savedSession()?.grant||'';
  const load=async()=>{try{const r=await api<{recipients:Recipient[];botUsername:string;configured:boolean}>(grant,'telegram/trial-recipients');setList(r.recipients);setBot(r.botUsername);setConfigured(r.configured);try{sessionStorage.setItem('hrPulse.trialRecipients',JSON.stringify(r.recipients));}catch{/* ignore */}}catch(e){setErr((e as Error).message);}};
@@ -118,13 +118,13 @@ function TrialRecipients(){
  const save=async(next:Recipient[])=>{setErr('');setMsg('');try{await api(grant,'telegram/trial-recipients','POST',{recipients:next});await load();setMsg('Recipients saved.');}catch(e){setErr((e as Error).message);}};
  const connect=async(phone:string)=>{setErr('');try{const r=await api<{url:string}>(grant,'telegram/trial-connect','POST',{phone});setLinks({...links,[phone]:r.url});}catch(e){setErr((e as Error).message);}};
  return <div className="joining-card tf-recipients"><h3><Send/> Telegram recipients for trial results</h3>
-  <p className="help-text">Every saved trial form (PASS or FAIL) is sent to these people on Telegram. A bot cannot message a phone number directly – each person must open the bot once: create their connect link, share it with them on Telegram, and they tap <b>Start</b>. After that every result reaches them automatically.{!configured&&' Telegram bot is not configured on the server yet.'}</p>
+  <p className="help-text">Every saved trial form (PASS or FAIL) is sent to these people on Telegram. If the person already uses the leave bot, enter their Pulse username – nothing else is needed. Otherwise a bot cannot message a phone number directly: create their connect link, share it on Telegram, and they tap <b>Start</b> once. After that every result reaches them automatically.{!configured&&' Telegram bot is not configured on the server yet.'}</p>
   {err&&<p className="employee-import-error" role="alert">{err}</p>}{msg&&<p className="shift-success" role="status">{msg}</p>}
-  <table className="tf-recipient-table"><thead><tr><th>Name</th><th>Mobile (Telegram number)</th><th>Status</th><th></th></tr></thead><tbody>
-   {list.map((r,i)=><tr key={i}><td><input value={r.name} onChange={e=>setList(list.map((x,j)=>j===i?{...x,name:e.target.value}:x))} placeholder="Name"/></td><td><input value={r.phone} inputMode="numeric" maxLength={10} onChange={e=>setList(list.map((x,j)=>j===i?{...x,phone:e.target.value.replace(/\D/g,'').slice(0,10)}:x))}/></td>
+  <table className="tf-recipient-table"><thead><tr><th>Name</th><th>Pulse username (if they already use the leave bot)</th><th>Mobile (Telegram number)</th><th>Status</th><th></th></tr></thead><tbody>
+   {list.map((r,i)=><tr key={i}><td><input value={r.name} onChange={e=>setList(list.map((x,j)=>j===i?{...x,name:e.target.value}:x))} placeholder="Name"/></td><td><input value={r.actor||''} onChange={e=>setList(list.map((x,j)=>j===i?{...x,actor:e.target.value.toLowerCase()}:x))} placeholder="e.g. apurvakopulwar"/></td><td><input value={r.phone} inputMode="numeric" maxLength={10} onChange={e=>setList(list.map((x,j)=>j===i?{...x,phone:e.target.value.replace(/\D/g,'').slice(0,10)}:x))}/></td>
     <td>{r.connected?<span className="salary-status approved">Connected</span>:<span className="salary-status pending">Not connected</span>}{!r.connected&&links[r.phone]&&<div className="tf-link"><input readOnly value={links[r.phone]} onFocus={e=>e.currentTarget.select()}/><a href={`https://t.me/share/url?url=${encodeURIComponent(links[r.phone])}&text=${encodeURIComponent('Open this link and tap Start to receive vehicle trial results from Caliber HR')}`} target="_blank" rel="noreferrer">Share on Telegram</a><button type="button" className="shift-remove" onClick={()=>{void navigator.clipboard?.writeText(links[r.phone]);}}>Copy</button></div>}</td>
-    <td className="salary-site-actions">{!r.connected&&r.phone.length===10&&<button type="button" className="shift-remove" onClick={()=>void connect(r.phone)}>{links[r.phone]?'New link':'Connect link'}</button>}<button type="button" className="shift-remove" aria-label="Remove recipient" onClick={()=>void save(list.filter((_,j)=>j!==i))}><X/></button></td></tr>)}
-   {!list.length&&<tr><td colSpan={4} className="shift-empty">No recipients yet</td></tr>}
+    <td className="salary-site-actions">{!r.connected&&!r.actor&&r.phone.length===10&&<button type="button" className="shift-remove" onClick={()=>void connect(r.phone)}>{links[r.phone]?'New link':'Connect link'}</button>}<button type="button" className="shift-remove" aria-label="Remove recipient" onClick={()=>void save(list.filter((_,j)=>j!==i))}><X/></button></td></tr>)}
+   {!list.length&&<tr><td colSpan={5} className="shift-empty">No recipients yet</td></tr>}
   </tbody></table>
   <div className="salary-site-foot"><button type="button" className="shift-remove salary-btn" onClick={()=>setList([...list,{phone:'',name:''}])}>+ Add person</button><button type="button" className="shift-add salary-save" onClick={()=>void save(list)}>Save recipients</button>{bot&&<small>Bot: @{bot}</small>}</div>
  </div>;}
