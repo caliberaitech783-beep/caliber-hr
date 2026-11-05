@@ -1,3 +1,4 @@
+import {companyNames} from './companyNames';
 import {assetPrintHtml} from './assetPrint';
 import {departmentStructure} from './joiningDepartments';
 import {readPaddlePasses} from './paddleOcr';
@@ -13,13 +14,6 @@ import {Camera,ChevronDown,Download,Eye,Images,Printer,Trash2,Upload,X} from 'lu
 import {read,utils,writeFile} from 'xlsx';
 import {api,csv,download,parseCsv,savedSession,type Lookup,type Module,type RecordRow} from './api';
 
-// Keep stored company values compatible with existing employee records and drafts.
-const companyNames:Record<string,string>={
- 'Caliber Mining And Logistics Ltd':'CALIBER MINING AND LOGISTICS LIMITED',
- 'KSR FREIGHT CARRIERS':'KSR FREIGHT CARRIERS',
- 'Caliber Mining And Logistics Ltd SCR JV':'CMPL SCR JOINT VENTURE',
- 'CHADDA TRADING COMPANY':'CHADDA TRADING CO.'
-};
 const companyOptions=Object.keys(companyNames);
 const companiesWithoutSites=new Set(['CHADDA TRADING COMPANY','KSR FREIGHT CARRIERS']);
 // Display the updated WCL names while preserving saved site values.
