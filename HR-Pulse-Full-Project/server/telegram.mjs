@@ -59,7 +59,10 @@ export function trialResultMessage(record,enteredBy){const f=record.fields||{},p
  const lines=['🚛 VEHICLE TRIAL RESULT','',`Result: ${pass?'✅ PASS':'❌ FAIL'}`,`Name: ${f['Name of candidate']||''}`,`Post: ${post}${pass&&f['Machine']?' – '+f['Machine']:''}`,`Vehicle: ${vehicle}`,`Experience: ${f['Total experience (years)']||''} years`,`Referred by: ${f['Referred by']||''}`,`Trial date: ${date}`];
  if(pass)lines.push(`Remarks: ${f['Examiner remarks']||''}`);else{lines.push(`Reason for fail: ${f['If FAIL – reason']||''}`);const r=f['Re-trial allowed after (date)'];lines.push(`Re-trial after: ${r?r.split('-').reverse().join('-'):''}`);}
  lines.push(`Entered by: ${enteredBy||''}`);if(record.site||record.heading)lines.push(`Site: ${record.site||record.heading}`,`Form no.: ${record.formNo}`);return lines.join('\n');}
-export async function queueTelegram(db,eventKey,actors,message){for(const actor of new Set(actors.flatMap(telegramUsers)))await db.query('INSERT INTO hr_telegram_outbox(event_key,actor,message) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[eventKey,actor,message]);}
+export async function queueTelegram(db,eventKey,actors,message,bot='leave'){for(const actor of new Set(actors.flatMap(telegramUsers)))await db.query('INSERT INTO hr_telegram_outbox(event_key,actor,message,bot) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[eventKey,actor,message,bot]);}
+/* Bots: 'leave' = leave/approvals bot (TELEGRAM_BOT_TOKEN); 'trial' = Vehicle Trial Result bot (TELEGRAM_TRIAL_BOT_TOKEN). */
+export const botToken=bot=>bot==='trial'?process.env.TELEGRAM_TRIAL_BOT_TOKEN:process.env.TELEGRAM_BOT_TOKEN;
+export const botUsername=bot=>bot==='trial'?process.env.TELEGRAM_TRIAL_BOT_USERNAME||'':process.env.TELEGRAM_BOT_USERNAME||'';
 export function leaveMessage(record,status,details={}){
  const date=value=>value?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Kolkata'}).format(new Date(value)):'Not available';
  const firstRole=details.firstRole||'Site HR';
@@ -95,7 +98,8 @@ export function createTelegram(pool){
   if(route==='trial-recipients'&&method==='GET'){
    const recipients=await trialRecipients(pool);
    const linked=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor = ANY($1)',[recipients.map(recipientActor)])).rows.map(r=>r.actor);
-   return {recipients:recipients.map(r=>({...r,connected:linked.includes(recipientActor(r))})),botUsername:process.env.TELEGRAM_BOT_USERNAME||'',configured:!!process.env.TELEGRAM_BOT_TOKEN};
+   const issues=Object.fromEntries((await pool.query("SELECT DISTINCT ON (actor) actor,last_error FROM hr_telegram_outbox WHERE bot='trial' AND state<>'SENT' AND last_error IS NOT NULL ORDER BY actor,id DESC")).rows.map(r=>[r.actor,r.last_error]));
+   return {recipients:recipients.map(r=>({...r,connected:linked.includes(recipientActor(r)),issue:issues[recipientActor(r)]||''})),botUsername:botUsername('trial'),configured:!!process.env.TELEGRAM_TRIAL_BOT_TOKEN};
   }
   if(route==='trial-recipients'&&method==='POST'){
    if(!grantedMenus(profile).has('Approval Management'))fail('Approval Management permission required',403);
@@ -107,11 +111,11 @@ export function createTelegram(pool){
   }
   if(route==='trial-connect'&&method==='POST'){   /* connect link for a recipient's Telegram (they open it and tap Start) */
    if(!grantedMenus(profile).has('Approval Management'))fail('Approval Management permission required',403);
-   if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_BOT_USERNAME)fail('Telegram bot is not configured',503);
+   if(!process.env.TELEGRAM_TRIAL_BOT_TOKEN||!process.env.TELEGRAM_TRIAL_BOT_USERNAME)fail('Vehicle Trial Result bot is not configured on the server',503);
    const phone=String(input.phone||'').replace(/\D/g,'').slice(-10);if(phone.length!==10)fail('Enter a 10-digit mobile number');
    const actor='trial:'+phone,token=randomBytes(24).toString('base64url');
    await tx(async db=>{await db.query('DELETE FROM hr_telegram_link_tokens WHERE actor=$1 OR expires_at<now()',[actor]);await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,expires_at) VALUES($1,$2,now()+interval '7 days')",[hash(token),actor]);});
-   return {url:`https://t.me/${process.env.TELEGRAM_BOT_USERNAME}?start=${token}`};
+   return {url:`https://t.me/${process.env.TELEGRAM_TRIAL_BOT_USERNAME}?start=${token}`};
   }
   if(route==='trial-forms'&&method==='POST'){
    const f=input.fields&&typeof input.fields==='object'?input.fields:{},formNo=String(input.formNo||'').trim().slice(0,40);if(!formNo)fail('Form number is required');
@@ -124,9 +128,10 @@ export function createTelegram(pool){
     if(old){id=old.id;await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[name,record,profile.actor,id]);}
     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[formNo,name,record,profile.actor])).rows[0].id;
     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_TRIAL_FORM','trialForms',$2,$3)",[profile.actor,id,{formNo,result}]);
-    if(recipients.length)await queueTelegram(db,`trial:${formNo}:${result}:${Date.now()}`,recipients,message);});
+    if(recipients.length)await queueTelegram(db,`trial:${formNo}:${result}:${Date.now()}`,recipients,message,'trial');});
    const connected=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor = ANY($1)',[recipients])).rows.map(r=>r.actor.replace(/^trial:/,''));
-   return {saved:true,id,result,telegram:{recipients:recipients.length,connected,message}};
+   const pendingNote=(await pool.query("SELECT actor,last_error FROM hr_telegram_outbox WHERE bot='trial' AND state<>'SENT' AND last_error IS NOT NULL AND actor = ANY($1) ORDER BY id DESC LIMIT 5",[recipients])).rows;
+   return {saved:true,id,result,telegram:{recipients:recipients.length,connected,message,bot:botUsername('trial'),configured:!!process.env.TELEGRAM_TRIAL_BOT_TOKEN,issues:pendingNote.map(r=>`${r.actor.replace(/^trial:/,'')}: ${r.last_error}`)}};
   }
   if(route==='disconnect'&&method==='POST'){await pool.query('DELETE FROM hr_telegram_accounts WHERE actor=$1',[profile.actor]);return {disconnected:true};}
   admin(profile);
@@ -179,34 +184,37 @@ export function createTelegram(pool){
   }
   fail('Not found',404);
  },
- async telegramWebhook(secret,update){
-  if(!webhookSecretValid(secret,process.env.TELEGRAM_WEBHOOK_SECRET))fail('Unauthorized webhook',403);
+ async telegramWebhook(secret,update,bot='leave'){
+  if(!webhookSecretValid(secret,bot==='trial'?(process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET||process.env.TELEGRAM_WEBHOOK_SECRET):process.env.TELEGRAM_WEBHOOK_SECRET))fail('Unauthorized webhook',403);
   if(!Number.isSafeInteger(update.update_id))fail('Invalid update');
   await tx(async db=>{
    if(!(await db.query('INSERT INTO hr_telegram_updates(id) VALUES($1) ON CONFLICT DO NOTHING RETURNING id',[update.update_id])).rowCount)return;
    const msg=update.message;if(msg?.chat?.type!=='private'||!msg.from?.id||String(msg.chat.id)!==String(msg.from.id))return;
-   const token=String(msg.text||'').match(/^\/start(?:@\w+)? ([A-Za-z0-9_-]{32})$/)?.[1];if(!token)return;
+   const token=String(msg.text||'').match(/^\/start(?:@\w+)? ([A-Za-z0-9_-]{32})$/)?.[1];
+   if(!token){if(bot==='trial'&&/^\/start/.test(String(msg.text||''))){const known=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(msg.from.id)])).rows[0];if(known){await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot='trial' AND state IN ('PENDING','FAILED')",[known.actor]);await queueTelegram(db,'trial-start:'+update.update_id,[known.actor],'Connected. Vehicle trial results from Caliber HR will appear here.','trial');}}return;}
    const link=(await db.query('DELETE FROM hr_telegram_link_tokens WHERE hash=$1 AND expires_at>now() RETURNING actor',[hash(token)])).rows[0];if(!link)return;
    const taken=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 OR chat_id=$1',[String(msg.from.id)])).rows[0];if(taken&&taken.actor!==link.actor)return;
    await db.query('INSERT INTO hr_telegram_accounts(actor,chat_id,telegram_user_id) VALUES($1,$2,$2) ON CONFLICT(actor) DO UPDATE SET chat_id=$2,telegram_user_id=$2,linked_at=now()',[link.actor,String(msg.from.id)]);
    await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND state IN ('PENDING','FAILED')",[link.actor]);
-   await queueTelegram(db,'linked:'+update.update_id,[link.actor],'Your Telegram account is connected to Caliber HR. Leave notifications will appear here.');
+   await queueTelegram(db,'linked:'+update.update_id,[link.actor],bot==='trial'?'Connected. Vehicle trial results from Caliber HR will appear here.':'Your Telegram account is connected to Caliber HR. Leave notifications will appear here.',bot);
   });return {ok:true};
  }
  };
 }
-export async function deliverTelegram(pool,send=async(chat,text)=>{
- const response=await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat,text,reply_markup:{inline_keyboard:[[{text:'Open HRMS',url:'https://hrpulse.cmll.in/#Employee%20Master'}]]}}),signal:AbortSignal.timeout(10000)});
- const result=await response.json();if(!result.ok)throw new Error('Telegram delivery failed');
+export async function deliverTelegram(pool,send=async(chat,text,bot='leave')=>{
+ const token=botToken(bot);if(!token)throw Object.assign(new Error('Bot not configured'),{code:'NO_BOT'});
+ const response=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat,text,...(bot==='leave'?{reply_markup:{inline_keyboard:[[{text:'Open HRMS',url:'https://hrpulse.cmll.in/#Employee%20Master'}]]}}:{})}),signal:AbortSignal.timeout(10000)});
+ const result=await response.json();if(!result.ok)throw Object.assign(new Error('Telegram delivery failed'),{code:result.error_code===403?'NOT_STARTED':'FAILED'});
 }){
- if(!process.env.TELEGRAM_BOT_TOKEN)return;
+ if(!process.env.TELEGRAM_BOT_TOKEN&&!process.env.TELEGRAM_TRIAL_BOT_TOKEN)return;
  const db=await pool.connect();try{
   await db.query('BEGIN');
   const jobs=(await db.query("SELECT o.*,a.chat_id FROM hr_telegram_outbox o LEFT JOIN hr_telegram_accounts a ON a.actor=o.actor WHERE o.state='PENDING' AND o.next_attempt<=now() ORDER BY o.id LIMIT 1 FOR UPDATE OF o SKIP LOCKED")).rows;
   for(const job of jobs){
    if(!job.chat_id){await db.query("UPDATE hr_telegram_outbox SET next_attempt=now()+interval '5 minutes',last_error='Recipient has not connected Telegram' WHERE id=$1",[job.id]);continue;}
-   try{await send(job.chat_id,job.message);await db.query("UPDATE hr_telegram_outbox SET state='SENT',sent_at=now(),last_error=NULL WHERE id=$1",[job.id]);}
-   catch{await db.query("UPDATE hr_telegram_outbox SET attempts=attempts+1,state=CASE WHEN attempts>=9 THEN 'FAILED' ELSE 'PENDING' END,next_attempt=now()+interval '5 minutes',last_error='Delivery failed; recipient may have blocked the bot' WHERE id=$1",[job.id]);}
+   try{await send(job.chat_id,job.message,job.bot||'leave');await db.query("UPDATE hr_telegram_outbox SET state='SENT',sent_at=now(),last_error=NULL WHERE id=$1",[job.id]);}
+   catch(error){const reason=error?.code==='NO_BOT'?`${job.bot} bot is not configured on the server`:error?.code==='NOT_STARTED'?`Recipient must open @${botUsername(job.bot)||job.bot+' bot'} and tap Start`:'Delivery failed; recipient may have blocked the bot';
+    await db.query("UPDATE hr_telegram_outbox SET attempts=attempts+1,state=CASE WHEN attempts>=9 THEN 'FAILED' ELSE 'PENDING' END,next_attempt=now()+interval '5 minutes',last_error=$2 WHERE id=$1",[job.id,reason]);}
   }
   await db.query('COMMIT');
  }catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}

@@ -30,6 +30,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         catch{return send(503,{status:'unavailable',database:'unavailable'});}
       }
       if(path==='/api/telegram/webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req)));
+      if(path==='/api/telegram/trial-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'trial'));
       const telegramRoute=path.startsWith('/api/telegram/')?path.slice('/api/telegram/'.length):null;
       const assetRoute=path.startsWith('/api/asset-management/')?path.slice('/api/asset-management/'.length):null;
       const documents=path==='/api/holiday-documents';
