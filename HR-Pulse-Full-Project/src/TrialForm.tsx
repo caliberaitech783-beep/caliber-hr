@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {Camera,Printer,Save,X} from 'lucide-react';
+import {Camera,Printer,Save,Send,X} from 'lucide-react';
+import {api,savedSession} from './api';
 import {AadhaarUpload} from './EmployeeLocation';
 import './trial-form.css';
 import {saveTrialHandoff,type TrialHandoff} from './trialHandoff';
@@ -18,8 +19,8 @@ function nextFormNo(){let n=0;try{n=Number(localStorage.getItem(COUNTER_KEY)||0)
 function age(dob:string){const d=new Date(dob+'T00:00:00');if(Number.isNaN(d.valueOf()))return '';const now=new Date();let a=now.getFullYear()-d.getFullYear();if(now<new Date(now.getFullYear(),d.getMonth(),d.getDate()))a--;return `${a} yrs`;}
 const digits=(v:string,max:number)=>v.replace(/\D/g,'').slice(0,max);
 
-export default function TrialForm({selection,onPassed}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void}){
- const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[candidatePhoto,setCandidatePhoto]=useState<string>(''),photoInput=useRef<HTMLInputElement>(null);
+export default function TrialForm({selection,onPassed,canManage=false}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void;canManage?:boolean}){
+ const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[candidatePhoto,setCandidatePhoto]=useState<string>(''),photoInput=useRef<HTMLInputElement>(null),pendingHandoff=useRef<TrialHandoff|null>(null),[popup,setPopup]=useState<{result:string;message:string;connected:string[];recipients:number}|null>(null),[saving,setSaving]=useState(false);
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{sessionStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}
  const heading=`${companyShort[selection.company]||selection.company||'CMLL'}  –  ${(selection.site||'SITE').toUpperCase()}`;
  /* After the Aadhaar is read into the hidden joining-style fields, copy them into the trial form and open it. */
@@ -28,15 +29,23 @@ export default function TrialForm({selection,onPassed}:{selection:TrialSelection
   };
   f.addEventListener('change',copy);return()=>f.removeEventListener('change',copy);},[]);
  useEffect(()=>{const f=form.current;if(!f)return;const post=f.elements.namedItem('Post applied for') as RadioNodeList|null;if(post&&!post.value&&['Driver','Operator'].includes(selection.department))post.value=selection.department;},[selection.department,step]);
- function save(){const f=form.current;if(!f)return;setError('');const data:Record<string,string>={};for(const el of Array.from(f.elements)){if(!(el instanceof HTMLInputElement||el instanceof HTMLSelectElement||el instanceof HTMLTextAreaElement)||!el.name||el.type==='file')continue;if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type)){if(el.checked)data[el.name]=(data[el.name]?data[el.name]+', ':'')+el.value;continue;}data[el.name]=el.value;}
+ async function save(){const f=form.current;if(!f)return;setError('');const data:Record<string,string>={};for(const el of Array.from(f.elements)){if(!(el instanceof HTMLInputElement||el instanceof HTMLSelectElement||el instanceof HTMLTextAreaElement)||!el.name||el.type==='file')continue;if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type)){if(el.checked)data[el.name]=(data[el.name]?data[el.name]+', ':'')+el.value;continue;}data[el.name]=el.value;}
   if(!data['Name of candidate']){setError('Candidate name is required.');return;}
+  if(!data['Result']){setError('Select the trial Result (PASS / FAIL) before saving.');return;}
   const record={formNo:no.current,heading,...selection,savedAt:new Date().toISOString(),fields:data,photo:candidatePhoto||undefined};
   try{const list=JSON.parse(localStorage.getItem(DRAFT_KEY)||'[]');list.unshift(record);localStorage.setItem(DRAFT_KEY,JSON.stringify(list.slice(0,200)));}catch{/* ignore */}
+  const grant=savedSession()?.grant;if(!grant){setError('Sign in again to save the trial form.');return;}
+  setSaving(true);let tg:{result:string;message:string;connected:string[];recipients:number}|null=null;
+  try{const out=await api<{result:string;telegram:{recipients:number;connected:string[];message:string}}>(grant,'telegram/trial-forms','POST',{formNo:no.current,heading,site:selection.site,company:selection.company,department:selection.department,fields:data});tg={result:out.result,...out.telegram};setPopup(tg);}
+  catch(e){setError((e as Error).message);setSaving(false);return;}
+  finally{setSaving(false);}
   if(data['Result']==='PASS'){const v=(n:string)=>(f.elements.namedItem(n) as HTMLInputElement|null)?.value||'',dobRaw=v('Date of Birth'),post=data['If PASS – recommended for']||data['Post applied for']||selection.department;
    const fields:Record<string,string>={'Full Name':data['Name of candidate'],'Full Name as per Aadhaar':v('Full Name as per Aadhaar')||data['Name of candidate'],'Father / Spouse Name':data["Father's name"],'Date of Birth':dobRaw,'Gender':v('Gender'),'Mobile':data['Mobile no.'],'Aadhaar No.':data['Aadhaar no.'],'Permanent Address':data['Address'],'Reference Name':data['Referred by'],'Driving Licence No.':data['Driving licence no. & class'],'DL Valid Upto':data['DL valid up to'],'Trial Form No.':no.current,'Trial Result':`PASS – ${post}${data['Machine']?' · '+data['Machine']:''}`};
    const handoff:TrialHandoff={id:no.current,formNo:no.current,name:data['Name of candidate'],site:selection.site,post,fields,photo:candidatePhoto||undefined};saveTrialHandoff(handoff,{photo,photo2});
-   setSaved(`Trial form ${no.current} saved – PASS. Opening Employee Management with the details filled in…`);setTimeout(()=>onPassed?.(handoff),600);return;}
+   setSaved(`Trial form ${no.current} saved – PASS. Close the Telegram preview to open Employee Management with the details filled in.`);pendingHandoff.current=handoff;return;}
   setSaved(`Trial form ${no.current} saved for ${data['Name of candidate']} · ${heading}${data['Result']?' · Result: '+data['Result']+' – candidate not sent to Employee Management':''}.`);}
+ function closePopup(){setPopup(null);const h=pendingHandoff.current;if(h){pendingHandoff.current=null;onPassed?.(h);}}
+ const recipientName=(phone:string)=>{try{const list=JSON.parse(sessionStorage.getItem('hrPulse.trialRecipients')||'[]') as {phone:string;name:string}[];return list.find(r=>r.phone===phone)?.name||phone;}catch{return phone;}};
  const Row=({label,name,children,span}:{label:string;name?:string;children?:React.ReactNode;span?:number})=><tr><td>{label}</td><td colSpan={span}>{children||<input name={name||label}/>}</td></tr>;
  const Chk=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="checkbox" name={name} value={o}/> {o}</label>)}</span>;
  const Radio=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="radio" name={name} value={o}/> {o}</label>)}</span>;
@@ -88,7 +97,34 @@ export default function TrialForm({selection,onPassed}:{selection:TrialSelection
      <div className="tf-sign"><span>DRIVER TRAINER</span><span>HR MANAGER</span><span>PM SIR</span></div>
     </div>
     {error&&<p className="employee-import-error" role="alert">{error}</p>}{saved&&<p className="shift-success" role="status">{saved}</p>}
-    <div className="joining-actions"><button type="button" onClick={()=>setStep(0)}>Previous</button><button type="button" onClick={()=>window.print()}><Printer/> Print / Download PDF</button><button type="submit" className="next"><Save/> Save Trial Form</button></div>
+    <div className="joining-actions"><button type="button" onClick={()=>setStep(0)}>Previous</button><button type="button" onClick={()=>window.print()}><Printer/> Print / Download PDF</button><button type="submit" className="next" disabled={saving}><Save/> {saving?'Saving…':'Save Trial Form'}</button></div>
    </div>
   </div>
- </form></div>;}
+ </form>
+  {popup&&<div className="salary-ov" onClick={()=>closePopup()}><div className="salary-md tf-tg" role="dialog" aria-label="Telegram message" onClick={e=>e.stopPropagation()}>
+   <div className="salary-mh"><h4><Send/> Telegram – Vehicle trial result</h4><button type="button" className="salary-x" aria-label="Close" onClick={()=>closePopup()}><X/></button></div>
+   <pre className="tf-tg-msg">{popup.message}</pre>
+   <p className="tf-tg-status">{popup.recipients===0?'No Telegram recipient is set up yet – add the person under "Telegram recipients" below.':popup.connected.length?`Sent to ${popup.connected.map(p=>recipientName(p)).join(', ')}.`:'Queued – the recipient has not connected Telegram yet. Share their connect link (below) so they receive this and future results.'}</p>
+   <div className="joining-actions"><button type="button" className="next" onClick={()=>closePopup()}>OK</button></div></div></div>}
+  {canManage&&<TrialRecipients/>}
+ </div>;}
+
+
+type Recipient={phone:string;name:string;connected?:boolean};
+function TrialRecipients(){
+ const[list,setList]=useState<Recipient[]>([]),[bot,setBot]=useState(''),[configured,setConfigured]=useState(true),[links,setLinks]=useState<Record<string,string>>({}),[msg,setMsg]=useState(''),[err,setErr]=useState(''),grant=savedSession()?.grant||'';
+ const load=async()=>{try{const r=await api<{recipients:Recipient[];botUsername:string;configured:boolean}>(grant,'telegram/trial-recipients');setList(r.recipients);setBot(r.botUsername);setConfigured(r.configured);try{sessionStorage.setItem('hrPulse.trialRecipients',JSON.stringify(r.recipients));}catch{/* ignore */}}catch(e){setErr((e as Error).message);}};
+ useEffect(()=>{void load();},[]);
+ const save=async(next:Recipient[])=>{setErr('');setMsg('');try{await api(grant,'telegram/trial-recipients','POST',{recipients:next});await load();setMsg('Recipients saved.');}catch(e){setErr((e as Error).message);}};
+ const connect=async(phone:string)=>{setErr('');try{const r=await api<{url:string}>(grant,'telegram/trial-connect','POST',{phone});setLinks({...links,[phone]:r.url});}catch(e){setErr((e as Error).message);}};
+ return <div className="joining-card tf-recipients"><h3><Send/> Telegram recipients for trial results</h3>
+  <p className="help-text">Every saved trial form (PASS or FAIL) is sent to these people on Telegram. A bot cannot message a phone number directly – each person must open the bot once: create their connect link, send it to them on WhatsApp, and they tap <b>Start</b> in Telegram. After that every result reaches them automatically.{!configured&&' Telegram bot is not configured on the server yet.'}</p>
+  {err&&<p className="employee-import-error" role="alert">{err}</p>}{msg&&<p className="shift-success" role="status">{msg}</p>}
+  <table className="tf-recipient-table"><thead><tr><th>Name</th><th>Mobile (Telegram number)</th><th>Status</th><th></th></tr></thead><tbody>
+   {list.map((r,i)=><tr key={r.phone+i}><td><input value={r.name} onChange={e=>setList(list.map((x,j)=>j===i?{...x,name:e.target.value}:x))} placeholder="Name"/></td><td><input value={r.phone} inputMode="numeric" maxLength={10} onChange={e=>setList(list.map((x,j)=>j===i?{...x,phone:e.target.value.replace(/\D/g,'').slice(0,10)}:x))}/></td>
+    <td>{r.connected?<span className="salary-status approved">Connected</span>:<span className="salary-status pending">Not connected</span>}{!r.connected&&links[r.phone]&&<div className="tf-link"><input readOnly value={links[r.phone]} onFocus={e=>e.currentTarget.select()}/><a href={`https://wa.me/91${r.phone}?text=${encodeURIComponent('Please open this link and tap Start to receive vehicle trial results from Caliber HR on Telegram: '+links[r.phone])}`} target="_blank" rel="noreferrer">Send on WhatsApp</a></div>}</td>
+    <td className="salary-site-actions">{!r.connected&&r.phone.length===10&&<button type="button" className="shift-remove" onClick={()=>void connect(r.phone)}>{links[r.phone]?'New link':'Connect link'}</button>}<button type="button" className="shift-remove" aria-label="Remove recipient" onClick={()=>void save(list.filter((_,j)=>j!==i))}><X/></button></td></tr>)}
+   {!list.length&&<tr><td colSpan={4} className="shift-empty">No recipients yet</td></tr>}
+  </tbody></table>
+  <div className="salary-site-foot"><button type="button" className="shift-remove salary-btn" onClick={()=>setList([...list,{phone:'',name:''}])}>+ Add person</button><button type="button" className="shift-add salary-save" onClick={()=>void save(list)}>Save recipients</button>{bot&&<small>Bot: @{bot}</small>}</div>
+ </div>;}
