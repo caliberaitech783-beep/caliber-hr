@@ -45,6 +45,14 @@ export function telegramSteps(config,department=''){
   :[hodStep,{stage:2,label:'PM Sir — any one',approvers:telegramUsers(config.pm)},{stage:3,label:'Regional HR — any one',approvers:telegramUsers(config.regionalHr)},{stage:4,label:'Directors — final approval, any one',approvers:config.directors||[]}];
 }
 export async function telegramLeaveFlow(db,siteId){const row=(await db.query('SELECT h.data,s.code FROM hr_telegram_hierarchies h JOIN hr_records s ON s.id=h.site_id WHERE site_id=$1',[siteId])).rows[0];return row?.data.enabled?{...row.data,siteCode:row.code,type:row.data.type||(['CMLL-CO','CMLL-HO'].includes(row.code)?'office':'site'),firstRole:row.data.hods?'HOD (concerned)':(['CMLL-CO','CMLL-HO'].includes(row.code)?'HOD':'Site HR')}:null;}
+/* Registers the Vehicle Trial Result bot's webhook with Telegram at startup (the API host can reach api.telegram.org). */
+export async function registerTrialWebhook(fetchImpl=fetch,logger=console){
+ const token=process.env.TELEGRAM_TRIAL_BOT_TOKEN,secret=process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET||process.env.TELEGRAM_WEBHOOK_SECRET,base=process.env.API_PUBLIC_URL||'https://hr-api-cmll-783.azurewebsites.net';
+ if(!token||!secret)return {skipped:true};
+ try{const response=await fetchImpl(`https://api.telegram.org/bot${token}/setWebhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:`${base}/api/telegram/trial-webhook`,secret_token:secret,allowed_updates:['message'],drop_pending_updates:true}),signal:AbortSignal.timeout(10000)});
+  const result=await response.json();logger.log?.(`Trial bot webhook: ${result.ok?'registered':'failed – '+result.description}`);return result;}
+ catch(error){logger.error?.('Trial bot webhook registration failed',error instanceof Error?error.message:error);return {ok:false};}
+}
 export async function seedTelegram(db){
  const data={siteHr:'amitsingh',regionalHr:'vinodpinjarkar',directors:['manishchadda','mohitchadda','rahulchadda'],enabled:true};
  await db.query("INSERT INTO hr_telegram_hierarchies(site_id,data,updated_by) SELECT id,$1,'initial-configuration' FROM hr_records WHERE kind='sites' AND code='NCL-JAYANT' ON CONFLICT DO NOTHING",[data]);
