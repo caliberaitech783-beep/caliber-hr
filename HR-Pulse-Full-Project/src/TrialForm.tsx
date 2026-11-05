@@ -106,7 +106,7 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
    <pre className="tf-tg-msg">{popup.message}</pre>
    <p className="tf-tg-status">{popup.recipients===0?'No Telegram recipient is set up yet – add the person under "Telegram recipients" below.':popup.connected.length?`Sent to ${popup.connected.map(p=>recipientName(p)).join(', ')}.`:'Queued – the recipient has not connected Telegram yet. Share their connect link (below) so they receive this and future results.'}</p>
    <div className="joining-actions"><button type="button" className="next" onClick={()=>closePopup()}>OK</button></div></div></div>}
-  {canManage&&<TrialRecipients/>}
+  {canManage&&step===1&&<TrialRecipients/>}
  </div>;}
 
 
