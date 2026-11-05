@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {Printer,Save} from 'lucide-react';
+import {Camera,Printer,Save,X} from 'lucide-react';
 import {AadhaarUpload} from './EmployeeLocation';
 import './trial-form.css';
 import {saveTrialHandoff,type TrialHandoff} from './trialHandoff';
@@ -19,7 +19,7 @@ function age(dob:string){const d=new Date(dob+'T00:00:00');if(Number.isNaN(d.val
 const digits=(v:string,max:number)=>v.replace(/\D/g,'').slice(0,max);
 
 export default function TrialForm({selection,onPassed}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void}){
- const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState('');
+ const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[candidatePhoto,setCandidatePhoto]=useState<string>(''),photoInput=useRef<HTMLInputElement>(null);
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{sessionStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}
  const heading=`${companyShort[selection.company]||selection.company||'CMLL'}  –  ${(selection.site||'SITE').toUpperCase()}`;
  /* After the Aadhaar is read into the hidden joining-style fields, copy them into the trial form and open it. */
@@ -30,11 +30,11 @@ export default function TrialForm({selection,onPassed}:{selection:TrialSelection
  useEffect(()=>{const f=form.current;if(!f)return;const post=f.elements.namedItem('Post applied for') as RadioNodeList|null;if(post&&!post.value&&['Driver','Operator'].includes(selection.department))post.value=selection.department;},[selection.department,step]);
  function save(){const f=form.current;if(!f)return;setError('');const data:Record<string,string>={};for(const el of Array.from(f.elements)){if(!(el instanceof HTMLInputElement||el instanceof HTMLSelectElement||el instanceof HTMLTextAreaElement)||!el.name||el.type==='file')continue;if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type)){if(el.checked)data[el.name]=(data[el.name]?data[el.name]+', ':'')+el.value;continue;}data[el.name]=el.value;}
   if(!data['Name of candidate']){setError('Candidate name is required.');return;}
-  const record={formNo:no.current,heading,...selection,savedAt:new Date().toISOString(),fields:data};
+  const record={formNo:no.current,heading,...selection,savedAt:new Date().toISOString(),fields:data,photo:candidatePhoto||undefined};
   try{const list=JSON.parse(localStorage.getItem(DRAFT_KEY)||'[]');list.unshift(record);localStorage.setItem(DRAFT_KEY,JSON.stringify(list.slice(0,200)));}catch{/* ignore */}
   if(data['Result']==='PASS'){const v=(n:string)=>(f.elements.namedItem(n) as HTMLInputElement|null)?.value||'',dobRaw=v('Date of Birth'),post=data['If PASS – recommended for']||data['Post applied for']||selection.department;
    const fields:Record<string,string>={'Full Name':data['Name of candidate'],'Full Name as per Aadhaar':v('Full Name as per Aadhaar')||data['Name of candidate'],'Father / Spouse Name':data["Father's name"],'Date of Birth':dobRaw,'Gender':v('Gender'),'Mobile':data['Mobile no.'],'Aadhaar No.':data['Aadhaar no.'],'Permanent Address':data['Address'],'Reference Name':data['Referred by'],'Driving Licence No.':data['Driving licence no. & class'],'DL Valid Upto':data['DL valid up to'],'Trial Form No.':no.current,'Trial Result':`PASS – ${post}${data['Machine']?' · '+data['Machine']:''}`};
-   const handoff:TrialHandoff={id:no.current,formNo:no.current,name:data['Name of candidate'],site:selection.site,post,fields};saveTrialHandoff(handoff,{photo,photo2});
+   const handoff:TrialHandoff={id:no.current,formNo:no.current,name:data['Name of candidate'],site:selection.site,post,fields,photo:candidatePhoto||undefined};saveTrialHandoff(handoff,{photo,photo2});
    setSaved(`Trial form ${no.current} saved – PASS. Opening Employee Management with the details filled in…`);setTimeout(()=>onPassed?.(handoff),600);return;}
   setSaved(`Trial form ${no.current} saved for ${data['Name of candidate']} · ${heading}${data['Result']?' · Result: '+data['Result']+' – candidate not sent to Employee Management':''}.`);}
  const Row=({label,name,children,span}:{label:string;name?:string;children?:React.ReactNode;span?:number})=><tr><td>{label}</td><td colSpan={span}>{children||<input name={name||label}/>}</td></tr>;
@@ -57,7 +57,8 @@ export default function TrialForm({selection,onPassed}:{selection:TrialSelection
      <h3>TRIAL JOINING FORM – DRIVER &amp; OPERATOR</h3><p className="tf-note">Candidate joins only after the vehicle / machine trial result is PASS.</p>
      <h4>1. CANDIDATE DETAILS</h4>
      <table><tbody>
-      <tr><td>Form No.</td><td><input name="Form No." value={no.current} readOnly className="tf-ro"/></td><td className="tf-photo" rowSpan={7}>Paste / Photo</td></tr>
+      <tr><td>Form No.</td><td><input name="Form No." value={no.current} readOnly className="tf-ro"/></td><td className="tf-photo" rowSpan={7}><input ref={photoInput} type="file" accept="image/*" capture="user" hidden aria-label="Upload candidate photo" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;if(f.size>5*1024*1024){setError('Photo must be 5 MB or smaller.');return;}const r=new FileReader();r.onload=()=>setCandidatePhoto(String(r.result));r.readAsDataURL(f);}}/>
+       {candidatePhoto?<><img src={candidatePhoto} alt="Candidate"/><div className="tf-photo-actions"><button type="button" onClick={()=>photoInput.current?.click()}>Change</button><button type="button" aria-label="Remove photo" onClick={()=>setCandidatePhoto('')}><X/></button></div></>:<button type="button" className="tf-photo-upload" onClick={()=>photoInput.current?.click()}><Camera/><span>Upload photo</span><small>Camera or gallery</small></button>}</td></tr>
       <Row label="Name of candidate"/><Row label="Father's name"/><Row label="Date of birth / Age"/>
       <Row label="Mobile no."><input name="Mobile no." inputMode="numeric" maxLength={10} placeholder="10-digit mobile" onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,10);}}/></Row>
       <Row label="Aadhaar no."><input name="Aadhaar no." inputMode="numeric" maxLength={12} onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,12);}}/></Row>
