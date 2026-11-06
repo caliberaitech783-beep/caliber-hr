@@ -209,6 +209,16 @@ export function createTelegram(pool){
    await tx(async db=>{await db.query('DELETE FROM hr_telegram_link_tokens WHERE actor=$1 OR expires_at<now()',[actor]);await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,expires_at) VALUES($1,$2,now()+interval '7 days')",[hash(token),actor]);});
    return {url:`https://t.me/${process.env.TELEGRAM_TRIAL_BOT_USERNAME}?start=${token}`};
   }
+  if(route==='trial-history'&&method==='POST'){
+   if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
+   const aadhaar=String(input.aadhaar||'').replace(/\D/g,'');if(!/^\d{12}$/.test(aadhaar))fail('Enter a 12-digit Aadhaar number');
+   const scope=assignedSites(profile),exclude=String(input.excludeFormNo||'').slice(0,40);
+   const rows=(await pool.query(`SELECT t.code,t.data FROM hr_records t WHERE t.kind='trialForms' AND t.status='ACTIVE' AND t.code<>'SETTINGS' AND t.code<>$2
+    AND regexp_replace(COALESCE(t.data->'fields'->>'Aadhaar no.',t.data->'fields'->>'Aadhaar No.',t.data->'fields'->>'Aadhaar No. *',''),'[^0-9]','','g')=$1
+    AND ($3::text[] IS NULL OR lower(t.data->>'site')=ANY($3) OR EXISTS(SELECT 1 FROM hr_records s WHERE s.kind='sites' AND (lower(s.code)=ANY($3) OR lower(s.name)=ANY($3) OR s.id::text=ANY($3)) AND (lower(s.name)=lower(t.data->>'site') OR lower(s.code)=lower(t.data->>'site'))))
+    ORDER BY t.updated_at DESC LIMIT 20`,[aadhaar,exclude,scope])).rows;
+   return {matches:rows.filter(row=>['PASS','FAIL'].includes(row.data?.fields?.Result)).map(row=>({formNo:row.code,result:row.data.fields.Result,site:row.data.site||'',trialDate:row.data.fields['Trial date & time']||'',savedAt:row.data.savedAt||''}))};
+  }
   if(route==='trial-forms'&&method==='POST'){
    const f=input.fields&&typeof input.fields==='object'?input.fields:{},formNo=String(input.formNo||'').trim().slice(0,40);if(!formNo)fail('Form number is required');
    const name=String(f['Name of candidate']||'').trim();if(!name)fail('Candidate name is required.');
