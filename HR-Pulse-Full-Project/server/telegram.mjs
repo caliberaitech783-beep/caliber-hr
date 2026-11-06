@@ -122,8 +122,8 @@ export function createTelegram(pool){
   if(route==='trial-connect'&&method==='POST'){   /* connect link for a recipient's Telegram (they open it and tap Start) */
    if(!grantedMenus(profile).has('Approval Management'))fail('Approval Management permission required',403);
    if(!process.env.TELEGRAM_TRIAL_BOT_TOKEN||!process.env.TELEGRAM_TRIAL_BOT_USERNAME)fail('Vehicle Trial Result bot is not configured on the server',503);
-   const phone=String(input.phone||'').replace(/\D/g,'').slice(-10);if(phone.length!==10)fail('Enter a 10-digit mobile number');
-   const actor='trial:'+phone,token=randomBytes(24).toString('base64url');
+   const phone=String(input.phone||'').replace(/\D/g,'').slice(-10),pulse=String(input.actor||'').trim().toLowerCase();if(!/^[-a-z0-9_.@]{1,100}$/.test(pulse)&&phone.length!==10)fail('Enter a Pulse username or a 10-digit mobile number');
+   const actor=pulse||'trial:'+phone,token=randomBytes(24).toString('base64url');
    await tx(async db=>{await db.query('DELETE FROM hr_telegram_link_tokens WHERE actor=$1 OR expires_at<now()',[actor]);await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,expires_at) VALUES($1,$2,now()+interval '7 days')",[hash(token),actor]);});
    return {url:`https://t.me/${process.env.TELEGRAM_TRIAL_BOT_USERNAME}?start=${token}`};
   }
@@ -214,7 +214,7 @@ export function createTelegram(pool){
 export async function deliverTelegram(pool,send=async(chat,text,bot='leave')=>{
  const token=botToken(bot);if(!token)throw Object.assign(new Error('Bot not configured'),{code:'NO_BOT'});
  const response=await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat,text,...(bot==='leave'?{reply_markup:{inline_keyboard:[[{text:'Open HRMS',url:'https://hrpulse.cmll.in/#Employee%20Master'}]]}}:{})}),signal:AbortSignal.timeout(10000)});
- const result=await response.json();if(!result.ok)throw Object.assign(new Error('Telegram delivery failed'),{code:result.error_code===403?'NOT_STARTED':'FAILED'});
+ const result=await response.json();if(!result.ok)throw Object.assign(new Error('Telegram delivery failed'),{code:result.error_code===401?'BAD_TOKEN':result.error_code===403||/chat not found/i.test(result.description||'')?'NOT_STARTED':'FAILED',description:result.description});
 }){
  if(!process.env.TELEGRAM_BOT_TOKEN&&!process.env.TELEGRAM_TRIAL_BOT_TOKEN)return;
  const db=await pool.connect();try{
@@ -223,7 +223,7 @@ export async function deliverTelegram(pool,send=async(chat,text,bot='leave')=>{
   for(const job of jobs){
    if(!job.chat_id){await db.query("UPDATE hr_telegram_outbox SET next_attempt=now()+interval '5 minutes',last_error='Recipient has not connected Telegram' WHERE id=$1",[job.id]);continue;}
    try{await send(job.chat_id,job.message,job.bot||'leave');await db.query("UPDATE hr_telegram_outbox SET state='SENT',sent_at=now(),last_error=NULL WHERE id=$1",[job.id]);}
-   catch(error){const reason=error?.code==='NO_BOT'?`${job.bot} bot is not configured on the server`:error?.code==='NOT_STARTED'?`Recipient must open @${botUsername(job.bot)||job.bot+' bot'} and tap Start`:'Delivery failed; recipient may have blocked the bot';
+   catch(error){const reason=error?.code==='NO_BOT'?`${job.bot} bot is not configured on the server`:error?.code==='BAD_TOKEN'?`${job.bot==='trial'?'TELEGRAM_TRIAL_BOT_TOKEN':'TELEGRAM_BOT_TOKEN'} is wrong – Telegram rejected it`:error?.code==='NOT_STARTED'?`Recipient must open @${botUsername(job.bot)||job.bot+' bot'} and tap Start`:`Delivery failed${error?.description?': '+error.description:'; recipient may have blocked the bot'}`;
     await db.query("UPDATE hr_telegram_outbox SET attempts=attempts+1,state=CASE WHEN attempts>=9 THEN 'FAILED' ELSE 'PENDING' END,next_attempt=now()+interval '5 minutes',last_error=$2 WHERE id=$1",[job.id,reason]);}
   }
   await db.query('COMMIT');
