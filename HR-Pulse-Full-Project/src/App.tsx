@@ -37,9 +37,11 @@ function Workspace({session,logout}:{session:Session;logout:()=>void}){
   const[config,setConfig]=useState<Record<string,Module>>({}),[profile,setProfile]=useState<Profile>(session.profile),[page,setPage]=useState(()=>decodeURIComponent(window.location.hash.slice(1))),[kind,setKind]=useState('companies'),[group,setGroup]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(true),[collapsed,setCollapsed]=useState(true),[notice,setNotice]=useState('');
   const[masterMenu,setMasterMenu]=useState('Shift Master');
   const[expandedMenu,setExpandedMenu]=useState(()=>decodeURIComponent(window.location.hash.slice(1))||'Employee Master');
-  const[employeeMenu,setEmployeeMenu]=useState('Employee Management');
+  const[employeeMenu,setEmployeeMenuState]=useState(()=>{try{return localStorage.getItem('hrPulse.employeeMenu')||'Employee Management';}catch{return 'Employee Management';}});
+  const setEmployeeMenu=(menu:string)=>{setEmployeeMenuState(menu);try{localStorage.setItem('hrPulse.employeeMenu',menu);}catch{/* ignore */}};
   const[transferTab,setTransferTab]=useState('requests');
-  const[selection,setSelection]=useState<TrialSelection>(loadSelection),trialVisible=showsTrialForm(selection);const updateSelection=(next:TrialSelection)=>{setSelection(next);saveSelection(next);};
+  const[selection,setSelection]=useState<TrialSelection>(loadSelection),trialVisible=showsTrialForm(selection);
+  useEffect(()=>{if(employeeMenu==='Trial Form'&&!trialVisible)setEmployeeMenu('Employee Management');},[trialVisible]);const updateSelection=(next:TrialSelection)=>{setSelection(next);saveSelection(next);};
   const[payrollMenu,setPayrollMenu]=useState('Salary Scheme');
   const[employeeGroup,setEmployeeGroup]=useState<'Corporate / HO'|'OB / COAL'>('Corporate / HO');
   const access=new Set([...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])]);const permitted=navItems.filter(([name])=>access.has(name)||(name==='Approval Master'&&['Master Configuration','Approval Management','Employee Master'].some(menu=>access.has(menu)))||(name==='Telegram Hierarchy'&&access.size>0)||(['Payroll Management','Asset Management','Calendar'].includes(name)&&access.has('Employee Master')));
