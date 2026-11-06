@@ -1,4 +1,5 @@
 import FormInput from './BirthDateInput';
+import {ageText} from './age';
 import {useEffect,useRef,useState} from 'react';
 import {Camera,Printer,Save,Send,X} from 'lucide-react';
 import {api,savedSession} from './api';
@@ -20,7 +21,7 @@ function nextFormNo(){let n=0;try{n=Number(localStorage.getItem(COUNTER_KEY)||0)
 const digits=(v:string,max:number)=>v.replace(/\D/g,'').slice(0,max);
 
 export default function TrialForm({selection,onPassed,canManage=false}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void;canManage?:boolean}){
- const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return localStorage.getItem(DRAFT_KEY+'.no')||sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[candidatePhoto,setCandidatePhoto]=useState<string>(''),photoInput=useRef<HTMLInputElement>(null),pendingHandoff=useRef<TrialHandoff|null>(null),copyRef=useRef<(()=>void)|null>(null),[popup,setPopup]=useState<{result:string;message:string;connected:string[];recipients:number;bot?:string;configured?:boolean;issues?:string[]}|null>(null),[saving,setSaving]=useState(false);
+ const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return localStorage.getItem(DRAFT_KEY+'.no')||sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[candidatePhoto,setCandidatePhoto]=useState<string>(''),[dobValue,setDobValue]=useState(''),photoInput=useRef<HTMLInputElement>(null),pendingHandoff=useRef<TrialHandoff|null>(null),copyRef=useRef<(()=>void)|null>(null),[popup,setPopup]=useState<{result:string;message:string;connected:string[];recipients:number;bot?:string;configured?:boolean;issues?:string[]}|null>(null),[saving,setSaving]=useState(false);
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{localStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}
  const heading=`${companyShort[selection.company]||selection.company||'CMLL'}  –  ${(selection.site||'SITE').toUpperCase()}`;
  /* After the Aadhaar is read into the hidden joining-style fields, copy them into the trial form and open it. */
@@ -79,7 +80,7 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
      <table><tbody>
       <tr><td>Form No.</td><td><input name="Form No." value={no.current} readOnly className="tf-ro"/></td><td className="tf-photo" rowSpan={7}><input ref={photoInput} type="file" accept="image/*" capture="user" hidden aria-label="Upload candidate photo" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;if(f.size>5*1024*1024){setError('Photo must be 5 MB or smaller.');return;}const r=new FileReader();r.onload=()=>setCandidatePhoto(String(r.result));r.readAsDataURL(f);}}/>
        {candidatePhoto?<><img src={candidatePhoto} alt="Candidate"/><div className="tf-photo-actions"><button type="button" onClick={()=>photoInput.current?.click()}>Change</button><button type="button" aria-label="Remove photo" onClick={()=>setCandidatePhoto('')}><X/></button></div></>:<button type="button" className="tf-photo-upload" onClick={()=>photoInput.current?.click()}><Camera/><span>Upload photo</span><small>Camera or gallery</small></button>}</td></tr>
-      <Row label="Name of candidate"/><Row label="Father's name"/><Row label="Date of birth / Age"><FormInput birthDate name="Date of birth / Age" placeholder="DD/MM/YYYY" onChange={event=>{const original=form.current?.elements.namedItem('Date of Birth') as HTMLInputElement|null;if(original)original.value=event.target.value;}}/></Row>
+      <Row label="Name of candidate"/><Row label="Father's name"/><Row label="Date of birth / Age"><span className="tf-dob"><FormInput birthDate showAge={false} name="Date of birth / Age" placeholder="DD/MM/YYYY" onBirthDateValue={setDobValue} onChange={event=>{const original=form.current?.elements.namedItem('Date of Birth') as HTMLInputElement|null;if(original)original.value=event.target.value;}}/><span className="tf-age" aria-live="polite">{ageText(dobValue)?`Age: ${ageText(dobValue)}`:''}</span></span></Row>
       <Row label="Mobile no."><input name="Mobile no." inputMode="numeric" maxLength={10} placeholder="10-digit mobile" onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,10);}}/></Row>
       <Row label="Aadhaar no."><FormInput name="Aadhaar no." inputMode="numeric" maxLength={12} onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,12);}}/></Row>
       <Row label="Address"/>
