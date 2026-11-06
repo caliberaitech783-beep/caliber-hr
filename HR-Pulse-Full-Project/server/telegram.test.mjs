@@ -74,8 +74,8 @@ test('trial Aadhaar history requires Employee Master access and a complete Aadha
  await assert.rejects(svc.telegramApi({actor:'user',permissions:{hrDesktopAccess:['Employee Master']}},'trial-history','POST',{aadhaar:'123'}),e=>e.status===400);
 });
 test('trial Aadhaar history is scoped, excludes the current form and returns only prior result metadata',async()=>{
- let query,values;const pool={query:async(sql,args)=>{query=sql;values=args;return {rows:[{code:'TF/old',data:{site:'Jayant OB East',savedAt:'2026-11-01',fields:{Result:'FAIL','Trial date & time':'2026-10-31T12:30','Aadhaar no.':'123456789012','Mobile no.':'private'}}}]};}};
+ let query,values;const pool={query:async(sql,args)=>{query=sql;values=args;return {rows:[{code:'TF/old',data:{site:'Jayant OB East',savedAt:'2026-11-01',fields:{Result:'FAIL','Trial date & time':'2026-10-31T12:30','Aadhaar no.':'123456789012','Post applied for':'Operator','If FAIL – reason':'Unsafe handling','Mobile no.':'private'}}}]};}};
  const out=await createTelegram(pool).telegramApi({actor:'hr',permissions:{hrDesktopAccess:['Employee Master'],site:'NCL-JAYANT'}},'trial-history','POST',{aadhaar:'1234 5678 9012',excludeFormNo:'TF/current'});
  assert.deepEqual(values,['123456789012','TF/current',['ncl-jayant']]);assert.match(query,/t.code<>\$2/);assert.match(query,/regexp_replace/);assert.match(query,/\$3::text\[\] IS NULL/);assert.match(query,/EXISTS\(SELECT 1 FROM hr_records s/);
- assert.deepEqual(out,{matches:[{formNo:'TF/old',result:'FAIL',site:'Jayant OB East',trialDate:'2026-10-31T12:30',savedAt:'2026-11-01'}]});assert.ok(!JSON.stringify(out).includes('123456789012'));assert.ok(!JSON.stringify(out).includes('private'));
+ assert.deepEqual(out,{matches:[{formNo:'TF/old',result:'FAIL',site:'Jayant OB East',trialDate:'2026-10-31T12:30',savedAt:'2026-11-01',post:'Operator',failureReason:'Unsafe handling'}]});assert.ok(!JSON.stringify(out).includes('123456789012'));assert.ok(!JSON.stringify(out).includes('private'));
 });
