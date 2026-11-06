@@ -105,6 +105,16 @@ export function createTelegram(pool){
    return {url:`https://t.me/${process.env.TELEGRAM_BOT_USERNAME}?start=${token}`};
   }
   /* ---- Trial form (Driver & Operator): save + Telegram result to configured recipients ---- */
+  if(route==='trial-status'&&method==='GET'){   /* diagnostics for the Vehicle Trial Result bot */
+   if(!grantedMenus(profile).has('Approval Management'))fail('Approval Management permission required',403);
+   const token=process.env.TELEGRAM_TRIAL_BOT_TOKEN,secret=process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET||process.env.TELEGRAM_WEBHOOK_SECRET;
+   const out={tokenSet:!!token,usernameSet:process.env.TELEGRAM_TRIAL_BOT_USERNAME||'',secretSet:!!secret,me:null,webhook:null,registered:null,outbox:[]};
+   if(token){const call=async(m,body)=>{try{const r=await fetch(`https://api.telegram.org/bot${token}/${m}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{}),signal:AbortSignal.timeout(10000)});return await r.json();}catch(e){return {ok:false,description:e instanceof Error?e.message:String(e)};}};
+    out.me=await call('getMe');out.registered=await registerTrialWebhook();out.webhook=await call('getWebhookInfo');}
+   await pool.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING' WHERE bot='trial' AND state IN ('PENDING','FAILED')");
+   out.outbox=(await pool.query("SELECT actor,state,attempts,last_error,created_at,sent_at FROM hr_telegram_outbox WHERE bot='trial' ORDER BY id DESC LIMIT 10")).rows;
+   return out;
+  }
   if(route==='trial-recipients'&&method==='GET'){
    const recipients=await trialRecipients(pool);
    const linked=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor = ANY($1)',[recipients.map(recipientActor)])).rows.map(r=>r.actor);
