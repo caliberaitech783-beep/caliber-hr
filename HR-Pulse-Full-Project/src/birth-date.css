@@ -2,8 +2,8 @@
 .birth-date-pair>input{min-width:0;width:100%}
 .birth-age-field{display:grid;gap:3px;min-width:0;position:relative}
 .birth-age-heading{position:absolute;top:-21px;left:0;font-size:12px;color:#40354a;font-weight:600}
-.birth-age{display:flex;align-items:center;box-sizing:border-box;width:100%;min-height:43px;padding:9px 10px;border:1px solid #dcd5e2;border-radius:9px;background:#f8f6fb;font-size:11px;line-height:1.35;white-space:normal;color:#554263;font-weight:500;cursor:default}
-.joining-table.family-details-table .birth-age{min-height:37px;padding:8px;border-color:#dfd8e4;border-radius:6px;background:#f8f6fb}
+.birth-age{display:flex;align-items:center;box-sizing:border-box;width:100%;min-height:43px;padding:9px 10px;border:1px solid #dcd5e2;border-radius:9px;background:#fff;font-size:11px;line-height:1.35;white-space:normal;color:#554263;font-weight:500;cursor:default}
+.joining-table.family-details-table .birth-age{min-height:37px;padding:8px;border-color:#dfd8e4;border-radius:6px;background:#fff}
 .joining-table.family-details-table{table-layout:fixed;min-width:850px}
 .joining-table.family-details-table th,.joining-table.family-details-table td{padding:6px 5px}
 .joining-table.family-details-table th:first-child{width:42px}
@@ -22,11 +22,15 @@
 .joining-table.experience-table{table-layout:fixed;min-width:960px}
 .joining-table.experience-table th,.joining-table.experience-table td{padding:6px 5px}
 .joining-table.experience-table th:first-child{width:40px}
-.joining-table.experience-table th:nth-child(2){width:16%}
-.joining-table.experience-table th:nth-child(3){width:14%}
-.joining-table.experience-table th:nth-child(4),.joining-table.experience-table th:nth-child(5){width:13%}
-.joining-table.experience-table th:nth-child(6){width:18%}
-.joining-table.experience-table th:nth-child(7){width:10%}
-.joining-table.experience-table th:nth-child(8){width:12%}
+.joining-table.experience-table th:nth-child(2){width:15%}
+.joining-table.experience-table th:nth-child(3){width:12%}
+.joining-table.experience-table th:nth-child(4),.joining-table.experience-table th:nth-child(5){width:12%}
+.joining-table.experience-table th:nth-child(6){width:12%}
+.joining-table.experience-table th:nth-child(7){width:9%}
+.joining-table.experience-table th:nth-child(8){width:24%}
 .joining-table.experience-table input,.local-employee-review-form .joining-table.experience-table input{min-width:0;width:100%;box-sizing:border-box}
 .joining-table.experience-table .work-duration{min-height:37px;padding:8px;border-radius:6px}
+
+.joining-table.experience-table th:nth-child(4),.joining-table.experience-table td:nth-child(4),.joining-table.experience-table th:nth-child(5),.joining-table.experience-table td:nth-child(5){min-width:0;max-width:none}
+.joining-table.experience-table input,.joining-table.experience-table textarea,.joining-table.experience-table select{background:#fff}
+.joining-table.experience-table textarea{min-width:0;width:100%;box-sizing:border-box;resize:vertical}
