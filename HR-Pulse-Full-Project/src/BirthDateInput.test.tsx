@@ -1,5 +1,5 @@
 import {afterEach,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen} from '@testing-library/react';
 import FormInput from './BirthDateInput';
 import {restoreJoiningFields} from './joiningDrafts';
 import LocalEmployeeReviewForm from './LocalEmployeeReviewForm';
@@ -14,9 +14,9 @@ it('updates the age automatically beside DOB when entered, changed or cleared',(
 });
 it('shows ages for restored drafts and scanned values without saving a derived age as a form field',()=>{
  today();const view=render(<form><FormInput name="Date of Birth" type="date"/></form>),form=view.container.querySelector('form')!;
- restoreJoiningFields(form,{'Date of Birth':[{value:'2000-03-15'}]});
+ act(()=>restoreJoiningFields(form,{'Date of Birth':[{value:'2000-03-15'}]}));
  // Programmatic restoration notifies the same listener as scanned Aadhaar data.
- fireEvent.change(screen.getByLabelText('Date of Birth'));
+
  expect(screen.getByLabelText('Age').textContent).toBe('26 years, 7 months, 22 days');
  expect([...new FormData(form).keys()]).toEqual(['Date of Birth']);
 });
