@@ -11,6 +11,13 @@ import {saveTrialHandoff,type TrialHandoff} from './trialHandoff';
    Shown under Employee Master when the top bar's department is Driver or Operator. */
 export type TrialSelection={employeeGroup:'Corporate / HO'|'OB / COAL';company:string;region:string;site:string;department:string;subdepartment:string;designation:string};
 const SELECTION_KEY='hrPulse.employeeSelection',DRAFT_KEY='hrPulse.trialForm',COUNTER_KEY='hrPulse.trialForm.counter';
+const DRAFTS_KEY=DRAFT_KEY+'.drafts';
+export type TrialSnapshot={formNo:string;step:number;values:Record<string,string>;checks:Record<string,boolean>;photo:string;savedAt:number};
+export type TrialDraft=TrialSnapshot&{name:string;site:string;company:string;department:string};
+export function listTrialDrafts():TrialDraft[]{try{const list=JSON.parse(localStorage.getItem(DRAFTS_KEY)||'[]');return Array.isArray(list)?list:[];}catch{return [];}}
+function writeTrialDrafts(list:TrialDraft[]){try{localStorage.setItem(DRAFTS_KEY,JSON.stringify(list.slice(0,200)));}catch{/* storage full or unavailable */}}
+export function upsertTrialDraft(draft:TrialDraft){writeTrialDrafts([draft,...listTrialDrafts().filter(d=>d.formNo!==draft.formNo)]);}
+export function removeTrialDrafts(formNos:string[]){writeTrialDrafts(listTrialDrafts().filter(d=>!formNos.includes(d.formNo)));}
 const companyShort:Record<string,string>={'Caliber Mining And Logistics Ltd':'CMLL','Caliber Mining And Logistics Ltd SCR JV':'CMPL SCR JV','KSR FREIGHT CARRIERS':'KSR','CHADDA TRADING COMPANY':'CHADDA TRADING CO.'};
 export const emptySelection:TrialSelection={employeeGroup:'Corporate / HO',company:'',region:'',site:'',department:'',subdepartment:'',designation:''};
 export function loadSelection():TrialSelection{try{return {...emptySelection,...JSON.parse(localStorage.getItem(SELECTION_KEY)||sessionStorage.getItem(SELECTION_KEY)||'{}')};}catch{return emptySelection;}}
@@ -34,10 +41,11 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
  const AUTOSAVE=DRAFT_KEY+'.autosave';
  const snapshot=()=>{const f=form.current;if(!f)return null;const values:Record<string,string>={},checks:Record<string,boolean>={};for(const el of Array.from(f.elements)){if(!(el instanceof HTMLInputElement||el instanceof HTMLSelectElement||el instanceof HTMLTextAreaElement)||!el.name||el.type==='file')continue;if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type)){checks[el.name+'|'+el.value]=el.checked;continue;}values[el.name]=el.value;}return {formNo:no.current,step,values,checks,photo:candidatePhoto,savedAt:Date.now()};};
  const persist=()=>{try{const snap=snapshot();if(snap)localStorage.setItem(AUTOSAVE,JSON.stringify(snap));}catch{/* storage full or unavailable */}};
- useEffect(()=>{const f=form.current;if(!f)return;let saved:{formNo:string;step:number;values:Record<string,string>;checks:Record<string,boolean>;photo:string}|null=null;try{saved=JSON.parse(localStorage.getItem(AUTOSAVE)||'null');}catch{saved=null;}
-  if(saved&&saved.formNo){if(saved.formNo!==no.current){no.current=saved.formNo;try{localStorage.setItem(DRAFT_KEY+'.no',saved.formNo);}catch{/* ignore */}}for(const [name,value] of Object.entries(saved.values||{})){const el=f.elements.namedItem(name) as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|RadioNodeList|null;if(el&&!(el instanceof RadioNodeList)&&'value' in el){el.value=value;if(/birth/i.test(name))el.dispatchEvent(new Event('input',{bubbles:true}));}}
+ const applySnapshot=(saved:TrialSnapshot)=>{const f=form.current;if(!f||!saved.formNo)return;{if(saved.formNo!==no.current){no.current=saved.formNo;try{localStorage.setItem(DRAFT_KEY+'.no',saved.formNo);}catch{/* ignore */}}for(const [name,value] of Object.entries(saved.values||{})){const el=f.elements.namedItem(name) as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|RadioNodeList|null;if(el&&!(el instanceof RadioNodeList)&&'value' in el){el.value=value;if(/birth/i.test(name))el.dispatchEvent(new Event('input',{bubbles:true}));}}
    for(const [key,checked] of Object.entries(saved.checks||{})){const [name,value]=key.split('|');const boxes:HTMLInputElement[]=Array.prototype.slice.call(f.querySelectorAll('input'));const box=boxes.find(b=>b.name===name&&b.value===value);if(box)box.checked=checked;}
-   if(saved.photo)setCandidatePhoto(saved.photo);if(saved.step===1)setStep(1);}
+   setCandidatePhoto(saved.photo||'');setStep(saved.step===1?1:0);setDobValue((saved.values||{})['Date of birth / Age']||'');}};
+ useEffect(()=>{const f=form.current;if(!f)return;let saved:TrialSnapshot|null=null;try{saved=JSON.parse(localStorage.getItem(AUTOSAVE)||'null');}catch{saved=null;}
+  if(saved)applySnapshot(saved);
   const onChange=()=>persist();f.addEventListener('input',onChange);f.addEventListener('change',onChange);return()=>{f.removeEventListener('input',onChange);f.removeEventListener('change',onChange);};},[]);
  useEffect(()=>{persist();},[step,candidatePhoto]);
  useEffect(()=>{const f=form.current;if(!f)return;const copy=()=>{const v=(n:string)=>(f.elements.namedItem(n) as HTMLInputElement|null)?.value||'';const set=(n:string,val:string)=>{const el=f.elements.namedItem(n) as HTMLInputElement|null;if(el&&!el.value&&val){el.value=val;if(/birth/i.test(n))el.dispatchEvent(new Event('input',{bubbles:true}));}};
@@ -46,6 +54,11 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
   copyRef.current=copy;f.addEventListener('change',copy);f.addEventListener('input',copy);const timer=setInterval(copy,1500);return()=>{f.removeEventListener('change',copy);f.removeEventListener('input',copy);clearInterval(timer);};},[]);
  useEffect(()=>{copyRef.current?.();},[step,photo,photo2]);
  useEffect(()=>{const f=form.current;if(!f)return;const post=f.elements.namedItem('Post applied for') as RadioNodeList|null;if(post&&!post.value&&['Driver','Operator'].includes(selection.department))post.value=selection.department;},[selection.department,step]);
+ /* Named drafts: kept in this browser until the trial form is saved or the draft is deleted. */
+ const[drafts,setDrafts]=useState<TrialDraft[]>(()=>listTrialDrafts()),[showDrafts,setShowDrafts]=useState(false),[selectedDrafts,setSelectedDrafts]=useState<Set<string>>(new Set()),[draftMsg,setDraftMsg]=useState('');
+ function saveDraft(){const snap=snapshot();if(!snap)return;const name=snap.values['Name of candidate']||'';upsertTrialDraft({...snap,name,site:selection.site,company:selection.company,department:selection.department});setDrafts(listTrialDrafts());setDraftMsg(`Draft ${snap.formNo} saved${name?' for '+name:''} · ${new Date().toLocaleTimeString()}`);setError('');}
+ function resumeDraft(d:TrialDraft){no.current=d.formNo;try{localStorage.setItem(DRAFT_KEY+'.no',d.formNo);}catch{/* ignore */}const f=form.current;if(f){f.reset();for(const el of Array.from(f.elements)){if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type))el.checked=false;}}applySnapshot(d);persist();setShowDrafts(false);setDraftMsg(`Draft ${d.formNo} opened – continue and click Save Trial Form when done.`);}
+ function deleteDrafts(formNos:string[]){if(!formNos.length||!window.confirm(`Delete ${formNos.length} trial draft${formNos.length>1?'s':''}? Saved details will be removed from this browser.`))return;removeTrialDrafts(formNos);setDrafts(listTrialDrafts());setSelectedDrafts(new Set());}
  async function save(){const f=form.current;if(!f)return;setError('');const data:Record<string,string>={};for(const el of Array.from(f.elements)){if(!(el instanceof HTMLInputElement||el instanceof HTMLSelectElement||el instanceof HTMLTextAreaElement)||!el.name||el.type==='file')continue;if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type)){if(el.checked)data[el.name]=(data[el.name]?data[el.name]+', ':'')+el.value;continue;}data[el.name]=el.value;}
   if(!data['Name of candidate']){setError('Candidate name is required.');return;}
   if(!data['Result']){setError('Select the trial Result (PASS / FAIL) before saving.');return;}
@@ -53,7 +66,7 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
   try{const list=JSON.parse(localStorage.getItem(DRAFT_KEY)||'[]');list.unshift(record);localStorage.setItem(DRAFT_KEY,JSON.stringify(list.slice(0,200)));}catch{/* ignore */}
   const grant=savedSession()?.grant;if(!grant){setError('Sign in again to save the trial form.');return;}
   setSaving(true);let tg:{result:string;message:string;connected:string[];recipients:number;bot?:string;configured?:boolean;issues?:string[]}|null=null;
-  try{localStorage.removeItem(AUTOSAVE);const out=await api<{result:string;telegram:{recipients:number;connected:string[];message:string;bot?:string;configured?:boolean;issues?:string[]}}>(grant,'telegram/trial-forms','POST',{formNo:no.current,heading,site:selection.site,company:selection.company,department:selection.department,fields:data});tg={result:out.result,...out.telegram};setPopup(tg);}
+  try{localStorage.removeItem(AUTOSAVE);const out=await api<{result:string;telegram:{recipients:number;connected:string[];message:string;bot?:string;configured?:boolean;issues?:string[]}}>(grant,'telegram/trial-forms','POST',{formNo:no.current,heading,site:selection.site,company:selection.company,department:selection.department,fields:data});tg={result:out.result,...out.telegram};setPopup(tg);removeTrialDrafts([no.current]);}
   catch(e){setError((e as Error).message);setSaving(false);return;}
   finally{setSaving(false);}
   if(data['Result']==='PASS'){const v=(n:string)=>(f.elements.namedItem(n) as HTMLInputElement|null)?.value||'',dobRaw=v('Date of Birth'),post=data['If PASS – recommended for']||data['Post applied for']||selection.department;
@@ -63,7 +76,12 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
   setSaved(`Trial form ${no.current} saved for ${data['Name of candidate']} · ${heading}${data['Result']?' · Result: '+data['Result']+' – candidate not sent to Employee Management':''}.`);}
  function closePopup(){setPopup(null);try{localStorage.removeItem(DRAFT_KEY+'.no');sessionStorage.removeItem(DRAFT_KEY+'.no');localStorage.removeItem(AUTOSAVE);}catch{/* ignore */}const h=pendingHandoff.current;if(h){pendingHandoff.current=null;onPassed?.(h);}else window.location.reload();}
  const recipientName=(key:string)=>{try{const list=JSON.parse(sessionStorage.getItem('hrPulse.trialRecipients')||'[]') as {phone:string;name:string;actor?:string}[];return list.find(r=>r.phone===key||r.actor===key)?.name||key;}catch{return key;}};
- return <div className="joining-form trial-form"><form ref={form} noValidate onSubmit={e=>{e.preventDefault();save();}}>
+ return <div className="joining-form trial-form">
+  <div className="tf-draftbar"><button type="button" className={showDrafts?'':'active'} onClick={()=>setShowDrafts(false)}>Create</button><button type="button" className={showDrafts?'active':''} onClick={()=>{setDrafts(listTrialDrafts());setShowDrafts(true);}}>Drafts ({drafts.length})</button>{draftMsg&&<span className="tf-draftmsg" role="status">{draftMsg}</span>}</div>
+  {showDrafts&&<section className="data-card tf-drafts" aria-label="Saved trial drafts"><div className="tf-drafts-head"><h3>Saved trial form drafts</h3>{drafts.length>0&&<div className="tf-drafts-actions"><button type="button" disabled={!selectedDrafts.size} onClick={()=>deleteDrafts([...selectedDrafts])}>Delete selected ({selectedDrafts.size})</button><button type="button" onClick={()=>deleteDrafts(drafts.map(d=>d.formNo))}>Delete all</button></div>}</div>
+   {drafts.length===0?<p className="help-text">No drafts yet. Fill the trial form and click <b>Save Draft</b> to keep it here for later.</p>:<table className="tf-drafts-table"><thead><tr><th><input type="checkbox" aria-label="Select all drafts" checked={selectedDrafts.size===drafts.length} onChange={e=>setSelectedDrafts(e.target.checked?new Set(drafts.map(d=>d.formNo)):new Set())}/></th><th>Form No.</th><th>Candidate</th><th>Post</th><th>Site</th><th>Saved</th><th></th></tr></thead><tbody>{drafts.map(d=><tr key={d.formNo}><td><input type="checkbox" aria-label={`Select draft ${d.formNo}`} checked={selectedDrafts.has(d.formNo)} onChange={e=>setSelectedDrafts(prev=>{const next=new Set(prev);if(e.target.checked)next.add(d.formNo);else next.delete(d.formNo);return next;})}/></td><td>{d.formNo}</td><td>{d.name||<i>(no name yet)</i>}</td><td>{d.values['Post applied for']||d.department||''}</td><td>{d.site||''}</td><td>{new Date(d.savedAt).toLocaleString()}</td><td><button type="button" className="next" onClick={()=>resumeDraft(d)}>Open</button> <button type="button" onClick={()=>deleteDrafts([d.formNo])}>Delete</button></td></tr>)}</tbody></table>}
+  </section>}
+  <form ref={form} noValidate hidden={showDrafts} onSubmit={e=>{e.preventDefault();save();}}>
   <div className="joining-steps" style={{gridTemplateColumns:'repeat(2,minmax(0,1fr))'}}><button type="button" className={step===0?'active':''} onClick={()=>setStep(0)}><i>1</i><span>Upload Aadhaar Card</span></button><button type="button" className={step===1?'active':''} onClick={()=>setStep(1)}><i>2</i><span>Trial Joining Form – Driver &amp; Operator</span></button></div>
   <div className="joining-card">
    <div hidden={step!==0}>
@@ -71,7 +89,7 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
     <AadhaarUpload form={form} photo={photo} photo2={photo2} onPhoto={setPhoto} onPhoto2={setPhoto2}/>
     {/* hidden joining-style fields that AadhaarUpload fills */}
     <div hidden>{['Full Name','Full Name as per Aadhaar','Father / Spouse Name','Date of Birth','Gender','Aadhaar No.','Permanent Address'].map(n=><input key={n} name={n} readOnly/>)}</div>
-    <div className="joining-actions"><button type="button" disabled>Previous</button><button type="button" className="next" onClick={()=>setStep(1)}>Save &amp; Continue</button></div>
+    <div className="joining-actions"><button type="button" disabled>Previous</button><button type="button" onClick={saveDraft}><Save/> Save Draft</button><button type="button" className="next" onClick={()=>setStep(1)}>Save &amp; Continue</button></div>
    </div>
    <div hidden={step!==1}>
     <div className="tf">
@@ -110,7 +128,7 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
      <div className="tf-sign"><span>DRIVER TRAINER</span><span>HR MANAGER</span><span>PM SIR</span></div>
     </div>
     {error&&<p className="employee-import-error" role="alert">{error}</p>}{saved&&<p className="shift-success" role="status">{saved}</p>}
-    <div className="joining-actions"><button type="button" onClick={()=>setStep(0)}>Previous</button><button type="button" onClick={()=>{if(!window.confirm('Clear this trial form and start a new one? Unsaved details will be removed.'))return;try{localStorage.removeItem(AUTOSAVE);localStorage.removeItem(DRAFT_KEY+'.no');sessionStorage.removeItem(DRAFT_KEY+'.no');}catch{/* ignore */}window.location.reload();}}>New form</button><button type="button" onClick={()=>window.print()}><Printer/> Print / Download PDF</button><button type="submit" className="next" disabled={saving}><Save/> {saving?'Saving…':'Save Trial Form'}</button></div>
+    <div className="joining-actions"><button type="button" onClick={()=>setStep(0)}>Previous</button><button type="button" onClick={()=>{if(!window.confirm('Clear this trial form and start a new one? Unsaved details will be removed.'))return;try{localStorage.removeItem(AUTOSAVE);localStorage.removeItem(DRAFT_KEY+'.no');sessionStorage.removeItem(DRAFT_KEY+'.no');}catch{/* ignore */}window.location.reload();}}>New form</button><button type="button" onClick={saveDraft}><Save/> Save Draft</button><button type="button" onClick={()=>window.print()}><Printer/> Print / Download PDF</button><button type="submit" className="next" disabled={saving}><Save/> {saving?'Saving…':'Save Trial Form'}</button></div>
    </div>
   </div>
  </form>
