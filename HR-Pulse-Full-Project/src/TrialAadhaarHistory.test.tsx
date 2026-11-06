@@ -12,7 +12,7 @@ it('checks only complete Aadhaar numbers and displays the earlier PASS/FAIL, for
  vi.useFakeTimers();vi.mocked(api).mockResolvedValue({matches:[{formNo:'TF/1',result:'PASS',site:'Jayant OB East',trialDate:'2026-11-01T12:30',savedAt:''},{formNo:'TF/2',result:'FAIL',site:'Sasti OB',trialDate:'',savedAt:'2026-10-31T10:00Z'}]});
  render(<Harness/>);await enter('123');expect(api).not.toHaveBeenCalled();
  await enter('123456789012');expect(screen.getByText(/Already exists/)).toBeTruthy();
- expect(screen.getByText('PASS')).toBeTruthy();expect(screen.getByText('FAIL')).toBeTruthy();expect(screen.getByText(/TF\/1/).textContent).toContain('Jayant OB East');
+ expect(screen.getByText('PASS').closest('li')?.classList.contains('pass')).toBe(true);expect(screen.getByText('FAIL').closest('li')?.classList.contains('fail')).toBe(true);expect(screen.getByText('Passed on 01 Nov 2026')).toBeTruthy();expect(screen.getByText('FAIL recorded on 31 Oct 2026 (trial date unavailable)')).toBeTruthy();expect(screen.getByText(/TF\/1/).textContent).toContain('Jayant OB East');
  expect(api).toHaveBeenCalledWith('test-grant','telegram/trial-history','POST',{aadhaar:'123456789012',excludeFormNo:'TF/current'});
  await enter('123');expect(screen.queryByText(/Already exists/)).toBeNull();
 });
@@ -27,4 +27,9 @@ it('offers retry after lookup failure instead of claiming the Aadhaar is new',as
  vi.useFakeTimers();vi.mocked(api).mockRejectedValueOnce(Error('network')).mockResolvedValueOnce({matches:[]});
  render(<Harness/>);await enter('123456789012');expect(screen.getByRole('alert').textContent).toContain('Unable to check');expect(screen.queryByText(/No previous trial found/)).toBeNull();
  fireEvent.click(screen.getByText('Retry check'));await act(async()=>{await vi.advanceTimersByTimeAsync(300);});expect(screen.getByText(/No previous trial found/)).toBeTruthy();
+});
+
+it('labels the failure date and colours a single failure message red',async()=>{
+ vi.useFakeTimers();vi.mocked(api).mockResolvedValue({matches:[{formNo:'TF/fail',result:'FAIL',site:'Sasti OB',trialDate:'2026-10-30T12:30',savedAt:'2026-11-01'}]});
+ render(<Harness/>);await enter('123456789012');expect(screen.getByText('Failed on 30 Oct 2026')).toBeTruthy();expect(screen.getByText(/Already exists/).parentElement?.classList.contains('fail')).toBe(true);
 });
