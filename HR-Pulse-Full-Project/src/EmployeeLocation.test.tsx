@@ -386,6 +386,12 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Contact No. 1')).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
+  for(let row=1;row<=5;row++)for(const label of ['From Date','To Date']){
+   const input=screen.getByLabelText(label+' '+row) as HTMLInputElement;
+   expect(input.min).toBe('1000-01-01');expect(input.max).toBe('9999-12-31');
+   fireEvent.input(input,{target:{value:'20255-06-15'}});expect(input.value).toBe('2025-06-15');
+   fireEvent.input(input,{target:{value:'2024-01-31'}});expect(input.value).toBe('2024-01-31');
+  }
   expect(screen.getByLabelText('Last Drawn Salary 1')).toBeTruthy();
   expect(screen.getByLabelText('Reason for Leaving 1')).toBeTruthy();
   expect(screen.queryByLabelText('Last Drawn Salary / Reason for Leaving 1')).toBeNull();
