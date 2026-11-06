@@ -58,9 +58,11 @@ export async function seedTelegram(db){
  await db.query("INSERT INTO hr_telegram_hierarchies(site_id,data,updated_by) SELECT id,$1,'initial-configuration' FROM hr_records WHERE kind='sites' AND code='NCL-JAYANT' ON CONFLICT DO NOTHING",[data]);
 }
 /* Trial-result recipients: a Pulse user already connected to the leave bot (actor) or a phone linked via the trial connect link. */
-export const DEFAULT_TRIAL_RECIPIENTS=[{name:'Apurva Kopulwar',phone:'8087477229',actor:'apurvakopulwar'}];
+export const DEFAULT_TRIAL_RECIPIENTS=[{name:'Apurva Kopulwar',phone:'8087477229',actor:'apurvakopulwar'},{name:'Arjun Keshri',phone:'',actor:'arjunkeshri'},{name:'Mayuri Umate',phone:'',actor:'mayuriumate'}];
+/* Recipients that are always included even after the list is edited in the app. */
+const ALWAYS_TRIAL_ACTORS=['apurvakopulwar','arjunkeshri','mayuriumate'];
 export const recipientActor=r=>r.actor||('trial:'+r.phone);
-export async function trialRecipients(db){const row=(await db.query("SELECT data FROM hr_records WHERE kind='trialForms' AND code='SETTINGS'")).rows[0];return row?.data?.recipients||DEFAULT_TRIAL_RECIPIENTS;}
+export async function trialRecipients(db){const row=(await db.query("SELECT data FROM hr_records WHERE kind='trialForms' AND code='SETTINGS'")).rows[0];const saved=row?.data?.recipients||[];const merged=[...saved];for(const d of DEFAULT_TRIAL_RECIPIENTS)if(ALWAYS_TRIAL_ACTORS.includes(d.actor)&&!merged.some(r=>r.actor===d.actor))merged.push(d);return merged;}
 /* Telegram text for a saved trial form – matches the agreed format. */
 export function trialResultMessage(record,enteredBy){const f=record.fields||{},pass=f['Result']==='PASS';const d=f['Trial date & time']?new Date(f['Trial date & time']):null;const date=d&&!Number.isNaN(d.valueOf())?d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-'):'';
  const vehicle=[f['Vehicle / equipment for trial'],f['Other equipment']].filter(Boolean).join(', ').replace(/Dumper\/Tipper/,'Dumper / Tipper'),post=(pass?f['If PASS – recommended for']:'')||f['Post applied for']||'Driver / Operator';
