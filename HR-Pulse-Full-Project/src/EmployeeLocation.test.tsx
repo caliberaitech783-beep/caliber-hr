@@ -384,6 +384,12 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Mother'}});
   expect((screen.getByLabelText('Relationship 1') as HTMLSelectElement).value).toBe('Mother');
   expect(screen.getByLabelText('Contact No. 1')).toBeTruthy();
+  expect(screen.getByRole('columnheader',{name:'Age'})).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Date of Birth 1'),{target:{value:'2000-03-15'}});
+  expect(screen.getByLabelText('Age 1').textContent).toMatch(/\d+ years?, \d+ months?, \d+ days?/);
+  expect(screen.getByLabelText('Age 2').textContent).toBe('—');
+  fireEvent.change(screen.getByLabelText('Date of Birth 1'),{target:{value:''}});
+  expect(screen.getByLabelText('Age 1').textContent).toBe('—');
   fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
   for(let row=1;row<=5;row++)for(const label of ['From Date','To Date']){

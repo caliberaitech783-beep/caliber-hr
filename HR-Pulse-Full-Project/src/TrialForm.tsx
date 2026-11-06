@@ -1,3 +1,4 @@
+import FormInput from './BirthDateInput';
 import {useEffect,useRef,useState} from 'react';
 import {Camera,Printer,Save,Send,X} from 'lucide-react';
 import {api,savedSession} from './api';
@@ -16,7 +17,6 @@ export function saveSelection(selection:TrialSelection){try{localStorage.setItem
 export const showsTrialForm=(selection:TrialSelection)=>['Driver','Operator'].includes(selection.department);
 function fiscalYear(){const d=new Date(),start=d.getMonth()<3?d.getFullYear()-1:d.getFullYear();return `${start}-${String(start+1).slice(-2)}`;}
 function nextFormNo(){let n=0;try{n=Number(localStorage.getItem(COUNTER_KEY)||0)+1;localStorage.setItem(COUNTER_KEY,String(n));}catch{n=Date.now()%10000;}return `TF/${fiscalYear()}/${String(n).padStart(4,'0')}`;}
-function age(dob:string){const d=new Date(dob+'T00:00:00');if(Number.isNaN(d.valueOf()))return '';const now=new Date();let a=now.getFullYear()-d.getFullYear();if(now<new Date(now.getFullYear(),d.getMonth(),d.getDate()))a--;return `${a} yrs`;}
 const digits=(v:string,max:number)=>v.replace(/\D/g,'').slice(0,max);
 
 export default function TrialForm({selection,onPassed,canManage=false}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void;canManage?:boolean}){
@@ -29,13 +29,13 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
  const snapshot=()=>{const f=form.current;if(!f)return null;const values:Record<string,string>={},checks:Record<string,boolean>={};for(const el of Array.from(f.elements)){if(!(el instanceof HTMLInputElement||el instanceof HTMLSelectElement||el instanceof HTMLTextAreaElement)||!el.name||el.type==='file')continue;if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type)){checks[el.name+'|'+el.value]=el.checked;continue;}values[el.name]=el.value;}return {formNo:no.current,step,values,checks,photo:candidatePhoto,savedAt:Date.now()};};
  const persist=()=>{try{const snap=snapshot();if(snap)localStorage.setItem(AUTOSAVE,JSON.stringify(snap));}catch{/* storage full or unavailable */}};
  useEffect(()=>{const f=form.current;if(!f)return;let saved:{formNo:string;step:number;values:Record<string,string>;checks:Record<string,boolean>;photo:string}|null=null;try{saved=JSON.parse(localStorage.getItem(AUTOSAVE)||'null');}catch{saved=null;}
-  if(saved&&saved.formNo){if(saved.formNo!==no.current){no.current=saved.formNo;try{localStorage.setItem(DRAFT_KEY+'.no',saved.formNo);}catch{/* ignore */}}for(const [name,value] of Object.entries(saved.values||{})){const el=f.elements.namedItem(name) as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|RadioNodeList|null;if(el&&!(el instanceof RadioNodeList)&&'value' in el)el.value=value;}
+  if(saved&&saved.formNo){if(saved.formNo!==no.current){no.current=saved.formNo;try{localStorage.setItem(DRAFT_KEY+'.no',saved.formNo);}catch{/* ignore */}}for(const [name,value] of Object.entries(saved.values||{})){const el=f.elements.namedItem(name) as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|RadioNodeList|null;if(el&&!(el instanceof RadioNodeList)&&'value' in el){el.value=value;if(/birth/i.test(name))el.dispatchEvent(new Event('input',{bubbles:true}));}}
    for(const [key,checked] of Object.entries(saved.checks||{})){const [name,value]=key.split('|');const boxes:HTMLInputElement[]=Array.prototype.slice.call(f.querySelectorAll('input'));const box=boxes.find(b=>b.name===name&&b.value===value);if(box)box.checked=checked;}
    if(saved.photo)setCandidatePhoto(saved.photo);if(saved.step===1)setStep(1);}
   const onChange=()=>persist();f.addEventListener('input',onChange);f.addEventListener('change',onChange);return()=>{f.removeEventListener('input',onChange);f.removeEventListener('change',onChange);};},[]);
  useEffect(()=>{persist();},[step,candidatePhoto]);
- useEffect(()=>{const f=form.current;if(!f)return;const copy=()=>{const v=(n:string)=>(f.elements.namedItem(n) as HTMLInputElement|null)?.value||'';const set=(n:string,val:string)=>{const el=f.elements.namedItem(n) as HTMLInputElement|null;if(el&&!el.value&&val)el.value=val;};
-  set('Name of candidate',v('Full Name as per Aadhaar')||v('Full Name'));set("Father's name",v('Father / Spouse Name'));const dob=v('Date of Birth');if(dob)set('Date of birth / Age',`${dob.split('-').reverse().join('/')}${age(dob)?' · '+age(dob):''}`);set('Aadhaar no.',digits(v('Aadhaar No.'),12));set('Address',v('Permanent Address'));
+ useEffect(()=>{const f=form.current;if(!f)return;const copy=()=>{const v=(n:string)=>(f.elements.namedItem(n) as HTMLInputElement|null)?.value||'';const set=(n:string,val:string)=>{const el=f.elements.namedItem(n) as HTMLInputElement|null;if(el&&!el.value&&val){el.value=val;if(/birth/i.test(n))el.dispatchEvent(new Event('input',{bubbles:true}));}};
+  set('Name of candidate',v('Full Name as per Aadhaar')||v('Full Name'));set("Father's name",v('Father / Spouse Name'));const dob=v('Date of Birth');if(dob)set('Date of birth / Age',dob.split('-').reverse().join('/'));set('Aadhaar no.',digits(v('Aadhaar No.'),12));set('Address',v('Permanent Address'));
   };
   copyRef.current=copy;f.addEventListener('change',copy);f.addEventListener('input',copy);const timer=setInterval(copy,1500);return()=>{f.removeEventListener('change',copy);f.removeEventListener('input',copy);clearInterval(timer);};},[]);
  useEffect(()=>{copyRef.current?.();},[step,photo,photo2]);
@@ -79,7 +79,7 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
      <table><tbody>
       <tr><td>Form No.</td><td><input name="Form No." value={no.current} readOnly className="tf-ro"/></td><td className="tf-photo" rowSpan={7}><input ref={photoInput} type="file" accept="image/*" capture="user" hidden aria-label="Upload candidate photo" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;if(f.size>5*1024*1024){setError('Photo must be 5 MB or smaller.');return;}const r=new FileReader();r.onload=()=>setCandidatePhoto(String(r.result));r.readAsDataURL(f);}}/>
        {candidatePhoto?<><img src={candidatePhoto} alt="Candidate"/><div className="tf-photo-actions"><button type="button" onClick={()=>photoInput.current?.click()}>Change</button><button type="button" aria-label="Remove photo" onClick={()=>setCandidatePhoto('')}><X/></button></div></>:<button type="button" className="tf-photo-upload" onClick={()=>photoInput.current?.click()}><Camera/><span>Upload photo</span><small>Camera or gallery</small></button>}</td></tr>
-      <Row label="Name of candidate"/><Row label="Father's name"/><Row label="Date of birth / Age"/>
+      <Row label="Name of candidate"/><Row label="Father's name"/><Row label="Date of birth / Age"><FormInput birthDate name="Date of birth / Age" placeholder="DD/MM/YYYY"/></Row>
       <Row label="Mobile no."><input name="Mobile no." inputMode="numeric" maxLength={10} placeholder="10-digit mobile" onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,10);}}/></Row>
       <Row label="Aadhaar no."><input name="Aadhaar no." inputMode="numeric" maxLength={12} onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,12);}}/></Row>
       <Row label="Address"/>

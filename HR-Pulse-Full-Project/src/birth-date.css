@@ -1,0 +1,19 @@
+.birth-date-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:center;width:100%;min-width:0}
+.birth-date-pair>input{min-width:0;width:100%}
+.birth-age-field{display:grid;gap:3px;min-width:0}
+.birth-age-heading{font-size:11px;color:#70677d;font-weight:600}
+.birth-age{display:block;font-size:12px;line-height:1.4;white-space:normal;color:#554263;font-weight:600}
+.joining-table.family-details-table{table-layout:fixed;min-width:850px}
+.joining-table.family-details-table th,.joining-table.family-details-table td{padding:6px 5px}
+.joining-table.family-details-table th:first-child{width:42px}
+.joining-table.family-details-table th:nth-child(2){width:18%}
+.joining-table.family-details-table th:nth-child(3){width:12%}
+.joining-table.family-details-table th:nth-child(4){width:15%}
+.joining-table.family-details-table th:nth-child(5){width:17%}
+.joining-table.family-details-table th:nth-child(6){width:12%}
+.joining-table.family-details-table th:nth-child(7){width:13%}
+.joining-table.family-details-table th:nth-child(8){width:8%}
+.joining-table.family-details-table input,.joining-table.family-details-table select{width:100%;min-width:0;box-sizing:border-box}
+@media(max-width:600px){.birth-date-pair{grid-template-columns:1fr;gap:5px}}
+
+.local-employee-review-form .joining-table.family-details-table input,.local-employee-review-form .joining-table.family-details-table select{min-width:0}
