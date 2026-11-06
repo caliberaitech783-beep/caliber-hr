@@ -4,7 +4,7 @@ import {writeFile,utils} from 'xlsx';
 import {download,parseCsv} from './api';
 vi.mock('xlsx',async importOriginal=>({...await importOriginal<typeof import('xlsx')>(),writeFile:vi.fn()}));
 vi.mock('./api',async importOriginal=>({...await importOriginal<typeof import('./api')>(),download:vi.fn()}));
-import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {act,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
 import EmployeeLocation,{aadhaarDetails,matchChecklistDocument,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
@@ -114,26 +114,26 @@ describe('Employee Master tabs',()=>{
   }
  });
 
- it('uploads a candidate photo from the personal-details header into the checklist',()=>{
+ it('uploads a candidate photo from the personal-details header into the checklist',async()=>{
   const originalCreate=URL.createObjectURL,originalRevoke=URL.revokeObjectURL;
   URL.createObjectURL=vi.fn(()=> 'blob:candidate-photo');URL.revokeObjectURL=vi.fn();
   try{
    render(<EmployeeLocation/>);
-   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));});
    const input=screen.getByLabelText('Upload Candidate photo') as HTMLInputElement;
    const click=vi.spyOn(input,'click');
    fireEvent.click(screen.getByRole('button',{name:'Upload Photo'}));expect(click).toHaveBeenCalledOnce();
    fireEvent.change(input,{target:{files:[new File(['photo'],'candidate.jpg',{type:'image/jpeg'})]}});
    expect(screen.getByRole('img',{name:'Candidate photo preview'}).getAttribute('src')).toBe('blob:candidate-photo');
    expect(screen.getByRole('button',{name:'Change Photo'})).toBeTruthy();
-   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));});
    expect(input.files?.[0]?.name).toBe('candidate.jpg');
-   fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));});
    fireEvent.click(screen.getByRole('button',{name:'Remove candidate photo'}));
    expect(screen.queryByRole('img',{name:'Candidate photo preview'})).toBeNull();
    expect(screen.getByRole('button',{name:'Upload Photo'})).toBeTruthy();
    expect(screen.queryByRole('button',{name:'Remove candidate photo'})).toBeNull();
-   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));});
    const photoRow=input.closest('tr')!;
    expect((within(photoRow).getByRole('button',{name:'Preview'}) as HTMLButtonElement).disabled).toBe(true);
   }finally{URL.createObjectURL=originalCreate;URL.revokeObjectURL=originalRevoke;}
@@ -238,7 +238,7 @@ describe('Employee Master tabs',()=>{
   await waitFor(()=>expect(fetchMock).toHaveBeenCalled());
   expect(fetchMock.mock.calls.some(([url])=>String(url).includes('records/employees?page=1&search=&status=ACTIVE'))).toBe(true);
  });
- it('shows the requested tabs and the complete joining workflow',()=>{
+ it('shows the requested tabs and the complete joining workflow',async()=>{
   const view=render(<EmployeeLocation/>);
   const labels=['Add Temp. Employee','Update Existing Employee','Employee Verify','Completed Form','Reports'];
   expect(labels.map(label=>screen.getByRole('button',{name:label}))).toHaveLength(5);
@@ -271,7 +271,7 @@ describe('Employee Master tabs',()=>{
   const aadhaarInput=screen.getByLabelText('Choose Aadhaar card from gallery');
   for(const format of ['.jpg','.jpeg','.png','.pdf'])expect(aadhaarInput.getAttribute('accept')).toContain(format);
   fireEvent.change(aadhaarInput,{target:{files:[new File(['aadhaar'],'aadhaar.pdf',{type:'application/pdf'})]}});
-  fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));});
   expect((screen.getByLabelText(/^Full Name \*/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/Full Name as per Aadhaar/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/PAN No\./) as HTMLInputElement).required).toBe(true);
@@ -342,7 +342,7 @@ describe('Employee Master tabs',()=>{
   expect(Array.from((screen.getByLabelText('Select region') as HTMLSelectElement).options,option=>option.text)).toEqual(['Select region','WCL','NCL']);
   expect((screen.getByLabelText('Select region') as HTMLSelectElement).value).toBe('');
   fireEvent.change(screen.getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[new File(['aadhaar'],'aadhaar.pdf',{type:'application/pdf'})]}});
-  fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));});
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
   expect(screen.getAllByRole('option',{name:'Sasti OB'}).length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Select site'),{target:{value:'Sasti OB'}});
@@ -372,13 +372,13 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText(/Shift/),{target:{value:'General'}});
   fireEvent.change(screen.getByLabelText(/Employment Type/),{target:{value:'Permanent'}});
   fireEvent.change(screen.getByLabelText(/Medical Examination Date/),{target:{value:'2026-10-26'}});
-  fireEvent.click(screen.getByRole('button',{name:/Educational Details/}));
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Educational Details/}));});
   expect(screen.getByLabelText('Qualification 1')).toBeTruthy();
   expect(screen.getAllByRole('option',{name:'10th Pass'}).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('option',{name:'12th Pass'}).length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Qualification 1'),{target:{value:'Other'}});
   expect((screen.getByLabelText('Qualification 1') as HTMLInputElement).placeholder).toBe('Enter qualification');
-  fireEvent.click(screen.getByRole('button',{name:/Family Details/}));
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Family Details/}));});
   expect(screen.getByLabelText('Family Member Name 1')).toBeTruthy();
   for(let row=1;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Spouse','Son','Daughter']);
   fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Mother'}});
@@ -390,7 +390,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Age 2').textContent).toBe('—');
   fireEvent.change(screen.getByLabelText('Date of Birth 1'),{target:{value:''}});
   expect(screen.getByLabelText('Age 1').textContent).toBe('—');
-  fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));});
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
   for(let row=1;row<=5;row++)for(const label of ['From Date','To Date']){
    const input=screen.getByLabelText(label+' '+row) as HTMLInputElement;
@@ -409,7 +409,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Last Drawn Salary 1')).toBeTruthy();
   expect(screen.getByLabelText('Reason for Leaving 1')).toBeTruthy();
   expect(screen.queryByLabelText('Last Drawn Salary / Reason for Leaving 1')).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));});
   expect(screen.queryByRole('columnheader',{name:'Mandatory / Conditional'})).toBeNull();
   for(const input of screen.getAllByLabelText(/^Upload /))expect(input.getAttribute('accept')).toBe(input.getAttribute('aria-label')==='Upload Candidate photo'?'.jpg,.jpeg,.png,image/jpeg,image/png':'.jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf');
   expect((screen.getByLabelText('Upload Candidate photo') as HTMLInputElement).required).toBe(true);
@@ -435,7 +435,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Nagpur Corporate Office'}).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('option',{name:'Chandrapur Head Office'}).length).toBeGreaterThan(0);
   expect(screen.getByRole('option',{name:'KSR FREIGHT CARRIERS'})).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));});
   expect((screen.getByLabelText('Upload VTC certificate') as HTMLInputElement).required).toBe(false);
   expect((screen.getByLabelText('Upload Medical fitness certificate') as HTMLInputElement).required).toBe(false);
   expect(screen.queryByLabelText('Upload Signed offer letter')).toBeNull();
@@ -450,9 +450,9 @@ describe('Employee Master tabs',()=>{
   expect(screen.queryByRole('columnheader',{name:'Sr. No.'})).toBeNull();
   expect(screen.getByRole('columnheader',{name:'Employee Code'})).toBeTruthy();
   expect(screen.getByRole('columnheader',{name:'ESIC Applicable'})).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:/Job & Posting Details/}));
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Job & Posting Details/}));});
   expect(screen.getByRole('columnheader',{name:'Site *'})).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:/Educational Details/}));
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Educational Details/}));});
   expect(screen.getByRole('columnheader',{name:'Qualification'})).toBeTruthy();
   view.rerender(<EmployeeLocation employeeGroup="OB / COAL"/>);
   expect(screen.getByRole('option',{name:'WCL'})).toBeTruthy();
