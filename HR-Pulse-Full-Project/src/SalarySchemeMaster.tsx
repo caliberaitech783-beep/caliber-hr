@@ -1,3 +1,4 @@
+import {siteDisplayName} from './siteNames';
 import {useState} from 'react';
 import {Eye,IndianRupee,Lock,X} from 'lucide-react';
 import './shift-master.css';
@@ -88,7 +89,7 @@ export default function SalarySchemeMaster({actor='',canApprove=false}:{actor?:s
   </div>}
 
   {(tab==='HPC Salary'||tab==='Non-HPC Salary')&&<div className="shift-card salary-sites"><h2>3. Site-wise mess deduction master</h2><div className="shift-table-wrap"><table><thead><tr><th>Site</th><th>Company</th><th>Category</th><th>Duty / rate type</th><th>Deduction</th><th>Food</th><th>Remark</th></tr></thead><tbody>
-   {DEFAULT_MESS_SITES.map(S=>{const rows=S.plans?1:Math.max(S.rules.length,1),head=<><td rowSpan={rows}><b>{S.site}</b></td><td rowSpan={rows}>{S.company}</td></>;
+   {DEFAULT_MESS_SITES.map(S=>{const rows=S.plans?1:Math.max(S.rules.length,1),head=<><td rowSpan={rows}><b>{siteDisplayName(S.site)}</b></td><td rowSpan={rows}>{S.company}</td></>;
     if(S.plans)return <tr key={S.site} className="salary-site-first">{head}<td colSpan={5}><b>Mess plan – worker chooses:</b> {MESS_PLANS.filter(p=>p.t!=='none').map(p=>p.label).join(', ')}<small>Applies to HPC and Non-HPC, Camp and Non-Camp. Per day = rate × paid days · Per month = fixed amount.</small></td></tr>;
     if(!S.rules.length)return <tr key={S.site} className="salary-site-first">{head}<td colSpan={5}>No deduction</td></tr>;
     return S.rules.map((r,ri)=><tr key={S.site+ri} className={ri===0?'salary-site-first':''}>{ri===0&&head}<td>{r.category==='Camp'?'Camp (Non-local)':'Non-Camp (Local)'}</td><td>{r.duty==='HPC'?'HPC Rate (8 hrs duty)':'Fixed Rate (12 hrs duty)'}</td><td>{r.rate?`₹${r.rate} per ${r.per}`:'No deduction'}</td><td>{r.food}</td><td>{r.remark}</td></tr>);})}

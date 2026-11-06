@@ -1,3 +1,4 @@
+import {siteDisplayName} from './siteNames';
 import {useEffect,useMemo,useRef,useState,type ReactNode} from 'react';
 import {X} from 'lucide-react';
 import {CFG,MESS_PLANS,PT_STATES,R,SALARY_TYPES,SCH,SKILL_CATEGORIES,compute,fmt,fmt2,foodRule,isStd,loadMessSites,siteInfo,specialRates,type CalcInput,type SalaryType} from './salaryCalc';
@@ -51,7 +52,7 @@ export default function SalaryFields({enforce=true,defaults={}}:{enforce?:boolea
   <F id="monthly-gross-salary" label="Monthly Gross Salary" required={enforce} hint={st?'Monthly gross – split into Basic 50%, HRA, Medical, Special Allowance; paid on paid days':'Fixed salary – paid as (Salary ÷ month days, rounded to ₹) × paid days'} hidden={!(stype==='NON'||st)}>
    <input id="monthly-gross-salary" name="Monthly Gross Salary" required={enforce&&(stype==='NON'||st)} inputMode="numeric" placeholder="₹" defaultValue="" onInput={sync}/></F>
   <F id="site-project" label="Site / Project" required={enforce} hint={S?`Company: ${S.company}`+(S.plans?' · mess plan site – choose per day or per month below':''):(defaults.company?`Company: ${defaults.company}`:'Auto from the site selected above')}>
-   <select id="site-project" name="Site / Project" required={enforce} defaultValue="" onChange={sync}><option value="">Select</option>{sites.map(k=><option key={k.site}>{k.site}</option>)}</select></F>
+   <select id="site-project" name="Site / Project" required={enforce} defaultValue="" onChange={sync}><option value="">Select</option>{sites.map(k=><option key={k.site} value={k.site}>{siteDisplayName(k.site)}</option>)}</select></F>
   <F id="accommodation-category" label="Accommodation Category" required={enforce} hint="Decides the food (mess) deduction at the site" hidden={st||hasPlan}>
    <select id="accommodation-category" name="Accommodation Category" defaultValue="Camp" onChange={sync}><option value="Camp">Camp (Non-local)</option><option value="NonCamp">Non-Camp (Local)</option></select></F>
   <F id="mess-deduction" label="Food (Mess) Deduction" hint={fr?`Food: ${fr.food} · ${fr.rem}`:'HPC / Non-HPC only – from the site-wise food deduction master'} hidden={st}>

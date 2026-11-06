@@ -1,3 +1,4 @@
+import {siteDisplayName} from './siteNames';
 import type {Lookup} from './api';
 const aliases:Record<string,string[]>={
  'Dhoptala OC (2nd)':['WCL-DHOPTALA','Dhoptala','Dhoptala OC','Dhoptala OB'],
@@ -15,5 +16,5 @@ export function calendarSite(value:unknown,sites:Lookup[]){
  const raw=String(value||'').trim();if(!raw)return 'All sites';
  const site=sites.find(s=>[s.id,s.code,s.name].some(v=>v.toLowerCase()===raw.toLowerCase()));
  const candidates=[raw,site?.code,site?.name].filter(Boolean).map(v=>v!.toLowerCase());
- return Object.entries(aliases).find(([label,names])=>[label,...names].some(v=>candidates.includes(v.toLowerCase())))?.[0]||site?.name||raw;
+ return siteDisplayName(Object.entries(aliases).find(([label,names])=>[label,...names].some(v=>candidates.includes(v.toLowerCase())))?.[0]||site?.name||raw);
 }

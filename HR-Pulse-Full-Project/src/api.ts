@@ -1,3 +1,4 @@
+import {displaySiteRecords} from './siteNames';
 export const API='https://hr-api-cmll-783.azurewebsites.net';
 export type Profile={name:string;username?:string;email?:string;actor?:string;assignedRole?:string;permissions:{application:string;hrDesktopAccess?:string[];hrMobileAccess?:string[];site?:unknown;adminLevel?:unknown}};
 export type Session={grant:string;profile:Profile};
@@ -13,7 +14,7 @@ export function clearSession(){localStorage.removeItem('hrPulseSession');session
 export function savedSession():Session|null{try{return JSON.parse(sessionStorage.getItem('hrPulseSession')||localStorage.getItem('hrPulseSession')||'null');}catch{return null;}}
 export async function api<T>(grant:string,path:string,method='GET',body?:unknown):Promise<T>{
   const response=await fetch(API+'/api/'+path,{method,headers:{Authorization:'Bearer '+grant,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(30000)});
-  const result=await response.json();if(!response.ok){if(response.status===401){clearSession();window.dispatchEvent(new Event('hr-session-expired'));}throw new Error(result.error||'Unable to complete the request');}return result;
+  const result=await response.json();if(!response.ok){if(response.status===401){clearSession();window.dispatchEvent(new Event('hr-session-expired'));}throw new Error(result.error||'Unable to complete the request');}return displaySiteRecords(result,path.split('?')[0]==='hierarchies'||/^records\/(sites|joiningHierarchies)(\/|$)/.test(path.split('?')[0]));
 }
 export function csv(columns:string[],rows:Record<string,unknown>[]){
   const cell=(value:unknown)=>{let s=String(value??'');if(/^[=+@\-\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};

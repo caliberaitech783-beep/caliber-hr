@@ -1,3 +1,4 @@
+import {siteDisplayName} from './siteNames';
 import {useRef,useState,type ChangeEvent} from 'react';
 import {Check,Eye,FileText,Plus,Send,Trash2,Upload,X} from 'lucide-react';
 import {MESS_PLANS,type MessRule,type MessSite} from './salaryCalc';
@@ -58,7 +59,7 @@ export default function UpdateSalaryScheme({actor,canApprove,onApplied}:{actor:s
   </div>
 
   <div className="shift-card salary-sites"><h2>Site-wise mess deduction master</h2><div className="shift-table-wrap"><table><thead><tr><th>Site</th><th>Company</th><th>Category</th><th>Duty / rate type</th><th>Deduction (₹)</th><th>Per</th><th>Food</th><th>Remark</th><th></th></tr></thead><tbody>
-   {m.sites.map((S,si)=>{const rows=S.plans?1:Math.max(S.rules.length,1),head=<><td rowSpan={rows}><input value={S.site} onChange={e=>setSite(si,{site:e.target.value})}/></td><td rowSpan={rows}><input value={S.company} onChange={e=>setSite(si,{company:e.target.value})}/></td></>;
+   {m.sites.map((S,si)=>{const rows=S.plans?1:Math.max(S.rules.length,1),head=<><td rowSpan={rows}><input value={siteDisplayName(S.site)} onChange={e=>setSite(si,{site:e.target.value})}/></td><td rowSpan={rows}><input value={S.company} onChange={e=>setSite(si,{company:e.target.value})}/></td></>;
     if(S.plans)return <tr key={si} className="salary-site-first">{head}<td colSpan={5}><b>Mess plan – worker chooses:</b> {MESS_PLANS.filter(p=>p.t!=='none').map(p=>p.label).join(', ')}</td><td><small>Per day / per month options</small></td><td className="salary-site-actions"><button type="button" className="shift-remove" onClick={()=>setSite(si,{plans:false,rules:[]})}>Use site rules</button><button type="button" className="shift-remove" aria-label="Remove site" onClick={()=>setM({...m,sites:m.sites.filter((_,j)=>j!==si)})}><Trash2/></button></td></tr>;
     if(!S.rules.length)return <tr key={si} className="salary-site-first">{head}<td colSpan={6}>No rules – no deduction</td><td className="salary-site-actions"><button type="button" className="shift-remove" onClick={()=>setSite(si,{rules:[{category:'Camp',duty:'HPC',rate:205,per:'day',food:'Allowed',remark:'Only for HPC Rate (8 hrs duty)'}]})}>Add rule</button><button type="button" className="shift-remove" aria-label="Remove site" onClick={()=>setM({...m,sites:m.sites.filter((_,j)=>j!==si)})}><Trash2/></button></td></tr>;
     return S.rules.map((r,ri)=>{const upd=(p:Partial<MessRule>)=>setSite(si,{rules:S.rules.map((x,j)=>j===ri?{...x,...p}:x)});

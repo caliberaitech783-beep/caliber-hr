@@ -1,3 +1,4 @@
+import {siteDisplayName} from './siteNames';
 import {useEffect,useState} from 'react';
 import {pulse,csv,download} from './api';
 type Person={employeeId:string;name:string;category:string;designation:string;department:string;reportingTo:string;contact:string;email:string;status:string;siteId:string;site:string;region:string};
@@ -8,7 +9,7 @@ export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:strin
  const[data,setData]=useState<Directory|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[attempt,setAttempt]=useState(0);
  const[region,setRegion]=useState(''),[site,setSite]=useState(''),[department,setDepartment]=useState(''),[designation,setDesignation]=useState(''),[search,setSearch]=useState('');
  useEffect(()=>{setRegion('');setSite('');setDepartment('');setDesignation('');setSearch('');},[employeeGroup]);
- useEffect(()=>{let live=true;if(!grant){setError('Sign in to load Pulse C-Directory.');return;}setLoading(true);setError('');setData(null);pulse('directory',{grant}).then(result=>{if(!Array.isArray(result.rows)||!Array.isArray(result.sites))throw Error('Pulse returned an invalid directory response.');if(live)setData(result);}).catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[grant,attempt]);
+ useEffect(()=>{let live=true;if(!grant){setError('Sign in to load Pulse C-Directory.');return;}setLoading(true);setError('');setData(null);pulse('directory',{grant}).then(result=>{if(!Array.isArray(result.rows)||!Array.isArray(result.sites))throw Error('Pulse returned an invalid directory response.');if(live)setData({...result,sites:result.sites.map((site:Directory['sites'][number])=>({...site,label:siteDisplayName(site.label)})),rows:result.rows.map((row:Person)=>({...row,site:siteDisplayName(row.site)}))});}).catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[grant,attempt]);
  const sites=(data?.sites||[]).filter(item=>employeeGroup==='Corporate / HO'?office(item.label):!office(item.label));
  const regions=[...new Set(sites.map(item=>item.region))].sort();
  const ids=new Set(sites.filter(item=>(!region||item.region===region)&&(!site||item.id===site)).map(item=>item.id));

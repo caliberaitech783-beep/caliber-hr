@@ -1,3 +1,4 @@
+import {siteFieldValue} from './siteNames';
 import {useEffect,useMemo,useState,type FormEvent} from 'react';
 
 const groups=[
@@ -36,6 +37,7 @@ export default function LocalEmployeeReviewForm({record,owner,onChange,readOnly=
  function update(label:string,value:string){if(readOnly||!editing)return;setMessage('');setForm(current=>({...current,...(label==='Employee Code'?{code:value}:label==='Full Name *'?{name:value}:{}),office:{...current.office,[label]:value}}));}
  function repeated(label:string,index:number,value:string){const values=(form.office[label]||'').split(/\s*\|\s*/);while(values.length<=index)values.push('');values[index]=value;update(label,values.join(' | '));}
  function field(label:string,value:string,change:(value:string)=>void,accessible=label){
+  if(readOnly||!editing)value=String(siteFieldValue(label,value));
   const choices:Record<string,string[]>={Relationship:['Mother','Father','Spouse','Son','Daughter'],Gender:['Male','Female','Other'],'Employment Type':['Permanent','Fixed-term','Contract','Trainee','Consultant'],'BLOOD GROUP':['A+','A-','B+','B-','AB+','AB-','O+','O-']};
   if(choices[label])return <select aria-label={accessible} disabled={readOnly||!editing} value={value} onChange={event=>change(event.target.value)}><option value="">Select</option>{value&&!choices[label].includes(value)&&<option>{value}</option>}{choices[label].map(option=><option key={option}>{option}</option>)}</select>;
   if(/address|reason|remarks/i.test(label))return <textarea aria-label={accessible} readOnly={readOnly||!editing} value={value} onChange={event=>change(event.target.value)}/>;
