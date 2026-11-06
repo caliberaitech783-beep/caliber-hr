@@ -196,7 +196,7 @@ function companySiteOptions(company:string,region:string){
  if(company==='Caliber Mining And Logistics Ltd SCR JV')return sites.filter(site=>site==='Sasti OB');
  return sites;
 }
-const corporateSubtypes=['Nagpur CO','Chandrapur HO','KSR'];
+const corporateSubtypes=['Nagpur CO','Chandrapur HO'];
 const regionSites:Record<string,string[]>=new Proxy({WCL:['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB','Hindustan Lalpeth OC'],NCL:['Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']},{get:(target,key:string)=>target[key as keyof typeof target]||[]});
 const departmentOptions=Object.keys(departmentStructure);
 type FormDefaults={company?:string;region?:string;joiningCategory:string;site:string;siteOptions?:string[];department:string;subdepartment:string;designation:string};
