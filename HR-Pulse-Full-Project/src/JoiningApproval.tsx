@@ -3,8 +3,8 @@ import {createPortal} from 'react-dom';
 import {Send,X} from 'lucide-react';
 import {api,savedSession} from './api';
 import './trial-form.css';
-/* Joining approval: when HR clicks Save & Continue on Joining & Personal Details, an approval request with a 6-digit OTP
-   goes to the configured approvers on Telegram (leave bot). The step unlocks when HR enters the OTP or the approver taps Approve. */
+/* Joining approval: when HR clicks Submit Employee on Document Checklist, an approval request with a 6-digit OTP
+   goes to the configured approvers on Telegram (leave bot). The employee is saved when HR enters the OTP or the approver taps Approve. */
 export type JoiningApprovalState={status:'APPROVED'|'PENDING'|'REJECTED'|'NONE';approvedBy?:string;approvedAt?:string};
 type Status={required:boolean;status?:string;approvedBy?:string;approvedAt?:string;expires?:string;expired?:boolean;issues?:string[];approvers?:string[];connected?:string[];notConnected?:string[]};
 const KEY='hrPulse.joiningApproval.';
@@ -30,13 +30,13 @@ export function JoiningApprovalGate({draftId,info,onApproved,onClose}:{draftId:s
   <p>Approval request for <b>{info.candidate||'candidate'}</b>{info.post?` · ${info.post}`:''}{info.site?` · ${info.site}`:''} has been sent to {status?.approvers?.length?status.approvers.join(', '):'the approver'} on Telegram with a one-time OTP. The approver can tap <b>Approve</b> in Telegram, or tell you the OTP to enter below.</p>
   {status?.notConnected?.length?<p className="employee-import-error">Not connected to Telegram yet: {status.notConnected.join(', ')} – they must open the Joining Approval bot and tap Start (Approval Master → Joining Approval → Get connect link).</p>:null}
   {status?.issues?.length?<p className="employee-import-error">{status.issues.join(' · ')}</p>:null}
-  {rejected?<p className="employee-import-error" role="alert">Rejected by {status?.approvedBy||'approver'}. Correct the details and click Save &amp; Continue again to resend.</p>:
+  {rejected?<p className="employee-import-error" role="alert">Rejected by {status?.approvedBy||'approver'}. Correct the details and click Submit Employee again to resend.</p>:
   <div className="ja-otp"><label>OTP<input ref={otpRef} type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} defaultValue="" placeholder="6-digit OTP" onInput={e=>{const el=e.currentTarget;el.value=el.value.replace(/\D/g,'').slice(0,6);}} onKeyDown={e=>{e.stopPropagation();if(e.key==='Enter'){e.preventDefault();void verify();}}}/></label>
    <button type="button" className="next" disabled={busy||expired} onClick={()=>void verify()}>Verify OTP</button>
    <button type="button" disabled={busy} onClick={()=>void request(true)}>Resend OTP</button></div>}
   {expired&&!rejected&&<p className="employee-import-error">OTP expired – click Resend OTP.</p>}
   {error&&<p className="employee-import-error" role="alert">{error}</p>}{note&&<p className="employee-import-status">{note}</p>}
-  <p className="help-text">Waiting for approval… this box updates automatically when the approver taps Approve.</p>
+  <p className="help-text">Waiting for approval… the employee is submitted automatically when the OTP is verified or the approver taps Approve.</p>
  </div></div>,document.body);
 }
 
@@ -49,13 +49,13 @@ export function JoiningApproverMaster({grant}:{grant:string}){
  async function checkBot(){setError('');setDiag('Checking…');try{const d=await api<{tokenSet:boolean;usernameSet:string;secretSet:boolean;me:{ok:boolean;result?:{username:string};description?:string}|null;webhook:{ok:boolean;result?:{url:string;pending_update_count:number;last_error_message?:string}}|null;registered:{ok?:boolean;description?:string}|null;outbox:{actor:string;state:string;attempts:number;last_error:string|null;sent_at:string|null}[]}>(grant,'telegram/joining-status');
   setDiag([`Token set: ${d.tokenSet?'yes':'NO'} · Username set: ${d.usernameSet||'NO'} · Webhook secret set: ${d.secretSet?'yes':'NO'}`,`Bot check (getMe): ${d.me?d.me.ok?'OK – @'+d.me.result?.username:'FAILED – '+d.me.description:'skipped (no token)'}`,`Webhook: ${d.webhook?.ok?(d.webhook.result?.url||'(none)')+' · pending '+d.webhook.result?.pending_update_count+(d.webhook.result?.last_error_message?' · last error: '+d.webhook.result.last_error_message:''):'unknown'}`,`Re-register: ${d.registered?.ok?'OK':d.registered?.description||'—'}`,'Recent joining messages:',...(d.outbox.length?d.outbox.map(o=>`  ${o.actor} – ${o.state}${o.sent_at?' (sent)':''}${o.last_error?' – '+o.last_error:''}`):['  none yet'])].join('\n'));await load();}catch(e){setDiag('');setError((e as Error).message);}}
  return <section className="data-card" aria-label="Joining approval"><h2>Joining approval – OTP on Telegram</h2>
-  <p className="help-text">When HR clicks <b>Save &amp; Continue</b> on Joining &amp; Personal Details, the approvers below get a message from the <b>Joining Approval bot</b>{bot?<> (@{bot})</>:null} with the candidate's details, a 6-digit OTP and <b>Approve / Reject</b> buttons. The form moves to Educational Details only after the OTP is entered or Approve is tapped.</p>
+  <p className="help-text">When HR clicks <b>Submit Employee</b> on Document Checklist, the approvers below get a message from the <b>Joining Approval bot</b>{bot?<> (@{bot})</>:null} with the candidate's details, a 6-digit OTP and <b>Approve / Reject</b> buttons. The employee is saved only after the OTP is entered or Approve is tapped.</p>
   {!configured&&<p className="error">The Joining Approval bot is not configured on the server – add TELEGRAM_JOINING_BOT_TOKEN, TELEGRAM_JOINING_BOT_USERNAME and TELEGRAM_JOINING_WEBHOOK_SECRET in Azure → App Service → Environment variables, then restart.</p>}
   {error&&<p className="error" role="alert">{error}</p>}{msg&&<p role="status">{msg}</p>}
   <form onSubmit={e=>{e.preventDefault();setBusy(true);setMsg('');void api(grant,'telegram/joining-approvers','POST',{approvers,enabled}).then(()=>{setMsg('Joining approvers saved.');return load();}).catch(err=>setError((err as Error).message)).finally(()=>setBusy(false));}}>
    <div className="record-form">
     <label>Approvers — comma-separated Pulse usernames (any one can approve)<input required value={approvers} onChange={e=>setApprovers(e.target.value)} placeholder="e.g. roushni, apurvakopulwar"/></label>
-    <label>Require approval on Save &amp; Continue<select value={String(enabled)} onChange={e=>setEnabled(e.target.value==='true')}><option value="false">No — step moves on directly</option><option value="true">Yes — OTP / Approve needed</option></select></label>
+    <label>Require approval on Submit Employee<select value={String(enabled)} onChange={e=>setEnabled(e.target.value==='true')}><option value="false">No — employee saves directly</option><option value="true">Yes — OTP / Approve needed</option></select></label>
    </div>
    <button className="primary" disabled={busy||!canWrite}>Save joining approvers</button> <button type="button" disabled={!canWrite} onClick={()=>void checkBot()}>Check bot</button>
   </form>
