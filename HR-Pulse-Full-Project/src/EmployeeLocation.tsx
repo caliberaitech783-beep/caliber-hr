@@ -111,7 +111,7 @@ async function fillBranchFromIfsc(input:HTMLInputElement){const code=input.value
  const branch=form.elements.namedItem('Branch Name') as HTMLInputElement|null,bank=form.elements.namedItem('Bank Name') as HTMLInputElement|null;
  if(!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(code)){if(branch?.dataset.auto){branch.value='';delete branch.dataset.auto;}return;}
  let info=ifscCache.get(code);
- if(info===undefined){try{const res=await fetch(`https://ifsc.razorpay.com/${code}`);info=res.ok?await res.json():null;}catch{info=null;}ifscCache.set(code,info);}
+ if(info===undefined){let fetched:{BANK?:string;BRANCH?:string;CITY?:string}|null=null;try{const res=await fetch(`https://ifsc.razorpay.com/${code}`);fetched=res.ok?await res.json():null;}catch{fetched=null;}info=fetched;ifscCache.set(code,info);}
  if(input.value.trim().toUpperCase()!==code)return;   /* user kept typing */
  if(!info){if(branch&&!branch.value)branch.placeholder='IFSC not found – enter branch manually';return;}
  if(branch&&(!branch.value||branch.dataset.auto)){branch.value=[info.BRANCH,info.CITY].filter(Boolean).join(', ');branch.dataset.auto='1';branch.dispatchEvent(new Event('change',{bubbles:true}));}
