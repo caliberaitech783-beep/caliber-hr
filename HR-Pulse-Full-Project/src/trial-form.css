@@ -47,3 +47,4 @@
 .tf-trial-history ul{padding-left:0;list-style:none}
 .tf-trial-history .tf-trial-result{display:grid;gap:3px;margin:7px 0 0;padding:9px 11px;border:1px solid;border-left-width:4px;border-radius:6px}
 .tf-trial-result>b{font-size:13px}.tf-trial-result-date{font-weight:600}.tf-trial-result-details{font-size:11px}
+.tf-view-fields{border:0;padding:0;margin:0;min-width:0}.tf-view-fields:disabled .tf input,.tf-view-fields:disabled .tf select{opacity:1;color:#334155;background:#fff}

@@ -1,4 +1,4 @@
-import TrialAadhaarHistory from './TrialAadhaarHistory';
+import TrialAadhaarHistory,{type TrialCheck} from './TrialAadhaarHistory';
 import FormInput from './BirthDateInput';
 import {ageText} from './age';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
@@ -35,13 +35,14 @@ const Radio=({name,options}:{name:string;options:string[]})=><span className="tf
 const YesNo=({name}:{name:string})=><select name={name} defaultValue=""><option value="">Select</option><option>Yes</option><option>No</option></select>;
 export default function TrialForm({selection,onPassed,canManage=false}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void;canManage?:boolean}){
  const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return localStorage.getItem(DRAFT_KEY+'.no')||sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[candidatePhoto,setCandidatePhoto]=useState<string>(''),[dobValue,setDobValue]=useState(''),photoInput=useRef<HTMLInputElement>(null),pendingHandoff=useRef<TrialHandoff|null>(null),copyRef=useRef<(()=>void)|null>(null),[popup,setPopup]=useState<{result:string;message:string;connected:string[];recipients:number;bot?:string;configured?:boolean;issues?:string[]}|null>(null),[saving,setSaving]=useState(false);
+ const[trialCheck,setTrialCheck]=useState<TrialCheck>({aadhaar:'',complete:false,pending:false,blocked:false,error:false}),historyRef=useRef(trialCheck);historyRef.current=trialCheck;
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{localStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}
  const heading=`${companyShort[selection.company]||selection.company||'CMLL'}  –  ${(selection.site||'SITE').toUpperCase()}`;
  /* After the Aadhaar is read into the hidden joining-style fields, copy them into the trial form and open it. */
  /* Autosave: every change is kept in this browser (per form no.) so a refresh, notification or navigation does not lose the form. */
  const AUTOSAVE=DRAFT_KEY+'.autosave';
  const snapshot=()=>{const f=form.current;if(!f)return null;const values:Record<string,string>={},checks:Record<string,boolean>={};for(const el of Array.from(f.elements)){if(!(el instanceof HTMLInputElement||el instanceof HTMLSelectElement||el instanceof HTMLTextAreaElement)||!el.name||el.type==='file')continue;if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type)){checks[el.name+'|'+el.value]=el.checked;continue;}values[el.name]=el.value;}return {formNo:no.current,step,values,checks,photo:candidatePhoto,savedAt:Date.now()};};
- const persist=()=>{try{const snap=snapshot();if(snap)localStorage.setItem(AUTOSAVE,JSON.stringify(snap));}catch{/* storage full or unavailable */}};
+ const persist=()=>{if(historyRef.current.blocked)return;try{const snap=snapshot();if(snap)localStorage.setItem(AUTOSAVE,JSON.stringify(snap));}catch{/* storage full or unavailable */}};
  const applySnapshot=(saved:TrialSnapshot)=>{const f=form.current;if(!f||!saved.formNo)return;{if(saved.formNo!==no.current){no.current=saved.formNo;try{localStorage.setItem(DRAFT_KEY+'.no',saved.formNo);}catch{/* ignore */}}for(const [name,value] of Object.entries(saved.values||{})){const el=f.elements.namedItem(name) as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|RadioNodeList|null;if(el&&!(el instanceof RadioNodeList)&&'value' in el){el.value=value;if(/birth|aadhaar/i.test(name))el.dispatchEvent(new Event('input',{bubbles:true}));}}
    for(const [key,checked] of Object.entries(saved.checks||{})){const [name,value]=key.split('|');const boxes:HTMLInputElement[]=Array.prototype.slice.call(f.querySelectorAll('input'));const box=boxes.find(b=>b.name===name&&b.value===value);if(box)box.checked=checked;}
    setCandidatePhoto(saved.photo||'');setStep(saved.step===1?1:0);setDobValue((saved.values||{})['Date of birth / Age']||'');}};
@@ -57,17 +58,18 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
  useEffect(()=>{const f=form.current;if(!f)return;const post=f.elements.namedItem('Post applied for') as RadioNodeList|null;if(post&&!post.value&&['Driver','Operator'].includes(selection.department))post.value=selection.department;},[selection.department,step]);
  /* Named drafts: kept in this browser until the trial form is saved or the draft is deleted. */
  const[drafts,setDrafts]=useState<TrialDraft[]>(()=>listTrialDrafts()),[showDrafts,setShowDrafts]=useState(false),[selectedDrafts,setSelectedDrafts]=useState<Set<string>>(new Set()),[draftMsg,setDraftMsg]=useState('');
- function saveDraft(){const snap=snapshot();if(!snap)return;const name=snap.values['Name of candidate']||'';upsertTrialDraft({...snap,name,site:selection.site,company:selection.company,department:selection.department});setDrafts(listTrialDrafts());setDraftMsg(`Draft ${snap.formNo} saved${name?' for '+name:''} · ${new Date().toLocaleTimeString()}`);setError('');}
+ function saveDraft(){if(trialCheck.blocked||trialCheck.pending){setError('This candidate has already passed, or the previous-result check is still running. A new trial cannot be saved.');return;}const snap=snapshot();if(!snap)return;const name=snap.values['Name of candidate']||'';upsertTrialDraft({...snap,name,site:selection.site,company:selection.company,department:selection.department});setDrafts(listTrialDrafts());setDraftMsg(`Draft ${snap.formNo} saved${name?' for '+name:''} · ${new Date().toLocaleTimeString()}`);setError('');}
  function resumeDraft(d:TrialDraft){no.current=d.formNo;try{localStorage.setItem(DRAFT_KEY+'.no',d.formNo);}catch{/* ignore */}const f=form.current;if(f){f.reset();for(const el of Array.from(f.elements)){if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type))el.checked=false;}}applySnapshot(d);persist();setShowDrafts(false);setDraftMsg(`Draft ${d.formNo} opened – continue and click Save Trial Form when done.`);}
  function deleteDrafts(formNos:string[]){if(!formNos.length||!window.confirm(`Delete ${formNos.length} trial draft${formNos.length>1?'s':''}? Saved details will be removed from this browser.`))return;removeTrialDrafts(formNos);setDrafts(listTrialDrafts());setSelectedDrafts(new Set());}
  async function save(){const f=form.current;if(!f)return;setError('');const data:Record<string,string>={};for(const el of Array.from(f.elements)){if(!(el instanceof HTMLInputElement||el instanceof HTMLSelectElement||el instanceof HTMLTextAreaElement)||!el.name||el.type==='file')continue;if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type)){if(el.checked)data[el.name]=(data[el.name]?data[el.name]+', ':'')+el.value;continue;}data[el.name]=el.value;}
+  const aadhaar=digits(data['Aadhaar no.']||'',12);if(trialCheck.blocked){setError('This candidate has already passed. View the previous result or start another trial.');return;}if(!trialCheck.complete||trialCheck.aadhaar!==aadhaar||trialCheck.pending||trialCheck.error){setError('Enter the 12-digit Aadhaar number and wait for the previous-result check before saving.');return;}
   if(!data['Name of candidate']){setError('Candidate name is required.');return;}
   if(!data['Result']){setError('Select the trial Result (PASS / FAIL) before saving.');return;}
   const record={formNo:no.current,heading,...selection,savedAt:new Date().toISOString(),fields:data,photo:candidatePhoto||undefined};
-  try{const list=JSON.parse(localStorage.getItem(DRAFT_KEY)||'[]');list.unshift(record);localStorage.setItem(DRAFT_KEY,JSON.stringify(list.slice(0,200)));}catch{/* ignore */}
+
   const grant=savedSession()?.grant;if(!grant){setError('Sign in again to save the trial form.');return;}
   setSaving(true);let tg:{result:string;message:string;connected:string[];recipients:number;bot?:string;configured?:boolean;issues?:string[]}|null=null;
-  try{localStorage.removeItem(AUTOSAVE);const out=await api<{result:string;telegram:{recipients:number;connected:string[];message:string;bot?:string;configured?:boolean;issues?:string[]}}>(grant,'telegram/trial-forms','POST',{formNo:no.current,heading,site:selection.site,company:selection.company,department:selection.department,fields:data});tg={result:out.result,...out.telegram};setPopup(tg);removeTrialDrafts([no.current]);}
+  try{const out=await api<{result:string;telegram:{recipients:number;connected:string[];message:string;bot?:string;configured?:boolean;issues?:string[]}}>(grant,'telegram/trial-forms','POST',{formNo:no.current,heading,site:selection.site,company:selection.company,department:selection.department,fields:data});tg={result:out.result,...out.telegram};try{const list=JSON.parse(localStorage.getItem(DRAFT_KEY)||'[]');list.unshift(record);localStorage.setItem(DRAFT_KEY,JSON.stringify(list.slice(0,200)));}catch{/* ignore */}localStorage.removeItem(AUTOSAVE);setPopup(tg);removeTrialDrafts([no.current]);}
   catch(e){setError((e as Error).message);setSaving(false);return;}
   finally{setSaving(false);}
   if(data['Result']==='PASS'){const v=(n:string)=>(f.elements.namedItem(n) as HTMLInputElement|null)?.value||'',dobRaw=v('Date of Birth'),post=data['If PASS – recommended for']||data['Post applied for']||selection.department;
@@ -93,7 +95,7 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
     <div className="joining-actions"><button type="button" disabled>Previous</button><button type="button" onClick={saveDraft}><Save/> Save Draft</button><button type="button" className="next" onClick={()=>setStep(1)}>Save &amp; Continue</button></div>
    </div>
    <div hidden={step!==1}>
-    <div className="tf">
+    <fieldset className="tf-view-fields" disabled={trialCheck.blocked}><div className="tf">
      <div className="tf-hd"><b>{heading.split('  –  ')[0]}</b><span className="tf-site">{heading.split('  –  ')[1]}</span></div>
      <h3>TRIAL JOINING FORM – DRIVER &amp; OPERATOR</h3><p className="tf-note">Candidate joins only after the vehicle / machine trial result is PASS.</p>
      <h4>1. CANDIDATE DETAILS</h4>
@@ -102,7 +104,7 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
        {candidatePhoto?<><img src={candidatePhoto} alt="Candidate"/><div className="tf-photo-actions"><button type="button" onClick={()=>photoInput.current?.click()}>Change</button><button type="button" aria-label="Remove photo" onClick={()=>setCandidatePhoto('')}><X/></button></div></>:<button type="button" className="tf-photo-upload" onClick={()=>photoInput.current?.click()}><Camera/><span>Upload photo</span><small>Camera or gallery</small></button>}</td></tr>
       <Row label="Name of candidate"/><Row label="Father's name"/><Row label="Date of birth / Age"><span className="tf-dob"><FormInput birthDate showAge={false} name="Date of birth / Age" placeholder="DD/MM/YYYY" onBirthDateValue={setDobValue} onChange={event=>{const original=form.current?.elements.namedItem('Date of Birth') as HTMLInputElement|null;if(original)original.value=event.target.value;}}/><span className="tf-age" aria-live="polite">{ageText(dobValue)?`Age: ${ageText(dobValue)}`:''}</span></span></Row>
       <Row label="Mobile no."><input name="Mobile no." inputMode="numeric" maxLength={10} placeholder="10-digit mobile" onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,10);}}/></Row>
-      <Row label="Aadhaar no."><FormInput name="Aadhaar no." aria-label="Aadhaar no." inputMode="numeric" maxLength={12} onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,12);}}/><TrialAadhaarHistory form={form} currentFormNo={no.current}/></Row>
+      <Row label="Aadhaar no."><FormInput name="Aadhaar no." aria-label="Aadhaar no." inputMode="numeric" maxLength={12} onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,12);}}/><TrialAadhaarHistory form={form} currentFormNo={no.current} onCheck={setTrialCheck}/></Row>
       <Row label="Address"/>
       <Row label="Post applied for" span={2}><Radio name="Post applied for" options={['Driver','Operator']}/></Row>
       <Row label="Vehicle / equipment for trial" span={2}><Chk name="Vehicle / equipment for trial" options={['Dumper/Tipper','Excavator','Loader','Dozer','Grader']}/><input name="Other equipment" className="tf-inline" placeholder="Other"/></Row>
@@ -128,8 +130,9 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
      </tbody></table>
      <div className="tf-sign"><span>DRIVER TRAINER</span><span>HR MANAGER</span><span>PM SIR</span></div>
     </div>
+    </fieldset>
     {error&&<p className="employee-import-error" role="alert">{error}</p>}{saved&&<p className="shift-success" role="status">{saved}</p>}
-    <div className="joining-actions"><button type="button" onClick={()=>setStep(0)}>Previous</button><button type="button" onClick={()=>{if(!window.confirm('Clear this trial form and start a new one? Unsaved details will be removed.'))return;try{localStorage.removeItem(AUTOSAVE);localStorage.removeItem(DRAFT_KEY+'.no');sessionStorage.removeItem(DRAFT_KEY+'.no');}catch{/* ignore */}window.location.reload();}}>New form</button><button type="button" onClick={saveDraft}><Save/> Save Draft</button><button type="button" onClick={()=>window.print()}><Printer/> Print / Download PDF</button><button type="submit" className="next" disabled={saving}><Save/> {saving?'Saving…':'Save Trial Form'}</button></div>
+    <div className="joining-actions"><button type="button" onClick={()=>setStep(0)}>Previous</button><button type="button" onClick={()=>{if(!trialCheck.blocked&&!window.confirm('Clear this trial form and start a new one? Unsaved details will be removed.'))return;try{localStorage.removeItem(AUTOSAVE);localStorage.removeItem(DRAFT_KEY+'.no');sessionStorage.removeItem(DRAFT_KEY+'.no');}catch{/* ignore */}window.location.reload();}}>{trialCheck.blocked?'Start another trial':'New form'}</button><button type="button" disabled={trialCheck.blocked||trialCheck.pending} onClick={saveDraft}><Save/> Save Draft</button><button type="button" onClick={()=>window.print()}><Printer/> Print / Download PDF</button><button type="submit" className="next" disabled={saving||trialCheck.blocked||trialCheck.pending||!trialCheck.complete||trialCheck.error}><Save/> {saving?'Saving…':'Save Trial Form'}</button></div>
    </div>
   </div>
  </form>

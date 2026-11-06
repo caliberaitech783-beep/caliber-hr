@@ -216,7 +216,7 @@ export function createTelegram(pool){
    const rows=(await pool.query(`SELECT t.code,t.data FROM hr_records t WHERE t.kind='trialForms' AND t.status='ACTIVE' AND t.code<>'SETTINGS' AND t.code<>$2
     AND regexp_replace(COALESCE(t.data->'fields'->>'Aadhaar no.',t.data->'fields'->>'Aadhaar No.',t.data->'fields'->>'Aadhaar No. *',''),'[^0-9]','','g')=$1
     AND ($3::text[] IS NULL OR lower(t.data->>'site')=ANY($3) OR EXISTS(SELECT 1 FROM hr_records s WHERE s.kind='sites' AND (lower(s.code)=ANY($3) OR lower(s.name)=ANY($3) OR s.id::text=ANY($3)) AND (lower(s.name)=lower(t.data->>'site') OR lower(s.code)=lower(t.data->>'site'))))
-    ORDER BY t.updated_at DESC LIMIT 20`,[aadhaar,exclude,scope])).rows;
+    ORDER BY (t.data->'fields'->>'Result'='PASS') DESC,t.updated_at DESC LIMIT 20`,[aadhaar,exclude,scope])).rows;
    return {matches:rows.filter(row=>['PASS','FAIL'].includes(row.data?.fields?.Result)).map(row=>({formNo:row.code,result:row.data.fields.Result,site:row.data.site||'',trialDate:row.data.fields['Trial date & time']||'',savedAt:row.data.savedAt||'',post:row.data.fields['Post applied for']||row.data.department||'',failureReason:row.data.fields.Result==='FAIL'?(row.data.fields['If FAIL – reason']||''):''}))};
   }
   if(route==='trial-forms'&&method==='POST'){
@@ -226,7 +226,13 @@ export function createTelegram(pool){
    const record={formNo,heading:String(input.heading||'').slice(0,120),site:String(input.site||'').slice(0,80),company:String(input.company||'').slice(0,120),department:String(input.department||'').slice(0,80),fields:Object.fromEntries(Object.entries(f).slice(0,80).map(([k,v])=>[String(k).slice(0,80),String(v??'').slice(0,500)])),savedBy:profile.actor,savedAt:new Date().toISOString()};
    const message=trialResultMessage(record,profile.name||profile.actor);
    const recipients=(await trialRecipients(pool)).map(recipientActor);
-   let id;await tx(async db=>{const old=(await db.query("SELECT id FROM hr_records WHERE kind='trialForms' AND code=$1",[formNo])).rows[0];
+   let id;await tx(async db=>{
+    const aadhaar=String(f['Aadhaar no.']||f['Aadhaar No.']||f['Aadhaar No. *']||'').replace(/\D/g,'');
+    if(!/^\d{12}$/.test(aadhaar))fail('Enter a 12-digit Aadhaar number');
+    await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['trial-aadhaar:'+aadhaar]);
+    const passed=(await db.query("SELECT id FROM hr_records WHERE kind='trialForms' AND status='ACTIVE' AND data->'fields'->>'Result'='PASS' AND regexp_replace(COALESCE(data->'fields'->>'Aadhaar no.',data->'fields'->>'Aadhaar No.',data->'fields'->>'Aadhaar No. *',''),'[^0-9]','','g')=$1 LIMIT 1",[aadhaar])).rows[0];
+    if(passed)fail('This candidate has already passed. View the previous result or start another trial; another trial cannot be saved.',409);
+    const old=(await db.query("SELECT id FROM hr_records WHERE kind='trialForms' AND code=$1",[formNo])).rows[0];
     if(old){id=old.id;await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[name,record,profile.actor,id]);}
     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[formNo,name,record,profile.actor])).rows[0].id;
     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_TRIAL_FORM','trialForms',$2,$3)",[profile.actor,id,{formNo,result}]);

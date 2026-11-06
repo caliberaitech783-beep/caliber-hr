@@ -79,3 +79,17 @@ test('trial Aadhaar history is scoped, excludes the current form and returns onl
  assert.deepEqual(values,['123456789012','TF/current',['ncl-jayant']]);assert.match(query,/t.code<>\$2/);assert.match(query,/regexp_replace/);assert.match(query,/\$3::text\[\] IS NULL/);assert.match(query,/EXISTS\(SELECT 1 FROM hr_records s/);
  assert.deepEqual(out,{matches:[{formNo:'TF/old',result:'FAIL',site:'Jayant OB East',trialDate:'2026-10-31T12:30',savedAt:'2026-11-01',post:'Operator',failureReason:'Unsafe handling'}]});assert.ok(!JSON.stringify(out).includes('123456789012'));assert.ok(!JSON.stringify(out).includes('private'));
 });
+
+test('already-passed Aadhaar cannot create a trial, overwrite it, or queue Telegram',async()=>{
+ for(const result of ['PASS','FAIL']){
+  const sql=[];const db={query:async(query)=>{sql.push(query);if(query.includes("code='SETTINGS'"))return {rows:[]};if(query.includes("data->'fields'->>'Result'='PASS'"))return {rows:[{id:'passed'}]};return {rows:[]};},release(){}};
+  const pool={query:db.query,connect:async()=>db};
+  await assert.rejects(createTelegram(pool).telegramApi({actor:'hr',permissions:{hrDesktopAccess:['Employee Master']}},'trial-forms','POST',{formNo:'TF/new',fields:{'Name of candidate':'Candidate','Aadhaar no.':'123456789012',Result:result}}),e=>e.status===409&&/already passed/.test(e.message));
+  assert.ok(sql.some(query=>query.includes('pg_advisory_xact_lock')));assert.ok(sql.includes('ROLLBACK'));assert.ok(!sql.some(query=>/INSERT INTO|UPDATE hr_records|hr_telegram_outbox/.test(query)));
+ }
+});
+test('a candidate without a previous PASS can save a re-trial',async()=>{
+ const sql=[];const db={query:async(query)=>{sql.push(query);if(query.startsWith('INSERT INTO hr_records'))return {rows:[{id:'new'}]};return {rows:[]};},release(){}};
+ const out=await createTelegram({query:db.query,connect:async()=>db}).telegramApi({actor:'hr',permissions:{hrDesktopAccess:['Employee Master']}},'trial-forms','POST',{formNo:'TF/retrial',fields:{'Name of candidate':'Candidate','Aadhaar no.':'123456789012',Result:'FAIL'}});
+ assert.equal(out.saved,true);assert.ok(sql.includes('COMMIT'));assert.ok(sql.some(query=>query.startsWith('INSERT INTO hr_records')));
+});
