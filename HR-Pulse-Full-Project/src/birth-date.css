@@ -18,3 +18,15 @@
 @media(max-width:600px){.birth-date-pair{grid-template-columns:1fr;gap:5px}.birth-age-heading{position:static}.birth-age-field{gap:3px}}
 
 .local-employee-review-form .joining-table.family-details-table input,.local-employee-review-form .joining-table.family-details-table select{min-width:0}
+/* Keep the calculated duration beside the dates without widening the experience form. */
+.joining-table.experience-table{table-layout:fixed;min-width:960px}
+.joining-table.experience-table th,.joining-table.experience-table td{padding:6px 5px}
+.joining-table.experience-table th:first-child{width:40px}
+.joining-table.experience-table th:nth-child(2){width:16%}
+.joining-table.experience-table th:nth-child(3){width:14%}
+.joining-table.experience-table th:nth-child(4),.joining-table.experience-table th:nth-child(5){width:13%}
+.joining-table.experience-table th:nth-child(6){width:18%}
+.joining-table.experience-table th:nth-child(7){width:10%}
+.joining-table.experience-table th:nth-child(8){width:12%}
+.joining-table.experience-table input,.local-employee-review-form .joining-table.experience-table input{min-width:0;width:100%;box-sizing:border-box}
+.joining-table.experience-table .work-duration{min-height:37px;padding:8px;border-radius:6px}

@@ -398,6 +398,14 @@ describe('Employee Master tabs',()=>{
    fireEvent.input(input,{target:{value:'20255-06-15'}});expect(input.value).toBe('2025-06-15');
    fireEvent.input(input,{target:{value:'2024-01-31'}});expect(input.value).toBe('2024-01-31');
   }
+  expect(screen.getByRole('columnheader',{name:'Work Duration'})).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('From Date 1'),{target:{value:'2020-01-15'}});
+  fireEvent.change(screen.getByLabelText('To Date 1'),{target:{value:'2023-03-20'}});
+  expect(screen.getByLabelText('Work Duration 1').textContent).toBe('3 years, 2 months, 5 days');
+  fireEvent.change(screen.getByLabelText('To Date 1'),{target:{value:'2019-01-15'}});
+  expect(screen.getByLabelText('Work Duration 1').textContent).toBe('Check date range');
+  fireEvent.change(screen.getByLabelText('To Date 1'),{target:{value:''}});
+  expect(screen.getByLabelText('Work Duration 1').textContent).toBe('—');
   expect(screen.getByLabelText('Last Drawn Salary 1')).toBeTruthy();
   expect(screen.getByLabelText('Reason for Leaving 1')).toBeTruthy();
   expect(screen.queryByLabelText('Last Drawn Salary / Reason for Leaving 1')).toBeNull();
