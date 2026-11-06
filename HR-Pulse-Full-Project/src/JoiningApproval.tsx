@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {Send,X} from 'lucide-react';
 import {api,savedSession} from './api';
 import './trial-form.css';
@@ -13,28 +14,30 @@ export function clearJoiningApproval(draftId:string){try{localStorage.removeItem
 export async function joiningApprovalRequired():Promise<boolean>{const grant=savedSession()?.grant;if(!grant)return false;try{const r=await api<{enabled:boolean}>(grant,'telegram/joining-approvers');return !!r.enabled;}catch{return false;}}
 
 export function JoiningApprovalGate({draftId,info,onApproved,onClose}:{draftId:string;info:{candidate:string;post:string;site:string;company:string};onApproved:(state:JoiningApprovalState)=>void;onClose:()=>void}){
- const[status,setStatus]=useState<Status|null>(null),[otp,setOtp]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[note,setNote]=useState('');
- const done=useRef(false);
+ const[status,setStatus]=useState<Status|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[note,setNote]=useState('');
+ const done=useRef(false),otpRef=useRef<HTMLInputElement>(null);
+ const readOtp=()=>(otpRef.current?.value||'').replace(/\D/g,'');
  const grant=()=>{const g=savedSession()?.grant;if(!g)throw new Error('Sign in again before requesting approval.');return g;};
- async function request(resend=false){setBusy(true);setError('');try{const r=await api<Status>(grant(),'telegram/joining-approval','POST',{draftId,...info});setStatus(r);if(!r.required){finish({status:'APPROVED',approvedBy:'Approval not required'});return;}if(r.status==='APPROVED'){finish({status:'APPROVED',approvedBy:r.approvedBy,approvedAt:r.approvedAt});return;}setNote(resend?'New OTP sent.':'');setOtp('');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ async function request(resend=false){setBusy(true);setError('');try{const r=await api<Status>(grant(),'telegram/joining-approval','POST',{draftId,...info});setStatus(r);if(!r.required){finish({status:'APPROVED',approvedBy:'Approval not required'});return;}if(r.status==='APPROVED'){finish({status:'APPROVED',approvedBy:r.approvedBy,approvedAt:r.approvedAt});return;}setNote(resend?'New OTP sent.':'');if(otpRef.current)otpRef.current.value='';}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  function finish(state:JoiningApprovalState){if(done.current)return;done.current=true;saveJoiningApproval(draftId,state);onApproved(state);}
- async function verify(){if(otp.replace(/\D/g,'').length!==6){setError('Enter the 6-digit OTP.');return;}setBusy(true);setError('');try{const r=await api<{status:string;approvedBy:string;approvedAt:string}>(grant(),'telegram/joining-approval/verify','POST',{draftId,otp});finish({status:'APPROVED',approvedBy:r.approvedBy,approvedAt:r.approvedAt});}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ async function verify(){const otp=readOtp();if(otp.length!==6){setError('Enter the 6-digit OTP.');return;}setBusy(true);setError('');try{const r=await api<{status:string;approvedBy:string;approvedAt:string}>(grant(),'telegram/joining-approval/verify','POST',{draftId,otp});finish({status:'APPROVED',approvedBy:r.approvedBy,approvedAt:r.approvedAt});}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  useEffect(()=>{void request();},[]);
  useEffect(()=>{const t=setInterval(async()=>{if(done.current)return;try{const r=await api<Status>(grant(),'telegram/joining-approval/status','POST',{draftId});if(r.status==='APPROVED'){finish({status:'APPROVED',approvedBy:r.approvedBy,approvedAt:r.approvedAt});return;}setStatus(s=>({...(s||{required:true}),...r}));}catch{/* keep polling */}},5000);return()=>clearInterval(t);},[draftId]);
  const rejected=status?.status==='REJECTED',expired=!!status?.expired;
- return <div className="salary-ov" onClick={onClose}><div className="salary-md tf-tg ja-box" role="dialog" aria-label="Joining approval" onClick={e=>e.stopPropagation()}>
+ const stop=(e:{stopPropagation:()=>void})=>e.stopPropagation();
+ return createPortal(<div className="salary-ov" onClick={onClose}><div className="salary-md tf-tg ja-box" role="dialog" aria-label="Joining approval" onClick={stop} onInput={stop} onChange={stop} onKeyDown={stop}>
   <div className="salary-mh"><h4><Send/> Joining approval – Telegram</h4><button type="button" className="salary-x" aria-label="Close" onClick={onClose}><X/></button></div>
   <p>Approval request for <b>{info.candidate||'candidate'}</b>{info.post?` · ${info.post}`:''}{info.site?` · ${info.site}`:''} has been sent to {status?.approvers?.length?status.approvers.join(', '):'the approver'} on Telegram with a one-time OTP. The approver can tap <b>Approve</b> in Telegram, or tell you the OTP to enter below.</p>
   {status?.notConnected?.length?<p className="employee-import-error">Not connected to Telegram yet: {status.notConnected.join(', ')} – they must open the Joining Approval bot and tap Start (Approval Master → Joining Approval → Get connect link).</p>:null}
   {status?.issues?.length?<p className="employee-import-error">{status.issues.join(' · ')}</p>:null}
   {rejected?<p className="employee-import-error" role="alert">Rejected by {status?.approvedBy||'approver'}. Correct the details and click Save &amp; Continue again to resend.</p>:
-  <div className="ja-otp"><label>OTP<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} placeholder="6-digit OTP" onChange={e=>setOtp(e.target.value.replace(/\D/g,'').slice(0,6))} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();void verify();}}}/></label>
+  <div className="ja-otp"><label>OTP<input ref={otpRef} type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} defaultValue="" placeholder="6-digit OTP" onInput={e=>{const el=e.currentTarget;el.value=el.value.replace(/\D/g,'').slice(0,6);}} onKeyDown={e=>{e.stopPropagation();if(e.key==='Enter'){e.preventDefault();void verify();}}}/></label>
    <button type="button" className="next" disabled={busy||expired} onClick={()=>void verify()}>Verify OTP</button>
    <button type="button" disabled={busy} onClick={()=>void request(true)}>Resend OTP</button></div>}
   {expired&&!rejected&&<p className="employee-import-error">OTP expired – click Resend OTP.</p>}
   {error&&<p className="employee-import-error" role="alert">{error}</p>}{note&&<p className="employee-import-status">{note}</p>}
   <p className="help-text">Waiting for approval… this box updates automatically when the approver taps Approve.</p>
- </div></div>;
+ </div></div>,document.body);
 }
 
 export function JoiningApproverMaster({grant}:{grant:string}){
