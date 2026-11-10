@@ -14,6 +14,13 @@ import {assignedSites,siteIds,scopeSql} from './scope.mjs';
 import {createTelegramNotifier} from './telegram-notifications.mjs';
 export function problem(message,status=400) { return Object.assign(new Error(message),{status}); }
 const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || '');
+const employeeDetailFields={
+  'Full Name *':'name','Mobile *':'mobile','Candidate E-mail *':'email','Date of Birth':'dateOfBirth',
+  'Joining Date *':'joiningDate','Employment Type':'category','Department *':'departmentId',
+  'Designation *':'designationId',Grade:'gradeId','Shift *':'shiftId',
+};
+const employeeCategories=new Map([['fixed-term','Contract'],['fixed term','Contract'],['temporary','Contract'],...modules.employees.fields.find(field=>field.key==='category').options.map(value=>[value.toLowerCase(),value])]);
+const lockedEmployeeDetails=new Set(['Employee Code','Site *','Status','Employment Status']);
 export function createService(pool,{telegram=createTelegramNotifier()}={}) {
   const employeeDocuments=createEmployeeDocuments(pool);
   const audit = (db,actor,action,kind,id,detail={}) => db.query('INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,$3,$4,$5)',[actor,action,kind,id,detail]);
@@ -170,6 +177,39 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       return result.rows;
     },
     async save(profile,kind,data,id) {return transaction(db=>save(db,profile,kind,data,id));},
+    async updateEmployeeDetails(profile,id,{version,officeData}) {
+      authorize(profile,'employees',true);
+      if(!uuid(id))throw problem('Invalid employee ID');
+      if(!officeData||typeof officeData!=='object'||Array.isArray(officeData))throw problem('Employee details are required');
+      const changes=Object.entries(officeData);
+      if(!changes.length||changes.length>250||changes.some(([key,value])=>key.length>150||typeof value!=='string'||value.length>4000))throw problem('Invalid employee details');
+      if(changes.some(([key])=>lockedEmployeeDetails.has(key)))throw problem('Use Employee Transfer for posting site changes. Employee code and status cannot be edited here.');
+      return transaction(async db=>{
+        const record=(await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind='employees' FOR UPDATE",[id])).rows[0];
+        if(!record)throw problem('Employee not found',404);
+        await locationAccess(db,profile,'employees',record.data,id);
+        if(record.status!=='ACTIVE')throw problem('Only active employees can be edited here',409);
+        if(record.version!==Number(version))throw problem('This employee changed. Reload the employee list before editing again.',409);
+
+        const coreChanges={};
+        for(const [header,value] of changes){
+          if(!Object.hasOwn(employeeDetailFields,header))continue;
+          const field=employeeDetailFields[header];
+          coreChanges[field]=field==='category'?(employeeCategories.get(value.trim().toLowerCase())??value):value;
+        }
+        const hasReferenceChanges=Object.keys(coreChanges).some(key=>key.endsWith('Id'));
+        const resolved=hasReferenceChanges?await resolveImportReferences(db,'employees',coreChanges):coreChanges;
+        const data={...record.data,officeData:{...record.data.officeData,...officeData}};
+        if(Object.keys(resolved).length){
+          const validated=validate('employees',{...record.data,code:record.code,name:record.name,...resolved});
+          for(const key of Object.keys(resolved))data[key]=validated[key];
+          if(hasReferenceChanges)await references(db,'employees',data,id);
+        }
+        const saved=(await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4 RETURNING *',[data.name??record.name,data,profile.actor,id])).rows[0];
+        await audit(db,profile.actor,'UPDATE','employees',id,{code:record.code,fields:Object.keys(officeData)});
+        return saved;
+      });
+    },
     async cancel(profile,kind,id,version){
       authorize(profile,kind,true);if(!['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)||!uuid(id))throw problem('Invalid cancellation');
        return transaction(async(db,afterCommit)=>{

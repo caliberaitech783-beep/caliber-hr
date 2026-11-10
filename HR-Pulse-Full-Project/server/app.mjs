@@ -17,7 +17,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
     if(req.headers.origin&&req.headers.origin!==allowedOrigin)return send(403,{error:'Origin not allowed'});
     if(req.headers.origin)res.setHeader('Access-Control-Allow-Origin',allowedOrigin);
     if(req.method==='OPTIONS'){
-      res.setHeader('Access-Control-Allow-Methods','GET, POST, PUT, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods','GET, POST, PUT, PATCH, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type');
       res.setHeader('Access-Control-Max-Age','600');return res.writeHead(204).end();
     }
@@ -73,6 +73,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         if(!id&&req.method==='GET')result=await service.list(profile,kind,url.searchParams);
         else if(!id&&req.method==='POST')result=await service.save(profile,kind,await body(req));
         else if(id&&!action&&req.method==='PUT')result=await service.save(profile,kind,await body(req),id);
+        else if(id&&!action&&kind==='employees'&&req.method==='PATCH')result=await service.updateEmployeeDetails(profile,id,await body(req));
         else if(action&&req.method==='POST'){const input=await body(req);result=await service[action](profile,kind,id,input.version);}
         else throw problem('Method not allowed',405);
       }else if(decision&&req.method==='POST')result=await service.decide(profile,decision[1],await body(req));
