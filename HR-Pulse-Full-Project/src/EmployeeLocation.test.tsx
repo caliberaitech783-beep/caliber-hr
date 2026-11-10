@@ -238,6 +238,42 @@ describe('Employee Master tabs',()=>{
   await waitFor(()=>expect(fetchMock).toHaveBeenCalled());
   expect(fetchMock.mock.calls.some(([url])=>String(url).includes('records/employees?page=1&search=&status=ACTIVE'))).toBe(true);
  });
+ it('edits the selected employee on a later page and keeps changes after a failed save',async()=>{
+  const first={id:'first',code:'EMP-01',name:'First Employee',status:'ACTIVE',version:2,data:{}};
+  const second={id:'second',code:'EMP-02',name:'Second Employee',status:'ACTIVE',version:4,data:{mobile:'9876543210',officeData:{Qualification:'B.Tech'}}};
+  const saved={...second,version:5,data:{mobile:'9999999999',officeData:{Qualification:'M.Tech','Mobile *':'9999999999'}}};
+  const notice=vi.fn();let attempts=0;
+  const fetchMock=vi.fn(async(url:string,options?:RequestInit)=>{
+   if(options?.method==='PATCH'){
+    attempts++;
+    return attempts===1?Response.json({error:'Try again'},{status:500}):Response.json(saved);
+   }
+   return Response.json({rows:[url.includes('page=2')?second:first],total:51,pageSize:50});
+  });
+  vi.stubGlobal('fetch',fetchMock);
+  try{
+   render(<EmployeeLocation grant="test-grant" notice={notice}/>);
+   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
+   fireEvent.click(await screen.findByRole('button',{name:'Next'}));
+   fireEvent.click(await screen.findByRole('button',{name:'Edit Second Employee (EMP-02)'}));
+   const editor=within(screen.getByRole('dialog',{name:'Edit employee details'}));
+   expect(editor.getByLabelText('Mobile')).toHaveValue('9876543210');
+   fireEvent.change(editor.getByLabelText('Mobile'),{target:{value:'9999999999'}});
+   fireEvent.click(editor.getByRole('button',{name:'Educational Details'}));
+   expect(editor.getByLabelText('Qualification')).toHaveValue('B.Tech');
+   fireEvent.change(editor.getByLabelText('Qualification'),{target:{value:'M.Tech'}});
+   fireEvent.click(editor.getByRole('button',{name:'Save changes'}));
+   expect(await editor.findByRole('alert')).toHaveTextContent('Try again');
+   expect(editor.getByLabelText('Qualification')).toHaveValue('M.Tech');
+   fireEvent.click(editor.getByRole('button',{name:'Save changes'}));
+   await waitFor(()=>expect(screen.queryByRole('dialog',{name:'Edit employee details'})).toBeNull());
+   const [url,options]=fetchMock.mock.calls.at(-1)!;
+   expect(url).toMatch(/records\/employees\/second$/);
+   expect(JSON.parse(String(options?.body))).toEqual({version:4,officeData:{'Mobile *':'9999999999',Qualification:'M.Tech'}});
+   expect(screen.getByText('9999999999')).toBeInTheDocument();
+   expect(notice).toHaveBeenCalledWith('Employee EMP-02 updated');
+  }finally{vi.unstubAllGlobals();}
+ });
  it('shows the requested tabs and the complete joining workflow',async()=>{
   const view=render(<EmployeeLocation/>);
   const labels=['Add Temp. Employee','Update Existing Employee','Employee Verify','Completed Form','Reports'];
