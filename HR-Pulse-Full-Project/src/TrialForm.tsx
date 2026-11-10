@@ -5,6 +5,7 @@ import {useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {Camera,Printer,Save,Send,X} from 'lucide-react';
 import {api,savedSession} from './api';
 import {AadhaarUpload} from './EmployeeLocation';
+import TrialWorkflowPreview from './trial-workflow-preview/TrialWorkflowPreview';
 import './trial-form.css';
 import {saveTrialHandoff,type TrialHandoff} from './trialHandoff';
 
@@ -37,7 +38,32 @@ function Row({label,children}:{label:string;children?:ReactNode}){
 const Chk=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="checkbox" name={name} value={o}/> {o}</label>)}</span>;
 const Radio=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="radio" name={name} value={o}/> {o}</label>)}</span>;
 const YesNo=({name}:{name:string})=><select name={name} defaultValue=""><option value="">Select</option><option>Yes</option><option>No</option></select>;
-export default function TrialForm({selection,onPassed,canManage=false}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void;canManage?:boolean}){
+type TrialFormProps = {
+ selection: TrialSelection;
+ onPassed?: (handoff: TrialHandoff) => void;
+ canManage?: boolean;
+};
+export default function TrialForm(props: TrialFormProps) {
+ const [showPreview, setShowPreview] = useState(false);
+ const [openedPreview, setOpenedPreview] = useState(false);
+ const profile = savedSession()?.profile;
+ const {company, site, department} = props.selection;
+ return <>
+  <div className="module-tabs" role="group" aria-label="Trial Form views">
+   <button type="button" className={showPreview?'':'selected'} aria-pressed={!showPreview} onClick={()=>setShowPreview(false)}>Current Trial Form</button>
+   <button type="button" className={showPreview?'selected':''} aria-pressed={showPreview} onClick={()=>{
+    setOpenedPreview(true);
+    setShowPreview(true);
+   }}>Trial workflow preview</button>
+  </div>
+  <div hidden={showPreview}><CurrentTrialForm {...props}/></div>
+  {openedPreview && <div hidden={!showPreview}>
+   <TrialWorkflowPreview owner={profile?.actor||profile?.username||'local'} name="" site={site} company={companyShort[company]||company} department={department}/>
+  </div>}
+ </>;
+}
+
+function CurrentTrialForm({selection,onPassed,canManage=false}:TrialFormProps){
  const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return localStorage.getItem(DRAFT_KEY+'.no')||sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[candidatePhoto,setCandidatePhoto]=useState<string>(''),[dobValue,setDobValue]=useState(''),photoInput=useRef<HTMLInputElement>(null),pendingHandoff=useRef<TrialHandoff|null>(null),copyRef=useRef<(()=>void)|null>(null),[popup,setPopup]=useState<{result:string;message:string;connected:string[];recipients:number;bot?:string;configured?:boolean;issues?:string[]}|null>(null),[saving,setSaving]=useState(false);
  const[trialCheck,setTrialCheck]=useState<TrialCheck>({aadhaar:'',complete:false,pending:false,blocked:false,error:false}),historyRef=useRef(trialCheck);historyRef.current=trialCheck;
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{localStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}

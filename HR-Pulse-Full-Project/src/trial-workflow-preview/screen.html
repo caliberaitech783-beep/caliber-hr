@@ -1,0 +1,143 @@
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><b id="company"></b><span>Trial Joining – Driver &amp; Operator</span><span class="sitepill" id="sitePill"></span></div>
+    <div class="who">
+      <label>Working as
+        <select id="role">
+          <option value="hr">Site HR</option>
+          <option value="trainer">Driver Trainer</option>
+          <option value="pm">PM</option>
+          <option value="rhr">Regional HR</option>
+          <option value="director">Director</option>
+        </select></label>
+      <label>Your name<input id="myName" type="text" placeholder="Name for sign-off" autocomplete="off"></label>
+    </div>
+  </header>
+
+  <p class="preview-label">Test preview · Use sample data only. Records stay in this browser. Approvals and Telegram messages are simulated.</p>
+  <nav class="pipe" id="pipe" aria-label="Workflow stages"></nav>
+
+  <div class="tabs" role="group" aria-label="Trial workflow" id="tabs">
+    <button data-tab="overview" class="on">All candidates</button>
+    <button data-tab="hr">Part 1 · Site HR</button>
+    <button data-tab="trainer">Part 2 · Driver Trainer<span class="badge" id="bTrainer" hidden></span></button>
+    <button data-tab="approve">Approvals<span class="badge" id="bApprove" hidden></span></button>
+  </div>
+
+  <!-- OVERVIEW -->
+  <section class="panel" id="v-overview">
+    <div class="panel-head">
+      <h2 id="ovTitle">All candidates</h2>
+      <div class="filters">
+        <input id="search" type="search" aria-label="Search candidates" placeholder="Search name, form no, mobile, referred by">
+        <button class="btn sm" id="tgPassList">Telegram: today's pass list</button>
+      </div>
+    </div>
+    <div id="ovList"></div>
+    <p class="offline" id="storeNote"></p>
+  </section>
+
+  <!-- PART 1 -->
+  <section class="panel" id="v-hr" hidden>
+    <div class="panel-head">
+      <h2>Part 1 – Candidate details &amp; document check</h2>
+      <div class="seg" id="hrMode"><button data-m="single" class="on">Single candidate</button><button data-m="bulk">Bulk trial (many candidates)</button></div>
+    </div>
+    <div id="hrRoleWarn" class="warn-note" hidden>Part 1 is filled by Site HR. Switch "Working as" to Site HR to submit.</div>
+
+    <form id="single" class="sheet" autocomplete="off">
+      <div class="sheet-title"><h3>TRIAL JOINING FORM – DRIVER &amp; OPERATOR</h3><span class="note">Candidate joins only after the vehicle / machine trial result is PASS and all approvals are done.</span></div>
+      <div class="secbar">1. Candidate details <em id="sFormNo" class="mono"></em></div>
+      <div class="grid-form">
+        <div class="rows">
+          <div class="row"><label for="f_name">Name of candidate *</label><div class="v"><input id="f_name" type="text" required></div></div>
+          <div class="row"><label for="f_father">Father's name</label><div class="v"><input id="f_father" type="text"></div></div>
+          <div class="row"><label for="f_dob">Date of birth</label><div class="v"><input id="f_dob" type="date"></div></div>
+          <div class="row"><label for="f_mobile">Mobile no. *</label><div class="v"><input id="f_mobile" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit mobile" required></div></div>
+          <div class="row"><label for="f_aadhaar">Aadhaar no.</label><div class="v"><input id="f_aadhaar" type="text" inputmode="numeric" maxlength="14" placeholder="XXXX XXXX XXXX"></div></div>
+          <div class="row"><label for="f_address">Address</label><div class="v"><input id="f_address" type="text"></div></div>
+        </div>
+        <div class="photo"><label for="f_photo"><span id="photoBox">Upload photo<br><span class="muted">camera or gallery</span></span><input id="f_photo" type="file" class="file-input" accept="image/jpeg,image/png,image/webp" aria-label="Upload candidate photo"></label></div>
+      </div>
+      <div class="rows" style="border:1px solid var(--line-strong);border-top:0;margin-top:-14px">
+        <div class="row"><div class="k">Post applied for</div><div class="v">
+          <label class="chk"><input type="radio" name="f_post" value="Driver" checked> Driver</label>
+          <label class="chk"><input type="radio" name="f_post" value="Operator"> Operator</label></div></div>
+        <div class="row"><div class="k">Vehicle / equipment for trial *</div><div class="v" id="f_veh"></div></div>
+        <div class="row"><label for="f_dl">Driving licence no. &amp; class</label><div class="v"><input id="f_dl" type="text" placeholder="DL number – class (HMV / LMV / Transport)"></div></div>
+        <div class="row"><label for="f_dlvalid">DL valid up to</label><div class="v"><input id="f_dlvalid" type="date"></div></div>
+        <div class="row"><label for="f_exp">Total experience (years)</label><div class="v"><input id="f_exp" type="text" inputmode="decimal"></div></div>
+        <div class="row"><label for="f_prev">Previous employer</label><div class="v"><input id="f_prev" type="text"></div></div>
+        <div class="row"><label for="f_trial">Trial date &amp; time *</label><div class="v"><input id="f_trial" type="datetime-local" required></div></div>
+        <div class="row"><label for="f_ref">Referred by</label><div class="v"><input id="f_ref" type="text"></div></div>
+      </div>
+
+      <div class="secbar">2. Document check (before trial) <em>No trial if the driving licence or medical fitness is missing</em></div>
+      <div class="scroll" style="border-color:var(--line-strong)"><table class="t" style="min-width:520px">
+        <thead><tr><th>Document</th><th style="width:140px">Seen (Yes / No)</th><th>Remarks</th></tr></thead>
+        <tbody id="f_docs"></tbody></table></div>
+
+      <div class="actions">
+        <button type="button" class="btn" id="sReset">Clear form</button>
+        <button type="submit" class="btn pri" id="sSubmit">Submit Part 1 → send to Driver Trainer</button>
+      </div>
+    </form>
+
+    <div id="bulk" class="sheet" hidden>
+      <div class="secbar">Trial batch – common details <em>applied to every candidate below</em></div>
+      <div class="common">
+        <label>Trial date &amp; time *<input id="b_trial" type="datetime-local"></label>
+        <label>Vehicle / equipment *<select id="b_veh"></select></label>
+        <label id="b_other_label" hidden>Other equipment<input id="b_other" type="text"></label>
+        <label>Post applied for<select id="b_post"><option>Driver</option><option>Operator</option></select></label>
+        <label>Referred by (default)<input id="b_ref" type="text" placeholder="Leave blank if each differs"></label>
+      </div>
+      <div class="secbar">Candidates <em>DL &amp; Aadhaar seen = document check</em></div>
+      <details>
+        <summary class="note" style="cursor:pointer">Paste rows from Excel</summary>
+        <p class="note">Column order: Name · Father's name · Mobile · Aadhaar · DL no. &amp; class · DL valid (DD-MM-YYYY) · Experience (yrs) · Referred by</p>
+        <textarea class="paste" id="b_paste" aria-label="Paste rows from Excel" placeholder="Copy the rows in Excel and paste here"></textarea>
+        <div class="actions"><button class="btn sm" id="b_pasteBtn" type="button">Add pasted rows</button></div>
+      </details>
+      <div class="scroll"><table class="t" id="bTable">
+        <thead><tr><th>#</th><th>Name *</th><th>Father's name</th><th>Mobile *</th><th>Aadhaar</th><th>DL no. &amp; class</th><th>DL valid</th><th>Exp (yrs)</th><th>Referred by</th><th>DL seen</th><th>Aadhaar seen</th><th>Medical</th><th></th></tr></thead>
+        <tbody></tbody></table></div>
+      <div class="actions">
+        <button type="button" class="btn" id="bAdd">+ Add row</button>
+        <button type="button" class="btn pri" id="bSubmit">Submit batch → send to Driver Trainer</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PART 2 -->
+  <section class="panel" id="v-trainer" hidden>
+    <div class="panel-head">
+      <h2>Part 2 – Trial result <span class="muted small" id="trCount"></span></h2>
+      <div class="actions">
+        <button class="btn sm" id="trAllPass">Mark all PASS</button>
+        <button class="btn pri" id="trSubmit">Submit results → send to PM</button>
+      </div>
+    </div>
+    <div id="trRoleWarn" class="warn-note" hidden>Part 2 is filled by the Driver Trainer. Switch "Working as" to Driver Trainer to submit results.</div>
+    <p class="note">Set PASS or FAIL for each candidate who took the trial. Only rows with a result are submitted, so you can do a bulk trial in one go or one at a time.</p>
+    <div id="trList"></div>
+  </section>
+
+  <!-- APPROVALS -->
+  <section class="panel" id="v-approve" hidden>
+    <div class="panel-head">
+      <h2 id="apTitle">Approvals</h2>
+      <div class="actions">
+        <input id="apNote" type="text" aria-label="Approval note" placeholder="Note (required to reject)" style="padding:7px 9px;border:1px solid var(--line-strong);border-radius:6px;background:var(--surface);min-width:200px">
+        <button class="btn no" id="apReject">Reject selected</button>
+        <button class="btn ok" id="apApprove">Approve selected</button>
+      </div>
+    </div>
+    <div id="apRoleWarn" class="warn-note" hidden></div>
+    <div id="apList"></div>
+  </section>
+</div>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Trial form details" hidden><div class="box" id="modalBox"></div></div>
+<div class="tgpop" id="tgpop" role="dialog" aria-label="Telegram preview" hidden></div>
+<div class="toast" id="toast" role="status" hidden></div>
