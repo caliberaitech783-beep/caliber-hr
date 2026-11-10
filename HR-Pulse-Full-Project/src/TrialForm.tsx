@@ -1,7 +1,7 @@
 import TrialAadhaarHistory,{type TrialCheck} from './TrialAadhaarHistory';
 import FormInput from './BirthDateInput';
 import {ageText} from './age';
-import {useEffect,useRef,useState,type ReactNode} from 'react';
+import {useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {Camera,Printer,Save,Send,X} from 'lucide-react';
 import {api,savedSession} from './api';
 import {AadhaarUpload} from './EmployeeLocation';
@@ -29,7 +29,11 @@ function nextFormNo(){let n=0;try{n=Number(localStorage.getItem(COUNTER_KEY)||0)
 const digits=(v:string,max:number)=>v.replace(/\D/g,'').slice(0,max);
 
 /* Stable row helpers – declared at module scope so React keeps the uncontrolled inputs mounted across re-renders. */
-const Row=({label,name,children,span}:{label:string;name?:string;children?:ReactNode;span?:number})=><tr><td>{label}</td><td colSpan={span}>{children||<input name={name||label}/>}</td></tr>;
+function Row({label,children}:{label:string;children?:ReactNode}){
+ const id=useId();
+ return <div className="tf-row">{children?<span className="tf-label">{label}</span>:<label className="tf-label" htmlFor={id}>{label}</label>}
+  <div className="tf-value">{children||<input id={id} name={label}/>}</div></div>;
+}
 const Chk=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="checkbox" name={name} value={o}/> {o}</label>)}</span>;
 const Radio=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="radio" name={name} value={o}/> {o}</label>)}</span>;
 const YesNo=({name}:{name:string})=><select name={name} defaultValue=""><option value="">Select</option><option>Yes</option><option>No</option></select>;
@@ -94,41 +98,47 @@ export default function TrialForm({selection,onPassed,canManage=false}:{selectio
     <div hidden>{['Full Name','Full Name as per Aadhaar','Father / Spouse Name','Date of Birth','Gender','Aadhaar No.','Permanent Address'].map(n=><input key={n} name={n} readOnly/>)}</div>
     <div className="joining-actions"><button type="button" disabled>Previous</button><button type="button" onClick={saveDraft}><Save/> Save Draft</button><button type="button" className="next" onClick={()=>setStep(1)}>Save &amp; Continue</button></div>
    </div>
-   <div hidden={step!==1}>
+   <div className="tf-print-sheet" hidden={step!==1}>
     <fieldset className="tf-view-fields" disabled={trialCheck.blocked}><div className="tf">
-     <div className="tf-hd"><b>{heading.split('  –  ')[0]}</b><span className="tf-site">{heading.split('  –  ')[1]}</span></div>
+     <div className="tf-hd"><b>{heading.split('  –  ')[0]}</b><span>Trial Joining – Driver &amp; Operator</span><span className="tf-site">{heading.split('  –  ')[1]}</span></div>
+     <div className="tf-sheet">
      <h3>TRIAL JOINING FORM – DRIVER &amp; OPERATOR</h3><p className="tf-note">Candidate joins only after the vehicle / machine trial result is PASS.</p>
-     <h4>1. CANDIDATE DETAILS</h4>
-     <table><tbody>
-      <tr><td>Form No.</td><td><input name="Form No." value={no.current} readOnly className="tf-ro"/></td><td className="tf-photo" rowSpan={7}><input ref={photoInput} type="file" accept="image/*" capture="user" hidden aria-label="Upload candidate photo" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;if(f.size>5*1024*1024){setError('Photo must be 5 MB or smaller.');return;}const r=new FileReader();r.onload=()=>setCandidatePhoto(String(r.result));r.readAsDataURL(f);}}/>
-       {candidatePhoto?<><img src={candidatePhoto} alt="Candidate"/><div className="tf-photo-actions"><button type="button" onClick={()=>photoInput.current?.click()}>Change</button><button type="button" aria-label="Remove photo" onClick={()=>setCandidatePhoto('')}><X/></button></div></>:<button type="button" className="tf-photo-upload" onClick={()=>photoInput.current?.click()}><Camera/><span>Upload photo</span><small>Camera or gallery</small></button>}</td></tr>
+     <div className="tf-section-bar"><h4>1. Candidate details</h4><label>Form No. <input name="Form No." value={no.current} readOnly className="tf-ro" size={16}/></label></div>
+     <div className="tf-details">
+      <div className="tf-rows">
       <Row label="Name of candidate"/><Row label="Father's name"/><Row label="Date of birth / Age"><span className="tf-dob"><FormInput birthDate showAge={false} name="Date of birth / Age" placeholder="DD/MM/YYYY" onBirthDateValue={setDobValue} onChange={event=>{const original=form.current?.elements.namedItem('Date of Birth') as HTMLInputElement|null;if(original)original.value=event.target.value;}}/><span className="tf-age" aria-live="polite">{ageText(dobValue)?`Age: ${ageText(dobValue)}`:''}</span></span></Row>
       <Row label="Mobile no."><input name="Mobile no." inputMode="numeric" maxLength={10} placeholder="10-digit mobile" onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,10);}}/></Row>
       <Row label="Aadhaar no."><FormInput name="Aadhaar no." aria-label="Aadhaar no." inputMode="numeric" maxLength={12} onInput={e=>{const i=e.currentTarget;i.value=digits(i.value,12);}}/><TrialAadhaarHistory form={form} currentFormNo={no.current} onCheck={setTrialCheck}/></Row>
       <Row label="Address"/>
-      <Row label="Post applied for" span={2}><Radio name="Post applied for" options={['Driver','Operator']}/></Row>
-      <Row label="Vehicle / equipment for trial" span={2}><Chk name="Vehicle / equipment for trial" options={['Dumper/Tipper','Excavator','Loader','Dozer','Grader']}/><input name="Other equipment" className="tf-inline" placeholder="Other"/></Row>
-      <Row label="Driving licence no. & class" span={2}><input name="Driving licence no. & class" placeholder="DL number – class (HMV / LMV / Transport)"/></Row>
-      <Row label="DL valid up to" span={2}><input name="DL valid up to" type="date"/></Row>
-      <Row label="Total experience (years)" span={2}><input name="Total experience (years)" type="number" min={0} step={0.5}/></Row>
-      <Row label="Previous employer" span={2}/>
-      <Row label="Trial date & time" span={2}><input name="Trial date & time" type="datetime-local"/></Row>
-      <Row label="Referred by" span={2}/>
-     </tbody></table>
-     <h4>2. DOCUMENT CHECK (BEFORE TRIAL)</h4>
-     <table><thead><tr><th>Document</th><th style={{width:150}}>Seen (Yes / No)</th><th>Remarks</th></tr></thead><tbody>
+      </div>
+      <div className="tf-photo"><input ref={photoInput} type="file" accept="image/*" capture="user" hidden aria-label="Upload candidate photo" onChange={e=>{const f=e.target.files?.[0];e.target.value='';if(!f)return;if(f.size>5*1024*1024){setError('Photo must be 5 MB or smaller.');return;}const r=new FileReader();r.onload=()=>setCandidatePhoto(String(r.result));r.readAsDataURL(f);}}/>
+       {candidatePhoto?<><img src={candidatePhoto} alt="Candidate"/><div className="tf-photo-actions"><button type="button" onClick={()=>photoInput.current?.click()}>Change</button><button type="button" aria-label="Remove photo" onClick={()=>setCandidatePhoto('')}><X/></button></div></>:<button type="button" className="tf-photo-upload" onClick={()=>photoInput.current?.click()}><Camera/><span>Upload photo</span><small>Camera or gallery</small></button>}</div>
+     </div>
+     <div className="tf-rows tf-posting">
+      <Row label="Post applied for"><Radio name="Post applied for" options={['Driver','Operator']}/></Row>
+      <Row label="Vehicle / equipment for trial"><Chk name="Vehicle / equipment for trial" options={['Dumper/Tipper','Excavator','Loader','Dozer','Grader']}/><input name="Other equipment" className="tf-inline" placeholder="Other"/></Row>
+      <Row label="Driving licence no. & class"><input name="Driving licence no. & class" placeholder="DL number – class (HMV / LMV / Transport)"/></Row>
+      <Row label="DL valid up to"><input name="DL valid up to" type="date"/></Row>
+      <Row label="Total experience (years)"><input name="Total experience (years)" type="number" min={0} step={0.5}/></Row>
+      <Row label="Previous employer"/>
+      <Row label="Trial date & time"><input name="Trial date & time" type="datetime-local"/></Row>
+      <Row label="Referred by"/>
+     </div>
+     <div className="tf-section-bar"><h4>2. Document check (before trial)</h4><p>No trial if the driving licence or medical fitness is missing.</p></div>
+     <div className="tf-table-wrap"><table><thead><tr><th scope="col">Document</th><th scope="col">Seen (Yes / No)</th><th scope="col">Remarks</th></tr></thead><tbody>
       <tr><td>Original driving licence (valid, class)</td><td><YesNo name="Seen – Original driving licence"/></td><td><input name="Remarks – Original driving licence"/></td></tr>
       <tr><td>Original licence (HEMM, LMV, Heavy)</td><td><YesNo name="Seen – Original licence (HEMM, LMV, Heavy)"/></td><td><input name="Remarks – Original licence (HEMM, LMV, Heavy)"/></td></tr>
       <tr><td>Aadhaar card</td><td><select name="Seen – Aadhaar card" defaultValue={photo||photo2?'Yes':''}><option value="">Select</option><option>Yes</option><option>No</option></select></td><td><input name="Remarks – Aadhaar card" defaultValue={photo||photo2?'Uploaded in step 1':''}/></td></tr>
-     </tbody></table><p className="tf-warn">No trial if the driving licence or medical fitness is missing.</p>
-     <h4>4. TRIAL RESULT</h4>
-     <table><tbody>
+     </tbody></table></div>
+     <div className="tf-section-bar"><h4>Part 2 – Trial result</h4><span>Driver Trainer</span></div>
+     <div className="tf-rows tf-result">
       <Row label="Result"><Radio name="Result" options={['PASS','FAIL']}/></Row>
       <Row label="If PASS – recommended for"><Radio name="If PASS – recommended for" options={['Driver','Operator']}/> – Machine: <input name="Machine" className="tf-inline"/></Row>
       <Row label="If FAIL – reason"/><Row label="Trial conducted by"><input name="Trial conducted by" placeholder="Driver Trainer name"/></Row>
       <Row label="Re-trial allowed after (date)"><input name="Re-trial allowed after (date)" type="date"/></Row><Row label="Examiner remarks"/>
-     </tbody></table>
+     </div>
      <div className="tf-sign"><span>DRIVER TRAINER</span><span>HR MANAGER</span><span>PM SIR</span></div>
+     </div>
     </div>
     </fieldset>
     {error&&<p className="employee-import-error" role="alert">{error}</p>}{saved&&<p className="shift-success" role="status">{saved}</p>}
