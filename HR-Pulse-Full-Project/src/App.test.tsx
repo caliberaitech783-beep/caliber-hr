@@ -10,7 +10,7 @@ it('hides Administration even when assigned in the Pulse session',async()=>{
 });
 describe('HR Pulse',()=>{it('shows login',()=>{render(<App/>);expect(screen.getByText('Sign in to your workspace')).not.toBeNull()});it('toggles password visibility',()=>{render(<App/>);const password=screen.getByLabelText('Password');expect(password.getAttribute('type')).toBe('password');fireEvent.click(screen.getByRole('button',{name:'Toggle password'}));expect(password.getAttribute('type')).toBe('text')})});
 
-it('opens the full trial workflow preview from the Trial Form menu',async()=>{
+it('opens the full trial workflow directly from the Trial Form menu',async()=>{
  const profile={name:'HR user',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
  window.location.hash='Employee%20Master';
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
@@ -18,14 +18,11 @@ it('opens the full trial workflow preview from the Trial Form menu',async()=>{
  const {container}=render(<App/>);
  fireEvent.change(await screen.findByRole('combobox',{name:/^Department$/}),{target:{value:'Driver'}});
  fireEvent.click(await screen.findByRole('button',{name:/^Trial Form$/}));
- expect(screen.getByRole('heading',{name:'Trial Form – Upload Aadhaar Card'})).toBeVisible();
- fireEvent.click(screen.getByRole('button',{name:'Trial workflow preview'}));
+ expect(screen.queryByRole('group',{name:'Trial Form views'})).toBeNull();
  const preview=container.querySelector('[aria-label="Trial workflow local preview"]')?.shadowRoot;
  expect(preview?.querySelector('#ovTitle')?.textContent).toBe('All candidates (0)');
  expect(preview?.querySelectorAll('#pipe button')).toHaveLength(6);
  expect(preview?.querySelector('#tabs')?.textContent).toContain('Approvals');
- fireEvent.click(screen.getByRole('button',{name:'Current Trial Form'}));
- expect(screen.getByRole('heading',{name:'Trial Form – Upload Aadhaar Card'})).toBeVisible();
  window.location.hash='';
 });
 

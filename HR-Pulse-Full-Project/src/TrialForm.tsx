@@ -43,27 +43,13 @@ type TrialFormProps = {
  onPassed?: (handoff: TrialHandoff) => void;
  canManage?: boolean;
 };
-export default function TrialForm(props: TrialFormProps) {
- const [showPreview, setShowPreview] = useState(false);
- const [openedPreview, setOpenedPreview] = useState(false);
+export default function TrialForm({selection}: TrialFormProps) {
  const profile = savedSession()?.profile;
- const {company, site, department} = props.selection;
- return <>
-  <div className="module-tabs" role="group" aria-label="Trial Form views">
-   <button type="button" className={showPreview?'':'selected'} aria-pressed={!showPreview} onClick={()=>setShowPreview(false)}>Current Trial Form</button>
-   <button type="button" className={showPreview?'selected':''} aria-pressed={showPreview} onClick={()=>{
-    setOpenedPreview(true);
-    setShowPreview(true);
-   }}>Trial workflow preview</button>
-  </div>
-  <div hidden={showPreview}><CurrentTrialForm {...props}/></div>
-  {openedPreview && <div hidden={!showPreview}>
-   <TrialWorkflowPreview owner={profile?.actor||profile?.username||'local'} name="" site={site} company={companyShort[company]||company} department={department}/>
-  </div>}
- </>;
+ const {company, site, department} = selection;
+ return <TrialWorkflowPreview owner={profile?.actor||profile?.username||'local'} name="" site={site} company={companyShort[company]||company} department={department}/>;
 }
 
-function CurrentTrialForm({selection,onPassed,canManage=false}:TrialFormProps){
+export function CurrentTrialForm({selection,onPassed,canManage=false}:TrialFormProps){
  const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return localStorage.getItem(DRAFT_KEY+'.no')||sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[candidatePhoto,setCandidatePhoto]=useState<string>(''),[dobValue,setDobValue]=useState(''),photoInput=useRef<HTMLInputElement>(null),pendingHandoff=useRef<TrialHandoff|null>(null),copyRef=useRef<(()=>void)|null>(null),[popup,setPopup]=useState<{result:string;message:string;connected:string[];recipients:number;bot?:string;configured?:boolean;issues?:string[]}|null>(null),[saving,setSaving]=useState(false);
  const[trialCheck,setTrialCheck]=useState<TrialCheck>({aadhaar:'',complete:false,pending:false,blocked:false,error:false}),historyRef=useRef(trialCheck);historyRef.current=trialCheck;
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{localStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}

@@ -1,13 +1,13 @@
 import {afterEach,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen} from '@testing-library/react';
-import TrialForm,{emptySelection} from './TrialForm';
+import {CurrentTrialForm,emptySelection} from './TrialForm';
 import {api} from './api';
 vi.mock('./api',()=>({api:vi.fn(),savedSession:()=>({grant:'grant'})}));
 vi.mock('./EmployeeLocation',()=>({AadhaarUpload:()=>null}));
 afterEach(()=>{cleanup();localStorage.clear();sessionStorage.clear();vi.clearAllMocks();vi.useRealTimers();});
 async function setup(result:'PASS'|'FAIL'){
  vi.useFakeTimers();vi.mocked(api).mockImplementation(async(_grant,path)=>path==='telegram/trial-history'?{matches:[{formNo:'TF/old',result,site:'Sasti OB',trialDate:'2026-11-01',savedAt:''}]} as any:{} as any);
- const view=render(<TrialForm selection={{...emptySelection,employeeGroup:'OB / COAL',department:'Driver',site:'Sasti OB'}}/>);
+ const view=render(<CurrentTrialForm selection={{...emptySelection,employeeGroup:'OB / COAL',department:'Driver',site:'Sasti OB'}}/>);
  fireEvent.click(screen.getByRole('button',{name:/Trial Joining Form/}));
  const name=view.container.querySelector<HTMLInputElement>('input[name="Name of candidate"]')!;fireEvent.change(name,{target:{value:'Candidate'}});
  fireEvent.input(screen.getByLabelText('Aadhaar no.'),{target:{value:'123456789012'}});
