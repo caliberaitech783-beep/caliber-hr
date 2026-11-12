@@ -31,7 +31,7 @@ export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:strin
     columns.map(([,header,width])=>({header,width})),
     rows.map(row=>columns.map(([key])=>String(row[key]||'—'))),
    );
-   downloadBlob('region-employee-details.xlsx',workbook);
+   downloadBlob('region-employee-details-formatted.xlsx',workbook);
   }catch{
    setError('Could not export the Excel report. Please try again.');
   }finally{
@@ -47,7 +47,7 @@ export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:strin
    </div>
    <div className="toolbar-buttons">
     <button type="button" disabled={loading} onClick={()=>setAttempt(value=>value+1)}>Refresh directory</button>
-    <button type="button" className="primary" disabled={loading||exporting||!rows.length} onClick={()=>void exportExcel()}>{exporting?'Preparing Excel…':'Export Excel'}</button>
+    <button type="button" className="primary" disabled={loading||exporting||!rows.length} onClick={()=>void exportExcel()}>{exporting?'Preparing Excel…':'Export formatted Excel'}</button>
     <button type="button" disabled={!data||loading||!rows.length} onClick={()=>download('region-employee-details.csv',csv(columns.map(([key])=>key),rows))}>Export CSV</button>
    </div>
   </div>

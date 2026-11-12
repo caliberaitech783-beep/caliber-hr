@@ -24,10 +24,13 @@ it('writes a styled Excel report and preserves identifier and contact text', asy
   expect(sheet.getCell('B3').value).toBe('=1+1');
   expect(sheet.getCell('C3').value).toBe('—');
   expect(sheet.getCell('A1').font.bold).toBe(true);
-  expect(sheet.getCell('A1').fill).toMatchObject({ fgColor: { argb: 'FFF4EEF9' } });
-  expect(sheet.getCell('B3').fill).toMatchObject({ fgColor: { argb: 'FFFAF7FC' } });
+  expect(sheet.getCell('A1').font.color).toMatchObject({ argb: 'FFFFFFFF' });
+  expect(sheet.getCell('A1').fill).toMatchObject({ fgColor: { argb: 'FF522E90' } });
+  expect(sheet.getCell('B3').fill).toMatchObject({ fgColor: { argb: 'FFF0E6F8' } });
   expect(sheet.getCell('B2').border).toMatchObject({ left: { style: 'thin' }, bottom: { style: 'thin' } });
   expect(sheet.getColumn(2).width).toBe(27);
   expect(sheet.views[0]).toMatchObject({ state: 'frozen', ySplit: 1 });
-  expect(sheet.autoFilter).toBe('A1:C3');
+  const table = sheet.getTable('RegionEmployeeDetails');
+  expect(table).toBeDefined();
+  expect(table.getColumn(0).filterButton).toBe(true);
 });
