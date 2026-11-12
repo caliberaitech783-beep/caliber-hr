@@ -264,15 +264,15 @@ function ExistingEmployees({rows,loading,error,employeeGroup,type,setType,action
    </div>
    {error&&<p className="employee-import-error" role="alert">{error}</p>}
    {loading?<p role="status">Loading employees…</p>:<>
-    <div className="joining-table-wrap">
+    <div className="joining-table-wrap" role="region" aria-label={`${type} table`} tabIndex={0}>
      <table className="joining-table existing-employees">
-      <thead><tr>{save&&<th scope="col">Actions</th>}{group.columns.map(header=><th key={header}>{header}</th>)}</tr></thead>
+      <thead><tr>{group.columns.map(header=><th key={header} scope="col">{header}</th>)}{save&&<th scope="col" className="employee-table-actions">Actions</th>}</tr></thead>
       <tbody>{rows.map(row=><tr key={row.id}>
-       {save&&<td><button type="button" className="employee-import employee-edit-button" aria-label={`Edit ${row.name} (${row.code})`} onClick={()=>{closePreview();setEditing(row);}}><Pencil/>Edit</button></td>}
        {group.columns.map(header=>{
         const value=String(corporateOfficeValue(row,header));
-        return <td key={header}>{documentColumns.has(header)&&value?<button type="button" className="existing-document-link" onClick={()=>void showDocument(row,header)}>{value}</button>:value}</td>;
+        return <td key={header}>{documentColumns.has(header)&&value?<button type="button" className="existing-document-link" onClick={()=>void showDocument(row,header)}>{value}</button>:value||<span className="employee-table-empty-value">—</span>}</td>;
        })}
+       {save&&<td className="employee-table-actions"><button type="button" className="employee-import employee-edit-button" aria-label={`Edit ${row.name} (${row.code})`} onClick={()=>{closePreview();setEditing(row);}}><Pencil/>Edit</button></td>}
       </tr>)}</tbody>
      </table>
      {!rows.length&&<p className="employee-empty">No employee records found.</p>}

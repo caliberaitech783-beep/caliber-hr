@@ -255,7 +255,15 @@ describe('Employee Master tabs',()=>{
    render(<EmployeeLocation grant="test-grant" notice={notice}/>);
    fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
    fireEvent.click(await screen.findByRole('button',{name:'Next'}));
-   fireEvent.click(await screen.findByRole('button',{name:'Edit Second Employee (EMP-02)'}));
+   const edit=await screen.findByRole('button',{name:'Edit Second Employee (EMP-02)'});
+   const table=within(screen.getByRole('region',{name:'Joining & Personal Details table'}));
+   const headers=table.getAllByRole('columnheader');
+   const cells=within(table.getByRole('row',{name:/EMP-02/})).getAllByRole('cell');
+   expect(headers[0]).toHaveTextContent('Employee Code');
+   expect(headers.at(-1)).toHaveTextContent('Actions');
+   expect(cells[0]).toHaveTextContent('EMP-02');
+   expect(cells.at(-1)).toContainElement(edit);
+   fireEvent.click(edit);
    const editor=within(screen.getByRole('dialog',{name:'Edit employee details'}));
    expect(editor.getByLabelText('Mobile')).toHaveValue('9876543210');
    fireEvent.change(editor.getByLabelText('Mobile'),{target:{value:'9999999999'}});
