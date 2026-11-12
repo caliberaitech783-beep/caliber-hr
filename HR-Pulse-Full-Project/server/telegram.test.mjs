@@ -106,3 +106,15 @@ test('trial Part 1 and batch messages follow the agreed formats',async()=>{
  const parts=splitTelegram(Array.from({length:300},(_,i)=>`${i+1}. Candidate number ${i+1} – Driver – Dumper`).join('\n'));
  assert.ok(parts.length>1&&parts.every(p=>p.length<=4000));
 });
+
+test('trial recipients are filtered by site / group scope',async()=>{
+ const {recipientInScope}=await import('./telegram.mjs');
+ const t={site:'Jayant OB East',region:'NCL',company:'CMLL',group:'OB / COAL'};
+ assert.equal(recipientInScope({scope:''},t),true);
+ assert.equal(recipientInScope({scope:'ALL'},t),true);
+ assert.equal(recipientInScope({scope:'Jayant OB East'},t),true);
+ assert.equal(recipientInScope({scope:'jayant ob'},t),true);
+ assert.equal(recipientInScope({scope:'NCL'},t),true);
+ assert.equal(recipientInScope({scope:'WCL, Umrer'},t),false);
+ assert.equal(recipientInScope({scope:'Jayant OB West'},t),false);
+});

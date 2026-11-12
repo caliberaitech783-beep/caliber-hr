@@ -65,6 +65,12 @@ export const DEFAULT_TRIAL_RECIPIENTS=[{name:'Apurva Kopulwar',phone:'8087477229
 /* Recipients that are always included even after the list is edited in the app. */
 const ALWAYS_TRIAL_ACTORS=['apurvakopulwar','arjunkeshri','mayuriumate'];
 export const recipientActor=r=>r.actor||('trial:'+r.phone);
+/* A recipient's scope is a comma list of site names / codes and groups (region, company, employee group), e.g. "Jayant OB East, NCL".
+   Empty or "ALL" = every site. A message for a site goes only to recipients whose scope names that site or one of its groups. */
+const norm=v=>String(v||'').trim().toLowerCase().replace(/\s+/g,' ');
+export function recipientInScope(r,target){const scope=String(r.scope||'').split(',').map(norm).filter(Boolean);if(!scope.length||scope.includes('all'))return true;
+ const keys=[target?.site,target?.siteCode,target?.region,target?.company,target?.group].map(norm).filter(Boolean);return scope.some(x=>keys.some(k=>k===x||k.startsWith(x+' ')||x.startsWith(k+' ')));}
+export const scopedRecipients=(list,target)=>target?list.filter(r=>recipientInScope(r,target)):list;
 /* stage 'result' = Part 2 result messages (default list); stage 'part1' = "Trial Form Submitted" messages to the driver trainer. */
 export async function trialRecipients(db,stage='result'){const row=(await db.query("SELECT data FROM hr_records WHERE kind='trialForms' AND code='SETTINGS'")).rows[0];const d=row?.data||{};if(stage==='part1')return Array.isArray(d.part1Recipients)?d.part1Recipients:[];const saved=d.recipients||[];const merged=[...saved];for(const x of DEFAULT_TRIAL_RECIPIENTS)if(ALWAYS_TRIAL_ACTORS.includes(x.actor)&&!merged.some(r=>r.actor===x.actor))merged.push(x);return merged;}
 const fmtDate=v=>{if(!v)return '';const d=new Date(v);if(Number.isNaN(d.valueOf())){const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[3]}-${m[2]}-${m[1]}`:String(v);}return d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');};
@@ -212,7 +218,7 @@ export function createTelegram(pool){
   }
   if(route==='trial-recipients'&&method==='POST'){
    if(!grantedMenus(profile).has('Approval Management'))fail('Approval Management permission required',403);
-   const recipients=(Array.isArray(input.recipients)?input.recipients:[]).map(r=>({phone:String(r.phone||'').replace(/\D/g,'').slice(-10),name:String(r.name||'').trim().slice(0,80),actor:String(r.actor||'').trim().toLowerCase().slice(0,100)})).filter(r=>r.phone.length===10||/^[-a-z0-9_.@]{1,100}$/.test(r.actor));
+   const recipients=(Array.isArray(input.recipients)?input.recipients:[]).map(r=>({phone:String(r.phone||'').replace(/\D/g,'').slice(-10),name:String(r.name||'').trim().slice(0,80),actor:String(r.actor||'').trim().toLowerCase().slice(0,100),scope:String(r.scope||'').trim().slice(0,300)})).filter(r=>r.phone.length===10||/^[-a-z0-9_.@]{1,100}$/.test(r.actor));
    const stage=input.stage==='part1'?'part1':'result';
    await tx(async db=>{const old=(await db.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code='SETTINGS' FOR UPDATE")).rows[0];const data={...(old?.data||{})};if(stage==='part1')data.part1Recipients=recipients;else data.recipients=recipients;
     if(old)await db.query('UPDATE hr_records SET data=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[data,profile.actor,old.id]);
@@ -253,7 +259,8 @@ export function createTelegram(pool){
    const batchId=items.length>1?(String(input.batchId||'').trim().slice(0,40)||newBatchId()):'';
    const records=items.map(c=>{const fields=cleanFields(c.fields),formNo=String(c.formNo||'').trim().slice(0,40);if(!formNo)fail('Form number is required');const name=String(fields['Name of candidate']||'').trim();if(!name)fail('Candidate name is required for every row');
     return {formNo,heading,site,company,department,fields,stage:'PART1',status:'Sent to driver trainer',batchId,trialBy,attachments:cleanAttachments(c.attachments),part1By:profile.actor,part1At:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};});
-   const recipients=(await trialRecipients(pool,'part1')).map(recipientActor);
+   const target={site,region:String(input.region||'').slice(0,80),company,group:String(input.group||'').slice(0,80)};
+   const recipients=scopedRecipients(await trialRecipients(pool,'part1'),target).map(recipientActor);
    let message,files=[];
    if(batchId){const batch={batchId,site,trialBy,trialDate:records[0].fields['Trial date & time']};message=trialBatchSubmittedMessage(batch,records);
     const pdf=buildPdf({title:`Vehicle trial – Batch ${batchId}`,subtitle:[`Site: ${site||heading||'-'} · Trial date: ${fmtDate(batch.trialDate)||'-'} · Trial by: ${trialBy||'driver trainer'} · Submitted by: ${profile.name||profile.actor}`,company||''].filter(Boolean),
@@ -291,7 +298,7 @@ export function createTelegram(pool){
    const prev=(await pool.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1",[formNo])).rows[0];
    const attachments=cleanAttachments(input.attachments);
    const record={...(prev?.data||{}),formNo,heading:String(input.heading||'').slice(0,120),site:String(input.site||'').slice(0,80),company:String(input.company||'').slice(0,120),department:String(input.department||'').slice(0,80),batchId:String(input.batchId||prev?.data?.batchId||'').slice(0,40),fields:{...(prev?.data?.fields||{}),...fields},attachments:attachments.length?attachments:prev?.data?.attachments||[],stage:'RESULT',status:'Sent to PM for approval',trialBy:String(input.trialBy||fields['Examiner name']||profile.name||profile.actor).slice(0,80),resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
-   const message=trialResultMessage(record,profile.name||profile.actor),recipients=(await trialRecipients(pool,'result')).map(recipientActor);
+   const message=trialResultMessage(record,profile.name||profile.actor),recipients=scopedRecipients(await trialRecipients(pool,'result'),{site:record.site,region:String(input.region||'').slice(0,80),company:record.company,group:String(input.group||'').slice(0,80)}).map(recipientActor);
    await tx(async db=>{let id=prev?.id;
     if(id)await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[record.fields['Name of candidate'],record,profile.actor,id]);
     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[formNo,record.fields['Name of candidate'],record,profile.actor])).rows[0].id;
@@ -308,7 +315,7 @@ export function createTelegram(pool){
    if(!results.length||results.some(r=>!r.result))fail('Mark PASS or FAIL for every candidate');
    const trialBy=String(input.trialBy||profile.name||profile.actor).slice(0,80);
    const xlsx=input.xlsx?String(input.xlsx).replace(/^data:[^,]*,/,'').slice(0,8*1024*1024):'';
-   const recipients=(await trialRecipients(pool,'result')).map(recipientActor);
+   const recipients=scopedRecipients(await trialRecipients(pool,'result'),{site:String(input.site||''),region:String(input.region||'').slice(0,80),company:String(input.company||''),group:String(input.group||'').slice(0,80)}).map(recipientActor);
    let message;const records=[];
    const site=String(input.site||'').slice(0,80),company=String(input.company||'').slice(0,120),department=String(input.department||'').slice(0,80),heading=String(input.heading||'').slice(0,120);
    const given=new Map((Array.isArray(input.rows)?input.rows:[]).slice(0,100).map(r=>[String(r.formNo||'').slice(0,40),{fields:cleanFields(r.fields),attachments:cleanAttachments(r.attachments)}]));

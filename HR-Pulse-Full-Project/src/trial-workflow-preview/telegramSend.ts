@@ -5,6 +5,9 @@
 import {api, savedSession} from '../api';
 import {utils as xlsxUtils, write as xlsxWrite} from 'xlsx';
 import {equipment, type Trial} from './records';
+import {loadSelection} from '../TrialForm';
+/* Region (NCL / WCL …) and employee group come from the top-bar selection; the server sends only to recipients scoped to this site / group. */
+const target = (scope: Scope) => {const sel = loadSelection(); return {site: scope.site || sel.site, region: sel.region, group: sel.employeeGroup, company: scope.company || sel.company};};
 
 export type Delivery = {message: string; recipients: number; connected: string[]; bot?: string; configured?: boolean; issues?: string[]};
 type Scope = {company: string; site: string; department: string};
@@ -42,7 +45,7 @@ export function deliveryStatus(d: Delivery, names: (key: string) => string = key
 export async function sendPart1(created: Trial[], scope: Scope): Promise<Delivery> {
   const grant = grantOrThrow();
   const out = await api<{batchId: string; telegram: Delivery}>(grant, 'telegram/trial-part1', 'POST', {
-    heading: scope.site, site: scope.site, company: scope.company, department: scope.department, trialBy: 'driver trainer', batchId: created[0]?.batch || '',
+    heading: scope.site, ...target(scope), department: scope.department, trialBy: 'driver trainer', batchId: created[0]?.batch || '',
     candidates: created.map(row => ({formNo: row.formNo, fields: fields(row), attachments: [dataUrl('photo', row.photo)].filter(Boolean)})),
   });
   return out.telegram;
@@ -57,7 +60,7 @@ export async function sendResults(changed: Trial[], resultFiles: Map<string, Fil
   })));
   if (!batchId) {
     const out = await api<{telegram: Delivery}>(grant, 'telegram/trial-result', 'POST', {
-      ...rows[0], heading: scope.site, site: scope.site, company: scope.company, department: scope.department, batchId: changed[0].batch || '', trialBy,
+      ...rows[0], heading: scope.site, ...target(scope), department: scope.department, batchId: changed[0].batch || '', trialBy,
     });
     return out.telegram;
   }
@@ -70,7 +73,7 @@ export async function sendResults(changed: Trial[], resultFiles: Map<string, Fil
   xlsxUtils.book_append_sheet(wb, sheet, 'Trial results');
   const xlsx = xlsxWrite(wb, {type: 'base64', bookType: 'xlsx'});
   const out = await api<{telegram: Delivery}>(grant, 'telegram/trial-batch-result', 'POST', {
-    batchId, trialBy, xlsx, heading: scope.site, site: scope.site, company: scope.company, department: scope.department,
+    batchId, trialBy, xlsx, heading: scope.site, ...target(scope), department: scope.department,
     rows, results: changed.map(row => ({formNo: row.formNo, result: row.result, reason: row.outcome?.reason || '', remarks: row.outcome?.remarks || ''})),
   });
   return out.telegram;
