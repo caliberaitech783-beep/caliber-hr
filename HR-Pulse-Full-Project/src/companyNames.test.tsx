@@ -27,7 +27,7 @@ for(const kind of ['leaveRequests','outDutyRequests'])it(`${kind}: shows new com
  expect(labels.some(label=>label?.includes('KSR FREIGHT CARRIERS'))).toBe(true);
  expect(labels.some(label=>label?.includes('Caliber Mining & Logistics'))).toBe(false);
  fireEvent.change(company,{target:{value:'caliber-id'}});
- fireEvent.click(screen.getByRole('button',{name:'Save to Azure'}));
+ fireEvent.click(screen.getByRole('button',{name:'Save'}));
  await screen.findByText('No records found');
  expect(saved.companyId).toBe('caliber-id');
 });

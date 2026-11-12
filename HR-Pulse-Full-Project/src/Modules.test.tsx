@@ -12,7 +12,7 @@ describe('database-backed record forms',()=>{
   });vi.stubGlobal('fetch',fetchMock);
   render(<Records grant={'a'.repeat(43)} kind="companies" module={companyModule} notice={()=>{}}/>);
   await screen.findByText('No records found');fireEvent.click(screen.getByRole('button',{name:'Add record'}));
-  fireEvent.change(screen.getByLabelText(/Company code/),{target:{value:'C001'}});fireEvent.change(screen.getByLabelText(/Company name/),{target:{value:'Example company'}});fireEvent.click(screen.getByRole('button',{name:'Save to Azure'}));
+  fireEvent.change(screen.getByLabelText(/Company code/),{target:{value:'C001'}});fireEvent.change(screen.getByLabelText(/Company name/),{target:{value:'Example company'}});fireEvent.click(screen.getByRole('button',{name:'Save'}));
   await screen.findByText('Example company');expect(saved).toBe(true);await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
  });
  it('directory mode exposes no add, import, submit or deactivate controls',async()=>{
