@@ -79,8 +79,11 @@ const HIERARCHY_STEPS={part1:['Driver Trainer'],result:['Project Manager','Offic
 export async function hierarchyRecipients(db,stage,target){
  const rows=(await db.query("SELECT code,data FROM hr_records WHERE kind='joiningHierarchies'")).rows;
  const out=[];for(const t of hierarchyTemplates){const saved=rows.find(r=>r.code===t.code);const data={...t,...withOfficeHr(withDriverTrainer(currentHierarchy(saved?.data)))};
-  if(target&&!recipientInScope({scope:t.name},target))continue;
-  for(const step of data.steps||[])if(HIERARCHY_STEPS[stage].includes(step.label))for(const actor of step.approvers||[]){const a=String(actor).trim().toLowerCase();if(a&&!out.some(r=>r.actor===a&&r.site===t.name))out.push({actor:a,name:a,phone:'',scope:t.name,site:t.name,role:step.label,source:'hierarchy'});}}
+  /* Nagpur Office (CMLL-CO) HR Executive / HR Manager are the Office HR for every site: Part 2 results reach them for all sites. */
+  const officeHr=stage==='result'&&t.code==='CMLL-CO';
+  if(!officeHr&&target&&!recipientInScope({scope:t.name},target))continue;
+  const labels=officeHr?['HR Executive','HR Manager']:HIERARCHY_STEPS[stage];
+  for(const step of data.steps||[])if(labels.includes(step.label))for(const actor of step.approvers||[]){const a=String(actor).trim().toLowerCase();if(a&&!out.some(r=>r.actor===a&&r.site===t.name))out.push({actor:a,name:a,phone:'',scope:officeHr?'ALL':t.name,site:officeHr?'All sites (Office HR – Nagpur Office)':t.name,role:officeHr?`Office HR – ${step.label}`:step.label,source:'hierarchy'});}}
  return out;}
 /* Manual list (scoped) + hierarchy for a site, de-duplicated by actor. */
 export async function trialRecipientsFor(db,stage,target){const manual=scopedRecipients(await trialRecipients(db,stage),target),auto=await hierarchyRecipients(db,stage,target);const seen=new Set(manual.map(recipientActor));return [...manual,...auto.filter(r=>!seen.has(r.actor))];}
