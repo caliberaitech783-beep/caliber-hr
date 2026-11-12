@@ -15,27 +15,46 @@ export function overviewTable(records: Trial[]) {
     <td>${esc(row.post)}</td><td>${esc(equipment(row))}</td><td>${esc(row.experience)}${row.experience?' yrs':''}</td>
     <td>${esc(row.referredBy)}</td><td>${esc(dateTime(row.trialDate))}</td><td>${resultPill(row)}</td><td>${stagePill(row)}</td></tr>`).join(''));
 }
-export function trainerTable(records: Trial[], draftFor: (row: Trial) => Outcome, allowed: boolean) {
-  return table(['Candidate','Vehicle · Trial','Docs','Result','If PASS – recommended for','If FAIL – reason','Trial conducted by','Examiner remarks'],
-    records.map(row=>{
-      const d = draftFor(row);
-      const id=esc(row.id), name=esc(row.name);
-      const dl = row.docs.dl.seen === 'Yes' ? '✓' : '–';
-      const a = row.docs.aadhaar.seen === 'Yes' ? '✓' : '–';
-      const m = row.docs.medical.seen === 'Yes' ? '✓' : '–';
-      const passDisabled=allowed && d.result==='PASS'?'':'disabled', failDisabled=allowed&&d.result==='FAIL'?'':'disabled';
-      return `<tr data-id="${id}"><td>${candidateLink(row)}<div class="muted small mono">${esc(row.formNo)}${row.batch?' · '+esc(row.batch):''}</div></td>
-        <td>${esc(equipment(row))}<div class="muted small">${esc(dateTime(row.trialDate))}${row.experience?' · '+esc(row.experience)+' yrs':''}</div></td>
-        <td class="small mono" title="DL · Aadhaar · Medical">${dl} ${a} ${m}</td>
-        <td><div class="pf">${(['PASS','FAIL'] as const).map(result=>`<button type="button" data-res="${result}" aria-pressed="${d.result===result}" aria-label="${name}: ${result}" class="${result.toLowerCase()} ${d.result===result?'on':''}" ${allowed?'':'disabled'}>${result}</button>`).join('')}</div></td>
-        <td><div class="recommended-post" role="group" aria-label="${name}: Recommended post">
-          ${(['Driver','Operator'] as const).map(option=>`<label class="chk"><input type="radio" name="recommended-${id}" data-f="post" value="${option}" aria-label="${name}: Recommend ${option}" ${d.post===option?'checked':''} ${passDisabled}> ${option}</label>`).join('')}
-        </div>
-        <input type="text" data-f="machine" aria-label="${name}: Machine" value="${esc(d.machine)}" placeholder="Machine" ${passDisabled}></td>
-        <td><input type="text" data-f="reason" aria-label="${name}: Failure reason" value="${esc(d.reason)}" placeholder="Reason" ${failDisabled}></td>
-        <td><input type="text" data-f="trainer" aria-label="${name}: Trial conducted by" value="${esc(d.trainer)}" placeholder="Your name if blank" ${allowed?'':'disabled'}></td>
-        <td><input type="text" data-f="remarks" aria-label="${name}: Examiner remarks" value="${esc(d.remarks)}" ${allowed?'':'disabled'}></td></tr>`;
-    }).join(''));
+function resultFields(id: string, name: string, draft?: Outcome, allowed = false) {
+  const prefix = name ? esc(name) + ': ' : '';
+  const disabled = allowed ? '' : 'disabled';
+  const passDisabled = allowed && draft?.result === 'PASS' ? '' : 'disabled';
+  const failDisabled = allowed && draft?.result === 'FAIL' ? '' : 'disabled';
+  const row = (label: string, control: string) =>
+    `<div class="row"><div class="k">${label}</div><div class="v">${control}</div></div>`;
+  const resultButtons = (['PASS','FAIL'] as const).map(result=>{
+    const active = draft?.result === result;
+    return `<button type="button" data-res="${result}" aria-pressed="${active}" aria-label="${prefix}${result}" class="${result.toLowerCase()} ${active?'on':''}" ${disabled}>${result}</button>`;
+  }).join('');
+  const posts = (['Driver','Operator'] as const).map(option=>
+    `<label class="chk"><input type="radio" name="recommended-${esc(id)}" data-f="post" value="${option}" aria-label="${prefix}Recommend ${option}" ${draft?.post===option?'checked':''} ${passDisabled}> ${option}</label>`
+  ).join('');
+  return `<div class="rows trainer-fields">
+    ${row('Result', `<div class="pf">${resultButtons}</div>`)}
+    ${row('If PASS – recommended for', `
+      <div class="recommended-post" role="group" aria-label="${prefix}Recommended post">${posts}</div>
+      <label class="trainer-machine">Machine <input type="text" data-f="machine" aria-label="${prefix}Machine" value="${esc(draft?.machine)}" ${passDisabled}></label>`)}
+    ${row('If FAIL – reason', `<input type="text" data-f="reason" aria-label="${prefix}Failure reason" value="${esc(draft?.reason)}" ${failDisabled}>`)}
+    ${row('Trial conducted by', `<input type="text" data-f="trainer" aria-label="${prefix}Trial conducted by" value="${esc(draft?.trainer)}" placeholder="Your name if blank" ${disabled}>`)}
+    ${row('Examiner remarks', `<input type="text" data-f="remarks" aria-label="${prefix}Examiner remarks" value="${esc(draft?.remarks)}" ${disabled}>`)}
+  </div>`;
+}
+export function trainerForms(records: Trial[], draftFor: (row: Trial) => Outcome, allowed: boolean) {
+  if (!records.length) {
+    return `<p class="note trainer-empty">Submit a candidate in Part 1 to enter a trial result here.</p>${resultFields('empty','')}`;
+  }
+  return records.map(row=>{
+    const checks = [['DL',row.docs.dl],['Aadhaar',row.docs.aadhaar],['Medical',row.docs.medical]] as const;
+    return `<article class="trainer-card" data-id="${esc(row.id)}">
+      <div class="trainer-card-head">
+        ${candidateLink(row)}
+        <span class="muted small mono">${esc(row.formNo)}${row.batch?' · '+esc(row.batch):''}</span>
+        <span class="small">${esc(equipment(row))} · ${esc(dateTime(row.trialDate))}${row.experience?' · '+esc(row.experience)+' yrs':''}</span>
+        <span class="muted small">${checks.map(([label,check])=>label+(check.seen==='Yes'?' ✓':' –')).join(' · ')}</span>
+      </div>
+      ${resultFields(row.id,row.name,draftFor(row),allowed)}
+    </article>`;
+  }).join('');
 }
 export function approvalTable(records: Trial[], selected: Set<string>) {
   const all = records.every(row=>selected.has(row.id));

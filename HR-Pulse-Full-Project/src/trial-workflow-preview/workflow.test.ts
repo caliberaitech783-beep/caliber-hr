@@ -74,6 +74,11 @@ describe('Trial workflow preview',()=>{
   it('checks documents, moves a single PASS through each approval, and persists the final status without calling HR or Telegram',()=>{
     const network = vi.spyOn(window,'fetch').mockRejectedValue(new Error('Network is disabled in the preview'));
     const {el,click,input,change} = setup();
+    change('#role','trainer');
+    expect(el('#trList')).toHaveTextContent('Submit a candidate in Part 1');
+    expect(el('#trList [aria-label="PASS"]')).toBeDisabled();
+    expect(el('#trList [aria-label="Trial conducted by"]')).toBeDisabled();
+    change('#role','hr');
     click('[data-tab="overview"]');
     click('[data-go="hr"]');
     input('#f_name','Sample Pass');
@@ -90,6 +95,7 @@ describe('Trial workflow preview',()=>{
     change('#role','director');
     expect(el('#apList').textContent).toContain('Nothing waiting for Director');
     change('#role','trainer');
+    expect(el('[aria-label="Sample Pass: Trial conducted by"]')).toBeEnabled();
     click('#trAllPass');
     click('[aria-label="Sample Pass: Recommend Operator"]');
     input('[aria-label="Sample Pass: Machine"]','Sample excavator');
@@ -99,12 +105,13 @@ describe('Trial workflow preview',()=>{
     expect(el('#tgpop').textContent).toContain('Sent to PM for approval');
     expect(el('#tgpop').textContent).not.toContain('CLEARED TO JOIN');
     click('#tgClose2');
-    for (const [role,next] of [['pm','rhr'],['rhr','director'],['director','done']]) {
+    for (const role of ['pm','rhr','director']) {
       change('#role',role);
+      expect(el('#apList').textContent).toContain('Sample Pass');
       click('#apAll');
       click('#apApprove');
-      expect(el(`[data-stage="${next}"] .n`).textContent).toBe('1');
     }
+    expect(el('[data-stage="done"] .n').textContent).toBe('1');
     expect(el('#tgpop').textContent).toContain('CLEARED TO JOIN');
     click('#tgClose2');
     click('[data-stage="done"]');

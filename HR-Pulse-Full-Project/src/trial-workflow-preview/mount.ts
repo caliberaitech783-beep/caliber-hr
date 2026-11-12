@@ -4,7 +4,7 @@ import {savedSession} from '../api';
 import {readGeminiAadhaar} from '../geminiOcr';
 import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime, licenceDate, localDateTime,
   NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
-import {approvalTable, detailView, esc, overviewTable, trainerTable} from './views';
+import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
 
 type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
 type Scope = {company: string; site: string; owner: string; name: string; department: string};
@@ -101,8 +101,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   function renderTrainer() {
     const rows = waiting();
     $('#trCount').textContent = rows.length ? `· ${rows.length} waiting` : '';
-    $('#trList').innerHTML = rows.length ? trainerTable(rows,draftFor,role==='trainer')
-      : empty('No candidates waiting for trial','Candidates appear here after Site HR submits Part 1.');
+    $('#trList').innerHTML = trainerForms(rows,draftFor,role==='trainer');
     $('#trRoleWarn').hidden = role==='trainer';
     for (const selector of ['#trAllPass','#trSubmit']) $<HTMLButtonElement>(selector).disabled = role!=='trainer'||!rows.length;
   }
@@ -127,8 +126,8 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
     syncSelection(rows);
   }
   function refresh() {
-    $('#pipe').innerHTML = STAGES.map(([stage,label],i)=>{
-      const active=stageFilter===stage, number=i<4?'Step '+(i+1):i===4?'✓':'✕';
+    $('#pipe').innerHTML = STAGES.filter(([stage])=>stage==='trainer'||stage==='done'||stage==='rejected').map(([stage,label])=>{
+      const active=stageFilter===stage, number=stage==='trainer'?'Step 1':stage==='done'?'✓':'✕';
       return `<button type="button" data-stage="${stage}" class="${active?'on':''}" aria-pressed="${active}"><span class="step">${number}</span><span class="n">${records.filter(row=>row.stage===stage).length}</span><span class="l">${label}</span></button>`;
     }).join('');
     for (const [selector,count] of [['#bTrainer',waiting().length],['#bApprove',approvals().length]] as const) {
@@ -388,19 +387,20 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   $('#trList').onclick=event=>{
     const button=(event.target as Element).closest<HTMLButtonElement>('[data-res]');
     if (!button || role!=='trainer') return;
-    const row=waiting().find(item=>item.id===button.closest('tr')?.dataset.id);
+    const row=waiting().find(item=>item.id===button.closest<HTMLElement>('[data-id]')?.dataset.id);
     if (!row) return;
     const result=button.dataset.res;
     if (result!=='PASS'&&result!=='FAIL') return;
     const draft=draftFor(row);
     draft.result=draft.result===result?'':result;
     renderTrainer();
-    $$<HTMLButtonElement>('#trList [data-res]').find(item=>item.dataset.res===result&&item.closest('tr')?.dataset.id===row.id)?.focus();
+    $$<HTMLButtonElement>('#trList [data-res]').find(item=>
+      item.dataset.res===result&&item.closest<HTMLElement>('[data-id]')?.dataset.id===row.id)?.focus();
   };
   $('#trList').oninput=event=>{
     if (role!=='trainer') return;
     const input=event.target as HTMLInputElement;
-    const row=waiting().find(item=>item.id===input.closest('tr')?.dataset.id);
+    const row=waiting().find(item=>item.id===input.closest<HTMLElement>('[data-id]')?.dataset.id);
     if (!row) return;
     const draft=draftFor(row), field=input.dataset.f;
     if (field==='post') draft.post=post(input.value);
