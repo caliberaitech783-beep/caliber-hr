@@ -466,7 +466,7 @@ const LOCS=[
   {id:'DDC',name:'NCL Dudhichua Project',short:'Dudhichua',company:'CMLL',type:'site',hg:'NCL',wo:[],tpl:'site'},
   {id:'UMR',name:'WCL Umrer Project',short:'Umrer',company:'CMLL',type:'site',hg:'WCL',wo:[],tpl:'site'},
   {id:'NGP',name:'Corporate Office, Nagpur',short:'Nagpur CO',company:'CMLL',type:'office',hg:'CORP',wo:[0],altSat:true,tpl:'corp'},
-  {id:'SGR',name:'Head Office, Singrauli',short:'Singrauli HO',company:'CMLL',type:'office',hg:'CORP',wo:[0],altSat:true,tpl:'ro'}
+  {id:'SGR',name:'Head Office, Chandrapur',short:'Chandrapur HO',company:'CMLL',type:'office',hg:'CORP',wo:[0],altSat:true,tpl:'ro'}
 ];
 LOCS.forEach(l=>l.devices=[`ESSL-${l.id}-01`,`ESSL-${l.id}-02`]);
 const LOC=Object.fromEntries(LOCS.map(l=>[l.id,l]));
@@ -907,7 +907,8 @@ function renderScope0(){
   $('coSel').innerHTML=`<option value="ALL">All companies</option>`+COMPANIES.map(c=>`<option value="${c.id}" ${S.company===c.id?'selected':''}>${c.name}</option>`).join('');
   $('typeSeg').innerHTML=[['ALL','All'],['site','Sites'],['office','Offices']].map(([v,t])=>`<button class="${S.type===v?'on':''}" onclick="setScope('type','${v}')">${t}</button>`).join('');
   const locs=LOCS.filter(l=>(S.company==='ALL'||l.company===S.company)&&(S.type==='ALL'||l.type===S.type));
-  $('locSeg').innerHTML=`<button class="${S.loc==='ALL'?'on':''}" onclick="setScope('loc','ALL')">All locations</button>`+locs.map(l=>`<button class="${S.loc===l.id?'on':''}" onclick="setScope('loc','${l.id}')">${l.short}<span class="t ${l.type}">${l.type==='site'?'SITE':'OFFICE'}</span></button>`).join('');
+  /* Location drill-down: a dropdown instead of pills so every site / office fits. */
+  $('locSeg').innerHTML=`<select class="sel" aria-label="Location" onchange="setScope('loc',this.value)"><option value="ALL" ${S.loc==='ALL'?'selected':''}>All locations</option>`+locs.map(l=>`<option value="${l.id}" ${S.loc===l.id?'selected':''}>${l.short} · ${l.type==='site'?'SITE':'OFFICE'}</option>`).join('')+'</select>';
   let opts='';for(let i=3;i>=0;i--){const d=new Date(TODAY.getFullYear(),TODAY.getMonth()-i,1);opts+=`<option value="${d.getFullYear()}-${d.getMonth()}" ${d.getFullYear()===S.y&&d.getMonth()===S.m?'selected':''}>${MON[d.getMonth()]} ${d.getFullYear()}${i===0?' (current)':''}</option>`}
   $('monSel').innerHTML=opts;
 }
