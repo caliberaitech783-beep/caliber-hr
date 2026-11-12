@@ -1,11 +1,12 @@
-export const ROLES = {hr: 'Site HR', trainer: 'Driver Trainer', pm: 'PM', rhr: 'Regional HR', director: 'Director'} as const;
+export const ROLES = {hr: 'Site HR', trainer: 'Driver Trainer', pm: 'PM', ohr: 'Office HR', rhr: 'Regional HR', director: 'Director'} as const;
 export type Role = keyof typeof ROLES;
-export const NEXT = {pm: 'rhr', rhr: 'director', director: 'done'} as const;
+export const NEXT = {pm: 'ohr', ohr: 'rhr', rhr: 'director', director: 'done'} as const;
 export type Approver = keyof typeof NEXT;
 export const canApprove = (role: Role): role is Approver => Object.hasOwn(NEXT, role);
 export const STAGES = [
   ['trainer', 'Trial pending', 'With Driver Trainer'],
   ['pm', 'PM approval', 'With PM'],
+  ['ohr', 'Office HR', 'With Office HR'],
   ['rhr', 'Regional HR', 'With Regional HR'],
   ['director', 'Directors', 'With Directors'],
   ['done', 'Completed', 'Completed'],
@@ -86,6 +87,6 @@ export function resultMessage(row: Trial) {
     'Vehicle: '+(row.outcome?.machine || equipment(row)),
     'Experience: '+(row.experience ? row.experience+' years':'–'), 'Referred by: '+(row.referredBy||'–'),
     'Trial date: '+date(row.trialDate), 'Form No: '+row.formNo, 'Trial by: '+(row.outcome?.trainer||'–'),
-    cleared ? 'Approved by: PM, Regional HR, Directors' : 'Status: '+(row.stage === 'pm' ? 'Sent to PM for approval' : status(row)), 'Site: '+row.site,
+    cleared ? 'Approved by: PM, Office HR, Regional HR, Directors' : 'Status: '+(row.stage === 'pm' ? 'Sent to PM for approval' : status(row)), 'Site: '+row.site,
   ].join('\n');
 }

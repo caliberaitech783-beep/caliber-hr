@@ -101,5 +101,5 @@ export function detailView(row: Trial, role: Role, canOpenJoining = false) {
     ])}${out?.attachment ? item('Trial result file', `<button type="button" class="link trial-result-filename" data-download-result>Download ${esc(out.attachment.name)}</button>`) : ''}</div>
     <div class="secbar">Approvals</div><div class="sigs">${signs}</div>
     ${row.history.filter(h=>h.note).map(h=>`<p class="note"><b>${esc(ROLES[h.role])} (${esc(h.by)}):</b> ${esc(h.note)}</p>`).join('')}
-    ${row.stage===role && ['pm','rhr','director'].includes(role) ? `<div class="actions"><input id="mNote" aria-label="Decision note" placeholder="Note (required to reject)"><button type="button" class="btn no" data-decide="reject">Reject</button><button type="button" class="btn ok" data-decide="approve">Approve as ${ROLES[role]}</button></div>`:''}`;
+    ${row.stage===role && ['pm','ohr','rhr','director'].includes(role) ? `<div class="actions"><input id="mNote" aria-label="Decision note" placeholder="Note (required to reject)"><button type="button" class="btn no" data-decide="reject">Reject</button><button type="button" class="btn ok" data-decide="approve">Approve as ${ROLES[role]}</button></div>`:''}`;
 }

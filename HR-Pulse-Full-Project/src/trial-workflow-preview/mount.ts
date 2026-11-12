@@ -13,7 +13,7 @@ type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
 type Scope = {company: string; site: string; owner: string; legacyOwner?: string; name: string; department: string};
 export type PrepareJoining = (rows: Trial[]) => Promise<(() => void) | void>;
 const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
-const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',rhr:'approve',director:'approve'};
+const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',ohr:'approve',rhr:'approve',director:'approve'};
 const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',trainer:'',remarks:''});
 const digits = (value: string) => value.replace(/\D/g,'');
 const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -145,7 +145,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     const allowed = canApprove(role), rows = approvals();
     $('#apTitle').textContent = allowed ? `${ROLES[role]} approval queue` : 'Approvals';
     $('#apRoleWarn').hidden = allowed;
-    $('#apRoleWarn').textContent = 'Approvals go PM → Regional HR → Directors. Switch “Working as” to one of them to approve.';
+    $('#apRoleWarn').textContent = 'Approvals go PM → Office HR → Regional HR → Directors. Switch “Working as” to one of them to approve.';
     $<HTMLInputElement>('#apNote').disabled = !allowed;
     for (const id of selected) if (!rows.some(row=>row.id===id)) selected.delete(id);
     $('#apList').innerHTML = !allowed ? '' : !rows.length

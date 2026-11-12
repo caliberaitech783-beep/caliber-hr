@@ -186,7 +186,7 @@ describe('Trial workflow preview',()=>{
     expect(el('#tgpop').textContent).not.toContain('CLEARED TO JOIN');
     click('#tgClose2');
     expect(onCleared).not.toHaveBeenCalled();
-    for (const role of ['pm','rhr','director']) {
+    for (const role of ['pm','ohr','rhr','director']) {
       change('#role',role);
       expect(el('#apList').textContent).toContain('Sample Pass');
       click('#apAll');
