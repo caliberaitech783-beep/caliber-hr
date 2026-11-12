@@ -33,7 +33,10 @@ export type Trial = Candidate & {
   id: string; formNo: string; batch: string; site: string; createdAt: string;
   stage: Stage; result: Result; history: History[]; outcome?: Outcome & {at: string};
 };
-export type Outcome = {result: Result; post: Post; machine: string; reason: string; trainer: string; remarks: string};
+export type Outcome = {
+  result: Result; post: Post; machine: string; reason: string; trainer: string; remarks: string;
+  attachment?: {id: string; name: string};
+};
 export const post = (value: string): Post => value === 'Operator' ? 'Operator' : 'Driver';
 export const equipment = (row: Candidate) => row.vehicles.map(item => item === 'Other' ? row.otherVehicle || item : item).join(', ');
 export const status = (row: Trial) => row.stage === 'done'

@@ -4,6 +4,7 @@ import type {AadhaarDetails} from '../geminiOcr';
 import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime, licenceDate, localDateTime,
   NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
+import {getTrialResultFile, removeTrialResultFiles, saveTrialResultFiles} from './trialResultFiles';
 
 type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
 type Scope = {company: string; site: string; owner: string; name: string; department: string};
@@ -32,11 +33,13 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   const site = scope.site || 'JAYANT OB EAST';
   const defaults = () => post(scope.department);
   const drafts = new Map<string,Outcome>();
+  const draftFiles = new Map<string,File>();
   const selected = new Set<string>();
   const effects = new AbortController();
   let tab: Tab = 'aadhaar', role: Role = 'hr', stageFilter = '', records: Trial[] = [], bulk = Array.from({length:3},blankRow);
   let photo = '', photoLoading = false, photoVersion = 0, photoUrl = '', detailId = '', toastTimer: ReturnType<typeof setTimeout>;
   let aadhaarScanPending = false;
+  let submittingResults = false;
   let modalFocus: HTMLElement | null = null;
   let telegramFocus: HTMLElement | null = null;
 
@@ -103,10 +106,12 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   };
   function renderTrainer() {
     const rows = waiting();
+    const canEdit = role==='trainer' && !submittingResults;
     $('#trCount').textContent = rows.length ? `· ${rows.length} waiting` : '';
-    $('#trList').innerHTML = trainerForms(rows,draftFor,role==='trainer');
+    $('#trList').innerHTML = trainerForms(rows,draftFor,canEdit,draftFiles);
     $('#trRoleWarn').hidden = role==='trainer';
-    for (const selector of ['#trAllPass','#trSubmit']) $<HTMLButtonElement>(selector).disabled = role!=='trainer'||!rows.length;
+    $('#trSubmit').textContent = submittingResults ? 'Saving results…' : 'Submit results → send to PM';
+    for (const selector of ['#trAllPass','#trSubmit']) $<HTMLButtonElement>(selector).disabled = !canEdit||!rows.length;
   }
   function syncSelection(rows = approvals()) {
     const all = frame.querySelector<HTMLInputElement>('#apAll');
@@ -325,8 +330,8 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if(createCandidates(candidates,true)){bulk=Array.from({length:3},blankRow);renderBulk();}
   };
 
-  function submitResults() {
-    if (role!=='trainer') return;
+  async function submitResults() {
+    if (role!=='trainer'||submittingResults) return;
     const name = signer();
     if (!name) return;
     const rows=waiting().filter(row=>drafts.get(row.id)?.result);
@@ -334,29 +339,74 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     const invalid=rows.find(row=>drafts.get(row.id)?.result==='FAIL'&&!drafts.get(row.id)?.reason.trim());
     if (invalid) return toast(`Enter the fail reason for ${invalid.name}.`);
     const ids=new Set(rows.map(row=>row.id)), at=new Date().toISOString(), changed: Trial[]=[];
-    if (!commit(latest=>{
+    const files = new Map(rows.flatMap(row=>{
+      const file = draftFiles.get(row.id);
+      return file ? [[row.id,{id:crypto.randomUUID(),file}] as const] : [];
+    }));
+    if (files.size) {
+      submittingResults = true;
+      $<HTMLSelectElement>('#role').disabled = true;
+      renderTrainer();
+      try {
+        await saveTrialResultFiles([...files.values()]);
+      } catch {
+        if (!effects.signal.aborted) {
+          toast('Could not save the trial result file. Check browser storage or remove the file and try again.');
+        }
+        return;
+      } finally {
+        submittingResults = false;
+        $<HTMLSelectElement>('#role').disabled = false;
+        if (!effects.signal.aborted && tab==='trainer') renderTrainer();
+      }
+    }
+    const committed = !effects.signal.aborted && commit(latest=>{
       if (latest.filter(row=>ids.has(row.id)&&row.stage==='trainer').length!==ids.size) throw new Error('The trainer queue changed. Reopen it and try again.');
       return latest.map(row=>{
         if(!ids.has(row.id)) return row;
         const d=drafts.get(row.id)!;
+        const attachment=files.get(row.id);
         const next: Trial={...row,stage:'pm',result:d.result,outcome:{
           ...d,machine:d.result==='PASS'?d.machine.trim():'',reason:d.result==='FAIL'?d.reason.trim():'',
           remarks:d.remarks.trim(),trainer:d.trainer.trim()||name,at,
+          attachment:attachment && {id:attachment.id,name:attachment.file.name},
         },history:[...row.history,{role:'trainer',action:'Trial result: '+d.result,by:name,at}]};
         changed.push(next);
         return next;
       });
-    })) return;
-    for(const id of ids) drafts.delete(id);
+    });
+    if (!committed) {
+      if (files.size) await removeTrialResultFiles([...files.values()].map(file=>file.id)).catch(()=>{});
+      return;
+    }
+    for (const id of ids) {
+      drafts.delete(id);
+      draftFiles.delete(id);
+    }
     const passed=changed.filter(row=>row.result==='PASS');
     toast(`${changed.length} results sent to PM – ${passed.length} pass, ${changed.length-passed.length} fail.`);
     if(passed.length) showTelegram(passed.map(resultMessage),'Trial PASS – sent to PM for approval');
   }
+  function focusResultUpload(id: string) {
+    $$<HTMLButtonElement>('#trList [data-choose-result-file]').find(button=>
+      button.closest<HTMLElement>('[data-id]')?.dataset.id===id)?.focus();
+  }
   $('#trList').onclick=event=>{
-    const button=(event.target as Element).closest<HTMLButtonElement>('[data-res]');
-    if (!button || role!=='trainer') return;
-    const row=waiting().find(item=>item.id===button.closest<HTMLElement>('[data-id]')?.dataset.id);
+    const button=(event.target as Element).closest<HTMLButtonElement>('[data-res],[data-choose-result-file],[data-remove-result-file]');
+    if (!button || role!=='trainer' || submittingResults) return;
+    const card=button.closest<HTMLElement>('[data-id]');
+    const row=waiting().find(item=>item.id===card?.dataset.id);
     if (!row) return;
+    if (button.hasAttribute('data-choose-result-file')) {
+      card?.querySelector<HTMLInputElement>('[data-result-file]')?.click();
+      return;
+    }
+    if (button.hasAttribute('data-remove-result-file')) {
+      draftFiles.delete(row.id);
+      renderTrainer();
+      focusResultUpload(row.id);
+      return;
+    }
     const result=button.dataset.res;
     if (result!=='PASS'&&result!=='FAIL') return;
     const draft=draftFor(row);
@@ -366,20 +416,41 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       item.dataset.res===result&&item.closest<HTMLElement>('[data-id]')?.dataset.id===row.id)?.focus();
   };
   $('#trList').oninput=event=>{
-    if (role!=='trainer') return;
+    if (role!=='trainer'||submittingResults) return;
     const input=event.target as HTMLInputElement;
+    const field=input.dataset.f;
+    if (!field) return;
     const row=waiting().find(item=>item.id===input.closest<HTMLElement>('[data-id]')?.dataset.id);
     if (!row) return;
-    const draft=draftFor(row), field=input.dataset.f;
+    const draft=draftFor(row);
     if (field==='post') draft.post=post(input.value);
     else if(field==='machine'||field==='reason'||field==='trainer'||field==='remarks') draft[field]=input.value;
   };
+  $('#trList').onchange=event=>{
+    const input=event.target as HTMLInputElement;
+    if (role!=='trainer'||submittingResults||!input.hasAttribute('data-result-file')) return;
+    const file=input.files?.[0];
+    input.value='';
+    const row=waiting().find(item=>item.id===input.closest<HTMLElement>('[data-id]')?.dataset.id);
+    if (!file||!row) return;
+    if (!/\.(pdf|jpe?g|png)$/i.test(file.name) || (file.type && !['application/pdf','image/jpeg','image/png'].includes(file.type))) {
+      toast('Choose a PDF, JPG or PNG trial result file.');
+      return;
+    }
+    if (!file.size) {
+      toast('The trial result file is empty. Choose another file.');
+      return;
+    }
+    draftFiles.set(row.id,file);
+    renderTrainer();
+    focusResultUpload(row.id);
+  };
   $('#trAllPass').onclick=()=>{
-    if(role!=='trainer') return;
+    if(role!=='trainer'||submittingResults) return;
     for(const row of waiting()){const draft=draftFor(row);if(!draft.result)draft.result='PASS';}
     renderTrainer();
   };
-  $('#trSubmit').onclick=submitResults;
+  $('#trSubmit').onclick=()=>void submitResults();
 
   function decide(approved: boolean, ids: string[], note: string) {
     const reviewer=role;
@@ -440,9 +511,28 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if(restore && modalFocus?.isConnected) modalFocus.focus();
     modalFocus=null;
   }
+  async function downloadTrialResult(attachment: NonNullable<Outcome['attachment']>) {
+    try {
+      const file=await getTrialResultFile(attachment.id);
+      if (effects.signal.aborted) return;
+      if (!file) return toast('The trial result file is unavailable in this browser.');
+      const url=URL.createObjectURL(file);
+      const link=document.createElement('a');
+      link.href=url;
+      link.download=attachment.name;
+      link.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    } catch {
+      if (!effects.signal.aborted) toast('Could not open the trial result file.');
+    }
+  }
   $('#modal').onclick=event=>{
     const target=event.target as HTMLElement;
     if(target.id==='modal'||target.id==='mClose') return closeDetails();
+    if(target.hasAttribute('data-download-result')){
+      const attachment=records.find(row=>row.id===detailId)?.outcome?.attachment;
+      if (attachment) void downloadTrialResult(attachment);
+    }
     if(target.id==='mTelegram'){
       const row=records.find(item=>item.id===detailId);
       if (row?.result==='PASS') showTelegram([resultMessage(row)],row.stage==='done'?'Cleared to join':'Trial PASS');

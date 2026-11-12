@@ -2,6 +2,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 import {act,fireEvent,render,waitFor} from '@testing-library/react';
 import {createElement} from 'react';
 import TrialWorkflowPreview from './TrialWorkflowPreview';
+import * as trialResultFiles from './trialResultFiles';
 
 const scope = {company:'CMLL',site:'Jayant OB East',name:'Sample Signer',owner:'sample',department:'Driver'};
 let dispose: (()=>void)|undefined;
@@ -84,13 +85,23 @@ describe('Trial workflow preview',()=>{
     expect(getByLabelText('Choose second Aadhaar image')).toBeDisabled();
   });
 
-  it('checks documents, moves a single PASS through each approval, and persists the final status without calling HR or Telegram',()=>{
+  it('checks documents and keeps a trial result attachment through approval and reload',async()=>{
     const network = vi.spyOn(window,'fetch').mockRejectedValue(new Error('Network is disabled in the preview'));
+    const saved = new Map<string,File>();
+    const file = new File(['%PDF-1.7'],'signed-result.pdf',{type:'application/pdf'});
+    vi.spyOn(trialResultFiles,'saveTrialResultFiles')
+      .mockRejectedValueOnce(new Error('Storage unavailable'))
+      .mockImplementation(async attachments=>{for (const attachment of attachments) saved.set(attachment.id,attachment.file);});
+    vi.spyOn(trialResultFiles,'getTrialResultFile').mockImplementation(async id=>saved.get(id));
+    const createUrl = vi.spyOn(URL,'createObjectURL').mockReturnValue('blob:trial-result');
+    vi.spyOn(URL,'revokeObjectURL').mockImplementation(()=>{});
+    const download = vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
     const {el,click,input,change} = setup();
     change('#role','trainer');
     expect(el('#trList')).toHaveTextContent('Submit a candidate in Part 1');
     expect(el('#trList [aria-label="PASS"]')).toBeDisabled();
     expect(el('#trList [aria-label="Trial conducted by"]')).toBeDisabled();
+    expect(el('#trList [data-choose-result-file]')).toBeDisabled();
     change('#role','hr');
     click('[data-tab="overview"]');
     click('[data-go="hr"]');
@@ -109,13 +120,21 @@ describe('Trial workflow preview',()=>{
     expect(el('#apList').textContent).toContain('Nothing waiting for Director');
     change('#role','trainer');
     expect(el('[aria-label="Sample Pass: Trial conducted by"]')).toBeEnabled();
+    expect(el('[aria-label="Sample Pass: Upload trial result"]')).toBeEnabled();
+    fireEvent.change(el('[data-result-file]'),{target:{files:[file]}});
+    expect(el('#trList')).toHaveTextContent(file.name);
     click('#trAllPass');
     click('[aria-label="Sample Pass: Recommend Operator"]');
     input('[aria-label="Sample Pass: Machine"]','Sample excavator');
     input('[aria-label="Sample Pass: Trial conducted by"]','Sample Trainer');
     input('[aria-label="Sample Pass: Examiner remarks"]','Completed the inspection');
     click('#trSubmit');
-    expect(el('#tgpop').textContent).toContain('Sent to PM for approval');
+    expect(el('#trSubmit')).toBeDisabled();
+    await waitFor(()=>expect(el('#toast')).toHaveTextContent('Could not save the trial result file'));
+    expect(el('#trList')).toHaveTextContent(file.name);
+    expect(el('#bTrainer')).toHaveTextContent('1');
+    click('#trSubmit');
+    await waitFor(()=>expect(el('#tgpop')).toHaveTextContent('Sent to PM for approval'));
     expect(el('#tgpop').textContent).not.toContain('CLEARED TO JOIN');
     click('#tgClose2');
     for (const role of ['pm','rhr','director']) {
@@ -138,6 +157,12 @@ describe('Trial workflow preview',()=>{
     const next = setup();
     next.click('[data-tab="overview"]');
     expect(next.el('#ovList').textContent).toContain('Cleared to join');
+    next.click('#ovList [data-open]');
+    expect(next.el('[data-download-result]')).toHaveTextContent('Download signed-result.pdf');
+    next.click('[data-download-result]');
+    await waitFor(()=>expect(download).toHaveBeenCalledOnce());
+    expect(createUrl).toHaveBeenCalledWith(file);
+    expect((download.mock.contexts[0] as HTMLAnchorElement).download).toBe(file.name);
     const other = setup({site:'Another site'});
     other.click('[data-tab="overview"]');
     expect(other.el('#ovList').textContent).toContain('No trial forms yet');
