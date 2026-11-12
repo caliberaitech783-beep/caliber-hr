@@ -7,6 +7,7 @@ import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime
   NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
 import {getTrialResultFile, removeTrialResultFiles, saveTrialResultFiles} from './trialResultFiles';
+import {deliveryStatus, sendPart1, sendResults} from './telegramSend';
 
 type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
 type Scope = {company: string; site: string; owner: string; legacyOwner?: string; name: string; department: string};
@@ -185,6 +186,9 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       return [...latest,...created];
     })) return false;
     toast(batch ? `Batch ${created[0].batch}: ${created.length} candidates sent to Driver Trainer.` : `${created[0].formNo} sent to Driver Trainer.`);
+    if (savedSession()?.grant) void sendPart1(created,scope)
+      .then(d=>{if(!effects.signal.aborted) showTelegram([d.message],batch?`Batch ${created[0].batch} – sent to driver trainer (PDF sheet attached)`:'Trial Form Submitted – sent to driver trainer',undefined,deliveryStatus(d));})
+      .catch(error=>{if(!effects.signal.aborted) toast('Telegram: '+(error instanceof Error?error.message:'could not send'));});
     return true;
   }
   function resetSingle() {
@@ -480,7 +484,11 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     }
     const passed=changed.filter(row=>row.result==='PASS');
     toast(`${changed.length} results sent to PM – ${passed.length} pass, ${changed.length-passed.length} fail.`);
-    if(passed.length) showTelegram(passed.map(resultMessage),'Trial PASS – sent to PM for approval');
+    const resultFiles=new Map<string,File|undefined>();for(const row of changed) resultFiles.set(row.id,files.get(row.id)?.file);
+    if (!savedSession()?.grant) {if(passed.length) showTelegram(passed.map(resultMessage),'Trial PASS – sent to PM for approval');return;}
+    void sendResults(changed,resultFiles,name,scope)
+      .then(d=>{if(!effects.signal.aborted) showTelegram([d.message],changed.length>1?`Batch result – sent to PM (Excel sheet + attachments)`:'Trial result – sent to PM for approval',undefined,deliveryStatus(d));})
+      .catch(error=>{if(!effects.signal.aborted){toast('Telegram: '+(error instanceof Error?error.message:'could not send'));if(passed.length) showTelegram(passed.map(resultMessage),'Trial PASS – sent to PM for approval');}});
   }
   function focusResultUpload(id: string) {
     $$<HTMLButtonElement>('#trList [data-choose-result-file]').find(button=>
@@ -657,11 +665,11 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     const open=await prepared;
     if (!effects.signal.aborted) open?.();
   }
-  function showTelegram(messages: string[], summary: string, onClose?: ()=>void) {
+  function showTelegram(messages: string[], summary: string, onClose?: ()=>void, status = 'Preview only') {
     const text=messages.join('\n\n———\n\n'), time=indiaTime();
     telegramFocus=root.activeElement instanceof HTMLElement ? root.activeElement : null;
     afterTelegram=onClose;
-    $('#tgpop').innerHTML=`<div class="tghead"><div class="tgav">CT</div><div><div class="nm">${esc(scope.company||'CMLL')} Trial Bot</div><div class="sub">${esc(summary)} · ${messages.length} message${messages.length===1?'':'s'} · Preview only</div></div><button type="button" aria-label="Close Telegram preview" id="tgClose">×</button></div>
+    $('#tgpop').innerHTML=`<div class="tghead"><div class="tgav">CT</div><div><div class="nm">${esc(scope.company||'CMLL')} Trial Bot</div><div class="sub">${esc(summary)} · ${esc(status)}</div></div><button type="button" aria-label="Close Telegram preview" id="tgClose">×</button></div>
       <div class="tgbody">${messages.map(message=>`<div class="bubble">${esc(message)}<span class="tm">${time}</span></div>`).join('')}<textarea id="tgText" aria-label="Telegram message text" readonly hidden>${esc(text)}</textarea></div>
       <div class="tgfoot"><button type="button" class="btn tg" id="tgCopy">Copy for Telegram</button><button type="button" class="btn ${onClose?'pri':''}" id="tgClose2">${onClose?'Open Step 2':'Close'}</button></div>`;
     $('#tgpop').hidden=false;

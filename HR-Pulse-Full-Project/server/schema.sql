@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS hr_audit (
 ALTER TABLE hr_approvals ADD COLUMN IF NOT EXISTS approval_steps jsonb;
 ALTER TABLE hr_telegram_outbox ADD COLUMN IF NOT EXISTS bot text NOT NULL DEFAULT 'leave';
 ALTER TABLE hr_telegram_outbox ADD COLUMN IF NOT EXISTS markup jsonb;
+ALTER TABLE hr_telegram_outbox ADD COLUMN IF NOT EXISTS files jsonb;
+CREATE TABLE IF NOT EXISTS hr_telegram_files(id bigserial PRIMARY KEY,event_key text NOT NULL,name text NOT NULL,mime text NOT NULL,caption text,data bytea NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
 
 -- Organization masters used by the employee joining form. These inserts are
 -- idempotent so an existing administrator-managed record is never overwritten.

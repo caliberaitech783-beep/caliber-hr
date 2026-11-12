@@ -93,3 +93,16 @@ test('a candidate without a previous PASS can save a re-trial',async()=>{
  const out=await createTelegram({query:db.query,connect:async()=>db}).telegramApi({actor:'hr',permissions:{hrDesktopAccess:['Employee Master']}},'trial-forms','POST',{formNo:'TF/retrial',fields:{'Name of candidate':'Candidate','Aadhaar no.':'123456789012',Result:'FAIL'}});
  assert.equal(out.saved,true);assert.ok(sql.includes('COMMIT'));assert.ok(sql.some(query=>query.startsWith('INSERT INTO hr_records')));
 });
+
+test('trial Part 1 and batch messages follow the agreed formats',async()=>{
+ const {trialSubmittedMessage,trialBatchResultMessage,splitTelegram}=await import('./telegram.mjs');
+ const rec={formNo:'TF/2026-27/0001',site:'Jayant OB East',department:'Driver',trialBy:'driver trainer',fields:{'Name of candidate':'Apurva Dnyaninath Kopulwar','Post applied for':'Driver','Vehicle / equipment for trial':'Water Tanker','Trial date & time':'2026-11-12T10:30'}};
+ const m=trialSubmittedMessage(rec);
+ assert.equal(m,'🚛 VEHICLE TRIAL RESULT\n\nTrial Form Submitted\nName: Apurva Dnyaninath Kopulwar\nPost: Driver\nVehicle: Water Tanker\nExperience: –\nReferred by: –\nTrial date: 12-11-2026\nForm No: TF/2026-27/0001\nTrial by: driver trainer\nStatus: Sent to driver trainer\nSite: Jayant OB East');
+ const batch=trialBatchResultMessage({batchId:'B261112-7F3A',site:'Jayant OB East',trialBy:'Raju Mahto',trialDate:'2026-11-12',vehicle:'Dumper / Tipper',post:'Driver'},[
+  {formNo:'TF/1',fields:{Result:'PASS','Name of candidate':'Ramesh Kumar','Post applied for':'Driver','Total experience (years)':'5','Referred by':'Suresh'}},
+  {formNo:'TF/2',fields:{Result:'FAIL','Name of candidate':'Ajay Singh','If FAIL – reason':'Poor reversing'}}],9);
+ assert.match(batch,/^🚛 BULK VEHICLE TRIAL RESULT – B261112-7F3A\nSite: JAYANT OB EAST\nTrial date: 12-11-2026\nVehicle: Dumper \/ Tipper   Post: Driver\nTrial by: Raju Mahto\nTotal: 2  ✅ PASS 1  ❌ FAIL 1\n\n✅ PASSED\n1\. Ramesh Kumar – Driver, 5 yrs, Ref: Suresh\n\n❌ FAILED\n1\. Ajay Singh – Poor reversing\n\n📎 Attachments: 9 file\(s\) \+ Excel result sheet$/);
+ const parts=splitTelegram(Array.from({length:300},(_,i)=>`${i+1}. Candidate number ${i+1} – Driver – Dumper`).join('\n'));
+ assert.ok(parts.length>1&&parts.every(p=>p.length<=4000));
+});
