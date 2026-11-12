@@ -31,9 +31,9 @@ export type Candidate = {
 export type History = {role: Role; action: string; by: string; at: string; note?: string};
 export type Trial = Candidate & {
   id: string; formNo: string; batch: string; site: string; createdAt: string;
-  stage: Stage; result: Result; history: History[]; outcome?: Outcome & {trainer: string; at: string};
+  stage: Stage; result: Result; history: History[]; outcome?: Outcome & {at: string};
 };
-export type Outcome = {result: Result; post: Post; machine: string; reason: string; retrial: string; remarks: string};
+export type Outcome = {result: Result; post: Post; machine: string; reason: string; trainer: string; remarks: string};
 export const post = (value: string): Post => value === 'Operator' ? 'Operator' : 'Driver';
 export const equipment = (row: Candidate) => row.vehicles.map(item => item === 'Other' ? row.otherVehicle || item : item).join(', ');
 export const status = (row: Trial) => row.stage === 'done'

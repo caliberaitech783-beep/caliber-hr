@@ -104,6 +104,7 @@ table.t{width:100%;border-collapse:collapse;font-size:13px}
 .pf button+button{border-left:1px solid var(--line-strong)}
 .pf button.on.pass{background:var(--pass);color:#fff}
 .pf button.on.fail{background:var(--fail);color:#fff}
+.recommended-post{display:flex;gap:8px;margin-bottom:4px}
 
 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .filters input{padding:7px 10px;border:1px solid var(--line-strong);border-radius:6px;background:var(--surface);min-width:220px;flex:1 1 220px;max-width:340px}

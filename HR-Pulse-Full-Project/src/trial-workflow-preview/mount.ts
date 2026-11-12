@@ -11,7 +11,7 @@ type Scope = {company: string; site: string; owner: string; name: string; depart
 const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
 const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',rhr:'approve',director:'approve'};
 const blankRow = () => ({name:'',father:'',mobile:'',aadhaar:'',dl:'',dlValid:'',experience:'',referredBy:'',dlSeen:false,aSeen:false,medSeen:false});
-const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',retrial:'',remarks:''});
+const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',trainer:'',remarks:''});
 const digits = (value: string) => value.replace(/\D/g,'');
 const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
 const check = (seen = '', remarks = '') => ({seen,remarks});
@@ -374,7 +374,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
         const d=drafts.get(row.id)!;
         const next: Trial={...row,stage:'pm',result:d.result,outcome:{
           ...d,machine:d.result==='PASS'?d.machine.trim():'',reason:d.result==='FAIL'?d.reason.trim():'',
-          retrial:d.result==='FAIL'?d.retrial:'',remarks:d.remarks.trim(),trainer:name,at,
+          remarks:d.remarks.trim(),trainer:d.trainer.trim()||name,at,
         },history:[...row.history,{role:'trainer',action:'Trial result: '+d.result,by:name,at}]};
         changed.push(next);
         return next;
@@ -404,7 +404,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
     if (!row) return;
     const draft=draftFor(row), field=input.dataset.f;
     if (field==='post') draft.post=post(input.value);
-    else if(field==='machine'||field==='reason'||field==='retrial'||field==='remarks') draft[field]=input.value;
+    else if(field==='machine'||field==='reason'||field==='trainer'||field==='remarks') draft[field]=input.value;
   };
   $('#trAllPass').onclick=()=>{
     if(role!=='trainer') return;

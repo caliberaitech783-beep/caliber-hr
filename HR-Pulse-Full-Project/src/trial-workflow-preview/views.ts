@@ -16,7 +16,7 @@ export function overviewTable(records: Trial[]) {
     <td>${esc(row.referredBy)}</td><td>${esc(dateTime(row.trialDate))}</td><td>${resultPill(row)}</td><td>${stagePill(row)}</td></tr>`).join(''));
 }
 export function trainerTable(records: Trial[], draftFor: (row: Trial) => Outcome, allowed: boolean) {
-  return table(['Candidate','Vehicle · Trial','Docs','Result','If PASS – recommended for','If FAIL – reason','Re-trial after','Examiner remarks'],
+  return table(['Candidate','Vehicle · Trial','Docs','Result','If PASS – recommended for','If FAIL – reason','Trial conducted by','Examiner remarks'],
     records.map(row=>{
       const d = draftFor(row);
       const id=esc(row.id), name=esc(row.name);
@@ -28,10 +28,12 @@ export function trainerTable(records: Trial[], draftFor: (row: Trial) => Outcome
         <td>${esc(equipment(row))}<div class="muted small">${esc(dateTime(row.trialDate))}${row.experience?' · '+esc(row.experience)+' yrs':''}</div></td>
         <td class="small mono" title="DL · Aadhaar · Medical">${dl} ${a} ${m}</td>
         <td><div class="pf">${(['PASS','FAIL'] as const).map(result=>`<button type="button" data-res="${result}" aria-pressed="${d.result===result}" aria-label="${name}: ${result}" class="${result.toLowerCase()} ${d.result===result?'on':''}" ${allowed?'':'disabled'}>${result}</button>`).join('')}</div></td>
-        <td><select data-f="post" aria-label="${name}: Recommended post" ${passDisabled}><option ${d.post==='Driver'?'selected':''}>Driver</option><option ${d.post==='Operator'?'selected':''}>Operator</option></select>
-        <input type="text" data-f="machine" aria-label="${name}: Machine" value="${esc(d.machine)}" placeholder="Machine" style="margin-top:4px" ${passDisabled}></td>
+        <td><div class="recommended-post" role="group" aria-label="${name}: Recommended post">
+          ${(['Driver','Operator'] as const).map(option=>`<label class="chk"><input type="radio" name="recommended-${id}" data-f="post" value="${option}" aria-label="${name}: Recommend ${option}" ${d.post===option?'checked':''} ${passDisabled}> ${option}</label>`).join('')}
+        </div>
+        <input type="text" data-f="machine" aria-label="${name}: Machine" value="${esc(d.machine)}" placeholder="Machine" ${passDisabled}></td>
         <td><input type="text" data-f="reason" aria-label="${name}: Failure reason" value="${esc(d.reason)}" placeholder="Reason" ${failDisabled}></td>
-        <td><input type="date" data-f="retrial" aria-label="${name}: Re-trial after" value="${esc(d.retrial)}" ${failDisabled}></td>
+        <td><input type="text" data-f="trainer" aria-label="${name}: Trial conducted by" value="${esc(d.trainer)}" placeholder="Your name if blank" ${allowed?'':'disabled'}></td>
         <td><input type="text" data-f="remarks" aria-label="${name}: Examiner remarks" value="${esc(d.remarks)}" ${allowed?'':'disabled'}></td></tr>`;
     }).join(''));
 }
@@ -71,7 +73,7 @@ export function detailView(row: Trial, role: Role) {
     <div class="secbar">Part 2 – Trial result <em>Driver Trainer</em></div>
     <div class="rows" style="border:1px solid var(--line-strong)">${item('Result',resultPill(row))}${section([
       ['If PASS – recommended for',out && row.result==='PASS'?[out.post,out.machine].filter(Boolean).join(' – '):''],['If FAIL – reason',out?.reason||''],
-      ['Trial conducted by',out?.trainer||''],['Re-trial allowed after',date(out?.retrial||'')],['Examiner remarks',out?.remarks||''],
+      ['Trial conducted by',out?.trainer||''],['Examiner remarks',out?.remarks||''],
     ])}</div>
     <div class="secbar">Approvals</div><div class="sigs">${signs}</div>
     ${row.history.filter(h=>h.note).map(h=>`<p class="note"><b>${esc(ROLES[h.role])} (${esc(h.by)}):</b> ${esc(h.note)}</p>`).join('')}

@@ -91,6 +91,10 @@ describe('Trial workflow preview',()=>{
     expect(el('#apList').textContent).toContain('Nothing waiting for Director');
     change('#role','trainer');
     click('#trAllPass');
+    click('[aria-label="Sample Pass: Recommend Operator"]');
+    input('[aria-label="Sample Pass: Machine"]','Sample excavator');
+    input('[aria-label="Sample Pass: Trial conducted by"]','Sample Trainer');
+    input('[aria-label="Sample Pass: Examiner remarks"]','Completed the inspection');
     click('#trSubmit');
     expect(el('#tgpop').textContent).toContain('Sent to PM for approval');
     expect(el('#tgpop').textContent).not.toContain('CLEARED TO JOIN');
@@ -107,6 +111,9 @@ describe('Trial workflow preview',()=>{
     expect(el('#ovList').textContent).toContain('Cleared to join');
     click('#ovList [data-open]');
     expect(el('#modalBox').textContent).toContain('Approvals');
+    expect(el('#modalBox').textContent).toContain('Operator – Sample excavator');
+    expect(el('#modalBox').textContent).toContain('Sample Trainer');
+    expect(el('#modalBox').textContent).toContain('Completed the inspection');
     expect(el('#modalBox .sigs').textContent).toContain('DirectorApproved');
     const next = setup();
     next.click('[data-tab="overview"]');
@@ -152,6 +159,7 @@ describe('Trial workflow preview',()=>{
     click('#ovList [data-open]');
     expect(el('#modalBox').textContent).toContain('Review again after re-training');
     expect(el('#modalBox').textContent).toContain('Did not complete trial safely');
+    expect(el('#modalBox').textContent).not.toContain('Re-trial');
     expect(el('#modalBox').textContent).not.toContain('Cleared to join');
   });
 });
