@@ -1,12 +1,17 @@
 import {siteDisplayName} from './siteNames';
 import {useEffect,useState} from 'react';
-import {pulse,csv,download} from './api';
+import {pulse,csv,download,downloadBlob} from './api';
 type Person={employeeId:string;name:string;category:string;designation:string;department:string;reportingTo:string;contact:string;email:string;status:string;siteId:string;site:string;region:string};
 type Directory={source:string;fetchedAt:string;sites:{id:string;label:string;region:string}[];rows:Person[]};
-const columns:[keyof Person,string][]=[['employeeId','Employee ID'],['name','Name'],['region','Region'],['site','Site / Office'],['department','Department'],['designation','Designation'],['category','Category'],['reportingTo','Reporting to'],['contact','Contact'],['email','Email'],['status','Status']];
+const columns:[keyof Person,string,number][]=[
+ ['employeeId','Employee ID',18],['name','Name',27],['region','Region',14],['site','Site / Office',29],
+ ['department','Department',22],['designation','Designation',32],['category','Category',17],
+ ['reportingTo','Reporting to',25],['contact','Contact',19],['email','Email',37],['status','Status',16],
+];
 const office=(label:string)=>/\b(head|corporate) office\b|\bHO\b|\bCO\b/i.test(label);
 export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:string;employeeGroup:'Corporate / HO'|'OB / COAL'}){
  const[data,setData]=useState<Directory|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[attempt,setAttempt]=useState(0);
+ const[exporting,setExporting]=useState(false);
  const[region,setRegion]=useState(''),[site,setSite]=useState(''),[department,setDepartment]=useState(''),[designation,setDesignation]=useState(''),[search,setSearch]=useState('');
  useEffect(()=>{setRegion('');setSite('');setDepartment('');setDesignation('');setSearch('');},[employeeGroup]);
  useEffect(()=>{let live=true;if(!grant){setError('Sign in to load Pulse C-Directory.');return;}setLoading(true);setError('');setData(null);pulse('directory',{grant}).then(result=>{if(!Array.isArray(result.rows)||!Array.isArray(result.sites))throw Error('Pulse returned an invalid directory response.');if(live)setData({...result,sites:result.sites.map((site:Directory['sites'][number])=>({...site,label:siteDisplayName(site.label)})),rows:result.rows.map((row:Person)=>({...row,site:siteDisplayName(row.site)}))});}).catch(e=>{if(live)setError(e.message);}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[grant,attempt]);
@@ -17,6 +22,22 @@ export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:strin
  const departments=[...new Set(base.map(row=>row.department).filter(Boolean))].sort();
  const designations=[...new Set(base.filter(row=>!department||row.department===department).map(row=>row.designation).filter(Boolean))].sort();
  const rows=base.filter(row=>(!department||row.department===department)&&(!designation||row.designation===designation)&&(!search||[row.employeeId,row.name,row.designation].some(value=>value.toLowerCase().includes(search.toLowerCase()))));
+ async function exportExcel(){
+  setExporting(true);
+  setError('');
+  try{
+   const {regionEmployeeExcel}=await import('./regionEmployeeExcel');
+   const workbook=await regionEmployeeExcel(
+    columns.map(([,header,width])=>({header,width})),
+    rows.map(row=>columns.map(([key])=>String(row[key]||'—'))),
+   );
+   downloadBlob('region-employee-details.xlsx',workbook);
+  }catch{
+   setError('Could not export the Excel report. Please try again.');
+  }finally{
+   setExporting(false);
+  }
+ }
  return <section className="data-card employee-report" aria-labelledby="employee-report-title">
   <div className="data-heading">
    <div>
@@ -26,6 +47,7 @@ export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:strin
    </div>
    <div className="toolbar-buttons">
     <button type="button" disabled={loading} onClick={()=>setAttempt(value=>value+1)}>Refresh directory</button>
+    <button type="button" className="primary" disabled={loading||exporting||!rows.length} onClick={()=>void exportExcel()}>{exporting?'Preparing Excel…':'Export Excel'}</button>
     <button type="button" disabled={!data||loading||!rows.length} onClick={()=>download('region-employee-details.csv',csv(columns.map(([key])=>key),rows))}>Export CSV</button>
    </div>
   </div>
