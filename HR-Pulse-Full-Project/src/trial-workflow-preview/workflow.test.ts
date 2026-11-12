@@ -1,6 +1,7 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {act,fireEvent,render,waitFor} from '@testing-library/react';
 import {createElement} from 'react';
+import {utils,write} from 'xlsx';
 import TrialWorkflowPreview from './TrialWorkflowPreview';
 import * as trialResultFiles from './trialResultFiles';
 
@@ -83,6 +84,49 @@ describe('Trial workflow preview',()=>{
     expect(getByRole('button',{name:'Upload Aadhaar Image 1'})).toBeEnabled();
     change('#role','trainer');
     expect(getByLabelText('Choose second Aadhaar image')).toBeDisabled();
+  });
+
+  it('imports Excel candidates and applies multiple scans without overwriting confirmed details',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    const workbook=utils.book_new();
+    utils.book_append_sheet(workbook,utils.aoa_to_sheet([
+      ['Aadhaar No','Medical','Name','Mobile','DL valid','DL seen'],
+      [234500000000,'Yes','Verified Candidate',9876543210,new Date('2027-11-21T00:00:00Z'),'Yes'],
+    ]),'Candidates');
+    const bytes=write(workbook,{type:'array',bookType:'xlsx'}) as ArrayBuffer;
+    const excel=new File([bytes],'sample.xlsx');
+    Object.defineProperty(excel,'arrayBuffer',{value:async()=>bytes});
+    const details={name:'Read Candidate',relationName:'Sample Parent',dob:'2000-01-02',uid:'234500000000',address:'Sample Address',gender:''};
+    vi.spyOn(window,'fetch')
+      .mockResolvedValueOnce(Response.json({details}))
+      .mockResolvedValueOnce(Response.json({details:{...details,uid:''}}))
+      .mockResolvedValueOnce(Response.json({details:{...details,name:'New Candidate',uid:'234500000001'}}));
+    const {el,click,input,change}=setup();
+    click('[data-tab="hr"]');
+    click('[data-m="bulk"]');
+    fireEvent.change(el('#bExcelFile'),{target:{files:[excel]}});
+    await waitFor(()=>expect(el('#bUploadStatus')).toHaveTextContent('1 candidate row imported'));
+    expect(el('[aria-label="Row 1: DL valid"]')).toHaveValue('2027-11-21');
+    expect(el('[aria-label="Row 1: Mobile"]')).toHaveValue('9876543210');
+    expect(el('[aria-label="Row 1: Medical seen"]')).toBeChecked();
+
+    const scans=['matched.pdf','masked.pdf','new.pdf'].map(name=>new File(['%PDF-1.7'],name,{type:'application/pdf'}));
+    fireEvent.change(el('#bScanFiles'),{target:{files:scans}});
+    expect(el('#bSubmit')).toBeDisabled();
+    await waitFor(()=>expect(el('#bUploadStatus')).toHaveTextContent('2 of 3 Aadhaar scans applied'));
+    expect(el('#bUploadIssues')).toHaveTextContent('masked.pdf');
+    expect(el('[aria-label="Row 1: Name"]')).toHaveValue('Verified Candidate');
+    expect(el('[aria-label="Row 1: Date of birth"]')).toHaveValue('2000-01-02');
+    expect(el('[aria-label="Row 1: Address"]')).toHaveValue('Sample Address');
+    expect(el('[aria-label="Row 1: Aadhaar seen"]')).not.toBeChecked();
+    expect(el('[aria-label="Row 2: Name"]')).toHaveValue('New Candidate');
+    input('[aria-label="Row 2: Mobile"]','9876543211');
+    click('[aria-label="Row 2: DL seen"]');
+    click('[aria-label="Row 2: Medical seen"]');
+    click('#bSubmit');
+    change('#role','trainer');
+    expect(el('#trList')).toHaveTextContent('Verified Candidate');
+    expect(el('#trList')).toHaveTextContent('New Candidate');
   });
 
   it('checks documents and keeps a trial result attachment through approval and reload',async()=>{

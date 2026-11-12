@@ -89,6 +89,16 @@
         <label>Referred by (default)<input id="b_ref" type="text" placeholder="Leave blank if each differs"></label>
       </div>
       <div class="secbar">Candidates <em>DL &amp; Aadhaar seen = document check</em></div>
+      <div class="bulk-upload-actions">
+        <button type="button" class="btn pri" id="bExcelUpload">Upload Excel</button>
+        <input type="file" id="bExcelFile" accept=".xlsx,.xls" hidden>
+        <button type="button" class="btn" id="bScanUpload">Scan Aadhaar in bulk</button>
+        <input type="file" id="bScanFiles" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple hidden>
+        <button type="button" class="btn" id="bExcelTemplate">Download Excel template</button>
+      </div>
+      <p class="note bulk-upload-note">Select one Aadhaar card per JPG, PNG or unlocked PDF. Include Aadhaar numbers in Excel to match scans to those rows.</p>
+      <p class="note bulk-upload-note" id="bUploadStatus" role="status" hidden></p>
+      <ul class="note bulk-upload-issues" id="bUploadIssues" hidden></ul>
       <details>
         <summary class="note" style="cursor:pointer">Paste rows from Excel</summary>
         <p class="note">Column order: Name · Father's name · Mobile · Aadhaar · DL no. &amp; class · DL valid (DD-MM-YYYY) · Experience (yrs) · Referred by</p>
@@ -96,7 +106,7 @@
         <div class="actions"><button class="btn sm" id="b_pasteBtn" type="button">Add pasted rows</button></div>
       </details>
       <div class="scroll"><table class="t" id="bTable">
-        <thead><tr><th>#</th><th>Name *</th><th>Father's name</th><th>Mobile *</th><th>Aadhaar</th><th>DL no. &amp; class</th><th>DL valid</th><th>Exp (yrs)</th><th>Referred by</th><th>DL seen</th><th>Aadhaar seen</th><th>Medical</th><th></th></tr></thead>
+        <thead><tr><th>#</th><th>Name *</th><th>Father's name</th><th>Mobile *</th><th>Aadhaar</th><th>DL no. &amp; class</th><th>DL valid</th><th>Exp (yrs)</th><th>Referred by</th><th>Date of birth</th><th>Address</th><th>DL seen</th><th>Aadhaar seen</th><th>Medical</th><th></th></tr></thead>
         <tbody></tbody></table></div>
       <div class="actions">
         <button type="button" class="btn" id="bAdd">+ Add row</button>

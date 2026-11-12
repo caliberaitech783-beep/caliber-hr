@@ -1,6 +1,8 @@
 import template from './screen.html?raw';
 import css from './screen.css?raw';
-import type {AadhaarDetails} from '../geminiOcr';
+import {savedSession} from '../api';
+import {readGeminiAadhaar, type AadhaarDetails} from '../geminiOcr';
+import {applyBulkAadhaar, blankBulkRow, bulkColumns, bulkConfirmations, downloadBulkWorkbook, hasBulkCandidate, readBulkWorkbook} from './bulkCandidates';
 import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime, licenceDate, localDateTime,
   NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
@@ -10,7 +12,6 @@ type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
 type Scope = {company: string; site: string; owner: string; name: string; department: string};
 const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
 const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',rhr:'approve',director:'approve'};
-const blankRow = () => ({name:'',father:'',mobile:'',aadhaar:'',dl:'',dlValid:'',experience:'',referredBy:'',dlSeen:false,aSeen:false,medSeen:false});
 const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',trainer:'',remarks:''});
 const digits = (value: string) => value.replace(/\D/g,'');
 const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -36,9 +37,10 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   const draftFiles = new Map<string,File>();
   const selected = new Set<string>();
   const effects = new AbortController();
-  let tab: Tab = 'aadhaar', role: Role = 'hr', stageFilter = '', records: Trial[] = [], bulk = Array.from({length:3},blankRow);
+  let tab: Tab = 'aadhaar', role: Role = 'hr', stageFilter = '', records: Trial[] = [], bulk = Array.from({length:3},blankBulkRow);
   let photo = '', photoLoading = false, photoVersion = 0, photoUrl = '', detailId = '', toastTimer: ReturnType<typeof setTimeout>;
   let aadhaarScanPending = false;
+  let bulkBusy = false;
   let submittingResults = false;
   let modalFocus: HTMLElement | null = null;
   let telegramFocus: HTMLElement | null = null;
@@ -145,7 +147,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     $('#sFormNo').textContent = 'Form No. '+nextNumber(records);
     $('#hrRoleWarn').hidden = role==='hr';
     updateSingleActions();
-    $<HTMLButtonElement>('#bSubmit').disabled = role!=='hr';
+    updateBulkActions();
     showTab(tab);
   }
   function createCandidates(candidates: Candidate[], batch: boolean) {
@@ -275,24 +277,25 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     }],false)) resetSingle();
   };
 
-  const columns = [
-    ['name','Name','text','Full name'],['father',"Father's name",'text',''],['mobile','Mobile','tel','10 digits'],
-    ['aadhaar','Aadhaar','text',''],['dl','DL no. & class','text','DL – class'],['dlValid','DL valid','date',''],
-    ['experience','Experience','text','yrs'],['referredBy','Referred by','text',''],
-  ] as const;
-  const confirmations = [['dlSeen','DL seen'],['aSeen','Aadhaar seen'],['medSeen','Medical seen']] as const;
+  function updateBulkActions() {
+    for (const control of $$<HTMLButtonElement|HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('#bulk button, #bulk input, #bulk select, #bulk textarea')) {
+      control.disabled = bulkBusy || role!=='hr';
+    }
+  }
   function renderBulk() {
-    $('#bTable tbody').innerHTML = bulk.map((row,i)=>`<tr><td class="mono">${i+1}</td>${columns.map(([key,label,type,placeholder])=>
+    $('#bTable tbody').innerHTML = bulk.map((row,i)=>`<tr><td class="mono">${i+1}</td>${bulkColumns.map(([key,label,type,placeholder])=>
       `<td><input type="${type}" data-row="${i}" data-field="${key}" value="${esc(row[key])}" aria-label="Row ${i+1}: ${esc(label)}" placeholder="${placeholder}"></td>`).join('')}
-      ${confirmations.map(([key,label])=>`<td style="text-align:center"><input type="checkbox" data-row="${i}" data-field="${key}" aria-label="Row ${i+1}: ${label}" ${row[key]?'checked':''}></td>`).join('')}
+      ${bulkConfirmations.map(([key,label])=>`<td style="text-align:center"><input type="checkbox" data-row="${i}" data-field="${key}" aria-label="Row ${i+1}: ${label}" ${row[key]?'checked':''}></td>`).join('')}
       <td><button type="button" class="btn sm" data-delete="${i}" aria-label="Remove row ${i+1}">✕</button></td></tr>`).join('');
+    updateBulkActions();
   }
   $('#bTable').oninput = event=>{
+    if (bulkBusy || role!=='hr') return;
     const input=event.target as HTMLInputElement;
     const row=bulk[Number(input.dataset.row)];
     if (!row) return;
-    const field=columns.find(([key])=>key===input.dataset.field);
-    const flag=confirmations.find(([key])=>key===input.dataset.field);
+    const field=bulkColumns.find(([key])=>key===input.dataset.field);
+    const flag=bulkConfirmations.find(([key])=>key===input.dataset.field);
     if (field) row[field[0]]=input.value;
     if (flag) row[flag[0]]=input.checked;
   };
@@ -300,7 +303,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     const button=(event.target as Element).closest<HTMLButtonElement>('[data-delete]');
     if (button) {bulk.splice(Number(button.dataset.delete),1);renderBulk();}
   };
-  $('#bAdd').onclick=()=>{bulk.push(blankRow());renderBulk();};
+  $('#bAdd').onclick=()=>{bulk.push(blankBulkRow());renderBulk();};
   $('#b_veh').onchange=()=>{$('#b_other_label').hidden=value('#b_veh')!=='Other';};
   $('#b_pasteBtn').onclick=()=>{
     const lines=value('#b_paste').split(/\r?\n/).filter(line=>line.trim());
@@ -309,25 +312,101 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       const cells=(line.includes('\t')?line.split('\t'):line.split(',')).map(cell=>cell.trim());
       const [name='',father='',mobile='',aadhaar='',dl='',rawDate='',experience='',referredBy='']=cells;
       return {bad:cells.length>8||!name||Boolean(rawDate&&!licenceDate(rawDate)),
-        row:{...blankRow(),name,father,mobile:digits(mobile),aadhaar:digits(aadhaar),dl,dlValid:licenceDate(rawDate),experience,referredBy}};
+        row:{...blankBulkRow(),name,father,mobile:digits(mobile),aadhaar:digits(aadhaar),dl,dlValid:licenceDate(rawDate),experience,referredBy}};
     });
     const invalid=parsed.findIndex(item=>item.bad);
     if (invalid>=0) return toast(`Check the name, columns and DL date on pasted row ${invalid+1}.`);
-    bulk=[...bulk.filter(row=>columns.some(([key])=>row[key].trim())),...parsed.map(item=>item.row)];
+    bulk=[...bulk.filter(hasBulkCandidate),...parsed.map(item=>item.row)];
     $<HTMLTextAreaElement>('#b_paste').value='';
     renderBulk();
     toast(`${parsed.length} rows added. Confirm the documents you checked.`);
   };
+  function bulkStatus(message: string, issues: string[] = []) {
+    $('#bUploadStatus').textContent = message;
+    $('#bUploadStatus').hidden = !message;
+    $('#bUploadIssues').innerHTML = issues.map(issue=>`<li>${esc(issue)}</li>`).join('');
+    $('#bUploadIssues').hidden = !issues.length;
+  }
+  function setBulkBusy(busy: boolean) {
+    bulkBusy = busy;
+    $<HTMLSelectElement>('#role').disabled = busy;
+    updateBulkActions();
+  }
+  async function importBulkExcel(file: File) {
+    if (!/\.xlsx?$/i.test(file.name)) {
+      bulkStatus('Choose an Excel workbook in .xlsx or .xls format.');
+      return;
+    }
+    bulkStatus('Reading Excel workbook…');
+    const rows = await readBulkWorkbook(file);
+    if (effects.signal.aborted) return;
+    bulk = [...bulk.filter(hasBulkCandidate),...rows];
+    bulkStatus(`${rows.length} candidate ${rows.length===1?'row':'rows'} imported. Review the details before submitting.`);
+  }
+  async function scanBulkAadhaar(files: File[]) {
+    const grant = savedSession()?.grant;
+    if (!grant) {
+      bulkStatus('Sign in again before scanning Aadhaar.');
+      return;
+    }
+    const rows = bulk.filter(hasBulkCandidate);
+    const issues: string[] = [];
+    let applied = 0;
+    for (const [index,file] of files.entries()) {
+      if (effects.signal.aborted) return;
+      if (savedSession()?.grant!==grant) {
+        issues.push(`Sign in again to scan the remaining ${files.length-index} files.`);
+        break;
+      }
+      bulkStatus(`Scanning Aadhaar ${index+1} of ${files.length}…`);
+      try {
+        if (!/\.(jpe?g|png|pdf)$/i.test(file.name)) throw new Error('Choose a JPG, PNG or PDF.');
+        const details = await readGeminiAadhaar(file,grant);
+        if (effects.signal.aborted) return;
+        applyBulkAadhaar(rows,details);
+        applied++;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'The scan failed.';
+        issues.push(`${file.name}: ${message}`);
+      }
+    }
+    if (applied) bulk = rows;
+    bulkStatus(`${applied} of ${files.length} Aadhaar scans applied. Review the rows before submitting.`,issues);
+  }
+  for (const [button,selector,load] of [
+    ['#bExcelUpload','#bExcelFile',(files: File[])=>importBulkExcel(files[0])],
+    ['#bScanUpload','#bScanFiles',scanBulkAadhaar],
+  ] as const) {
+    const input = $<HTMLInputElement>(selector);
+    $(button).onclick = ()=>input.click();
+    input.onchange = async ()=>{
+      const files = Array.from(input.files??[]);
+      input.value = '';
+      if (!files.length || bulkBusy || role!=='hr') return;
+      setBulkBusy(true);
+      try {await load(files);}
+      catch (error) {
+        if (!effects.signal.aborted) bulkStatus(error instanceof Error ? error.message : 'Could not read the selected file.');
+      } finally {
+        if (!effects.signal.aborted) {
+          setBulkBusy(false);
+          renderBulk();
+        }
+      }
+    };
+  }
+  $('#bExcelTemplate').onclick=downloadBulkWorkbook;
   $('#bSubmit').onclick=()=>{
+    if (bulkBusy) return;
     const vehicle=value('#b_veh');
-    const candidates=bulk.filter(row=>columns.some(([key])=>row[key].trim())).map((row):Candidate=>({
+    const candidates=bulk.filter(hasBulkCandidate).map((row):Candidate=>({
       name:row.name.trim(),father:row.father.trim(),mobile:row.mobile.trim(),aadhaar:digits(row.aadhaar),dl:row.dl.trim(),
       dlValid:row.dlValid,experience:row.experience.trim(),referredBy:row.referredBy.trim()||value('#b_ref'),
-      dob:'',address:'',photo:'',employer:'',post:post(value('#b_post')),vehicles:[vehicle],
+      dob:row.dob,address:row.address.trim(),photo:'',employer:'',post:post(value('#b_post')),vehicles:[vehicle],
       otherVehicle:vehicle==='Other'?value('#b_other'):'',trialDate:value('#b_trial'),
       docs:{dl:check(row.dlSeen?'Yes':'No'),hemm:check(),aadhaar:check(row.aSeen?'Yes':'No'),medical:check(row.medSeen?'Yes':'No'),exp:check()},
     }));
-    if(createCandidates(candidates,true)){bulk=Array.from({length:3},blankRow);renderBulk();}
+    if(createCandidates(candidates,true)){bulk=Array.from({length:3},blankBulkRow);bulkStatus('');renderBulk();}
   };
 
   async function submitResults() {
