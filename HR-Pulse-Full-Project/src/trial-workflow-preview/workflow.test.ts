@@ -126,7 +126,8 @@ describe('Trial workflow preview',()=>{
     }
     expect(el('#tgpop').textContent).toContain('CLEARED TO JOIN');
     click('#tgClose2');
-    click('[data-tab="overview"]');
+    click('[data-stage="done"]');
+    expect(el('#ovTitle')).toHaveTextContent('Completed (1)');
     expect(el('#ovList').textContent).toContain('Cleared to join');
     click('#ovList [data-open]');
     expect(el('#modalBox').textContent).toContain('Approvals');

@@ -2,7 +2,7 @@ import template from './screen.html?raw';
 import css from './screen.css?raw';
 import type {AadhaarDetails} from '../geminiOcr';
 import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime, licenceDate, localDateTime,
-  NEXT, nextNumber, post, resultMessage, ROLES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
+  NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
 
 type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
@@ -34,7 +34,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   const drafts = new Map<string,Outcome>();
   const selected = new Set<string>();
   const effects = new AbortController();
-  let tab: Tab = 'aadhaar', role: Role = 'hr', records: Trial[] = [], bulk = Array.from({length:3},blankRow);
+  let tab: Tab = 'aadhaar', role: Role = 'hr', stageFilter = '', records: Trial[] = [], bulk = Array.from({length:3},blankRow);
   let photo = '', photoLoading = false, photoVersion = 0, photoUrl = '', detailId = '', toastTimer: ReturnType<typeof setTimeout>;
   let aadhaarScanPending = false;
   let modalFocus: HTMLElement | null = null;
@@ -74,6 +74,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   }
   function showTab(next: Tab) {
     tab = next;
+    $('#pipe').hidden = next==='aadhaar';
     $$<HTMLButtonElement>('#tabs button').forEach(button=>{
       const active = button.dataset.tab===next;
       button.classList.toggle('on',active);
@@ -86,12 +87,12 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   }
   function renderOverview() {
     const query = value('#search').toLowerCase();
-    const rows = sorted(records).filter(row=>
-      [row.name,row.formNo,row.mobile,row.referredBy,equipment(row)].join(' ').toLowerCase().includes(query));
-    $('#ovTitle').textContent = `All candidates (${rows.length})`;
+    const rows = sorted(records).filter(row=>(!stageFilter||row.stage===stageFilter)
+      && [row.name,row.formNo,row.mobile,row.referredBy,equipment(row)].join(' ').toLowerCase().includes(query));
+    $('#ovTitle').textContent = (STAGES.find(([stage])=>stage===stageFilter)?.[2] || 'All candidates') + ` (${rows.length})`;
     $('#ovList').innerHTML = !records.length
       ? empty('No trial forms yet','Site HR starts here: add one candidate, or a whole trial batch at once.','<button type="button" class="btn pri" data-go="hr">Add candidates</button>')
-      : !rows.length ? empty('No matches','Clear the search to show everyone.') : overviewTable(rows);
+      : !rows.length ? empty('No matches','Clear the search or select the stage again to show everyone.') : overviewTable(rows);
   }
   const waiting = () => sorted(records.filter(row=>row.stage==='trainer')).reverse();
   const approvals = () => canApprove(role) ? sorted(records.filter(row=>row.stage===role)) : [];
@@ -128,6 +129,10 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     syncSelection(rows);
   }
   function refresh() {
+    $('#pipe').innerHTML = STAGES.filter(([stage])=>stage==='trainer'||stage==='done'||stage==='rejected').map(([stage,label])=>{
+      const active=stageFilter===stage, number=stage==='trainer'?'Step 1':stage==='done'?'✓':'✕';
+      return `<button type="button" data-stage="${stage}" class="${active?'on':''}" aria-pressed="${active}"><span class="step">${number}</span><span class="n">${records.filter(row=>row.stage===stage).length}</span><span class="l">${label}</span></button>`;
+    }).join('');
     for (const [selector,count] of [['#bTrainer',waiting().length],['#bApprove',approvals().length]] as const) {
       $(selector).textContent = String(count);
       $(selector).hidden = !count;
@@ -507,7 +512,19 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   $('#tabs').onclick=event=>{
     const target=(event.target as Element).closest<HTMLButtonElement>('[data-tab]');
     const next=tabs.find(item=>item===target?.dataset.tab);
-    if (next) showTab(next);
+    if (next) {
+      if(next==='overview'&&stageFilter){stageFilter='';tab=next;refresh();}
+      else showTab(next);
+    }
+  };
+  $('#pipe').onclick=event=>{
+    const button=(event.target as Element).closest<HTMLButtonElement>('[data-stage]');
+    if(!button?.dataset.stage) return;
+    const stage=button.dataset.stage;
+    stageFilter=stage===stageFilter?'':stage;
+    tab='overview';
+    refresh();
+    $<HTMLButtonElement>(`#pipe [data-stage="${stage}"]`).focus();
   };
   $('#search').oninput=renderOverview;
   function setCandidateMode(single: boolean) {

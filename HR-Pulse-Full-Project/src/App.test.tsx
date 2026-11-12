@@ -21,11 +21,20 @@ it('opens the full trial workflow directly from the Trial Form menu',async()=>{
  expect(screen.queryByRole('group',{name:'Trial Form views'})).toBeNull();
  const preview=container.querySelector('[aria-label="Trial workflow local preview"]')?.shadowRoot;
  expect(preview?.querySelector('#tabs button[aria-pressed="true"]')).toHaveTextContent('Upload Aadhaar');
- expect(preview?.querySelector('#pipe')).toBeNull();
+ const stages=preview?.querySelector('#pipe');
+ expect(stages).toHaveAttribute('hidden');
+ expect(Array.from(stages?.querySelectorAll('.l')??[],label=>label.textContent))
+  .toEqual(['Trial pending','Completed','Rejected']);
  expect(screen.getByRole('button',{name:'Upload Aadhaar Image 1'})).toBeEnabled();
  expect(screen.getByRole('button',{name:'Upload Aadhaar Image 2'})).toBeEnabled();
  expect(Array.from(preview?.querySelectorAll('#tabs button')??[],button=>button.getAttribute('data-tab')))
   .toEqual(['aadhaar','hr','trainer','approve','overview']);
+ for(const tab of ['hr','trainer','approve','overview']){
+  fireEvent.click(preview!.querySelector(`[data-tab="${tab}"]`)!);
+  expect(stages).not.toHaveAttribute('hidden');
+ }
+ fireEvent.click(preview!.querySelector('[data-tab="aadhaar"]')!);
+ expect(stages).toHaveAttribute('hidden');
  window.location.hash='';
 });
 
