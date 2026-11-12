@@ -15,19 +15,20 @@
 
 .candidate-photo-preview{position:relative;display:inline-flex}.candidate-photo-remove{position:absolute;top:-7px;right:-7px;display:grid;place-items:center;width:23px;height:23px;padding:3px;border:1px solid #d8cfdf;border-radius:50%;background:#fff;color:#9c2440;box-shadow:0 2px 5px #0002;cursor:pointer}.candidate-photo-remove svg{width:14px;height:14px}.candidate-photo-remove:hover{background:#fff0f3}.candidate-photo-remove:focus-visible{outline:2px solid #793fc9;outline-offset:2px}
 
-.employee-approvals .data-heading {
+:is(.employee-approvals, .employee-report) .data-heading {
   flex-direction: row;
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
 }
-.employee-approvals .data-heading h2 { margin-bottom: 4px; }
-.employee-approvals .table-scroll,
+:is(.employee-approvals, .employee-report) .data-heading h2 { margin-bottom: 4px; }
+:is(.employee-approvals, .employee-report) .table-scroll,
 .local-employee-review-form .joining-table-wrap {
   border: 1px solid #d2c3df;
   border-radius: 10px;
 }
-.employee-approvals .approval-table {
+.employee-approvals .approval-table,
+.employee-report .employee-report-table {
   width: 100%;
   min-width: 730px;
   table-layout: auto;
@@ -39,15 +40,19 @@
 .employee-approvals .completed-approval-table { min-width: 1030px; }
 .employee-approvals .approval-table th:nth-child(n) { width: auto; }
 .employee-approvals .approval-table :is(th, td),
+.employee-report .employee-report-table :is(th, td),
 .local-employee-review-form .joining-table :is(th, td) {
   border-bottom: 1px solid #d2c3df;
   text-align: left;
   vertical-align: middle;
 }
 .employee-approvals .approval-table :is(th, td) + :is(th, td),
+.employee-report .employee-report-table :is(th, td) + :is(th, td),
 .local-employee-review-form .joining-table :is(th, td) + :is(th, td) { border-left: 1px solid #d2c3df; }
-.employee-approvals .approval-table :is(th, td) { padding: 10px 12px; }
+.employee-approvals .approval-table :is(th, td),
+.employee-report .employee-report-table :is(th, td) { padding: 10px 12px; }
 .employee-approvals .approval-table th,
+.employee-report .employee-report-table th,
 .local-employee-review-form .joining-table th {
   background: #f4eef9;
   color: #503763;
@@ -66,8 +71,10 @@
 .employee-approvals .approval-table :is(th, td):nth-child(n + 6) { text-align: center; }
 .employee-approvals .approval-table td { color: #372b42; word-break: normal; }
 .employee-approvals .approval-table tbody tr:nth-child(even),
+.employee-report .employee-report-table tbody tr:nth-child(even),
 .local-employee-review-form .joining-table tbody tr:nth-child(even) { background: #faf7fc; }
 .employee-approvals .approval-table tbody tr:last-child td,
+.employee-report .employee-report-table tbody tr:last-child td,
 .local-employee-review-form .joining-table tbody tr:last-child td { border-bottom: 0; }
 .employee-approvals .approval-record strong { margin-bottom: 2px; }
 .employee-approvals .approval-record span { color: #594966; }
@@ -78,6 +85,53 @@
   font-weight: 600;
 }
 .employee-approvals .approval-table button:hover { background: #f5eefb; }
+
+.employee-report .data-heading { flex-wrap: wrap; }
+.employee-report .toolbar-buttons { flex-shrink: 1; }
+.employee-report .filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  align-items: end;
+  gap: 12px;
+  margin: 16px 0;
+}
+.employee-report .filter-bar label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: #4b3c59;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.employee-report .filter-bar :is(select, input) {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #dcd5e2;
+  border-radius: 8px;
+  background: #fff;
+  color: #352b3d;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+.employee-report .filter-bar :is(select, input):focus-visible { outline: 2px solid #793fc9; }
+.employee-report .employee-report-table {
+  width: max-content;
+  min-width: 100%;
+}
+.employee-report .employee-report-table :is(th, td) {
+  min-width: 88px;
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+.employee-report .employee-report-table th:is(:nth-child(2), :nth-child(4), :nth-child(6)) { min-width: 140px; }
+.employee-report .employee-report-table th:nth-child(10) { min-width: 180px; }
+.employee-report .employee-report-table td { color: #372b42; }
+.employee-report .employee-report-table td:first-child { font-weight: 600; }
+.employee-report .employee-report-table td:is(:first-child, :nth-child(9)) { font-variant-numeric: tabular-nums; }
 
 .employee-approval-review.modal {
   --review-padding: 24px;

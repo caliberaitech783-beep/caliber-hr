@@ -17,14 +17,55 @@ export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:strin
  const departments=[...new Set(base.map(row=>row.department).filter(Boolean))].sort();
  const designations=[...new Set(base.filter(row=>!department||row.department===department).map(row=>row.designation).filter(Boolean))].sort();
  const rows=base.filter(row=>(!department||row.department===department)&&(!designation||row.designation===designation)&&(!search||[row.employeeId,row.name,row.designation].some(value=>value.toLowerCase().includes(search.toLowerCase()))));
- return <section className="data-card"><div className="data-heading"><div><h2>Region Employee Details</h2><p>{employeeGroup} · Live from Caliber Pulse C-Directory</p>{data&&<p>Last fetched: {new Date(data.fetchedAt).toLocaleString('en-IN')} · {rows.length} employees</p>}</div><div className="toolbar-buttons"><button disabled={loading} onClick={()=>setAttempt(value=>value+1)}>Refresh directory</button><button disabled={!data||loading||!rows.length} onClick={()=>download('region-employee-details.csv',csv(columns.map(([key])=>key),rows))}>Export CSV</button></div></div>
- {error&&<p className="error" role="alert">{error}</p>}
- {loading?<p role="status">Loading Pulse C-Directory…</p>:data&&<><div className="filter-bar">
- {employeeGroup==='OB / COAL'&&<label>Region<select aria-label="Report region" value={region} onChange={e=>{setRegion(e.target.value);setSite('');setDepartment('');setDesignation('');}}><option value="">All regions</option>{regions.map(value=><option key={value}>{value}</option>)}</select></label>}
- <label>{employeeGroup==='Corporate / HO'?'Office':'Site'}<select aria-label="Report site or office" value={site} onChange={e=>{setSite(e.target.value);setDepartment('');setDesignation('');}}><option value="">All {employeeGroup==='Corporate / HO'?'offices':'sites'}</option>{sites.filter(item=>!region||item.region===region).map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
- <label>Department<select aria-label="Report department" value={department} onChange={e=>{setDepartment(e.target.value);setDesignation('');}}><option value="">All departments</option>{departments.map(value=><option key={value}>{value}</option>)}</select></label>
- <label>Designation<select aria-label="Report designation" value={designation} onChange={e=>setDesignation(e.target.value)}><option value="">All designations</option>{designations.map(value=><option key={value}>{value}</option>)}</select></label>
- <label>Name or employee ID<input aria-label="Search Pulse employees" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search directory…"/></label></div>
- <div className="table-scroll"><table><thead><tr>{columns.map(([key,label])=><th key={key}>{label}</th>)}</tr></thead><tbody>{rows.map((row,index)=><tr key={`${row.siteId}-${row.employeeId}-${index}`}>{columns.map(([key])=><td key={key}>{row[key]||'—'}</td>)}</tr>)}</tbody></table></div>{!rows.length&&<p className="empty">No employees match the selected filters.</p>}</>}
+ return <section className="data-card employee-report" aria-labelledby="employee-report-title">
+  <div className="data-heading">
+   <div>
+    <h2 id="employee-report-title">Region Employee Details</h2>
+    <p>{employeeGroup} · Live from Caliber Pulse C-Directory</p>
+    {data&&<p>Last fetched: {new Date(data.fetchedAt).toLocaleString('en-IN')} · {rows.length} employees</p>}
+   </div>
+   <div className="toolbar-buttons">
+    <button type="button" disabled={loading} onClick={()=>setAttempt(value=>value+1)}>Refresh directory</button>
+    <button type="button" disabled={!data||loading||!rows.length} onClick={()=>download('region-employee-details.csv',csv(columns.map(([key])=>key),rows))}>Export CSV</button>
+   </div>
+  </div>
+  {error&&<p className="error" role="alert">{error}</p>}
+  {loading?<p role="status">Loading Pulse C-Directory…</p>:data&&<>
+   <div className="filter-bar" role="group" aria-label="Report filters">
+    {employeeGroup==='OB / COAL'&&<label>Region
+     <select aria-label="Report region" value={region} onChange={e=>{setRegion(e.target.value);setSite('');setDepartment('');setDesignation('');}}>
+      <option value="">All regions</option>{regions.map(value=><option key={value}>{value}</option>)}
+     </select>
+    </label>}
+    <label>{employeeGroup==='Corporate / HO'?'Office':'Site'}
+     <select aria-label="Report site or office" value={site} onChange={e=>{setSite(e.target.value);setDepartment('');setDesignation('');}}>
+      <option value="">All {employeeGroup==='Corporate / HO'?'offices':'sites'}</option>
+      {sites.filter(item=>!region||item.region===region).map(item=><option key={item.id} value={item.id}>{item.label}</option>)}
+     </select>
+    </label>
+    <label>Department
+     <select aria-label="Report department" value={department} onChange={e=>{setDepartment(e.target.value);setDesignation('');}}>
+      <option value="">All departments</option>{departments.map(value=><option key={value}>{value}</option>)}
+     </select>
+    </label>
+    <label>Designation
+     <select aria-label="Report designation" value={designation} onChange={e=>setDesignation(e.target.value)}>
+      <option value="">All designations</option>{designations.map(value=><option key={value}>{value}</option>)}
+     </select>
+    </label>
+    <label>Name or employee ID
+     <input aria-label="Search Pulse employees" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search directory…"/>
+    </label>
+   </div>
+   <div className="table-scroll" role="region" aria-label="Region employee details table" tabIndex={0}>
+    <table className="employee-report-table">
+     <thead><tr>{columns.map(([key,label])=><th key={key} scope="col">{label}</th>)}</tr></thead>
+     <tbody>{rows.map((row,index)=><tr key={`${row.siteId}-${row.employeeId}-${index}`}>
+      {columns.map(([key])=><td key={key}>{row[key]||'—'}</td>)}
+     </tr>)}</tbody>
+    </table>
+   </div>
+   {!rows.length&&<p className="empty">No employees match the selected filters.</p>}
+  </>}
  </section>;
 }
