@@ -107,7 +107,7 @@ table.t{width:100%;border-collapse:collapse;font-size:13px}
 .trainer-card,.trainer-fields{border:1px solid var(--line-strong);border-radius:6px}
 .trainer-card-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:10px}
 .trainer-card .trainer-fields{border:0;border-top:1px solid var(--line-strong);border-radius:0}
-.trainer-fields .row:first-child .k{background:var(--warn-soft);font-weight:600}
+.trainer-fields .row:has(.pf)>.k{background:var(--warn-soft);font-weight:600}
 .trial-result-filename{max-width:100%;overflow-wrap:anywhere;text-align:left}
 .trainer-empty{margin:0}
 .recommended-post,.trainer-machine{display:flex;align-items:center;gap:8px}

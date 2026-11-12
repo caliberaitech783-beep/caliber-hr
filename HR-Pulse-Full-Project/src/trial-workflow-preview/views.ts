@@ -30,6 +30,11 @@ function resultFields(id: string, name: string, draft?: Outcome, allowed = false
     `<label class="chk"><input type="radio" name="recommended-${esc(id)}" data-f="post" value="${option}" aria-label="${prefix}Recommend ${option}" ${draft?.post===option?'checked':''} ${passDisabled}> ${option}</label>`
   ).join('');
   return `<div class="rows trainer-fields">
+    ${row('Trial result file', `
+      <button type="button" class="btn pri" data-choose-result-file aria-label="${prefix}${file?'Replace trial result file':'Upload trial result'}" ${disabled}>${file?'Replace file':'Upload trial result'}</button>
+      <input type="file" data-result-file accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" ${disabled} hidden>
+      <span class="note">Optional · PDF, JPG or PNG</span>
+      ${file ? `<span class="trial-result-filename" role="status">${esc(file.name)}</span><button type="button" class="btn sm" data-remove-result-file ${disabled}>Remove file</button>` : ''}`)}
     ${row('Result', `<div class="pf">${resultButtons}</div>`)}
     ${row('If PASS – recommended for', `
       <div class="recommended-post" role="group" aria-label="${prefix}Recommended post">${posts}</div>
@@ -37,16 +42,11 @@ function resultFields(id: string, name: string, draft?: Outcome, allowed = false
     ${row('If FAIL – reason', `<input type="text" data-f="reason" aria-label="${prefix}Failure reason" value="${esc(draft?.reason)}" ${failDisabled}>`)}
     ${row('Trial conducted by', `<input type="text" data-f="trainer" aria-label="${prefix}Trial conducted by" value="${esc(draft?.trainer)}" placeholder="Your name if blank" ${disabled}>`)}
     ${row('Examiner remarks', `<input type="text" data-f="remarks" aria-label="${prefix}Examiner remarks" value="${esc(draft?.remarks)}" ${disabled}>`)}
-    ${row('Trial result file', `
-      <button type="button" class="btn sm" data-choose-result-file aria-label="${prefix}${file?'Replace trial result file':'Upload trial result'}" ${disabled}>${file?'Replace file':'Upload trial result'}</button>
-      <input type="file" data-result-file accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" ${disabled} hidden>
-      <span class="note">Optional · PDF, JPG or PNG</span>
-      ${file ? `<span class="trial-result-filename" role="status">${esc(file.name)}</span><button type="button" class="btn sm" data-remove-result-file ${disabled}>Remove file</button>` : ''}`)}
   </div>`;
 }
 export function trainerForms(records: Trial[], draftFor: (row: Trial) => Outcome, allowed: boolean, files: ReadonlyMap<string, File>) {
   if (!records.length) {
-    return `<p class="note trainer-empty">Submit a candidate in Part 1 to enter a trial result here.</p>${resultFields('empty','')}`;
+    return `<p class="note trainer-empty">Submit a candidate in Part 1 to enable the trial result upload.</p>${resultFields('empty','')}`;
   }
   return records.map(row=>{
     const checks = [['DL',row.docs.dl],['Aadhaar',row.docs.aadhaar],['Medical',row.docs.medical]] as const;
