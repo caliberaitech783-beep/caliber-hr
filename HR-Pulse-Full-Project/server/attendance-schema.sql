@@ -24,7 +24,27 @@ CREATE TABLE IF NOT EXISTS hr_attendance_punches(
  UNIQUE(device_serial,biometric_id,punched_at)
 );
 CREATE INDEX IF NOT EXISTS hr_attendance_punches_time ON hr_attendance_punches(punched_at);
-CREATE INDEX IF NOT EXISTS hr_attendance_punches_person ON hr_attendance_punches(biometric_id,punched_at);
+
+-- Names stored on the machine for each user ID. Shown only as a hint to help
+-- HR link a machine ID to the right employee.
+CREATE TABLE IF NOT EXISTS hr_attendance_device_users(
+ device_serial text NOT NULL,
+ biometric_id text NOT NULL,
+ name text NOT NULL DEFAULT '',
+ PRIMARY KEY(device_serial,biometric_id)
+);
+
+-- Which employee a machine user ID belongs to. Kept outside the employee
+-- record so editing an employee never drops the link.
+CREATE TABLE IF NOT EXISTS hr_attendance_links(
+ device_serial text NOT NULL,
+ biometric_id text NOT NULL,
+ employee_id uuid NOT NULL REFERENCES hr_records(id),
+ linked_by text NOT NULL,
+ linked_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(device_serial,biometric_id)
+);
+CREATE INDEX IF NOT EXISTS hr_attendance_links_employee ON hr_attendance_links(employee_id);
 
 -- One row per click of the "Fetch attendance" button.
 CREATE TABLE IF NOT EXISTS hr_attendance_fetch_requests(
@@ -37,4 +57,10 @@ CREATE TABLE IF NOT EXISTS hr_attendance_fetch_requests(
  requested_at timestamptz NOT NULL DEFAULT now(),
  completed_at timestamptz
 );
-CREATE INDEX IF NOT EXISTS hr_attendance_fetch_pending ON hr_attendance_fetch_requests(requested_at) WHERE state='PENDING';
+CREATE INDEX IF NOT EXISTS hr_attendance_fetch_open ON hr_attendance_fetch_requests(requested_at) WHERE state IN ('PENDING','RUNNING');
+
+-- Single row recording when the bridge PC last checked in.
+CREATE TABLE IF NOT EXISTS hr_attendance_bridge(
+ id boolean PRIMARY KEY DEFAULT true CHECK(id),
+ last_seen timestamptz NOT NULL
+);
