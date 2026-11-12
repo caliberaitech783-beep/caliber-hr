@@ -1,5 +1,7 @@
 import template from './screen.html?raw';
 import css from './screen.css?raw';
+import {savedSession} from '../api';
+import {readGeminiAadhaar} from '../geminiOcr';
 import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime, licenceDate, localDateTime,
   NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerTable} from './views';
@@ -32,6 +34,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   const effects = new AbortController();
   let tab: Tab = 'overview', role: Role = 'hr', stageFilter = '', records: Trial[] = [], bulk = Array.from({length:3},blankRow);
   let photo = '', photoLoading = false, photoVersion = 0, photoUrl = '', detailId = '', toastTimer: ReturnType<typeof setTimeout>;
+  let aadhaarScanVersion = 0, aadhaarScanPending = false;
   let modalFocus: HTMLElement | null = null;
   let telegramFocus: HTMLElement | null = null;
 
@@ -134,12 +137,12 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
     }
     $('#sFormNo').textContent = 'Form No. '+nextNumber(records);
     $('#hrRoleWarn').hidden = role==='hr';
-    $<HTMLButtonElement>('#sSubmit').disabled = role!=='hr'||photoLoading;
+    updateSingleActions();
     $<HTMLButtonElement>('#bSubmit').disabled = role!=='hr';
     showTab(tab);
   }
   function createCandidates(candidates: Candidate[], batch: boolean) {
-    if (role!=='hr' || photoLoading) return false;
+    if (role!=='hr' || photoLoading || (!batch && aadhaarScanPending)) return false;
     const name = signer();
     if (!name) return false;
     if (!candidates.length) {toast('Add at least one candidate.');return false;}
@@ -161,16 +164,82 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   }
   function resetSingle() {
     ++photoVersion;
+    ++aadhaarScanVersion;
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     photoUrl = '';
     photo = '';
     photoLoading = false;
+    aadhaarScanPending = false;
     $<HTMLFormElement>('#single').reset();
+    $('#aadhaarScanStatus').textContent = '';
     $('#photoBox').innerHTML = 'Upload photo<br><span class="muted">camera or gallery</span>';
     $('#f_vother').hidden = true;
     $<HTMLInputElement>('#f_trial').value = localDateTime();
     $<HTMLInputElement>(`input[name="f_post"][value="${defaults()}"]`).checked = true;
-    $<HTMLButtonElement>('#sSubmit').disabled = role!=='hr';
+    updateSingleActions();
+  }
+  function updateSingleActions() {
+    const canEdit = role === 'hr';
+    $<HTMLButtonElement>('#sSubmit').disabled = !canEdit || photoLoading || aadhaarScanPending;
+    for (const selector of ['#aadhaarUpload', '#aadhaarCamera']) {
+      $<HTMLButtonElement>(selector).disabled = !canEdit || aadhaarScanPending;
+    }
+  }
+  async function scanAadhaar(input: HTMLInputElement) {
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || role !== 'hr' || aadhaarScanPending) return;
+    const status = $('#aadhaarScanStatus');
+    if (!['image/jpeg','image/png','application/pdf'].includes(file.type) && !/\.(jpe?g|png|pdf)$/i.test(file.name)) {
+      status.textContent = 'Choose a JPG, PNG or unlocked PDF.';
+      return;
+    }
+    const grant = savedSession()?.grant;
+    if (!grant) {
+      status.textContent = 'Sign in again to scan Aadhaar.';
+      return;
+    }
+    const version = ++aadhaarScanVersion;
+    aadhaarScanPending = true;
+    updateSingleActions();
+    status.textContent = 'Scanning Aadhaar…';
+    try {
+      const details = await readGeminiAadhaar(file, grant);
+      if (version !== aadhaarScanVersion) return;
+      const enteredNumber = digits(value('#f_aadhaar'));
+      if (details.uid && enteredNumber.length === 12 && enteredNumber !== details.uid) {
+        status.textContent = 'This card has a different Aadhaar number. Check the card and retry.';
+        return;
+      }
+      const fields = [
+        ['#f_name', details.name], ['#f_father', details.relationName], ['#f_dob', details.dob],
+        ['#f_aadhaar', details.uid], ['#f_address', details.address],
+      ] as const;
+      let filled = 0;
+      for (const [selector, detail] of fields) {
+        const control = $<HTMLInputElement>(selector);
+        if (!detail || control.value.trim()) continue;
+        control.value = detail;
+        if (control.value) filled++;
+      }
+      status.textContent = filled
+        ? 'Aadhaar details filled. Verify them before submitting.'
+        : 'The scan added no new details. Review the form or enter the missing details manually.';
+    } catch (error) {
+      if (version !== aadhaarScanVersion) return;
+      const message = error instanceof Error ? error.message : 'The Aadhaar scan failed.';
+      status.textContent = message + ' You can enter the details manually.';
+    } finally {
+      if (version === aadhaarScanVersion) {
+        aadhaarScanPending = false;
+        updateSingleActions();
+      }
+    }
+  }
+  for (const [buttonId, inputId] of [['#aadhaarUpload', '#aadhaarFile'], ['#aadhaarCamera', '#aadhaarCapture']] as const) {
+    const input = $<HTMLInputElement>(inputId);
+    $(buttonId).onclick = () => input.click();
+    input.onchange = () => void scanAadhaar(input);
   }
   $('#f_veh').innerHTML = VEHICLES.map(item=>`<label class="chk"><input type="checkbox" name="f_vehicle" value="${esc(item)}"> ${esc(item)}</label>`).join('')
     + '<input id="f_vother" type="text" placeholder="Other machine" aria-label="Other machine" style="max-width:180px" hidden>';
@@ -194,13 +263,13 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
     const url=URL.createObjectURL(file), img=new Image();
     photoUrl=url;
     photoLoading=true;
-    $<HTMLButtonElement>('#sSubmit').disabled=true;
+    updateSingleActions();
     const finish = () => {
       URL.revokeObjectURL(url);
       if (version!==photoVersion) return false;
       photoUrl='';
       photoLoading=false;
-      $<HTMLButtonElement>('#sSubmit').disabled=role!=='hr';
+      updateSingleActions();
       return true;
     };
     img.onload=()=>{
@@ -527,6 +596,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
     effects.abort();
     clearTimeout(toastTimer);
     ++photoVersion;
+    ++aadhaarScanVersion;
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     root.replaceChildren();
   };

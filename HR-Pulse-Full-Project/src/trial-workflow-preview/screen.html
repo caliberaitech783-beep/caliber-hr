@@ -48,6 +48,16 @@
     <form id="single" class="sheet" autocomplete="off">
       <div class="sheet-title"><h3>TRIAL JOINING FORM – DRIVER &amp; OPERATOR</h3><span class="note">Candidate joins only after the vehicle / machine trial result is PASS and all approvals are done.</span></div>
       <div class="secbar">1. Candidate details <em id="sFormNo" class="mono"></em></div>
+      <div class="aadhaar-scan">
+        <div class="aadhaar-scan-actions">
+          <button type="button" class="btn" id="aadhaarUpload" aria-describedby="aadhaarScanHelp">Upload Aadhaar Card</button>
+          <button type="button" class="btn" id="aadhaarCamera" aria-describedby="aadhaarScanHelp">Scan with camera</button>
+        </div>
+        <input type="file" id="aadhaarFile" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" hidden>
+        <input type="file" id="aadhaarCapture" accept="image/jpeg,image/png" capture="environment" hidden>
+        <p class="note" id="aadhaarScanHelp">Use a sample JPG, PNG or unlocked PDF. Google Gemini reads the upload and fills empty fields. Scan each side separately if needed.</p>
+        <p class="note" id="aadhaarScanStatus" role="status" aria-live="polite"></p>
+      </div>
       <div class="grid-form">
         <div class="rows">
           <div class="row"><label for="f_name">Name of candidate *</label><div class="v"><input id="f_name" type="text" required></div></div>

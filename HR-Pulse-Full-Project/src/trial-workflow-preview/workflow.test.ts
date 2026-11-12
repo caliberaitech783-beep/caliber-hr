@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {fireEvent} from '@testing-library/react';
+import {fireEvent,waitFor} from '@testing-library/react';
 import {mountTrialPreview} from './mount';
 
 const scope = {company:'CMLL',site:'Jayant OB East',name:'Sample Signer',owner:'sample',department:'Driver'};
@@ -25,10 +25,47 @@ afterEach(()=>{
   dispose=undefined;
   document.body.replaceChildren();
   localStorage.clear();
+  sessionStorage.clear();
   vi.restoreAllMocks();
 });
 
 describe('Trial workflow preview',()=>{
+  it('scans Aadhaar with the signed-in session and fills only empty candidate fields',async()=>{
+    const grant = 'a'.repeat(43);
+    sessionStorage.setItem('hrPulseSession', JSON.stringify({grant}));
+    const details = {
+      name:'Sample Candidate', relationName:'Sample Parent', dob:'2000-01-02',
+      uid:'234500000000', address:'Sample Address', gender:'',
+    };
+    const scan = vi.spyOn(window,'fetch')
+      .mockResolvedValueOnce(Response.json({details}))
+      .mockResolvedValueOnce(Response.json({error:'The card could not be read.'}, {status:422}));
+    const {el,click,input} = setup();
+    click('[data-tab="hr"]');
+    input('#f_name','Verified Name');
+    const file = new File(['%PDF-1.7'],'sample-aadhaar.pdf',{type:'application/pdf'});
+    fireEvent.change(el('#aadhaarFile'),{target:{files:[file]}});
+    expect(el('#aadhaarScanStatus')).toHaveTextContent('Scanning Aadhaar');
+    expect(el('#sSubmit')).toBeDisabled();
+    await waitFor(()=>expect(el('#aadhaarScanStatus')).toHaveTextContent('Aadhaar details filled'));
+    expect(scan).toHaveBeenCalledWith(expect.stringMatching(/\/api\/aadhaar\/scan$/),expect.objectContaining({
+      method:'POST',
+      headers:{Authorization:'Bearer '+grant,'Content-Type':'application/json'},
+    }));
+    expect(el('#f_name')).toHaveValue('Verified Name');
+    expect(el('#f_father')).toHaveValue(details.relationName);
+    expect(el('#f_dob')).toHaveValue(details.dob);
+    expect(el('#f_aadhaar')).toHaveValue(details.uid);
+    expect(el('#f_address')).toHaveValue(details.address);
+    expect(el('#sSubmit')).toBeEnabled();
+    expect(localStorage.length).toBe(0);
+
+    fireEvent.change(el('#aadhaarFile'),{target:{files:[file]}});
+    await waitFor(()=>expect(el('#aadhaarScanStatus')).toHaveTextContent('The card could not be read.'));
+    expect(el('#f_aadhaar')).toHaveValue(details.uid);
+    expect(el('#sSubmit')).toBeEnabled();
+  });
+
   it('checks documents, moves a single PASS through each approval, and persists the final status without calling HR or Telegram',()=>{
     const network = vi.spyOn(window,'fetch').mockRejectedValue(new Error('Network is disabled in the preview'));
     const {el,click,input,change} = setup();
