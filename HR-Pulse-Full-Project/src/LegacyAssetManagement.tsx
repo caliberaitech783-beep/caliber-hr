@@ -12,7 +12,7 @@ const columns:Record<string,string[][]>={
 };
 export default function AssetManagement({grant,config,notice}:{grant:string;config:Record<string,Module>;notice:(message:string)=>void}){
  const[tab,setTab]=useState('assets');
- return <><div className="module-tabs" aria-label="Asset management tabs">{tabs.map(([key,label])=><button key={key} className={tab===key?'selected':''} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</div>
+ return <><div className="module-tabs" aria-label="Legacy asset import tabs">{tabs.map(([key,label])=><button key={key} className={tab===key?'selected':''} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</div>
  {tab!=='assets'&&<p className="help-text">Asset counts, values and clearance details are entered manually. Log entries record movements without automatically changing asset assignments.</p>}
  {config[tab]?<Records key={tab} grant={grant} kind={tab} module={config[tab]} notice={notice} columns={columns[tab].map(([key,label])=>({key,label}))} actionLabel={tab==='assets'?'Add asset':'Add record'}/>:<p role="status">This asset section is unavailable for your account, or its configuration is still loading.</p>}</>;
 }

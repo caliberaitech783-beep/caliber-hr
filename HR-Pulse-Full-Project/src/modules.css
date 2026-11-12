@@ -111,14 +111,14 @@
   font-weight: 400;
 }
 .employee-report .filter-bar :is(select, input):focus-visible { outline: 2px solid #793fc9; }
-:is(.leave-management, .transfer-management) .data-heading {
+:is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-heading {
   flex-flow: row wrap;
   align-items: center;
   gap: 12px;
 }
-:is(.leave-management, .transfer-management) .data-heading > div:first-child { flex: 1 1 250px; min-width: 0; }
-:is(.leave-management, .transfer-management) .toolbar-buttons { flex-shrink: 1; }
-:is(.leave-management, .transfer-management) .filter-bar > form { min-width: min(100%, 240px); }
+:is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-heading > div:first-child { flex: 1 1 250px; min-width: 0; }
+:is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .toolbar-buttons { flex-shrink: 1; }
+:is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .filter-bar > form { min-width: min(100%, 240px); }
 .leave-management .filter-bar:has(> label) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
@@ -139,17 +139,17 @@
   border-radius: 8px;
 }
 
-:is(.employee-report, .leave-management, .transfer-management) {
+:is(.employee-report, .leave-management, .transfer-management, .asset-workspace, .master-configuration) {
   --report-grid-line: #c5b8d0;
   --report-header: #563778;
   --report-alt-row: #f7f3fa;
 }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll {
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll {
   max-height: 60vh;
   overflow: auto;
   border: 1px solid var(--report-grid-line);
 }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll > table {
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll > table {
   width: max-content;
   min-width: 100%;
   table-layout: auto;
@@ -158,7 +158,7 @@
   font: 13px/1.3 Calibri, Arial, sans-serif;
   color: #000;
 }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll > table :is(th, td) {
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll > table :is(th, td) {
   min-width: 88px;
   max-width: 240px;
   padding: 5px 8px;
@@ -166,10 +166,10 @@
   vertical-align: middle;
   overflow-wrap: anywhere;
 }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll > table :is(th, td):nth-child(n + 3) {
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll > table :is(th, td):nth-child(n + 3) {
   border-left: 1px solid var(--report-grid-line);
 }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll > table th {
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll > table th {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -181,16 +181,16 @@
   text-align: center;
   text-transform: none;
 }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll > table td { background: #fff; }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll > table tbody tr:nth-child(even) td { background: var(--report-alt-row); }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll > table tbody tr:last-child td { border-bottom: 0; }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll > table :is(th, td):first-child {
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll > table td { background: #fff; }
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll > table tbody tr:nth-child(even) td { background: var(--report-alt-row); }
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll > table tbody tr:last-child td { border-bottom: 0; }
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll > table :is(th, td):first-child {
   position: sticky;
   left: 0;
   border-right: 1px solid var(--report-grid-line);
 }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll > table th:first-child { z-index: 3; }
-:where(.employee-report, .leave-management .data-card, .transfer-management .data-card) > .table-scroll > table td:first-child { z-index: 1; }
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll > table th:first-child { z-index: 3; }
+:where(.employee-report, :is(.leave-management, .transfer-management, .asset-workspace, .master-configuration) .data-card, .master-configuration .shift-card) > .table-scroll > table td:first-child { z-index: 1; }
 .employee-report .employee-report-table :is(th, td):first-child { min-width: 76px; white-space: nowrap; }
 .employee-report .employee-report-table th:is(:nth-child(3), :nth-child(5), :nth-child(7)) { min-width: 140px; }
 .employee-report .employee-report-table th:nth-child(11) { min-width: 180px; }
@@ -200,6 +200,58 @@
 :is(.leave-management, .transfer-management) .approval-table th:nth-child(4) { min-width: 160px; }
 :is(.leave-management, .transfer-management) .table-scroll .row-actions { white-space: nowrap; }
 .leave-management .table-scroll audio { display: block; width: 180px; height: 32px; }
+
+html:has(:is(.asset-workspace, .master-configuration)) { scrollbar-gutter: stable; }
+:is(.asset-workspace, .master-configuration) .module-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 148px), 1fr));
+  grid-auto-rows: 1fr;
+}
+:is(.asset-workspace, .master-configuration) .module-tabs button {
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px;
+  line-height: 1.3;
+  text-align: center;
+}
+:is(.asset-workspace, .master-configuration) .module-tabs button.selected {
+  border-color: var(--report-header);
+  background: var(--report-header);
+}
+:is(.asset-workspace, .master-configuration) .data-heading > :is(.toolbar-buttons, button) {
+  margin-inline-start: auto;
+}
+:is(.asset-workspace, .master-configuration) .filter-bar > :is(form, select, button) {
+  box-sizing: border-box;
+  height: 44px;
+}
+:is(.asset-workspace, .master-configuration) .filter-bar form button { align-self: stretch; }
+:is(.asset-workspace, .master-configuration) .table-scroll :is(.row-action-heading, .row-actions) {
+  text-align: right;
+  white-space: nowrap;
+}
+:is(.asset-workspace, .master-configuration) .row-actions button { margin: 0; }
+:is(.asset-workspace, .master-configuration) .row-actions button + button { margin-inline-start: 5px; }
+
+.master-configuration .shift-site :is(select, button),
+.master-configuration .holiday-selectors select,
+.master-configuration .shift-fields :is(input, select),
+.master-configuration .hierarchy-step input { min-height: 44px; }
+.master-configuration .shift-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.master-configuration .shift-fields label { justify-content: space-between; }
+.master-configuration .shift-card .table-scroll :is(th, td) { min-width: 64px; }
+.master-configuration .shift-card .table-scroll th:nth-child(2) { min-width: 112px; }
+.master-configuration .shift-card .table-scroll td:last-child:not([colspan]) { text-align: right; }
+.master-configuration .hierarchy-master .holiday-selectors {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 12px;
+  max-width: 720px;
+}
+.master-configuration .hierarchy-master .holiday-selectors label { min-width: 0; max-width: none; }
+.master-configuration .hierarchy-step > div { min-width: 0; }
+.master-configuration .hierarchy-stage { background: var(--report-alt-row); }
+.master-configuration .hierarchy-master .primary { display: flex; margin-inline-start: auto; }
 
 .transfer-management .page-title { margin-bottom: 8px; }
 .transfer-management > .help-text { margin: 0 0 14px; }

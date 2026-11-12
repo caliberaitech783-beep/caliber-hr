@@ -19,7 +19,7 @@ const filters:Record<string,{key:string;label:string;reference?:string;type?:str
 };
 export default function LeaveMaster({grant,config,actor,canApprove,notice}:{grant:string;config:Record<string,Module>;actor:string;canApprove:boolean;notice:(s:string)=>void}){
  const[tab,setTab]=useState('dashboard'),[review,setReview]=useState(false);
- return <div className="leave-management"><div className="page-title"><div><h1>Holiday &amp; Leave Master</h1><p>Configure leave, manage requests and track balances.</p></div></div><div className="module-tabs" aria-label="Leave management tabs">{tabs.map(([key,label])=><button key={key} className={tab===key?'selected':''} onClick={()=>{setTab(key);setReview(false);}}>{label}</button>)}</div>
+ return <div className="leave-management"><div className="page-title"><div><h1>Holiday &amp; Leave Master</h1><p>Configure leave, manage requests and track balances.</p></div></div><div className="module-tabs" aria-label="Leave management tabs">{tabs.map(([key,label])=><button type="button" key={key} className={tab===key?'selected':''} aria-pressed={tab===key} onClick={()=>{setTab(key);setReview(false);}}>{label}</button>)}</div>
  {tab==='dashboard'?<LeaveDashboard grant={grant}/>:config[tab]?<>
  {tab==='leavePolicies'&&<p className="help-text">Assign policies by company, department and employment group. Accrual rules are recorded here; balances are allocated in Leave Allocation.</p>}
  {tab==='leaveRequests'&&<p className="help-text">Days are calculated from the date range, including weekends and holidays. Half-day requests count as 0.5 day. Save a draft, then submit it for approval.</p>}
