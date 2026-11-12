@@ -29,10 +29,11 @@
 .education-table select { width: 100%; }
 .employee-subnav{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:3px 8px 7px 18px}.employee-subnav button{height:31px;margin:0;padding:0 8px;justify-content:center;border:1px solid #ffffff1f;background:#ffffff0a;color:#e5d8ef;font-size:10px}.employee-subnav button.selected{background:#ffffff24;border-color:#f0c5e3;color:#fff;font-weight:700}.collapsed .employee-subnav{display:none}
 .employee-tab-panel{margin-top:8px}.employee-empty{margin:0;padding:24px;text-align:center;color:#746b7c;font-size:12px}
-.existing-employees{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
-.existing-employees th,.existing-employees td{min-width:110px;max-width:240px;padding:10px 14px;text-align:left;vertical-align:middle;line-height:1.45;overflow-wrap:anywhere}
+.existing-employees{--employee-grid-line:#c6b6d2;width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.existing-employees th,.existing-employees td{min-width:110px;max-width:240px;padding:10px 14px;text-align:left;vertical-align:middle;line-height:1.45;overflow-wrap:anywhere;border-bottom:1px solid var(--employee-grid-line)}
+.existing-employees :is(th,td)+:is(th,td){border-left:1px solid var(--employee-grid-line)}
 .existing-employees th:first-child,.existing-employees td:first-child{width:auto;text-align:left}
-.existing-employees th{background:#f4eef9;color:#503763;font-size:12px;font-weight:700;border-bottom-color:#e1d6eb}
+.existing-employees th{background:#f4eef9;color:#503763;font-size:12px;font-weight:700}
 .existing-employees tbody tr{--employee-row-background:#fff}
 .existing-employees tbody tr:nth-child(even){--employee-row-background:#faf7fc}
 .existing-employees tbody tr:hover,.existing-employees tbody tr:focus-within{--employee-row-background:#f2ebf8}
@@ -40,7 +41,7 @@
 .existing-employees tbody tr:last-child td{border-bottom:0}
 .existing-employees td:first-child{font-weight:600}
 .existing-employees .employee-table-empty-value{color:#786983}
-.existing-employees .employee-table-actions{position:sticky;right:0;z-index:1;width:1%;min-width:0;text-align:right;white-space:nowrap;box-shadow:-1px 0 #e1d6eb}
+.existing-employees .employee-table-actions{position:sticky;right:0;z-index:1;width:1%;min-width:0;text-align:right;white-space:nowrap}
 .existing-employees .employee-edit-button{height:32px;padding:0 10px}
 .employee-edit-dialog{border:0;margin:auto;max-width:calc(100% - 24px)}.employee-edit-dialog::backdrop{background:#170c2c88;backdrop-filter:blur(3px)}.employee-edit-dialog input[readonly]{background:#f5f3f7}.employee-tab-panel .pagination button:disabled{opacity:.5;cursor:not-allowed}
 .corporate-office-employees{width:max-content;min-width:100%}.corporate-office-employees th,.corporate-office-employees td{min-width:145px;white-space:nowrap}.corporate-office-employees th:first-child,.corporate-office-employees td:first-child{min-width:70px}
