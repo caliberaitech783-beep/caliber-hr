@@ -1,6 +1,6 @@
 import {listJoiningDrafts,saveJoiningDraft,type JoiningDraft} from './joiningDrafts';
 import type {TrialSelection} from './TrialForm';
-import type {Trial} from './trial-workflow-preview/records';
+import {isClearedForJoining,type Trial} from './trial-workflow-preview/records';
 
 const HANDOFF_KEY='hrPulse.trialHandoff';
 /* A passed trial candidate waiting to be entered in Employee Management. Fields use the joining-form control names. */
@@ -14,13 +14,12 @@ export function clearTrialHandoff(){handoffPhotos={};try{sessionStorage.removeIt
 
 export async function prepareTrialJoining(rows: Trial[], selection: TrialSelection, owner: string) {
  const existing=await listJoiningDrafts(owner);
- const prepared: TrialHandoff[]=[];
+ let prepared: JoiningDraft|undefined;
  for (const row of rows) {
-  if (row.stage!=='done'||row.result!=='PASS'||!row.outcome) continue;
+  if (!isClearedForJoining(row)) continue;
   const post=row.outcome.post;
-  if (post!=='Driver'&&post!=='Operator') continue;
   const prior=existing.find(draft=>draft.trialHandoff?.id===row.id);
-  if (prior?.trialHandoff) {prepared.push(prior.trialHandoff);continue;}
+  if (prior) {prepared??=prior;continue;}
   const {id,formNo,name,site,mobile,aadhaar,stage,result,history}=row;
   const fields={
    'Full Name':name,'Full Name as per Aadhaar':name,'Father / Spouse Name':row.father,
@@ -38,7 +37,7 @@ export async function prepareTrialJoining(rows: Trial[], selection: TrialSelecti
   const draft:JoiningDraft={id:crypto.randomUUID(),owner,group:selection.employeeGroup,category:post,step:1,defaults,
    updatedAt:new Date().toISOString(),fields:Object.fromEntries(Object.entries(fields).map(([key,value])=>[key,[{value}]])),files,trialHandoff:handoff};
   await saveJoiningDraft(draft);
-  prepared.push(handoff);
+  prepared??=draft;
  }
- return prepared[0];
+ return prepared;
 }

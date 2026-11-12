@@ -1,12 +1,11 @@
 import {useEffect,useRef,useState} from 'react';
 import AadhaarUploader from '../AadhaarUploader';
-import {mountTrialPreview} from './mount';
-import type {Trial} from './records';
+import {mountTrialPreview,type PrepareJoining} from './mount';
 
 type Workflow = ReturnType<typeof mountTrialPreview>;
 
 export default function TrialWorkflowPreview({owner,name,site,company,department,onCleared}: {
-  owner: string; name: string; site: string; company: string; department: string; onCleared?: (rows: Trial[])=>Promise<void>;
+  owner: string; name: string; site: string; company: string; department: string; onCleared?: PrepareJoining;
 }) {
   const host=useRef<HTMLDivElement>(null);
   const [workflow,setWorkflow] = useState<Workflow | null>(null);
@@ -20,7 +19,7 @@ export default function TrialWorkflowPreview({owner,name,site,company,department
     const mounted = mountTrialPreview(node.shadowRoot||node.attachShadow({mode:'open'}),{owner,name,site,company,department},{
       reset: () => setUploadVersion(version => version + 1),
       setDisabled,
-    },onCleared?rows=>cleared.current?.(rows):undefined);
+    },onCleared?async rows=>cleared.current?.(rows):undefined);
     setDisabled(false);
     setWorkflow(mounted);
     return mounted.dispose;

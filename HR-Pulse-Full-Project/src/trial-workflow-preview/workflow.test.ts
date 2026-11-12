@@ -3,12 +3,13 @@ import {act,fireEvent,render,waitFor} from '@testing-library/react';
 import {createElement} from 'react';
 import {utils,write} from 'xlsx';
 import TrialWorkflowPreview from './TrialWorkflowPreview';
+import type {PrepareJoining} from './mount';
 import * as trialResultFiles from './trialResultFiles';
 import type {Trial} from './records';
 
 const scope = {company:'CMLL',site:'Jayant OB East',name:'Sample Signer',owner:'sample',department:'Driver'};
 let dispose: (()=>void)|undefined;
-function setup(overrides: Partial<typeof scope> = {},onCleared?: (rows: Trial[])=>Promise<void>) {
+function setup(overrides: Partial<typeof scope> = {},onCleared?: PrepareJoining) {
   dispose?.();
   const {container,unmount,getByLabelText,getByRole} = render(createElement(TrialWorkflowPreview,{...scope,...overrides,onCleared}));
   const root = container.querySelector('div')!.shadowRoot!;
@@ -141,7 +142,8 @@ describe('Trial workflow preview',()=>{
     const createUrl = vi.spyOn(URL,'createObjectURL').mockReturnValue('blob:trial-result');
     vi.spyOn(URL,'revokeObjectURL').mockImplementation(()=>{});
     const download = vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
-    const onCleared=vi.fn(async (_rows: Trial[])=>{});
+    const openJoining=vi.fn();
+    const onCleared=vi.fn(async (_rows: Trial[])=>openJoining);
     const {el,click,input,change} = setup({},onCleared);
     change('#role','trainer');
     expect(el('#trList')).toHaveTextContent('Submit a candidate in Part 1');
@@ -191,8 +193,11 @@ describe('Trial workflow preview',()=>{
       click('#apApprove');
     }
     expect(el('#tgpop').textContent).toContain('CLEARED TO JOIN');
-    click('#tgClose2');
     expect(onCleared).toHaveBeenCalledWith([expect.objectContaining({stage:'done',result:'PASS',name:'Sample Pass'})]);
+    expect(openJoining).not.toHaveBeenCalled();
+    expect(el('#tgClose2')).toHaveTextContent('Open Step 2');
+    click('#tgClose2');
+    await waitFor(()=>expect(openJoining).toHaveBeenCalledOnce());
     click('[data-stage="done"]');
     expect(el('#ovTitle')).toHaveTextContent('Completed (1)');
     expect(el('#ovList').textContent).toContain('Cleared to join');

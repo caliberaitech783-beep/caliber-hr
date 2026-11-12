@@ -3,13 +3,14 @@ import css from './screen.css?raw';
 import {savedSession} from '../api';
 import {readGeminiAadhaar, type AadhaarDetails} from '../geminiOcr';
 import {applyBulkAadhaar, blankBulkRow, bulkColumns, bulkConfirmations, downloadBulkWorkbook, hasBulkCandidate, readBulkWorkbook} from './bulkCandidates';
-import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime, licenceDate, localDateTime,
+import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime, isClearedForJoining, licenceDate, localDateTime,
   NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
 import {getTrialResultFile, removeTrialResultFiles, saveTrialResultFiles} from './trialResultFiles';
 
 type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
 type Scope = {company: string; site: string; owner: string; name: string; department: string};
+export type PrepareJoining = (rows: Trial[]) => Promise<(() => void) | void>;
 const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
 const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',rhr:'approve',director:'approve'};
 const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',trainer:'',remarks:''});
@@ -21,7 +22,7 @@ const empty = (title: string, message: string, action = '') => `<div class="empt
 export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   reset: () => void;
   setDisabled: (disabled: boolean) => void;
-}, onCleared?: (rows: Trial[])=>Promise<void>|undefined) {
+}, onCleared?: PrepareJoining) {
   const style = document.createElement('style');
   style.textContent = css;
   const frame = document.createElement('div');
@@ -99,7 +100,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     $('#ovTitle').textContent = (STAGES.find(([stage])=>stage===stageFilter)?.[2] || 'All candidates') + ` (${rows.length})`;
     $('#ovList').innerHTML = !records.length
       ? empty('No trial forms yet','Site HR starts here: add one candidate, or a whole trial batch at once.','<button type="button" class="btn pri" data-go="hr">Add candidates</button>')
-      : !rows.length ? empty('No matches','Clear the search or select the stage again to show everyone.') : overviewTable(rows);
+      : !rows.length ? empty('No matches','Clear the search or select the stage again to show everyone.') : overviewTable(rows,Boolean(onCleared));
   }
   const waiting = () => sorted(records.filter(row=>row.stage==='trainer')).reverse();
   const approvals = () => canApprove(role) ? sorted(records.filter(row=>row.stage===role)) : [];
@@ -557,7 +558,11 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     renderApprovals();
     if(approved&&reviewer==='director'){
       const passed=changed.filter(row=>row.result==='PASS');
-      if (passed.length) showTelegram(passed.map(resultMessage),'Cleared to join – final approval',onCleared?()=>void openJoining(passed):undefined);
+      if (passed.length) {
+        const cleared=passed.filter(isClearedForJoining);
+        const prepared=onCleared&&cleared.length?prepareJoining(cleared):undefined;
+        showTelegram(passed.map(resultMessage),'Cleared to join – final approval',prepared?()=>void openJoining(prepared):undefined);
+      }
     }
     return true;
   }
@@ -612,7 +617,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if(target.id==='modal'||target.id==='mClose') return closeDetails();
     if(target.hasAttribute('data-open-joining')){
       const row=records.find(item=>item.id===detailId);
-      if (row?.stage==='done'&&row.result==='PASS') void openJoining([row]);
+      if (row&&isClearedForJoining(row)&&!openingJoining) void openJoining(prepareJoining([row]));
     }
     if(target.hasAttribute('data-download-result')){
       const attachment=records.find(row=>row.id===detailId)?.outcome?.attachment;
@@ -629,12 +634,15 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     }
   };
 
-  async function openJoining(rows: Trial[]) {
-    if (!onCleared||openingJoining) return;
+  async function prepareJoining(rows: Trial[]) {
     openingJoining=true;
-    try {await onCleared(rows);}
-    catch {if (!effects.signal.aborted) toast('Could not prepare the joining draft. Open the candidate in All candidates and try again.');}
+    try {return await onCleared?.(rows);}
+    catch {if (!effects.signal.aborted) toast('Could not prepare the joining draft. In All candidates, select Open Step 2 to try again.');}
     finally {openingJoining=false;}
+  }
+  async function openJoining(prepared: ReturnType<typeof prepareJoining>) {
+    const open=await prepared;
+    if (!effects.signal.aborted) open?.();
   }
   function showTelegram(messages: string[], summary: string, onClose?: ()=>void) {
     const text=messages.join('\n\n———\n\n'), time=indiaTime();
@@ -642,7 +650,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     afterTelegram=onClose;
     $('#tgpop').innerHTML=`<div class="tghead"><div class="tgav">CT</div><div><div class="nm">${esc(scope.company||'CMLL')} Trial Bot</div><div class="sub">${esc(summary)} · ${messages.length} message${messages.length===1?'':'s'} · Preview only</div></div><button type="button" aria-label="Close Telegram preview" id="tgClose">×</button></div>
       <div class="tgbody">${messages.map(message=>`<div class="bubble">${esc(message)}<span class="tm">${time}</span></div>`).join('')}<textarea id="tgText" aria-label="Telegram message text" readonly hidden>${esc(text)}</textarea></div>
-      <div class="tgfoot"><button type="button" class="btn tg" id="tgCopy">Copy for Telegram</button><button type="button" class="btn" id="tgClose2">Close</button></div>`;
+      <div class="tgfoot"><button type="button" class="btn tg" id="tgCopy">Copy for Telegram</button><button type="button" class="btn ${onClose?'pri':''}" id="tgClose2">${onClose?'Open Step 2':'Close'}</button></div>`;
     $('#tgpop').hidden=false;
     $('#tgClose').focus();
     $('#tgClose').onclick=$('#tgClose2').onclick=closeTelegram;
@@ -690,10 +698,14 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     }
   });
   frame.addEventListener('click',event=>{
-    const target=(event.target as Element).closest<HTMLElement>('[data-open],[data-go]');
+    const target=(event.target as Element).closest<HTMLElement>('[data-open],[data-go],[data-join-trial]');
     if (!target) return;
     if (target.dataset.open) openDetails(target.dataset.open,target);
     else if(target.dataset.go==='hr')showTab('hr');
+    else if(target.dataset.joinTrial&&!openingJoining){
+      const row=records.find(item=>item.id===target.dataset.joinTrial);
+      if (row&&isClearedForJoining(row)) void openJoining(prepareJoining([row]));
+    }
   });
   $('#tabs').onclick=event=>{
     const target=(event.target as Element).closest<HTMLButtonElement>('[data-tab]');

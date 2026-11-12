@@ -1,4 +1,4 @@
-import {date, dateTime, DOCS, equipment, indiaDay, ROLES, status, type Outcome, type Role, type Trial} from './records';
+import {date, dateTime, DOCS, equipment, indiaDay, isClearedForJoining, ROLES, status, type Outcome, type Role, type Trial} from './records';
 
 const escapes: Record<string,string> = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 export const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g,char=>escapes[char]);
@@ -9,11 +9,11 @@ const candidateLink = (row: Trial) => `<button type="button" class="link" data-o
 export function table(headers: string[], rows: string, width?: number) {
   return `<div class="scroll"><table class="t"${width ? ` style="min-width:${width}px"` : ''}><thead><tr>${headers.map(item=>`<th scope="col">${item}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
-export function overviewTable(records: Trial[]) {
+export function overviewTable(records: Trial[], canOpenJoining = false) {
   return table(['Form no.','Candidate','Post','Vehicle','Exp','Referred by','Trial date','Result','Status'], records.map(row=>`
     <tr><td class="mono">${esc(row.formNo)}</td><td>${candidateLink(row)}<div class="muted small">${esc(row.mobile)}</div></td>
     <td>${esc(row.post)}</td><td>${esc(equipment(row))}</td><td>${esc(row.experience)}${row.experience?' yrs':''}</td>
-    <td>${esc(row.referredBy)}</td><td>${esc(dateTime(row.trialDate))}</td><td>${resultPill(row)}</td><td>${stagePill(row)}</td></tr>`).join(''));
+    <td>${esc(row.referredBy)}</td><td>${esc(dateTime(row.trialDate))}</td><td>${resultPill(row)}</td><td>${stagePill(row)}${canOpenJoining&&isClearedForJoining(row)?` <button type="button" class="btn pri sm" data-join-trial="${esc(row.id)}" aria-label="Open Step 2 for ${esc(row.name)}">Open Step 2</button>`:''}</td></tr>`).join(''));
 }
 function resultFields(id: string, name: string, draft?: Outcome, allowed = false, file?: File) {
   const prefix = name ? esc(name) + ': ' : '';
@@ -85,7 +85,7 @@ export function detailView(row: Trial, role: Role, canOpenJoining = false) {
     return `<div class="sig ${cls}"><b>${label}</b><span class="st">${esc(action)}</span><span>${esc(entry?.by)}</span><span class="muted">${entry?esc(date(indiaDay(new Date(entry.at)))):''}</span></div>`;
   }).join('');
   return `<div class="panel-head"><div><h2>${esc(row.name)}</h2><span class="mono muted small">${esc(row.formNo)}${row.batch?' · Batch '+esc(row.batch):''} · ${esc(row.site)}</span></div>
-      <div class="actions">${stagePill(row)}${canOpenJoining&&row.stage==='done'&&row.result==='PASS'?'<button type="button" class="btn pri sm" data-open-joining>Open Employee Management</button>':''}${row.result==='PASS'?'<button type="button" class="btn tg sm" id="mTelegram">Telegram message</button>':''}<button type="button" class="btn sm" id="mClose">Close</button></div></div>
+      <div class="actions">${stagePill(row)}${canOpenJoining&&isClearedForJoining(row)?'<button type="button" class="btn pri sm" data-open-joining>Open Step 2</button>':''}${row.result==='PASS'?'<button type="button" class="btn tg sm" id="mTelegram">Telegram message</button>':''}<button type="button" class="btn sm" id="mClose">Close</button></div></div>
     <div class="secbar">Part 1 – Candidate details <em>Site HR</em></div>
     <div class="grid-form"><div class="rows">${section([
       ["Father's name",row.father],['Date of birth',date(row.dob)],['Mobile no.',row.mobile],['Aadhaar no.',row.aadhaar],['Address',row.address],

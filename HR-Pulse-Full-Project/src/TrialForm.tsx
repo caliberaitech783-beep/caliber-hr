@@ -8,6 +8,7 @@ import {AadhaarUpload} from './EmployeeLocation';
 import TrialWorkflowPreview from './trial-workflow-preview/TrialWorkflowPreview';
 import './trial-form.css';
 import {prepareTrialJoining,saveTrialHandoff,type TrialHandoff} from './trialHandoff';
+import type {JoiningDraft} from './joiningDrafts';
 import type {Trial} from './trial-workflow-preview/records';
 
 /* Trial Joining Form – Driver & Operator. Mirrors Trial_Joining_Form_Driver_Operator.docx.
@@ -41,21 +42,23 @@ const Radio=({name,options}:{name:string;options:string[]})=><span className="tf
 const YesNo=({name}:{name:string})=><select name={name} defaultValue=""><option value="">Select</option><option>Yes</option><option>No</option></select>;
 type TrialFormProps = {
  selection: TrialSelection;
- onPassed?: (handoff: TrialHandoff) => void;
- canManage?: boolean;
+ onPassed?: (draft: JoiningDraft) => void;
+ owner?: string;
 };
-export default function TrialForm({selection,onPassed}: TrialFormProps) {
+export default function TrialForm({selection,onPassed,owner: draftOwner}: TrialFormProps) {
  const profile = savedSession()?.profile;
- const owner=profile?.actor||profile?.username||profile?.email||'local';
+ const owner=draftOwner??(profile?.actor||profile?.username||profile?.email||'local');
  const {company, site, department} = selection;
  async function join(rows: Trial[]) {
-  const handoff=await prepareTrialJoining(rows,selection,owner);
-  if (handoff) {saveTrialHandoff(handoff,{});onPassed?.(handoff);}
+  const draft=await prepareTrialJoining(rows,selection,owner);
+  if (!draft?.trialHandoff) return;
+  saveTrialHandoff(draft.trialHandoff,{});
+  return ()=>onPassed?.(draft);
  }
  return <TrialWorkflowPreview owner={owner} name="" site={site} company={companyShort[company]||company} department={department} onCleared={onPassed?join:undefined}/>;
 }
 
-export function CurrentTrialForm({selection,onPassed,canManage=false}:TrialFormProps){
+export function CurrentTrialForm({selection,onPassed,canManage=false}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void;canManage?:boolean}){
  const form=useRef<HTMLFormElement>(null),[step,setStep]=useState(0),[photo,setPhoto]=useState<File|undefined>(),[photo2,setPhoto2]=useState<File|undefined>(),[formNo]=useState(()=>{try{return localStorage.getItem(DRAFT_KEY+'.no')||sessionStorage.getItem(DRAFT_KEY+'.no')||'';}catch{return '';}}),[saved,setSaved]=useState(''),[error,setError]=useState(''),[candidatePhoto,setCandidatePhoto]=useState<string>(''),[dobValue,setDobValue]=useState(''),photoInput=useRef<HTMLInputElement>(null),pendingHandoff=useRef<TrialHandoff|null>(null),copyRef=useRef<(()=>void)|null>(null),[popup,setPopup]=useState<{result:string;message:string;connected:string[];recipients:number;bot?:string;configured?:boolean;issues?:string[]}|null>(null),[saving,setSaving]=useState(false);
  const[trialCheck,setTrialCheck]=useState<TrialCheck>({aadhaar:'',complete:false,pending:false,blocked:false,error:false}),historyRef=useRef(trialCheck);historyRef.current=trialCheck;
  const no=useRef(formNo);if(!no.current){no.current=nextFormNo();try{localStorage.setItem(DRAFT_KEY+'.no',no.current);}catch{/* ignore */}}

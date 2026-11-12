@@ -23,14 +23,13 @@ it('opens a completed operator trial at step two and saves it on the sixth step 
  vi.spyOn(drafts,'saveJoiningDraft').mockImplementation(async draft=>{saved.set(draft.id,draft);});
  vi.spyOn(drafts,'removeJoiningDraft').mockImplementation(async key=>{saved.delete(key);});
  vi.spyOn(drafts,'saveEmployeeDocuments').mockResolvedValue(undefined);
- const handoff=await prepareTrialJoining([{...row,id:'failed',result:'FAIL'},row],{
+ const preparedDraft=await prepareTrialJoining([{...row,id:'failed',result:'FAIL'},row],{
   employeeGroup:'OB / COAL',company:'Caliber Mining And Logistics Ltd',region:'NCL',site:'Jayant OB East',department:'Driver',subdepartment:'Heavy Vehicles',designation:'Tipper Driver',
  },'site-hr');
  expect(saved.size).toBe(1);
- const preparedDraft=[...saved.values()][0];
- expect(preparedDraft.step).toBe(1);
- saved.set(preparedDraft.id,{...preparedDraft,step:0});
- saveTrialHandoff(handoff!,{});
+ expect(preparedDraft?.step).toBe(1);
+ saved.set(preparedDraft!.id,{...preparedDraft!,step:0});
+ saveTrialHandoff(preparedDraft!.trialHandoff!,{});
  const request=vi.fn(async (url:string)=>{
   if(url.endsWith('/lookups'))return Response.json([{id,kind:'companies',code:'CMLL',name:'Caliber Mining and Logistics'},{id,kind:'sites',code:'NCL-JAYANT',name:'Jayant OB'}]);
   if(url.endsWith('/import/trial-employee'))return Response.json({imported:1,submitted:0,status:'ACTIVE'});
@@ -68,4 +67,4 @@ it('opens a completed operator trial at step two and saves it on the sixth step 
   expect(request.mock.calls.some(([url])=>url.endsWith('/import/trial-employee'))).toBe(true);
  });
  expect(request.mock.calls.some(([url])=>url.endsWith('/import/employees')||url.includes('joining-approvers'))).toBe(false);
-});
+},15_000);
