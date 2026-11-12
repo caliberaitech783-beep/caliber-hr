@@ -348,8 +348,11 @@ function CandidatePhotoHeader({photo,upload,remove}:{photo?:File;upload:()=>void
 }
 function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,designations,draft,owner,onDraftSaved,handoff}:{draft?:JoiningDraft;owner:string;onDraftSaved?:()=>void;onTrialSaved?:()=>void;handoff?:TrialHandoff|null;employeeGroup:'Corporate / HO'|'OB / COAL';onSave?:(values:Record<string,string>,trial?:TrialClearance)=>Promise<void>;defaults:FormDefaults;subdepartments:string[];designations:string[]}){
  const formDefaults={...defaults,siteOptions:companiesWithoutSites.has(defaults.company||'')?[]:['NCL','WCL'].includes(defaults.region||defaults.joiningCategory)?companySiteOptions(defaults.company||'',defaults.region||defaults.joiningCategory):corporateSubtypes};
- const firstStep=handoff?1:0,[step,setStep]=useState(draft?.step||firstStep),[employeeCategory,setEmployeeCategory]=useState(draft?.category||(handoff&&['Driver','Operator'].includes(handoff.post)?handoff.post:''));
  const trial=draft?.trialHandoff?.clearance;
+ const firstStep=handoff?1:0;
+ const savedStep=draft?.step??firstStep;
+ const[step,setStep]=useState(trial?Math.max(1,savedStep):savedStep);
+ const[employeeCategory,setEmployeeCategory]=useState(draft?.category||(handoff&&['Driver','Operator'].includes(handoff.post)?handoff.post:''));
  const directTrial=trial&&employeeCategory===trial.post&&defaults.department===trial.post?trial:undefined;
  const[draftStatus,setDraftStatus]=useState('Progress saves automatically on this browser.'),[photo,setPhoto]=useState<File|undefined>(draft?.photo||(handoff?trialHandoffPhotos().photo:undefined)),[photo2,setPhoto2]=useState<File|undefined>(draft?.photo2||(handoff?trialHandoffPhotos().photo2:undefined));
  const candidatePhotoRemover=useRef<()=>void>(()=>{});
@@ -368,7 +371,7 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
  const visibleDocuments=documents.filter(([name])=>!conditionalDocuments.has(name)||showMineCompliance);
  function validateStep(index:number,showNativeMessage=true){
   if(!enforceJoiningMandatoryFields){setSaveError('');return true;}
-  if(index===0&&!photo&&!handoff&&!directTrial?.aadhaar){setSaveError('Please upload the Aadhaar document before continuing.');return false;}
+  if(index===0&&!photo&&!handoff&&!directTrial){setSaveError('Please upload the Aadhaar document before continuing.');return false;}
   if(index===1&&!employeeCategory){setSaveError('Please select Employee Category before continuing.');requestAnimationFrame(()=>formRef.current?.querySelector<HTMLButtonElement>('.employee-category-trigger')?.focus());return false;}
   const panel=formRef.current?.querySelector<HTMLElement>(`[data-joining-step="${index}"]`);
   const invalid=panel?Array.from(panel.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('input[required], select[required], textarea[required]')).find(control=>

@@ -35,7 +35,7 @@ export async function prepareTrialJoining(rows: Trial[], selection: TrialSelecti
    subdepartment:post===selection.department?selection.subdepartment:'',designation:post===selection.department?selection.designation:''};
   const photo=/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(row.photo);
   const files=photo?{'Upload Candidate photo':[new File([Uint8Array.from(atob(photo[1]),char=>char.charCodeAt(0))],'trial-candidate.jpg',{type:'image/jpeg'})]}:undefined;
-  const draft:JoiningDraft={id:crypto.randomUUID(),owner,group:selection.employeeGroup,category:post,step:0,defaults,
+  const draft:JoiningDraft={id:crypto.randomUUID(),owner,group:selection.employeeGroup,category:post,step:1,defaults,
    updatedAt:new Date().toISOString(),fields:Object.fromEntries(Object.entries(fields).map(([key,value])=>[key,[{value}]])),files,trialHandoff:handoff};
   await saveJoiningDraft(draft);
   prepared.push(handoff);
