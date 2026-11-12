@@ -18,7 +18,7 @@ it('writes a styled Excel report and preserves identifier and contact text', asy
   const workbook = new Workbook();
   await workbook.xlsx.load(await blob.arrayBuffer());
   const sheet = workbook.getWorksheet('Employee Master Report')!;
-  expect(sheet.getRow(1).values).toEqual([undefined, 'Serial No', 'Employee ID', 'Name', 'Contact']);
+  expect(sheet.getRow(1).values).toEqual([undefined, 'Serial No', 'EMPLOYEE ID', 'NAME', 'CONTACT']);
   expect(sheet.getCell('A2').value).toBe(1);
   expect(sheet.getCell('A3').value).toBe(2);
   expect(sheet.getCell('B2').value).toBe('000012');

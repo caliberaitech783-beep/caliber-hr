@@ -16,7 +16,10 @@ export async function regionEmployeeExcel(
     properties: { defaultRowHeight: 16.5 },
     views: [{ state: 'frozen', xSplit: 1, ySplit: 1, showGridLines: false }],
   });
-  const reportColumns = [{ header: 'Serial No', width: 11 }, ...columns];
+  const reportColumns = [
+    { header: 'Serial No', width: 11 },
+    ...columns.map(column => ({ ...column, header: column.header.toUpperCase() })),
+  ];
   sheet.addTable({
     name: 'RegionEmployeeDetails',
     ref: 'A1',

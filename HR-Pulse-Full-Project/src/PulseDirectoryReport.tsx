@@ -31,7 +31,7 @@ export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:strin
     columns.map(([,header,width])=>({header,width})),
     rows.map(row=>columns.map(([key])=>String(row[key]??''))),
    );
-   downloadBlob('employee-master-report.xlsx',workbook);
+   downloadBlob('employee-master-report-gray.xlsx',workbook);
   }catch{
    setError('Could not export the Excel report. Please try again.');
   }finally{
