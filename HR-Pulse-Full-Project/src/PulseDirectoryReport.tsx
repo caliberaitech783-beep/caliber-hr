@@ -29,9 +29,9 @@ export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:strin
    const {regionEmployeeExcel}=await import('./regionEmployeeExcel');
    const workbook=await regionEmployeeExcel(
     columns.map(([,header,width])=>({header,width})),
-    rows.map(row=>columns.map(([key])=>String(row[key]||'—'))),
+    rows.map(row=>columns.map(([key])=>String(row[key]??''))),
    );
-   downloadBlob('region-employee-details-formatted.xlsx',workbook);
+   downloadBlob('employee-master-report.xlsx',workbook);
   }catch{
    setError('Could not export the Excel report. Please try again.');
   }finally{

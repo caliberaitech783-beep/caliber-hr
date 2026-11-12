@@ -11,26 +11,28 @@ it('writes a styled Excel report and preserves identifier and contact text', asy
   ];
   const blob = await regionEmployeeExcel(columns, [
     ['000012', 'Sample Employee', '0012345678'],
-    ['000013', '=1+1', '—'],
+    ['000013', '=1+1', ''],
   ]);
   expect(blob.type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 
   const workbook = new Workbook();
   await workbook.xlsx.load(await blob.arrayBuffer());
-  const sheet = workbook.getWorksheet('Region Employee Details')!;
-  expect(sheet.getRow(1).values).toEqual([undefined, 'Employee ID', 'Name', 'Contact']);
-  expect(sheet.getCell('A2').value).toBe('000012');
-  expect(sheet.getCell('C2').value).toBe('0012345678');
-  expect(sheet.getCell('B3').value).toBe('=1+1');
-  expect(sheet.getCell('C3').value).toBe('—');
+  const sheet = workbook.getWorksheet('Employee Master Report')!;
+  expect(sheet.getRow(1).values).toEqual([undefined, 'Serial No', 'Employee ID', 'Name', 'Contact']);
+  expect(sheet.getCell('A2').value).toBe(1);
+  expect(sheet.getCell('A3').value).toBe(2);
+  expect(sheet.getCell('B2').value).toBe('000012');
+  expect(sheet.getCell('D2').value).toBe('0012345678');
+  expect(sheet.getCell('C3').value).toBe('=1+1');
+  expect(sheet.getCell('D3').text).toBe('');
   expect(sheet.getCell('A1').font.bold).toBe(true);
-  expect(sheet.getCell('A1').font.color).toMatchObject({ argb: 'FFFFFFFF' });
-  expect(sheet.getCell('A1').fill).toMatchObject({ fgColor: { argb: 'FF522E90' } });
-  expect(sheet.getCell('B3').fill).toMatchObject({ fgColor: { argb: 'FFF0E6F8' } });
-  expect(sheet.getCell('B2').border).toMatchObject({ left: { style: 'thin' }, bottom: { style: 'thin' } });
-  expect(sheet.getColumn(2).width).toBe(27);
-  expect(sheet.views[0]).toMatchObject({ state: 'frozen', ySplit: 1 });
+  expect(sheet.getCell('A1').font.color).toMatchObject({ argb: 'FF000000' });
+  expect(sheet.getCell('A1').fill).toMatchObject({ fgColor: { argb: 'FFECECEC' } });
+  expect(sheet.getCell('B3').fill).toMatchObject({ fgColor: { argb: 'FFFFFFFF' } });
+  expect(sheet.getCell('B2').border).toMatchObject({ left: { style: 'thin', color: { argb: 'FFA6A6A6' } }, bottom: { style: 'thin' } });
+  expect(sheet.getColumn(3).width).toBe(27);
+  expect(sheet.views[0]).toMatchObject({ state: 'frozen', xSplit: 1, ySplit: 1 });
   const table = sheet.getTable('RegionEmployeeDetails');
   expect(table).toBeDefined();
-  expect(table.getColumn(0).filterButton).toBe(true);
+  expect(table.getColumn(0).filterButton).toBe(false);
 });
