@@ -77,8 +77,20 @@ jobs:
           package: app
       - name: Check health
         run: |
-          for i in $(seq 1 18); do
-            if curl -fsS https://hr-api-cmll-783.azurewebsites.net/api/health > /dev/null; then echo "API healthy"; exit 0; fi
-            sleep 10
-          done
-          echo "API did not report healthy in time"; exit 1
+          wait_for_release() {
+            for i in $(seq 1 "$1"); do
+              if curl -fsS --max-time 10 https://hr-api-cmll-783.azurewebsites.net/api/health |
+                jq -e --arg commit "$GITHUB_SHA" '.status == "ok" and .release == $commit' > /dev/null; then
+                echo "API is serving $GITHUB_SHA"
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+          if wait_for_release 6; then exit 0; fi
+          echo "The App Service worker is still serving the previous release. Restarting the app once."
+          app_id=$(az resource list --name hr-api-cmll-783 --resource-type Microsoft.Web/sites --query '[0].id' -o tsv)
+          test -n "$app_id"
+          az webapp restart --ids "$app_id"
+          wait_for_release 18

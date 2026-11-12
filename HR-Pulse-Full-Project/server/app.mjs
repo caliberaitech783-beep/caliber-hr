@@ -9,7 +9,7 @@ async function body(req,limit=2_000_000) {
   try { const value=JSON.parse(Buffer.concat(chunks).toString()); if(!value||typeof value!=='object'||Array.isArray(value))throw new Error(); return value; }
   catch { throw problem('A valid JSON object is required'); }
 }
-export function createApi({ query, service, authenticate=async()=>null, allowedOrigin='https://hrpulse.cmll.in', readAadhaar=createAadhaarReader() }) {
+export function createApi({ query, service, authenticate=async()=>null, allowedOrigin='https://hrpulse.cmll.in', readAadhaar=createAadhaarReader(), release='2026-10-22-modules-v1' }) {
   return createServer(async(req,res)=>{
     const send=(status,data)=>res.writeHead(status).end(JSON.stringify(data));
     res.setHeader('Cache-Control','no-store'); res.setHeader('Content-Type','application/json');
@@ -25,7 +25,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
     try {
       if(['/api/health','/api/ready'].includes(path)){
         if(req.method!=='GET'){res.setHeader('Allow','GET');return send(405,{error:'Method not allowed'});}
-        if(path==='/api/health')return send(200,{status:'ok',service:'hr-api',release:'2026-10-22-modules-v1'});
+        if(path==='/api/health')return send(200,{status:'ok',service:'hr-api',release});
         try{await query('SELECT 1');return send(200,{status:'ready',database:'connected'});}
         catch{return send(503,{status:'unavailable',database:'unavailable'});}
       }

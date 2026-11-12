@@ -43,7 +43,12 @@ const refreshAssetReminders=()=>assetReminders(pool).catch(()=>console.error('As
 await refreshAssetReminders();
 const assetReminderTimer=setInterval(refreshAssetReminders,60*60*1000);assetReminderTimer.unref();
 if(process.env.HR_VERIFY_DATABASE==='true')await verifyDatabase(pool);
-const server = createApi({ query: sql => pool.query(sql), service:createService(pool), authenticate, allowedOrigin: process.env.FRONTEND_ORIGIN });
+const releaseFile = await readFile(new URL('./release.json',import.meta.url),'utf8').catch(error=>{
+  if(error.code!=='ENOENT')throw error;
+  return '{}';
+});
+const server = createApi({ query: sql => pool.query(sql), service:createService(pool), authenticate,
+  allowedOrigin: process.env.FRONTEND_ORIGIN, release:JSON.parse(releaseFile).commit });
 server.listen(Number(process.env.PORT || 8080), '0.0.0.0');
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.once(signal, () => server.close(async () => { await pool.end(); process.exit(0); }));
