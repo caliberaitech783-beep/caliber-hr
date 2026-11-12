@@ -75,12 +75,13 @@ export const scopedRecipients=(list,target)=>target?list.filter(r=>recipientInSc
 /* Recipients taken from Approval Master › Hierarchy (joining hierarchy per site), so nothing has to be typed twice:
    part1  → the site's "Driver Trainer" step
    result → Project Manager, Office HR, HR Manager — either one (regional), Final approval (directors) */
-const HIERARCHY_STEPS={part1:['Driver Trainer'],result:['Project Manager','Office HR — either one','HR Manager — either one','Final approval — any one']};
+const HIERARCHY_STEPS={part1:['Driver Trainer'],result:['Project Manager'],ohr:['Office HR — either one'],rhr:['HR Manager — either one'],director:['Final approval — any one'],siteHr:['HR Manager'],
+ all:['HR Manager','Project Manager','Driver Trainer','Office HR — either one','HR Manager — either one','Final approval — any one']};
 export async function hierarchyRecipients(db,stage,target){
  const rows=(await db.query("SELECT code,data FROM hr_records WHERE kind='joiningHierarchies'")).rows;
  const out=[];for(const t of hierarchyTemplates){const saved=rows.find(r=>r.code===t.code);const data={...t,...withOfficeHr(withDriverTrainer(currentHierarchy(saved?.data)))};
   /* Nagpur Office (CMLL-CO) HR Executive / HR Manager are the Office HR for every site: Part 2 results reach them for all sites. */
-  const officeHr=stage==='result'&&t.code==='CMLL-CO';
+  const officeHr=['ohr','all'].includes(stage)&&t.code==='CMLL-CO';
   if(!officeHr&&target&&!recipientInScope({scope:t.name},target))continue;
   const labels=officeHr?['HR Executive','HR Manager']:HIERARCHY_STEPS[stage];
   for(const step of data.steps||[])if(labels.includes(step.label))for(const actor of step.approvers||[]){const a=String(actor).trim().toLowerCase();if(a&&!out.some(r=>r.actor===a&&r.site===t.name))out.push({actor:a,name:a,phone:'',scope:officeHr?'ALL':t.name,site:officeHr?'All sites (Office HR – Nagpur Office)':t.name,role:officeHr?`Office HR – ${step.label}`:step.label,source:'hierarchy'});}}
@@ -103,6 +104,32 @@ export function trialBatchResultMessage(batch,records,attachmentCount){const pas
  if(passed.length)passed.forEach((r,i)=>{const f=r.fields||{};lines.push(`${i+1}. ${dash(f['Name of candidate'])} – ${dash(f['Post applied for']||r.department)}, ${dash(f['Total experience (years)'])} yrs, Ref: ${dash(f['Referred by'])}`);});else lines.push('–');
  lines.push('','❌ FAILED');if(failed.length)failed.forEach((r,i)=>{const f=r.fields||{};lines.push(`${i+1}. ${dash(f['Name of candidate'])} – ${dash(f['If FAIL – reason'])}`);});else lines.push('–');
  lines.push('',`📎 Attachments: ${attachmentCount} file(s) + Excel result sheet`);return lines.join('\n');}
+const ROLE_TITLE={pm:'PM Sir',ohr:'Office HR',rhr:'Regional HR',director:'Directors'};
+const NEXT_STATUS={pm:'Sent to Office HR for approval',ohr:'Sent to Regional HR for approval',rhr:'Sent to Directors for approval'};
+const approvedOn=(history,role)=>{const h=(history||[]).find(x=>x.role===role&&/approv/i.test(x.action||''));return h?fmtDate(h.at):'';};
+const fmtDateTime=v=>{const d=new Date(v);return Number.isNaN(d.valueOf())?'':`${fmtDate(v)}, ${d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'})}`;};
+const candidateLines=(r)=>{const f=r.fields||{};return [`Result: ${f.Result==='PASS'?'✅ PASS':'❌ FAIL'}`,`Name: ${dash(f['Name of candidate'])}`,`Post: ${dash(f['If PASS – recommended for']||f['Post applied for']||r.department)}`,`Vehicle: ${dash(f['Machine']||vehicleOf(f))}`,`Experience: ${dash(f['Total experience (years)'])}`,`Referred by: ${dash(f['Referred by'])}`,`Trial date: ${dash(fmtDate(f['Trial date & time']))}`,`Form No: ${r.formNo}`,`Trial by: ${dash(r.trialBy||f['Examiner name'])}`];};
+const docLine=r=>{const d=r.docs||{};const mark=k=>d[k]==='Yes'?'✓':'✗';return `Documents: Aadhaar ${mark('aadhaar')}  DL ${mark('dl')}  Medical ${mark('medical')}`;};
+/* Stage approval messages (PM → Office HR → Regional HR → Directors) */
+export function trialApprovalMessage(r,reviewer,decision){const {approved,note,at}=decision;const h=r.history||[];
+ if(!approved)return [`❌ REJECTED BY ${ROLE_TITLE[reviewer].toUpperCase()}`,'',...candidateLines(r),`Rejected by: ${ROLE_TITLE[reviewer]}`,`Rejected on: ${fmtDateTime(at)}`,`Reason: ${dash(note)}`,'Status: ❌ Rejected – trial closed',`Site: ${dash(r.site)}`].join('\n');
+ const prior=[];if(['ohr','rhr','director'].includes(reviewer))prior.push(`Approved by PM Sir: ${dash(approvedOn(h,'pm'))}`);if(['rhr','director'].includes(reviewer))prior.push(`Approved by Office HR: ${dash(approvedOn(h,'ohr'))}`);if(reviewer==='director')prior.push(`Approved by Regional HR: ${dash(approvedOn(h,'rhr'))}`);
+ const head=reviewer==='director'?'🎉 FINAL APPROVAL – DIRECTORS':`✅ APPROVED BY ${ROLE_TITLE[reviewer].toUpperCase()}`;
+ const lines=[head,'',...candidateLines(r),...prior,`Approved by: ${ROLE_TITLE[reviewer]}`,`Approved on: ${fmtDateTime(at)}`];
+ if(reviewer==='ohr')lines.push(docLine(r));
+ if(note)lines.push(`Remark: ${note}`);
+ if(reviewer==='director')lines.push('Joining: Report to Site HR with original documents','Status: ✅ CLEARED TO JOIN');else lines.push(`Status: ${NEXT_STATUS[reviewer]}`);
+ lines.push(`Site: ${dash(r.site)}`);return lines.join('\n');}
+const JOIN_STEPS=['1. Joining date & employee code','2. Bank account details','3. PF (UAN) & ESIC details','4. Nominee & emergency contact','5. Form B register entry','6. VTC / induction training','7. PPE issue & ID card / gate pass'];
+const approvedByBlock=h=>['Approved by:',`✅ PM Sir – ${dash(approvedOn(h,'pm'))}`,`✅ Office HR – ${dash(approvedOn(h,'ohr'))}`,`✅ Regional HR – ${dash(approvedOn(h,'rhr'))}`,`✅ Directors – ${dash(approvedOn(h,'director'))}`];
+export function joiningApprovedMessage(r){const f=r.fields||{};const name=dash(f['Name of candidate']);const he=/female/i.test(f.Gender||'')?'She':'He';
+ return ['📢 JOINING APPROVED – CLEARED TO JOIN','','Dear All,',`${name} has passed the vehicle trial and is approved by PM Sir, Office HR, Regional HR and Directors. ${he} is cleared to join the organisation.`,'',`Name: ${name}`,`Post: ${dash(f['If PASS – recommended for']||f['Post applied for']||r.department)}`,`Vehicle: ${dash(f['Machine']||vehicleOf(f))}`,`Form No: ${r.formNo}`,`Trial date: ${dash(fmtDate(f['Trial date & time']))}`,`Site: ${dash(r.site)}`,'',...approvedByBlock(r.history),'','📝 Action – Site HR','Please complete the remaining joining entries:',...JOIN_STEPS,'','Please update here once joining is complete.','Status: ✅ CLEARED TO JOIN'].join('\n');}
+export function bulkJoiningApprovedMessage(batchId,rows){const first=rows[0]||{};const f0=first.fields||{};
+ return ['📢 BULK JOINING APPROVED – CLEARED TO JOIN','','Dear All,',`The following ${rows.length} candidates have passed the vehicle trial and are approved by PM Sir, Office HR, Regional HR and Directors. They are cleared to join the organisation.`,'',`Batch: ${batchId}`,`Trial date: ${dash(fmtDate(f0['Trial date & time']))}`,`Site: ${dash(first.site)}`,'',`✅ Cleared to join (${rows.length})`,...rows.map((r,i)=>{const f=r.fields||{};return `${i+1}. ${dash(f['Name of candidate'])} – ${dash(f['If PASS – recommended for']||f['Post applied for']||r.department)}, ${dash(f['Machine']||vehicleOf(f))}`;}),'',...approvedByBlock(first.history),'','📝 Action – Site HR','Please complete the remaining joining entries for each candidate (see attached Excel):',...JOIN_STEPS,'','Fill the pending columns in the Excel and send it back here once joining is complete.',`Status: ✅ CLEARED TO JOIN – ${rows.length} candidates`].join('\n');}
+/* Trial form / joining approval PDF (one candidate) */
+const TRIAL_PDF_FIELDS=['Name of candidate',"Father's name",'Date of birth / Age','Mobile no.','Aadhaar no.','Address','Post applied for','Vehicle / equipment for trial','Driving licence no. & class','DL valid up to','Total experience (years)','Previous employer','Trial date & time','Referred by','Result','If PASS – recommended for','Machine','If FAIL – reason','Examiner name','Examiner remarks'];
+export function trialFormPdf(r,title){const f=r.fields||{};const rows=TRIAL_PDF_FIELDS.map(k=>[k,f[k]||'']);const h=r.history||[];for(const role of ['pm','ohr','rhr','director']){const d=approvedOn(h,role);if(d)rows.push([`Approved by ${ROLE_TITLE[role]}`,d]);}
+ return buildPdf({title:`${title} – ${r.formNo}`,subtitle:[`${r.company||'Caliber Mining & Logistics'} · Site: ${r.site||'-'} · Status: ${r.status||''}`],columns:[{label:'Field',width:160},{label:'Value',width:440}],rows,footer:'Generated by HR Pulse'});}
 const newBatchId=()=>{const d=new Date();return 'B'+String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+randomBytes(2).toString('hex').toUpperCase();};
 const cleanFields=f=>Object.fromEntries(Object.entries(f&&typeof f==='object'?f:{}).slice(0,80).map(([k,v])=>[String(k).slice(0,80),String(v??'').slice(0,500)]));
 const cleanAttachments=list=>(Array.isArray(list)?list:[]).slice(0,6).map(a=>({name:String(a?.name||'file').slice(0,120),mime:String(a?.mime||'application/octet-stream').slice(0,80),data:String(a?.data||'').replace(/^data:[^,]*,/,'').slice(0,4*1024*1024)})).filter(a=>a.data);
@@ -226,7 +253,7 @@ export function createTelegram(pool){
    return out;
   }
   if(route==='trial-recipients'&&method==='GET'){
-   const result=await trialRecipients(pool,'result'),part1=await trialRecipients(pool,'part1'),hierarchy={part1:await hierarchyRecipients(pool,'part1'),result:await hierarchyRecipients(pool,'result')},all=[...result,...part1,...hierarchy.part1,...hierarchy.result];
+   const result=await trialRecipients(pool,'result'),part1=await trialRecipients(pool,'part1'),hierarchy={part1:await hierarchyRecipients(pool,'part1'),result:[...(await hierarchyRecipients(pool,'result')).map(r=>({...r,role:`Trial result → ${r.role}`})),...(await hierarchyRecipients(pool,'ohr')).map(r=>({...r,role:`PM approved → ${r.role}`})),...(await hierarchyRecipients(pool,'rhr')).map(r=>({...r,role:`Office HR approved → ${r.role} (Regional HR)`})),...(await hierarchyRecipients(pool,'director')).map(r=>({...r,role:`Regional HR approved → ${r.role} (Directors)`}))]},all=[...result,...part1,...hierarchy.part1,...hierarchy.result];
    const linked=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor = ANY($1)',[all.map(recipientActor)])).rows.map(r=>r.actor);
    const issues=Object.fromEntries((await pool.query("SELECT DISTINCT ON (actor) actor,last_error FROM hr_telegram_outbox WHERE bot='trial' AND state<>'SENT' AND last_error IS NOT NULL ORDER BY actor,id DESC")).rows.map(r=>[r.actor,r.last_error]));
    const decorate=list=>list.map(r=>({...r,connected:linked.includes(recipientActor(r)),issue:issues[recipientActor(r)]||''}));
@@ -322,6 +349,41 @@ export function createTelegram(pool){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const formNo=String(input.formNo||'').trim().slice(0,40);const row=(await pool.query("SELECT data FROM hr_records WHERE kind='trialForms' AND status='ACTIVE' AND code=$1",[formNo])).rows[0];if(!row)fail('Trial form not found',404);
    return {data:row.data};
+  }
+  /* ---- Approval stages: PM → Office HR → Regional HR → Directors; final → joining approved to all ---- */
+  if(route==='trial-approval'&&method==='POST'){
+   if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
+   const reviewer=String(input.reviewer||'');if(!ROLE_TITLE[reviewer])fail('Unknown reviewer stage');
+   const decision={approved:!!input.approved,note:String(input.note||'').slice(0,300),at:input.at&&!Number.isNaN(new Date(input.at).valueOf())?input.at:new Date().toISOString(),by:String(input.by||profile.name||profile.actor).slice(0,80)};
+   const target={site:String(input.site||'').slice(0,80),region:String(input.region||'').slice(0,80),company:String(input.company||'').slice(0,120),group:String(input.group||'').slice(0,80)};
+   const batchId=String(input.batchId||'').slice(0,40);
+   const rows=(Array.isArray(input.rows)?input.rows:[]).slice(0,100).map(r=>{const formNo=String(r.formNo||'').slice(0,40);if(!formNo)fail('Form number is required');return {formNo,fields:cleanFields(r.fields),attachments:cleanAttachments(r.attachments),history:(Array.isArray(r.history)?r.history:[]).slice(0,40).map(h=>({role:String(h.role||'').slice(0,20),action:String(h.action||'').slice(0,80),by:String(h.by||'').slice(0,80),at:String(h.at||'').slice(0,40),note:String(h.note||'').slice(0,300)})),docs:Object.fromEntries(Object.entries(r.docs&&typeof r.docs==='object'?r.docs:{}).slice(0,10).map(([k,v])=>[String(k).slice(0,20),String(v??'').slice(0,10)])),site:target.site,company:target.company,department:String(input.department||'').slice(0,80),batchId,trialBy:String(r.trialBy||'').slice(0,80)};});
+   if(!rows.length)fail('No forms to notify');
+   const stage=!decision.approved?'reject':reviewer==='pm'?'ohr':reviewer==='ohr'?'rhr':reviewer==='rhr'?'director':'final';
+   const stageStatus=!decision.approved?`Rejected by ${ROLE_TITLE[reviewer]}`:stage==='final'?'Cleared to join':NEXT_STATUS[reviewer];
+   const nextRecipients=stage==='reject'?[...await hierarchyRecipients(pool,'siteHr',target),...await hierarchyRecipients(pool,'part1',target),...await hierarchyRecipients(pool,'result',target)]
+     :stage==='final'?[...await hierarchyRecipients(pool,'all',target),...scopedRecipients(await trialRecipients(pool,'result'),target)]
+     :[...await hierarchyRecipients(pool,stage,target),...scopedRecipients(await trialRecipients(pool,'result'),target).filter(r=>r.stages?.includes?.(stage))];
+   const recipients=[...new Set(nextRecipients.map(recipientActor))];
+   const xlsx=input.xlsx?String(input.xlsx).replace(/^data:[^,]*,/,'').slice(0,8*1024*1024):'';
+   const messages=[];
+   await tx(async db=>{
+    for(const r of rows){const old=(await db.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1 FOR UPDATE",[r.formNo])).rows[0];
+     const data={...(old?.data||{}),formNo:r.formNo,site:r.site||old?.data?.site,company:r.company||old?.data?.company,department:r.department||old?.data?.department,batchId:batchId||old?.data?.batchId||'',fields:{...(old?.data?.fields||{}),...r.fields},attachments:r.attachments.length?r.attachments:old?.data?.attachments||[],history:r.history,docs:r.docs,trialBy:r.trialBy||old?.data?.trialBy||r.fields['Examiner name']||'',stage:stage==='reject'?'REJECTED':stage==='final'?'CLEARED':'APPROVAL',status:stageStatus,lastDecision:{reviewer,...decision},savedBy:profile.actor,savedAt:new Date().toISOString()};
+     let id=old?.id;if(id)await db.query('UPDATE hr_records SET data=$1,status=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[data,stage==='reject'?'REJECTED':'ACTIVE',profile.actor,id]);
+     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[r.formNo,data.fields['Name of candidate']||r.formNo,data,profile.actor])).rows[0].id;
+     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'TRIAL_APPROVAL','trialForms',$2,$3)",[profile.actor,id,{formNo:r.formNo,reviewer,approved:decision.approved}]);
+     Object.assign(r,{site:data.site,company:data.company,department:data.department,trialBy:data.trialBy,attachments:data.attachments,status:stageStatus,fields:data.fields});}
+    if(!recipients.length)return;
+    const files=r=>[...(r.attachments||[]).map(a=>({name:`${r.formNo.replace(/\//g,'-')}_${a.name}`,mime:a.mime,data:a.data,caption:`${r.formNo} · ${r.fields['Name of candidate']||''}`})),{name:`${r.formNo.replace(/\//g,'-')}_${stage==='final'?'Joining_Approval':'Trial_Form'}.pdf`,mime:'application/pdf',data:trialFormPdf(r,stage==='final'?'Joining approval':'Trial joining form'),caption:stage==='final'?'Joining approval':'Trial joining form'}];
+    const key=`trial-approval:${reviewer}:${batchId||rows[0].formNo}:${Date.now()}`;
+    if(rows.length===1){const m=trialApprovalMessage(rows[0],reviewer,decision);messages.push(m);await queueTelegram(db,key,recipients,m,'trial',null,stage==='reject'?[]:files(rows[0]));
+     if(stage==='final'){const j=joiningApprovedMessage(rows[0]);messages.push(j);await queueTelegram(db,key+':join',recipients,j,'trial',null,files(rows[0]));}}
+    else{const header=!decision.approved?`❌ REJECTED BY ${ROLE_TITLE[reviewer].toUpperCase()} – Batch ${batchId||''} (${rows.length} candidates)`:stage==='final'?`🎉 FINAL APPROVAL – DIRECTORS – Batch ${batchId||''} (${rows.length} candidates)`:`✅ APPROVED BY ${ROLE_TITLE[reviewer].toUpperCase()} – Batch ${batchId||''} (${rows.length} candidates)`;
+     const m=[header,'',`Site: ${dash(target.site)}`,`${decision.approved?'Approved':'Rejected'} by: ${ROLE_TITLE[reviewer]} · ${fmtDateTime(decision.at)}`,decision.note?`Remark: ${decision.note}`:'',`Status: ${stage==='final'?'✅ CLEARED TO JOIN':stageStatus}`,'',...rows.map((r,i)=>`${i+1}. ${dash(r.fields['Name of candidate'])} – ${dash(r.fields['If PASS – recommended for']||r.fields['Post applied for']||r.department)} – ${r.formNo} – ${r.fields.Result==='PASS'?'✅ PASS':'❌ FAIL'}`)].filter(l=>l!=='').join('\n');
+     messages.push(m);await queueTelegram(db,key,recipients,m,'trial',null,stage==='reject'?[]:rows.flatMap(files));
+     if(stage==='final'){const j=bulkJoiningApprovedMessage(batchId||'-',rows);messages.push(j);await queueTelegram(db,key+':join',recipients,j,'trial',null,xlsx?[{name:`${batchId||'batch'}_Joining_List.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',data:xlsx,caption:`${rows.length} candidates, joining columns pending`}]:[]);}}});
+   return {saved:true,stage,telegram:{...(await recipientIssues(pool,recipients)),message:messages.join('\n\n———\n\n')}};
   }
   /* ---- Part 2 single result (driver trainer) → PM, with the candidate's attachments ---- */
   if(route==='trial-result'&&method==='POST'){

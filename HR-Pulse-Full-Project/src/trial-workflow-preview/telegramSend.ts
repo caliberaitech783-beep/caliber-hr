@@ -78,3 +78,27 @@ export async function sendResults(changed: Trial[], resultFiles: Map<string, Fil
   });
   return out.telegram;
 }
+
+/* Approval stages: PM → Office HR → Regional HR → Directors (final → "Joining approved" to everyone). */
+export async function sendApproval(changed: Trial[], reviewer: 'pm'|'ohr'|'rhr'|'director', approved: boolean, note: string, by: string, at: string, resultFiles: (id: string) => Promise<File | undefined>, scope: Scope): Promise<Delivery> {
+  const grant = grantOrThrow();
+  const rows = await Promise.all(changed.map(async row => ({
+    formNo: row.formNo, fields: fields(row), history: row.history, trialBy: row.outcome?.trainer || '',
+    docs: Object.fromEntries(Object.entries(row.docs || {}).map(([k, v]) => [k, (v as {seen: string}).seen])),
+    attachments: [dataUrl('photo', row.photo), await fileAttachment(row.outcome?.attachment ? await resultFiles(row.outcome.attachment.id) : undefined)].filter(Boolean),
+  })));
+  let xlsx = '';
+  if (approved && reviewer === 'director' && changed.length > 1) {
+    const sheet = xlsxUtils.json_to_sheet(changed.map((row, i) => ({
+      '#': i+1, 'Form No': row.formNo, 'Name': row.name, 'Post': row.outcome?.post || row.post, 'Vehicle': row.outcome?.machine || equipment(row), 'Mobile': row.mobile, 'Aadhaar': row.aadhaar, 'Trial date': row.trialDate, 'Site': row.site,
+      'Joining date': '', 'Employee code': '', 'Bank account': '', 'IFSC': '', 'UAN': '', 'ESIC': '', 'Nominee': '', 'Emergency contact': '', 'Form B entry': '', 'VTC / induction': '', 'PPE / ID card / gate pass': '',
+    })));
+    const wb = xlsxUtils.book_new();
+    xlsxUtils.book_append_sheet(wb, sheet, 'Joining list');
+    xlsx = xlsxWrite(wb, {type: 'base64', bookType: 'xlsx'});
+  }
+  const out = await api<{telegram: Delivery}>(grant, 'telegram/trial-approval', 'POST', {
+    reviewer, approved, note, by, at, rows, xlsx, ...target(scope), department: scope.department, batchId: changed.length > 1 ? changed[0].batch : changed[0].batch || '',
+  });
+  return out.telegram;
+}

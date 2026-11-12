@@ -127,3 +127,18 @@ test('trial recipients are filtered by site / group scope',async()=>{
  assert.equal(recipientInScope({scope:'WCL, Umrer'},t),false);
  assert.equal(recipientInScope({scope:'Jayant OB West'},t),false);
 });
+
+test('approval stage messages follow the agreed formats',async()=>{
+ const {trialApprovalMessage,joiningApprovedMessage,bulkJoiningApprovedMessage,trialFormPdf}=await import('./telegram.mjs');
+ const row={formNo:'TF/2026-27/0001',site:'Jayant OB East',trialBy:'driver trainer',docs:{aadhaar:'Yes',dl:'Yes',medical:'Yes'},fields:{Result:'PASS','Name of candidate':'Apurva Dnyaninath Kopulwar','Post applied for':'Driver','Vehicle / equipment for trial':'Water Tanker','Trial date & time':'2026-11-12T10:00'},
+  history:[{role:'pm',action:'Approved',at:'2026-11-12T11:50:00Z'},{role:'ohr',action:'Approved',at:'2026-11-13T05:35:00Z'}]};
+ const pm=trialApprovalMessage(row,'pm',{approved:true,note:'OK for joining',at:'2026-11-12T11:50:00Z'});
+ assert.match(pm,/^✅ APPROVED BY PM SIR\n\nResult: ✅ PASS\nName: Apurva Dnyaninath Kopulwar\nPost: Driver\nVehicle: Water Tanker\nExperience: –\nReferred by: –\nTrial date: 12-11-2026\nForm No: TF\/2026-27\/0001\nTrial by: driver trainer\nApproved by: PM Sir\nApproved on: 12-11-2026, 17:20\nRemark: OK for joining\nStatus: Sent to Office HR for approval\nSite: Jayant OB East$/);
+ const ohr=trialApprovalMessage(row,'ohr',{approved:true,note:'Documents verified',at:'2026-11-13T05:35:00Z'});
+ assert.match(ohr,/APPROVED BY OFFICE HR[\s\S]*Approved by PM Sir: 12-11-2026\nApproved by: Office HR\nApproved on: 13-11-2026, 11:05\nDocuments: Aadhaar ✓  DL ✓  Medical ✓\nRemark: Documents verified\nStatus: Sent to Regional HR for approval/);
+ const dir=trialApprovalMessage(row,'director',{approved:true,note:'',at:'2026-11-13T11:10:00Z'});
+ assert.match(dir,/^🎉 FINAL APPROVAL – DIRECTORS[\s\S]*Approved by: Directors\nApproved on: 13-11-2026, 16:40\nJoining: Report to Site HR with original documents\nStatus: ✅ CLEARED TO JOIN\nSite: Jayant OB East$/);
+ assert.match(joiningApprovedMessage(row),/^📢 JOINING APPROVED – CLEARED TO JOIN\n\nDear All,\nApurva Dnyaninath Kopulwar has passed the vehicle trial[\s\S]*📝 Action – Site HR[\s\S]*7\. PPE issue & ID card \/ gate pass\n\nPlease update here once joining is complete\.\nStatus: ✅ CLEARED TO JOIN$/);
+ assert.match(bulkJoiningApprovedMessage('B261112-7F3A',[row,row]),/^📢 BULK JOINING APPROVED – CLEARED TO JOIN[\s\S]*Batch: B261112-7F3A[\s\S]*✅ Cleared to join \(2\)\n1\. Apurva/);
+ assert.equal(trialFormPdf(row,'Trial joining form').subarray(0,5).toString(),'%PDF-');
+});

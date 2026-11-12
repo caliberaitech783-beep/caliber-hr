@@ -7,7 +7,7 @@ import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime
   NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
 import {getTrialResultFile, removeTrialResultFiles, saveTrialResultFiles} from './trialResultFiles';
-import {deliveryStatus, sendPart1, sendResults} from './telegramSend';
+import {deliveryStatus, sendApproval, sendPart1, sendResults} from './telegramSend';
 import {siteDisplayName} from '../siteNames';
 import {findPreviousTrial} from './previousTrial';
 import type {TrialMatch} from '../TrialAadhaarHistory';
@@ -667,14 +667,16 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     $<HTMLInputElement>('#apNote').value='';
     toast(`${changed.length} form(s) ${approved?'approved':'rejected'} by ${ROLES[reviewer]}.`);
     renderApprovals();
-    if(approved&&reviewer==='director'){
-      const passed=changed.filter(row=>row.result==='PASS');
-      if (passed.length) {
-        const cleared=passed.filter(isClearedForJoining);
-        const prepared=onCleared&&cleared.length?prepareJoining(cleared):undefined;
-        showTelegram(passed.map(resultMessage),'Cleared to join – final approval',prepared?()=>void openJoining(prepared):undefined);
-      }
-    }
+    const passed=changed.filter(row=>row.result==='PASS');
+    const cleared=approved&&reviewer==='director'?passed.filter(isClearedForJoining):[];
+    const prepared=onCleared&&cleared.length?prepareJoining(cleared):undefined;
+    const onClose=prepared?()=>void openJoining(prepared):undefined;
+    const summary=!approved?`Rejected by ${ROLES[reviewer]}`:reviewer==='director'?'Final approval by Directors – cleared to join':`Approved by ${ROLES[reviewer]} – sent to ${ROLES[NEXT[reviewer] as Role]||'next stage'}`;
+    if (savedSession()?.grant) {
+      void sendApproval(changed,reviewer,approved,note,name,at,getTrialResultFile,scope)
+        .then(d=>{if(!effects.signal.aborted) showTelegram(d.message.split('\n\n———\n\n'),summary,onClose,deliveryStatus(d));})
+        .catch(error=>{if(!effects.signal.aborted){toast('Telegram: '+(error instanceof Error?error.message:'could not send'));if(approved&&reviewer==='director'&&passed.length) showTelegram(passed.map(resultMessage),'Cleared to join – final approval',onClose);}});
+    } else if(approved&&reviewer==='director'&&passed.length) showTelegram(passed.map(resultMessage),'Cleared to join – final approval',onClose);
     return true;
   }
   $('#apList').onchange=event=>{
