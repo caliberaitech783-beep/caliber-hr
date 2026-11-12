@@ -465,7 +465,9 @@ const TPL={
 };
 const EQUIP={'Dumper Operator':'Dumper DT-','Excavator Operator':'Excavator EX-','Helper':'Loader LD-'};
 const EMPS=[];
-LOCS.forEach(loc=>{
+/* Sample employees are not generated: the register fills from real punch logs / entries. Set SAMPLE_EMPLOYEES=true to bring the demo data back. */
+const SAMPLE_EMPLOYEES=false;
+if(SAMPLE_EMPLOYEES)LOCS.forEach(loc=>{
   let n=0;const r=rnd('emp'+loc.id);
   TPL[loc.tpl].forEach(([desig,dept,shift,count,src])=>{
     for(let i=0;i<count;i++){
@@ -484,7 +486,7 @@ LOCS.forEach(loc=>{
   });
 });
 // one mid-month joiner per site (add-on A-35)
-['JYT','UMR'].forEach(l=>{const e=EMPS.filter(x=>x.loc===l&&x.src==='ESSL').slice(-1)[0];const pm=new Date(TODAY.getFullYear(),TODAY.getMonth()-1,12);e.doj=pm;e.name+=' (new)';});
+['JYT','UMR'].forEach(l=>{const e=EMPS.filter(x=>x.loc===l&&x.src==='ESSL').slice(-1)[0];if(!e)return;const pm=new Date(TODAY.getFullYear(),TODAY.getMonth()-1,12);e.doj=pm;e.name+=' (new)';});
 const EMP=Object.fromEntries(EMPS.map(e=>[e.id,e]));
 // supervisors for verification
 const SUP={};LOCS.forEach(l=>{const s=EMPS.find(e=>e.loc===l.id&&(e.desig==='Shift Supervisor'||e.desig==='Regional Manager'||e.desig==='Admin Executive'));SUP[l.id]=s?s.name:'Site In-charge'});
@@ -805,7 +807,7 @@ function tgPending(locIds){const ids=locIds||LOCS.map(l=>l.id);const n=elapsed(S
 function tgMP(locIds){const ids=locIds||LOCS.map(l=>l.id);const n=elapsed(S.y,S.m);const L=[];
   EMPS.filter(e=>ids.includes(e.loc)).forEach(e=>{for(let d=1;d<=n;d++){const r=evalDay(e,S.y,S.m,d);if(r.code==='MP')L.push(`• ${e.name} (${e.id}) – ${d} ${MON[S.m]}, IN ${fmtTxt(r.inT)}`)}});
   return L.length?`🕘 <b>Missing punches · ${MON[S.m]}</b> (${L.length})\n\n${L.slice(0,8).join('\n')}${L.length>8?`\n…and ${L.length-8} more`:''}\n\nOpen HRMS → Exceptions to approve.`:'🕘 No missing punches 👍'}
-function tgEmpToday(){const r=evalDay(TG_EMP,TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate());const raw=r.raw||{};
+function tgEmpToday(){if(!TG_EMP)return 'Today: <b>—</b>';const r=evalDay(TG_EMP,TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate());const raw=r.raw||{};
   if(raw.punches)return`👆 <b>Punch recorded</b>\nIN ${fmtTxt(r.inT??raw.punches[0])} at ${raw.device}${r.late?'\n⚠️ Late mark — after grace of '+GRACE+' min':''}${r.outT!=null?`\nOUT ${fmtTxt(r.outT)} · ${h1(r.hours)} h → ${r.code}`:''}`;
   return`Today: <b>${r.code||'—'}</b>`}
 function tgRaise(key,_,m){m.done='📨 Sent to Site HR';const[eid,dd]=key.split('|');const e=EMP[eid];const d=+dd.slice(8);const r=evalDay(e,S.y,S.m,d);
@@ -825,7 +827,7 @@ function initTG(){
   tgPush('cohr',{text:tgToday(['NGP']),ts:ago(200)});
   tgPush('cohr',{text:'ℹ️ CMD, Directors, VP, CFO and CA are auto-marked NP today.\n🚗 Drivers marked from vehicle logbooks.',ts:ago(185)});
   tgPush('emp',{text:tgEmpToday(),ts:ago(230)});
-  for(let d=1;d<=n;d++){const r=evalDay(TG_EMP,y,m,d);if(r.code==='MP'){tgPush('emp',{text:`⚠️ <b>Missing OUT punch</b> on ${d} ${MON[m]} (IN ${fmtTxt(r.inT)}).\nRegularise within ${REG_DAYS} days.`,kb:[['📝 Regularise now','tgRaise',r.key]],ts:ago(150)});break}}
+  if(TG_EMP)for(let d=1;d<=n;d++){const r=evalDay(TG_EMP,y,m,d);if(r.code==='MP'){tgPush('emp',{text:`⚠️ <b>Missing OUT punch</b> on ${d} ${MON[m]} (IN ${fmtTxt(r.inT)}).\nRegularise within ${REG_DAYS} days.`,kb:[['📝 Regularise now','tgRaise',r.key]],ts:ago(150)});break}}
   TG.unread={};TG.cur=R().chat;
 }
 function seedReqs(){
@@ -1104,7 +1106,7 @@ VIEWS.punch=function(){
      <td>${x.h!=null?h1(x.h):'—'}</td><td>${x.sh}</td><td>${plFlags(x)}</td>${tripOn?`<td>${t==null?'<span class="muted">n/a</span>':t==='P'?'<b style="color:var(--green)">P</b>':t==='N'?'<span class="muted">#N/A</span>':'<span class="muted">0</span>'}</td>`:''}
      <td>${codeChip(x.sys)}${x.v?` <span class="muted" style="font-size:10.5px">${esc(x.v.reason)}</span>`:''}</td><td onclick="event.stopPropagation()">${pend||x.v?`<button class="btn sm ${x.v?'':'pri'} actb" onclick="plVerify('${e[0]}',${d})">${x.v?'Change':'✔ Verify'}</button>`:''}</td></tr>`}).join('');
   $('view').innerHTML=`<div class="plsrc"><div class="seg"><button class="on">Real ESSL log · ${esc(D.site)} · ${esc(D.label)}</button><button onclick="S.plSrc='demo';VIEWS.punch()">Demo data</button></div>
-    <div class="upl"><label>👆 Upload punch log (.xlsx)<input type="file" accept=".xlsx,.xls" onchange="plUpload(this)"></label><button class="btn" onclick="plExport()">⬇ Export day</button>${PL.data!==window.PUNCH_DEFAULT?'<button class="btn" onclick="PL.data=window.PUNCH_DEFAULT;PL.ver={};PL._t=null;PL.src=\'ESSL device log · Jayant OB · Feb 2026 (sheet you shared)\';VIEWS.punch()">Reset sample</button>':''}</div><span class="muted" style="font-size:11.5px">${esc(PL.src)} · ${k.tot} employees</span></div>
+    <div class="upl"><label>👆 Upload punch log (.xlsx)<input type="file" accept=".xlsx,.xls" onchange="plUpload(this)"></label><button class="btn" onclick="plExport()">⬇ Export day</button>${k.tot?'<button class="btn" style="color:var(--red)" onclick="plDelete()">🗑 Delete log</button>':''}</div><span class="muted" style="font-size:11.5px">${esc(PL.src)} · ${k.tot} employees</span></div>
    <div class="kpis">${kpi('g','Present (IN + OUT)',k.p,`of ${k.tot} · avg ${h1(avg)} h`,'users')}${kpi('o','Single punch',k.mp,'IN or OUT missing → verify','fp')}${kpi('r','No punch',k.nv,'not marked absent → verify','alert')}${kpi('a','Double shift',k.dbl,'15 h or more · OT','ot')}${kpi('v2','Night shift',k.night,'OUT next day','clock')}${kpi('b','Sheet ≠ punches',k.mis,'status in sheet does not match punches','trend')}</div>
    <div class="card" id="plTable"><div class="hd"><div><h3>ESSL punch log — ${pad(d)} ${esc(D.label)} (${dn(d)})</h3><p>IN / OUT from the biometric device · hours = OUT − IN (overnight +1) · shift from IN time: A 05:00 · B 13:00 · C 21:00 · G general · single punch and no punch go to verification</p></div><span class="grow"></span>
      <select class="sel" onchange="PL.day=+this.value;PL.limit=200;VIEWS.punch()">${dopts}</select>
@@ -1129,6 +1131,9 @@ function plVerify(id,d){if(R().ro){toast('View only');return}const e=PL.data.emp
 function plExport(){const D=PL.data,d=PL.day;const L=[['Device ID','Emp ID','Name','Designation','Date','Sheet status','IN','OUT','Hours','Shift','Double shift','Night','System status','Verified reason'].join(',')];
   D.emps.forEach(e=>{const x=plDay(e,d);L.push([e[1],e[0],`"${e[2]}"`,`"${e[3]}"`,`${d} ${D.label}`,x.st,hm(x.i),hm(x.o),x.h!=null?h1(x.h):'',x.sh,x.dbl?'Y':'',x.night?'Y':'',x.sys,x.v?`"${x.v.reason}"`:''].join(','))});
   const b=new Blob([L.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`essl_punch_log_${pad(d)}_${D.label.replace(/\s/g,'_')}.csv`;a.click();toast('Day exported')}
+function plDelete(){const D=PL.data;if(!D||!D.emps.length)return;if(!confirm(`Delete the punch log (${D.emps.length} employees · ${D.label||''})? Verification notes on it will be removed too.`))return;
+  PL.data={...window.PUNCH_DEFAULT,emps:[]};PL.ver={};PL._t=null;PL.day=null;PL.src='No punch log uploaded yet – upload the ESSL export (.xlsx)';
+  AUDIT.unshift({ts:new Date(),user:R().user,role:R().label,action:`Punch log deleted (${D.emps.length} employees · ${D.label||''})`});toast('Punch log deleted.');VIEWS.punch();}
 async function plUpload(input){const f=input.files[0];if(!f)return;try{toast('Reading '+f.name+'…');await loadXLSX();const wb=XLSX.read(await f.arrayBuffer(),{cellDates:true});
   const sv=v=>v==null?'':String(v).trim();const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:null});
   const hi=rows.findIndex(r=>r&&r.some(c=>/^EMPLOYEE\s*ID$/i.test(sv(c))));if(hi<0)throw new Error('EMPLOYEE ID header not found');const h=rows[hi];
