@@ -15,7 +15,6 @@
   </header>
 
   <p class="preview-label">Test preview · Use sample data only. Records stay in this browser. Approvals and Telegram messages are simulated.</p>
-  <nav class="pipe" id="pipe" aria-label="Workflow stages"></nav>
 
   <div class="tabs" role="group" aria-label="Trial workflow" id="tabs">
     <button data-tab="aadhaar" class="on">Upload Aadhaar</button>
@@ -27,16 +26,7 @@
 
   <section class="panel" id="v-aadhaar">
     <div class="panel-head"><h2>Upload Aadhaar Card</h2></div>
-    <div class="aadhaar-scan">
-      <div class="aadhaar-scan-actions">
-        <button type="button" class="btn" id="aadhaarUpload" aria-describedby="aadhaarScanHelp">Upload Aadhaar Card</button>
-        <button type="button" class="btn" id="aadhaarCamera" aria-describedby="aadhaarScanHelp">Scan with camera</button>
-      </div>
-      <input type="file" id="aadhaarFile" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" hidden>
-      <input type="file" id="aadhaarCapture" accept="image/jpeg,image/png" capture="environment" hidden>
-      <p class="note" id="aadhaarScanHelp">Use a sample JPG, PNG or unlocked PDF. Google Gemini reads the upload and fills empty fields in Part 1. Scan each side separately if needed.</p>
-      <p class="note" id="aadhaarScanStatus" role="status" aria-live="polite"></p>
-    </div>
+    <slot name="aadhaar-upload"></slot>
     <div class="actions">
       <button type="button" class="btn pri" id="aadhaarContinue">Continue to Part 1 →</button>
     </div>

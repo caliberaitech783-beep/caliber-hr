@@ -1,9 +1,8 @@
 import template from './screen.html?raw';
 import css from './screen.css?raw';
-import {savedSession} from '../api';
-import {readGeminiAadhaar} from '../geminiOcr';
+import type {AadhaarDetails} from '../geminiOcr';
 import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime, licenceDate, localDateTime,
-  NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
+  NEXT, nextNumber, post, resultMessage, ROLES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
 
 type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
@@ -17,7 +16,10 @@ const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompar
 const check = (seen = '', remarks = '') => ({seen,remarks});
 const empty = (title: string, message: string, action = '') => `<div class="empty"><b>${esc(title)}</b><span>${esc(message)}</span>${action}</div>`;
 
-export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
+export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
+  reset: () => void;
+  setDisabled: (disabled: boolean) => void;
+}) {
   const style = document.createElement('style');
   style.textContent = css;
   const frame = document.createElement('div');
@@ -32,9 +34,9 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   const drafts = new Map<string,Outcome>();
   const selected = new Set<string>();
   const effects = new AbortController();
-  let tab: Tab = 'aadhaar', role: Role = 'hr', stageFilter = '', records: Trial[] = [], bulk = Array.from({length:3},blankRow);
+  let tab: Tab = 'aadhaar', role: Role = 'hr', records: Trial[] = [], bulk = Array.from({length:3},blankRow);
   let photo = '', photoLoading = false, photoVersion = 0, photoUrl = '', detailId = '', toastTimer: ReturnType<typeof setTimeout>;
-  let aadhaarScanVersion = 0, aadhaarScanPending = false;
+  let aadhaarScanPending = false;
   let modalFocus: HTMLElement | null = null;
   let telegramFocus: HTMLElement | null = null;
 
@@ -84,12 +86,12 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   }
   function renderOverview() {
     const query = value('#search').toLowerCase();
-    const rows = sorted(records).filter(row=>(!stageFilter||row.stage===stageFilter)
-      && [row.name,row.formNo,row.mobile,row.referredBy,equipment(row)].join(' ').toLowerCase().includes(query));
-    $('#ovTitle').textContent = (STAGES.find(([stage])=>stage===stageFilter)?.[2] || 'All candidates') + ` (${rows.length})`;
+    const rows = sorted(records).filter(row=>
+      [row.name,row.formNo,row.mobile,row.referredBy,equipment(row)].join(' ').toLowerCase().includes(query));
+    $('#ovTitle').textContent = `All candidates (${rows.length})`;
     $('#ovList').innerHTML = !records.length
       ? empty('No trial forms yet','Site HR starts here: add one candidate, or a whole trial batch at once.','<button type="button" class="btn pri" data-go="hr">Add candidates</button>')
-      : !rows.length ? empty('No matches','Clear the search or select the stage again to show everyone.') : overviewTable(rows);
+      : !rows.length ? empty('No matches','Clear the search to show everyone.') : overviewTable(rows);
   }
   const waiting = () => sorted(records.filter(row=>row.stage==='trainer')).reverse();
   const approvals = () => canApprove(role) ? sorted(records.filter(row=>row.stage===role)) : [];
@@ -126,10 +128,6 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
     syncSelection(rows);
   }
   function refresh() {
-    $('#pipe').innerHTML = STAGES.filter(([stage])=>stage==='trainer'||stage==='done'||stage==='rejected').map(([stage,label])=>{
-      const active=stageFilter===stage, number=stage==='trainer'?'Step 1':stage==='done'?'✓':'✕';
-      return `<button type="button" data-stage="${stage}" class="${active?'on':''}" aria-pressed="${active}"><span class="step">${number}</span><span class="n">${records.filter(row=>row.stage===stage).length}</span><span class="l">${label}</span></button>`;
-    }).join('');
     for (const [selector,count] of [['#bTrainer',waiting().length],['#bApprove',approvals().length]] as const) {
       $(selector).textContent = String(count);
       $(selector).hidden = !count;
@@ -163,14 +161,13 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   }
   function resetSingle() {
     ++photoVersion;
-    ++aadhaarScanVersion;
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     photoUrl = '';
     photo = '';
     photoLoading = false;
     aadhaarScanPending = false;
+    aadhaar.reset();
     $<HTMLFormElement>('#single').reset();
-    $('#aadhaarScanStatus').textContent = '';
     $('#photoBox').innerHTML = 'Upload photo<br><span class="muted">camera or gallery</span>';
     $('#f_vother').hidden = true;
     $<HTMLInputElement>('#f_trial').value = localDateTime();
@@ -180,66 +177,32 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   function updateSingleActions() {
     const canEdit = role === 'hr';
     $<HTMLButtonElement>('#sSubmit').disabled = !canEdit || photoLoading || aadhaarScanPending;
-    for (const selector of ['#aadhaarUpload', '#aadhaarCamera']) {
-      $<HTMLButtonElement>(selector).disabled = !canEdit || aadhaarScanPending;
-    }
     $<HTMLButtonElement>('#aadhaarContinue').disabled = aadhaarScanPending;
   }
-  async function scanAadhaar(input: HTMLInputElement) {
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file || role !== 'hr' || aadhaarScanPending) return;
-    const status = $('#aadhaarScanStatus');
-    if (!['image/jpeg','image/png','application/pdf'].includes(file.type) && !/\.(jpe?g|png|pdf)$/i.test(file.name)) {
-      status.textContent = 'Choose a JPG, PNG or unlocked PDF.';
-      return;
-    }
-    const grant = savedSession()?.grant;
-    if (!grant) {
-      status.textContent = 'Sign in again to scan Aadhaar.';
-      return;
-    }
-    const version = ++aadhaarScanVersion;
-    aadhaarScanPending = true;
+  function setAadhaarBusy(busy: boolean) {
+    aadhaarScanPending = busy;
     updateSingleActions();
-    status.textContent = 'Scanning Aadhaar…';
-    try {
-      const details = await readGeminiAadhaar(file, grant);
-      if (version !== aadhaarScanVersion) return;
-      const enteredNumber = digits(value('#f_aadhaar'));
-      if (details.uid && enteredNumber.length === 12 && enteredNumber !== details.uid) {
-        status.textContent = 'This card has a different Aadhaar number. Check the card and retry.';
-        return;
-      }
-      const fields = [
-        ['#f_name', details.name], ['#f_father', details.relationName], ['#f_dob', details.dob],
-        ['#f_aadhaar', details.uid], ['#f_address', details.address],
-      ] as const;
-      let filled = 0;
-      for (const [selector, detail] of fields) {
-        const control = $<HTMLInputElement>(selector);
-        if (!detail || control.value.trim()) continue;
-        control.value = detail;
-        if (control.value) filled++;
-      }
-      status.textContent = filled
-        ? 'Aadhaar details filled. Verify them before submitting.'
-        : 'The scan added no new details. Review the form or enter the missing details manually.';
-    } catch (error) {
-      if (version !== aadhaarScanVersion) return;
-      const message = error instanceof Error ? error.message : 'The Aadhaar scan failed.';
-      status.textContent = message + ' You can enter the details manually.';
-    } finally {
-      if (version === aadhaarScanVersion) {
-        aadhaarScanPending = false;
-        updateSingleActions();
-      }
-    }
   }
-  for (const [buttonId, inputId] of [['#aadhaarUpload', '#aadhaarFile'], ['#aadhaarCamera', '#aadhaarCapture']] as const) {
-    const input = $<HTMLInputElement>(inputId);
-    $(buttonId).onclick = () => input.click();
-    input.onchange = () => void scanAadhaar(input);
+  function fillAadhaarDetails(details: AadhaarDetails) {
+    if (!aadhaarScanPending || effects.signal.aborted) return '';
+    const enteredNumber = digits(value('#f_aadhaar'));
+    if (details.uid && enteredNumber.length === 12 && enteredNumber !== details.uid) {
+      return 'This card has a different Aadhaar number. Check the card and retry.';
+    }
+    const fields = [
+      ['#f_name', details.name], ['#f_father', details.relationName], ['#f_dob', details.dob],
+      ['#f_aadhaar', details.uid], ['#f_address', details.address],
+    ] as const;
+    let filled = 0;
+    for (const [selector, detail] of fields) {
+      const control = $<HTMLInputElement>(selector);
+      if (!detail || control.value.trim()) continue;
+      control.value = detail;
+      if (control.value) filled++;
+    }
+    return filled
+      ? 'Aadhaar details filled. Verify them before submitting.'
+      : 'The scan added no new details. Review the form or enter the missing details manually.';
   }
   $('#f_veh').innerHTML = VEHICLES.map(item=>`<label class="chk"><input type="checkbox" name="f_vehicle" value="${esc(item)}"> ${esc(item)}</label>`).join('')
     + '<input id="f_vother" type="text" placeholder="Other machine" aria-label="Other machine" style="max-width:180px" hidden>';
@@ -544,19 +507,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   $('#tabs').onclick=event=>{
     const target=(event.target as Element).closest<HTMLButtonElement>('[data-tab]');
     const next=tabs.find(item=>item===target?.dataset.tab);
-    if (next) {
-      if(next==='overview'&&stageFilter){stageFilter='';tab=next;refresh();}
-      else showTab(next);
-    }
-  };
-  $('#pipe').onclick=event=>{
-    const button=(event.target as Element).closest<HTMLButtonElement>('[data-stage]');
-    if(!button?.dataset.stage) return;
-    const stage=button.dataset.stage;
-    stageFilter=stage===stageFilter?'':stage;
-    tab='overview';
-    refresh();
-    $<HTMLButtonElement>(`#pipe [data-stage="${stage}"]`).focus();
+    if (next) showTab(next);
   };
   $('#search').oninput=renderOverview;
   function setCandidateMode(single: boolean) {
@@ -580,6 +531,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
     const next=(event.target as HTMLSelectElement).value;
     if(!Object.hasOwn(ROLES,next)) return;
     role=next as Role;
+    aadhaar.setDisabled(role!=='hr');
     tab=roleTab[role];
     selected.clear();
     $<HTMLInputElement>('#apNote').value='';
@@ -599,12 +551,12 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   setCandidateMode(true);
   renderBulk();
   refresh();
-  return ()=>{
+  function dispose() {
     effects.abort();
     clearTimeout(toastTimer);
     ++photoVersion;
-    ++aadhaarScanVersion;
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     root.replaceChildren();
-  };
+  }
+  return {dispose, fillAadhaarDetails, setAadhaarBusy};
 }

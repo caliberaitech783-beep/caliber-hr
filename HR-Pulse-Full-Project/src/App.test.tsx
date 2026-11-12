@@ -21,8 +21,9 @@ it('opens the full trial workflow directly from the Trial Form menu',async()=>{
  expect(screen.queryByRole('group',{name:'Trial Form views'})).toBeNull();
  const preview=container.querySelector('[aria-label="Trial workflow local preview"]')?.shadowRoot;
  expect(preview?.querySelector('#tabs button[aria-pressed="true"]')).toHaveTextContent('Upload Aadhaar');
- expect(Array.from(preview?.querySelectorAll('#pipe button')??[],button=>button.getAttribute('data-stage')))
-  .toEqual(['trainer','done','rejected']);
+ expect(preview?.querySelector('#pipe')).toBeNull();
+ expect(screen.getByRole('button',{name:'Upload Aadhaar Image 1'})).toBeEnabled();
+ expect(screen.getByRole('button',{name:'Upload Aadhaar Image 2'})).toBeEnabled();
  expect(Array.from(preview?.querySelectorAll('#tabs button')??[],button=>button.getAttribute('data-tab')))
   .toEqual(['aadhaar','hr','trainer','approve','overview']);
  window.location.hash='';

@@ -1,24 +1,24 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {fireEvent,waitFor} from '@testing-library/react';
-import {mountTrialPreview} from './mount';
+import {act,fireEvent,render,waitFor} from '@testing-library/react';
+import {createElement} from 'react';
+import TrialWorkflowPreview from './TrialWorkflowPreview';
 
 const scope = {company:'CMLL',site:'Jayant OB East',name:'Sample Signer',owner:'sample',department:'Driver'};
 let dispose: (()=>void)|undefined;
 function setup(overrides: Partial<typeof scope> = {}) {
   dispose?.();
-  const host = document.createElement('div');
-  document.body.replaceChildren(host);
-  const root = host.attachShadow({mode:'open'});
-  dispose = mountTrialPreview(root,{...scope,...overrides});
+  const {container,unmount,getByLabelText,getByRole} = render(createElement(TrialWorkflowPreview,{...scope,...overrides}));
+  const root = container.querySelector('div')!.shadowRoot!;
+  dispose = unmount;
   const el = <T extends HTMLElement=HTMLElement>(selector: string) => {
     const node=root.querySelector<T>(selector);
     if (!node) throw new Error('Missing element: '+selector);
     return node;
   };
-  const click = (selector: string) => el<HTMLElement>(selector).click();
+  const click = (selector: string) => act(()=>{el<HTMLElement>(selector).click();});
   const input = (selector: string, value: string) => fireEvent.input(el(selector),{target:{value}});
   const change = (selector: string,value: string) => fireEvent.change(el(selector),{target:{value}});
-  return {root,el,click,input,change};
+  return {root,el,click,input,change,getByLabelText,getByRole};
 }
 afterEach(()=>{
   dispose?.();
@@ -40,15 +40,19 @@ describe('Trial workflow preview',()=>{
     const scan = vi.spyOn(window,'fetch')
       .mockResolvedValueOnce(Response.json({details}))
       .mockResolvedValueOnce(Response.json({error:'The card could not be read.'}, {status:422}));
-    const {el,click,input} = setup();
+    const {el,click,input,getByLabelText,getByRole,change} = setup();
     click('[data-tab="hr"]');
     input('#f_name','Verified Name');
     click('[data-tab="aadhaar"]');
     const file = new File(['%PDF-1.7'],'sample-aadhaar.pdf',{type:'application/pdf'});
-    fireEvent.change(el('#aadhaarFile'),{target:{files:[file]}});
-    expect(el('#aadhaarScanStatus')).toHaveTextContent('Scanning Aadhaar');
+    fireEvent.click(getByRole('button',{name:'Upload Aadhaar Image 1'}));
+    expect(getByRole('button',{name:'Camera'})).toBeEnabled();
+    expect(getByRole('button',{name:'Gallery / Document'})).toBeEnabled();
+    fireEvent.change(getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[file]}});
+    expect(getByRole('status')).toHaveTextContent('Reading image 1');
     expect(el('#aadhaarContinue')).toBeDisabled();
-    await waitFor(()=>expect(el('#aadhaarScanStatus')).toHaveTextContent('Aadhaar details filled'));
+    await waitFor(()=>expect(getByRole('status')).toHaveTextContent('Aadhaar details filled'));
+    expect(getByLabelText('Uploaded Aadhaar image 1 PDF preview')).toBeInTheDocument();
     expect(scan).toHaveBeenCalledWith(expect.stringMatching(/\/api\/aadhaar\/scan$/),expect.objectContaining({
       method:'POST',
       headers:{Authorization:'Bearer '+grant,'Content-Type':'application/json'},
@@ -65,10 +69,19 @@ describe('Trial workflow preview',()=>{
     expect(localStorage.length).toBe(0);
 
     click('[data-tab="aadhaar"]');
-    fireEvent.change(el('#aadhaarFile'),{target:{files:[file]}});
-    await waitFor(()=>expect(el('#aadhaarScanStatus')).toHaveTextContent('The card could not be read.'));
+    fireEvent.change(getByLabelText('Choose second Aadhaar image'),{target:{files:[file]}});
+    await waitFor(()=>expect(getByRole('status')).toHaveTextContent('The card could not be read.'));
+    expect(getByLabelText('Uploaded Aadhaar image 1 PDF preview')).toBeInTheDocument();
+    expect(getByLabelText('Uploaded Aadhaar image 2 PDF preview')).toBeInTheDocument();
+    fireEvent.click(getByRole('button',{name:'Remove Image 2'}));
+    expect(getByRole('status')).toHaveTextContent('Aadhaar image 2 removed');
     expect(el('#f_aadhaar')).toHaveValue(details.uid);
     expect(el('#sSubmit')).toBeEnabled();
+    click('#sReset');
+    expect(getByLabelText('Choose second Aadhaar image')).toBeEnabled();
+    expect(getByRole('button',{name:'Upload Aadhaar Image 1'})).toBeEnabled();
+    change('#role','trainer');
+    expect(getByLabelText('Choose second Aadhaar image')).toBeDisabled();
   });
 
   it('checks documents, moves a single PASS through each approval, and persists the final status without calling HR or Telegram',()=>{
@@ -87,10 +100,10 @@ describe('Trial workflow preview',()=>{
     change('#d_dl','Yes');
     fireEvent.submit(el('#single'));
     expect(el('#toast').textContent).toContain('medical fitness certificate');
-    expect(el('[data-stage="trainer"] .n').textContent).toBe('0');
+    expect(el('#bTrainer').hidden).toBe(true);
     change('#d_medical','Yes');
     fireEvent.submit(el('#single'));
-    expect(el('[data-stage="trainer"] .n').textContent).toBe('1');
+    expect(el('#bTrainer')).toHaveTextContent('1');
 
     change('#role','director');
     expect(el('#apList').textContent).toContain('Nothing waiting for Director');
@@ -111,10 +124,9 @@ describe('Trial workflow preview',()=>{
       click('#apAll');
       click('#apApprove');
     }
-    expect(el('[data-stage="done"] .n').textContent).toBe('1');
     expect(el('#tgpop').textContent).toContain('CLEARED TO JOIN');
     click('#tgClose2');
-    click('[data-stage="done"]');
+    click('[data-tab="overview"]');
     expect(el('#ovList').textContent).toContain('Cleared to join');
     click('#ovList [data-open]');
     expect(el('#modalBox').textContent).toContain('Approvals');
@@ -145,7 +157,7 @@ describe('Trial workflow preview',()=>{
       click(`[aria-label="Row ${i}: Medical seen"]`);
     }
     click('#bSubmit');
-    expect(el('[data-stage="trainer"] .n').textContent).toBe('2');
+    expect(el('#bTrainer')).toHaveTextContent('2');
 
     change('#role','trainer');
     click('[aria-label="Batch Candidate: FAIL"]');
@@ -153,7 +165,7 @@ describe('Trial workflow preview',()=>{
     expect(el('#toast').textContent).toContain('Enter the fail reason');
     input('[aria-label="Batch Candidate: Failure reason"]','Did not complete trial safely');
     click('#trSubmit');
-    expect(el('[data-stage="trainer"] .n').textContent).toBe('1');
+    expect(el('#bTrainer')).toHaveTextContent('1');
     expect(el('#tgpop').hidden).toBe(true);
     change('#role','pm');
     click('[aria-label="Select Batch Candidate"]');
@@ -161,7 +173,7 @@ describe('Trial workflow preview',()=>{
     expect(el('#toast').textContent).toContain('explain the rejection');
     input('#apNote','Review again after re-training');
     click('#apReject');
-    click('[data-stage="rejected"]');
+    click('[data-tab="overview"]');
     expect(el('#ovList').textContent).toContain('Rejected');
     click('#ovList [data-open]');
     expect(el('#modalBox').textContent).toContain('Review again after re-training');
