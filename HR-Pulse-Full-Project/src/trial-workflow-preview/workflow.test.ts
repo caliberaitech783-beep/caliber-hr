@@ -43,6 +43,7 @@ describe('Trial workflow preview',()=>{
     };
     const scan = vi.spyOn(window,'fetch')
       .mockResolvedValueOnce(Response.json({details}))
+      .mockResolvedValueOnce(Response.json({matches:[]}))
       .mockResolvedValueOnce(Response.json({error:'The card could not be read.'}, {status:422}));
     const {el,click,input,getByLabelText,getByRole,change} = setup();
     click('[data-tab="hr"]');
@@ -70,6 +71,7 @@ describe('Trial workflow preview',()=>{
     expect(el('#f_aadhaar')).toHaveValue(details.uid);
     expect(el('#f_address')).toHaveValue(details.address);
     expect(el('#sSubmit')).toBeEnabled();
+    expect(el('#aadhaarHistory')).not.toBeVisible();
     expect(localStorage.length).toBe(0);
 
     click('[data-tab="aadhaar"]');
@@ -88,6 +90,59 @@ describe('Trial workflow preview',()=>{
     expect(getByLabelText('Choose second Aadhaar image')).toBeDisabled();
   });
 
+  it.each([
+    {result:'PASS',className:'p-pass',equipment:'Excavator',site:'Jayant OB East',failureReason:''},
+    {result:'FAIL',className:'p-fail',equipment:'Dozer',site:'Sasti OB',failureReason:'Unsafe handling'},
+  ])('shows a $result popup immediately after uploading a matching Aadhaar',async match=>{
+    const grant='a'.repeat(43);
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant}));
+    const uid='234500000000';
+    const fetch=vi.spyOn(window,'fetch')
+      .mockResolvedValueOnce(Response.json({details:{uid,name:'Sample Candidate',relationName:'',dob:'',address:'',gender:''}}))
+      .mockResolvedValueOnce(Response.json({matches:[match]}));
+    const {el,click,getByLabelText}=setup();
+    const file=new File(['%PDF-1.7'],'sample-aadhaar.pdf',{type:'application/pdf'});
+    fireEvent.change(getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[file]}});
+    await waitFor(()=>expect(el('#aadhaarHistory')).toBeVisible());
+    const popup=el('#aadhaarHistory');
+    expect(el('.aadhaar-history-result')).toHaveClass(match.className);
+    expect(popup).toHaveTextContent(match.result);
+    expect(popup).toHaveTextContent(match.equipment);
+    expect(popup).toHaveTextContent(match.site);
+    expect(popup).not.toHaveTextContent(uid);
+    if(match.failureReason)expect(popup).toHaveTextContent(match.failureReason);
+    else expect(popup).not.toHaveTextContent('Reason');
+    expect(fetch).toHaveBeenCalledWith(expect.stringMatching(/\/telegram\/trial-history$/),expect.objectContaining({
+      method:'POST',body:JSON.stringify({aadhaar:uid}),
+    }));
+    click('#aadhaarHistoryClose');
+    expect(popup).not.toBeVisible();
+    expect(el('#aadhaarContinue')).toBeEnabled();
+  });
+
+  it('finds a past pass saved for the same account at another site',async()=>{
+    const uid='234500000000';
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile:{actor:scope.owner,permissions:{application:'HR'}}}));
+    const savedPass={id:'saved-pass',formNo:'TF/2026-27/0002',createdAt:'2026-10-18',history:[],docs:{},
+      stage:'done',result:'PASS',aadhaar:uid,site:'Sasti OB',trialDate:'2026-10-18',vehicles:['Excavator']};
+    const prefix='hrPulse.localTrialWorkflow.v1:';
+    localStorage.setItem(prefix+JSON.stringify([scope.owner,scope.company,'Sasti OB']),JSON.stringify([savedPass]));
+    localStorage.setItem(prefix+JSON.stringify(['another-owner',scope.company,'Majri OB']),JSON.stringify([
+      {...savedPass,id:'unrelated-pass',site:'Majri OB',trialDate:'2026-11-10',vehicles:['Grader']},
+    ]));
+    vi.spyOn(window,'fetch')
+      .mockResolvedValueOnce(Response.json({details:{uid,name:'Sample Candidate',relationName:'',dob:'',address:'',gender:''}}))
+      .mockResolvedValueOnce(Response.json({matches:[{result:'FAIL',site:'Jayant OB East',equipment:'Dozer',trialDate:'2026-11-01'}]}));
+    const {el,getByLabelText}=setup();
+    const file=new File(['%PDF-1.7'],'sample-aadhaar.pdf',{type:'application/pdf'});
+    fireEvent.change(getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[file]}});
+    await waitFor(()=>expect(el('#aadhaarHistory')).toBeVisible());
+    expect(el('#aadhaarHistoryResults')).toHaveTextContent('PASS');
+    expect(el('#aadhaarHistoryResults')).toHaveTextContent('Excavator');
+    expect(el('#aadhaarHistoryResults')).toHaveTextContent('Sasti OB');
+    expect(el('#aadhaarHistoryResults')).not.toHaveTextContent('Majri OB');
+  });
+
   it('imports Excel candidates and applies multiple scans without overwriting confirmed details',async()=>{
     sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
     const workbook=utils.book_new();
@@ -101,8 +156,10 @@ describe('Trial workflow preview',()=>{
     const details={name:'Read Candidate',relationName:'Sample Parent',dob:'2000-01-02',uid:'234500000000',address:'Sample Address',gender:''};
     vi.spyOn(window,'fetch')
       .mockResolvedValueOnce(Response.json({details}))
+      .mockResolvedValueOnce(Response.json({matches:[]}))
       .mockResolvedValueOnce(Response.json({details:{...details,uid:''}}))
-      .mockResolvedValueOnce(Response.json({details:{...details,name:'New Candidate',uid:'234500000001'}}));
+      .mockResolvedValueOnce(Response.json({details:{...details,name:'New Candidate',uid:'234500000001'}}))
+      .mockResolvedValueOnce(Response.json({matches:[{result:'FAIL',site:'Sasti OB',equipment:'Dozer',failureReason:'Unsafe handling'}]}));
     const {el,click,input,change}=setup();
     click('[data-tab="hr"]');
     click('[data-m="bulk"]');
@@ -116,6 +173,9 @@ describe('Trial workflow preview',()=>{
     fireEvent.change(el('#bScanFiles'),{target:{files:scans}});
     expect(el('#bSubmit')).toBeDisabled();
     await waitFor(()=>expect(el('#bUploadStatus')).toHaveTextContent('2 of 3 Aadhaar scans applied'));
+    expect(el('#aadhaarHistory')).toHaveTextContent('Scan 3: FAIL');
+    expect(el('#aadhaarHistory')).toHaveTextContent('Unsafe handling');
+    click('#aadhaarHistoryClose');
     expect(el('#bUploadIssues')).toHaveTextContent('masked.pdf');
     expect(el('[aria-label="Row 1: Name"]')).toHaveValue('Verified Candidate');
     expect(el('[aria-label="Row 1: Date of birth"]')).toHaveValue('2000-01-02');

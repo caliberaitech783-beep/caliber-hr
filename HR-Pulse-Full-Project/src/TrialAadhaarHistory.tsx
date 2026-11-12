@@ -1,7 +1,7 @@
 import {useEffect,useState,type RefObject} from 'react';
 import {api,savedSession} from './api';
 export type TrialCheck={aadhaar:string;complete:boolean;pending:boolean;blocked:boolean;error:boolean};
-export type TrialMatch={formNo:string;result:'PASS'|'FAIL';site:string;trialDate:string;savedAt:string;post?:string;failureReason?:string};
+export type TrialMatch={formNo:string;result:'PASS'|'FAIL';site:string;trialDate:string;savedAt:string;post?:string;failureReason?:string;equipment?:string};
 function resultDate(match:TrialMatch){
  const format=(value:string)=>{if(!value)return '';const date=new Date(value);return Number.isNaN(date.getTime())?'':date.toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'});};
  const trial=format(match.trialDate),saved=format(match.savedAt);

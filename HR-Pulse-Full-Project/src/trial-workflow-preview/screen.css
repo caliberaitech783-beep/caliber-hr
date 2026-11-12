@@ -138,6 +138,14 @@ textarea.paste{width:100%;min-height:70px;border:1px dashed var(--line-strong);b
 /* modal */
 .modal{position:fixed;inset:0;background:rgba(15,12,30,.5);display:grid;place-items:start center;overflow-y:auto;z-index:40;padding:24px max(12px,env(safe-area-inset-right,0px)) 24px max(12px,env(safe-area-inset-left,0px))}
 .modal .box{width:min(900px,100%);background:var(--surface);border-radius:10px;padding:18px;display:grid;gap:14px;border:1px solid var(--line)}
+#aadhaarHistory{z-index:60}
+#aadhaarHistory .aadhaar-history-box{width:min(460px,100%)}
+#aadhaarHistoryResults{display:grid;gap:8px}
+.aadhaar-history-result{border-radius:8px;padding:12px 14px;overflow-wrap:anywhere}
+.aadhaar-history-result strong{font-size:16px}
+.aadhaar-history-result dl{margin:6px 0 0;display:grid;grid-template-columns:auto 1fr;gap:4px 12px}
+.aadhaar-history-result dt{font-weight:600}
+.aadhaar-history-result dd{margin:0}
 
 /* toast */
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:13px;z-index:60;max-width:90vw}

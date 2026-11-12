@@ -245,11 +245,28 @@ export function createTelegram(pool){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const aadhaar=String(input.aadhaar||'').replace(/\D/g,'');if(!/^\d{12}$/.test(aadhaar))fail('Enter a 12-digit Aadhaar number');
    const scope=assignedSites(profile),exclude=String(input.excludeFormNo||'').slice(0,40);
-   const rows=(await pool.query(`SELECT t.code,t.data FROM hr_records t WHERE t.kind='trialForms' AND t.status='ACTIVE' AND t.code<>'SETTINGS' AND t.code<>$2
-    AND regexp_replace(COALESCE(t.data->'fields'->>'Aadhaar no.',t.data->'fields'->>'Aadhaar No.',t.data->'fields'->>'Aadhaar No. *',''),'[^0-9]','','g')=$1
-    AND ($3::text[] IS NULL OR lower(t.data->>'site')=ANY($3) OR EXISTS(SELECT 1 FROM hr_records s WHERE s.kind='sites' AND (lower(s.code)=ANY($3) OR lower(s.name)=ANY($3) OR s.id::text=ANY($3)) AND (lower(s.name)=lower(t.data->>'site') OR lower(s.code)=lower(t.data->>'site'))))
-    ORDER BY (t.data->'fields'->>'Result'='PASS') DESC,t.updated_at DESC LIMIT 20`,[aadhaar,exclude,scope])).rows;
-   return {matches:rows.filter(row=>['PASS','FAIL'].includes(row.data?.fields?.Result)).map(row=>({formNo:row.code,result:row.data.fields.Result,site:row.data.site||'',trialDate:row.data.fields['Trial date & time']||'',savedAt:row.data.savedAt||'',post:row.data.fields['Post applied for']||row.data.department||'',failureReason:row.data.fields.Result==='FAIL'?(row.data.fields['If FAIL – reason']||''):''}))};
+   const rows=(await pool.query(`SELECT t.code,t.kind,t.updated_at,t.data - 'resultDocument' - 'photo' AS data
+    FROM hr_records t WHERE t.code<>'SETTINGS' AND t.code<>$2
+    AND ((t.kind='trialForms' AND t.status='ACTIVE' AND t.data->'fields'->>'Result' IN ('PASS','FAIL')
+      AND regexp_replace(COALESCE(t.data->'fields'->>'Aadhaar no.',t.data->'fields'->>'Aadhaar No.',t.data->'fields'->>'Aadhaar No. *',''),'[^0-9]','','g')=$1)
+     OR (t.kind='trialWorkflow' AND t.status<>'REJECTED' AND t.data->>'result' IN ('PASS','FAIL') AND t.data->>'aadhaar'=$1))
+    AND ($3::text[] IS NULL OR (t.kind='trialForms' AND lower(t.data->>'site')=ANY($3))
+     OR EXISTS(SELECT 1 FROM hr_records s WHERE s.kind='sites' AND (lower(s.code)=ANY($3) OR lower(s.name)=ANY($3) OR s.id::text=ANY($3))
+      AND (s.id::text=t.data->>'siteId' OR (t.kind='trialForms' AND (lower(s.name)=lower(t.data->>'site') OR lower(s.code)=lower(t.data->>'site'))))))
+    ORDER BY (COALESCE(t.data->>'result',t.data->'fields'->>'Result')='PASS') DESC,t.updated_at DESC LIMIT 20`,[aadhaar,exclude,scope])).rows;
+   return {matches:rows.flatMap(row=>{
+    const data=row.data||{},fields=data.fields||{};
+    const managed=row.kind==='trialWorkflow';
+    const result=managed?data.result:fields.Result;
+    if(!['PASS','FAIL'].includes(result))return [];
+    const outcome=data.outcome||{};
+    const vehicle=managed?(Array.isArray(data.vehicles)?data.vehicles.map(item=>item==='Other'?data.otherVehicle||item:item).join(', '):'')
+      :[fields['Vehicle / equipment for trial'],fields['Other equipment']].filter(Boolean).join(', ');
+    return [{formNo:row.code,result,site:data.site||'',trialDate:(managed?data.trialDate:fields['Trial date & time'])||'',
+     savedAt:(managed?outcome.at:data.savedAt)||row.updated_at||'',post:(managed?outcome.post||data.post:fields['Post applied for']||data.department)||'',
+     equipment:(managed?outcome.machine:fields.Machine)||vehicle,
+     failureReason:result==='FAIL'?((managed?outcome.reason:fields['If FAIL – reason'])||''):''}];
+   })};
   }
   /* ---- Part 1 (Site HR): save candidate(s) and tell the driver trainer; a batch also carries a PDF sheet ---- */
   if(route==='trial-part1'&&method==='POST'){

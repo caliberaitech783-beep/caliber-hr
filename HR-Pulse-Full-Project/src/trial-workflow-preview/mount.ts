@@ -8,6 +8,9 @@ import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime
 import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
 import {getTrialResultFile, removeTrialResultFiles, saveTrialResultFiles} from './trialResultFiles';
 import {deliveryStatus, sendPart1, sendResults} from './telegramSend';
+import {siteDisplayName} from '../siteNames';
+import {findPreviousTrial} from './previousTrial';
+import type {TrialMatch} from '../TrialAadhaarHistory';
 
 type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
 type Scope = {company: string; site: string; owner: string; legacyOwner?: string; name: string; department: string};
@@ -32,7 +35,8 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   const $ = <T extends HTMLElement = HTMLElement>(selector: string) => frame.querySelector<T>(selector)!;
   const $$ = <T extends HTMLElement = HTMLElement>(selector: string) => Array.from(frame.querySelectorAll<T>(selector));
   const value = (selector: string) => $<HTMLInputElement>(selector).value.trim();
-  const keyFor = (owner: string) => 'hrPulse.localTrialWorkflow.v1:' + JSON.stringify([owner,scope.company,scope.site]);
+  const storagePrefix='hrPulse.localTrialWorkflow.v1:';
+  const keyFor = (owner: string) => storagePrefix + JSON.stringify([owner,scope.company,scope.site]);
   const persistKey = keyFor(scope.owner);
   const legacyKey = scope.legacyOwner && scope.legacyOwner!==scope.owner ? keyFor(scope.legacyOwner) : undefined;
   const site = scope.site || 'JAYANT OB EAST';
@@ -44,6 +48,8 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   let tab: Tab = 'aadhaar', role: Role = 'hr', stageFilter = '', records: Trial[] = [], bulk = Array.from({length:3},blankBulkRow);
   let photo = '', photoLoading = false, photoVersion = 0, photoUrl = '', detailId = '', toastTimer: ReturnType<typeof setTimeout>;
   let aadhaarScanPending = false;
+  let aadhaarHistoryPending=false, aadhaarLookupVersion=0, checkedAadhaar='';
+  let aadhaarHistoryFocus:HTMLElement|null=null;
   let bulkBusy = false;
   let submittingResults = false;
   let modalFocus: HTMLElement | null = null;
@@ -76,6 +82,26 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       if (!saved || row.history.length > saved.history.length) merged.set(row.id,row);
     }
     return [...merged.values()];
+  }
+  function previousTrialRows() {
+    const rows=new Map(records.map(row=>[row.id,row]));
+    const profile=savedSession()?.profile;
+    const access=profile?.permissions;
+    if(!access||access.site||/site|location/i.test(String(access.adminLevel||'')))return [...rows.values()];
+    const owners=new Set([scope.owner,scope.legacyOwner].filter(owner=>owner&&owner!=='local'));
+    for(let index=0;index<localStorage.length;index++){
+      const key=localStorage.key(index);
+      if(!key?.startsWith(storagePrefix)||key===persistKey||key===legacyKey)continue;
+      try {
+        const [owner]=JSON.parse(key.slice(storagePrefix.length));
+        if(!owners.has(owner))continue;
+        for(const row of readKey(key)){
+          const existing=rows.get(row.id);
+          if(!existing||row.history.length>existing.history.length)rows.set(row.id,row);
+        }
+      } catch {/* Other site records can still be checked by the API. */}
+    }
+    return [...rows.values()];
   }
   function commit(update: (latest: Trial[])=>Trial[]) {
     try {
@@ -168,7 +194,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     showTab(tab);
   }
   function createCandidates(candidates: Candidate[], batch: boolean) {
-    if (role!=='hr' || photoLoading || (!batch && aadhaarScanPending)) return false;
+    if (role!=='hr' || photoLoading || (!batch && (aadhaarScanPending||aadhaarHistoryPending))) return false;
     const name = signer();
     if (!name) return false;
     if (!candidates.length) {toast('Add at least one candidate.');return false;}
@@ -198,6 +224,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     photo = '';
     photoLoading = false;
     aadhaarScanPending = false;
+    resetAadhaarHistoryCheck();
     aadhaar.reset();
     $<HTMLFormElement>('#single').reset();
     $('#photoBox').innerHTML = 'Upload photo<br><span class="muted">camera or gallery</span>';
@@ -208,8 +235,8 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   }
   function updateSingleActions() {
     const canEdit = role === 'hr';
-    $<HTMLButtonElement>('#sSubmit').disabled = !canEdit || photoLoading || aadhaarScanPending;
-    $<HTMLButtonElement>('#aadhaarContinue').disabled = aadhaarScanPending;
+    $<HTMLButtonElement>('#sSubmit').disabled = !canEdit || photoLoading || aadhaarScanPending || aadhaarHistoryPending;
+    $<HTMLButtonElement>('#aadhaarContinue').disabled = aadhaarScanPending || aadhaarHistoryPending;
   }
   function setAadhaarBusy(busy: boolean) {
     aadhaarScanPending = busy;
@@ -232,10 +259,61 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       control.value = detail;
       if (control.value) filled++;
     }
+    if(/^\d{12}$/.test(details.uid)&&digits(value('#f_aadhaar'))===details.uid)void checkAadhaarHistory(details.uid);
     return filled
       ? 'Aadhaar details filled. Verify them before submitting.'
       : 'The scan added no new details. Review the form or enter the missing details manually.';
   }
+  function resetAadhaarHistoryCheck() {
+    ++aadhaarLookupVersion;
+    checkedAadhaar='';
+    aadhaarHistoryPending=false;
+  }
+  async function checkAadhaarHistory(number:string) {
+    const grant=savedSession()?.grant;
+    if(!grant||checkedAadhaar===number||aadhaarHistoryPending)return;
+    const version=++aadhaarLookupVersion;
+    aadhaarHistoryPending=true;
+    updateSingleActions();
+    const previous=await findPreviousTrial(number,previousTrialRows(),grant);
+    if(effects.signal.aborted||version!==aadhaarLookupVersion)return;
+    aadhaarHistoryPending=false;
+    updateSingleActions();
+    if(digits(value('#f_aadhaar'))!==number||savedSession()?.grant!==grant)return;
+    if(!previous.unavailable)checkedAadhaar=number;
+    if(previous.match)showAadhaarHistory([{match:previous.match}]);
+    else if(previous.unavailable)toast('Could not check previous trials. Scan the card again to retry.');
+  }
+  function showAadhaarHistory(results:{match:TrialMatch;scan?:number}[]) {
+    const active=root.activeElement||document.activeElement;
+    aadhaarHistoryFocus=active instanceof HTMLElement?active:null;
+    $('#aadhaarHistoryTitle').textContent=results.length===1?'Previous trial found':'Previous trials found';
+    $('#aadhaarHistoryResults').innerHTML=results.map(({match,scan})=>{
+      const failed=match.result==='FAIL';
+      return `<div class="aadhaar-history-result ${failed?'p-fail':'p-pass'}">
+        <strong>${scan===undefined?'':`Scan ${scan}: `}${failed?'FAIL':'PASS'}</strong>
+        <dl><dt>Equipment</dt><dd>${esc(match.equipment||'Not recorded')}</dd>
+        <dt>Site</dt><dd>${esc(match.site?siteDisplayName(match.site):'Not recorded')}</dd>
+        ${failed?`<dt>Reason</dt><dd>${esc(match.failureReason||'Not recorded')}</dd>`:''}</dl>
+      </div>`;
+    }).join('');
+    $('.wrap').inert=true;
+    $('#aadhaarHistory').hidden=false;
+    $('#aadhaarHistoryClose').focus();
+  }
+  function closeAadhaarHistory() {
+    $('#aadhaarHistory').hidden=true;
+    $('.wrap').inert=false;
+    if(aadhaarHistoryFocus?.isConnected&&aadhaarHistoryFocus!==document.body)aadhaarHistoryFocus.focus();
+    else $<HTMLButtonElement>('#tabs .on').focus();
+    aadhaarHistoryFocus=null;
+  }
+  $('#aadhaarHistoryClose').onclick=closeAadhaarHistory;
+  $('#aadhaarHistory').onclick=event=>{if(event.target===$('#aadhaarHistory'))closeAadhaarHistory();};
+  $('#f_aadhaar').addEventListener('input',()=>{
+    resetAadhaarHistoryCheck();
+    updateSingleActions();
+  });
   $('#f_veh').innerHTML = VEHICLES.map(item=>`<label class="chk"><input type="checkbox" name="f_vehicle" value="${esc(item)}"> ${esc(item)}</label>`).join('')
     + '<input id="f_vother" type="text" placeholder="Other machine" aria-label="Other machine" style="max-width:180px" hidden>';
   $('#f_docs').innerHTML = DOCS.map(([key,label])=>`<tr><td>${label}</td><td><select id="d_${key}" aria-label="${label} seen"><option value="">Select</option><option>Yes</option><option>No</option></select></td><td><input type="text" id="dr_${key}" aria-label="${label} remarks"></td></tr>`).join('');
@@ -371,6 +449,9 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     }
     const rows = bulk.filter(hasBulkCandidate);
     const issues: string[] = [];
+    const duplicates:{match:TrialMatch;scan:number}[]=[];
+    const checked=new Set<string>();
+    const historyRows=previousTrialRows();
     let applied = 0;
     for (const [index,file] of files.entries()) {
       if (effects.signal.aborted) return;
@@ -385,6 +466,14 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
         if (effects.signal.aborted) return;
         applyBulkAadhaar(rows,details);
         applied++;
+        const number=details.uid;
+        if(/^\d{12}$/.test(number)&&!checked.has(number)){
+          checked.add(number);
+          const previous=await findPreviousTrial(number,historyRows,grant);
+          if(effects.signal.aborted||savedSession()?.grant!==grant)return;
+          if(previous.match)duplicates.push({match:previous.match,scan:index+1});
+          else if(previous.unavailable)issues.push(`${file.name}: Could not check previous trials.`);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'The scan failed.';
         issues.push(`${file.name}: ${message}`);
@@ -392,6 +481,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     }
     if (applied) bulk = rows;
     bulkStatus(`${applied} of ${files.length} Aadhaar scans applied. Review the rows before submitting.`,issues);
+    if(duplicates.length)showAadhaarHistory(duplicates);
   }
   for (const [button,selector,load] of [
     ['#bExcelUpload','#bExcelFile',(files: File[])=>importBulkExcel(files[0])],
@@ -705,11 +795,13 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   };
 
   frame.addEventListener('keydown',event=>{
-    const activeDialog=!$('#tgpop').hidden?$('#tgpop'):!$('#modal').hidden?$('#modal'):null;
+    const activeDialog=!$('#aadhaarHistory').hidden?$('#aadhaarHistory'):!$('#tgpop').hidden?$('#tgpop'):!$('#modal').hidden?$('#modal'):null;
     if (!activeDialog) return;
     if (event.key==='Escape'){
       event.stopPropagation();
-      if (activeDialog.id==='tgpop')closeTelegram();else closeDetails();
+      if (activeDialog.id==='aadhaarHistory')closeAadhaarHistory();
+      else if (activeDialog.id==='tgpop')closeTelegram();
+      else closeDetails();
     }
     if (event.key==='Tab'){
       const focusables=[...activeDialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not([hidden])')];
