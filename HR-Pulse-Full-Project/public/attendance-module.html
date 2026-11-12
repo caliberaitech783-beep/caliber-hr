@@ -260,7 +260,7 @@ body.mini .side{width:66px}body.mini .side .lbl2,body.mini .side .sub,body.mini 
 .otlab{display:flex;gap:3px;padding:4px 4px 0}.otlab span{flex:1;text-align:center;font-size:9.5px;color:var(--ink3)}
 
 /* Leave and overtime reports use the same table treatment as Employee Reports. */
-:root{--report-grid-line:#ae9abd}
+:root{--report-grid-line:#c5b8d0;--report-header:#563778;--report-alt-row:#f7f3fa}
 .report-toolbar{flex-wrap:wrap}
 .report-toolbar h3,.report-toolbar .report-title{flex:1 1 240px;min-width:0}
 .report-toolbar .search{flex:0 1 220px;min-width:0;max-width:100%;min-height:38px}
@@ -269,27 +269,29 @@ body.mini .side{width:66px}body.mini .side .lbl2,body.mini .side .sub,body.mini 
 .report-grid>.card{min-width:0;margin:0}
 .report-kpis{grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr))}
 .report-scroll{
+  max-height:60vh;
   max-width:100%;
   border:1px solid var(--report-grid-line);
   border-radius:0 0 var(--r) var(--r);
 }
 .report-scroll:has(+.report-scroll){border-radius:0;border-bottom:0}
 .report-scroll:focus-visible,.ot-chart-scroll:focus-visible{outline:2px solid var(--violet);outline-offset:-2px}
-.report-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0}
+.report-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font:13px/1.3 Calibri,Arial,sans-serif;color:#000}
 .report-table thead{position:sticky;top:0;z-index:2}
 .report-table :is(th,td){
-  padding:10px 12px;
+  padding:5px 8px;
   text-align:left;
   vertical-align:middle;
   border-right:1px solid var(--report-grid-line);
   border-bottom:1px solid var(--report-grid-line);
 }
 .report-table :is(th,td):last-child{border-right:0}
-.report-table th{position:static;background:#f4eef9;color:#503763;font-size:11px;text-transform:none;letter-spacing:normal}
-.report-table tbody tr:nth-child(even){background:#faf7fc}
+.report-table th{position:static;background:var(--report-header);color:#fff;font:inherit;font-weight:700;text-transform:none;letter-spacing:normal}
+.report-table td{background:#fff}
+.report-table tbody tr:nth-child(even) td,.report-table .report-total td{background:var(--report-alt-row)}
+.report-table thead tr:first-child th:first-child,.report-table td:first-child:not([colspan]){position:sticky;left:0;z-index:1}
 .report-table tbody tr:last-child td{border-bottom:0}
 .report-table td.empty{text-align:center;padding:24px}
-.report-table .report-total{background:#f4eef9}
 .report-table .report-text{min-width:135px;max-width:220px;overflow-wrap:anywhere}
 .report-table .report-date{white-space:nowrap}
 .report-table :is(.report-number,.report-total td:not(:first-child)),
@@ -297,11 +299,11 @@ body.mini .side{width:66px}body.mini .side .lbl2,body.mini .side .sub,body.mini 
 :is(.ot-site,.ot-day) :is(th,td):nth-child(n+2),
 .ot-register :is(th,td):is(:nth-child(6),:nth-child(7),:nth-child(9)){text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .leave-report-table th[scope="colgroup"],.leave-report-table td.report-na{text-align:center}
-.leave-report-table th.report-comp-off{background:#e8f1fb}
 .ot-chart-scroll{overflow-x:auto;max-width:100%}
 .ot-chart{min-width:calc(var(--ot-days) * 24px)}
 .ot-chart :is(.otbar,.otlab){display:grid;grid-template-columns:repeat(var(--ot-days),minmax(0,1fr));align-items:end}
 .ot-chart .otbar{padding-top:20px}
+.ot-chart .otbar>div{background:var(--report-header)}
 .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 .form .fld select,.form .fld input{border:1px solid var(--line);border-radius:9px;padding:8px 10px;outline:0;background:#fff;font-family:inherit}
 
@@ -1294,12 +1296,12 @@ VIEWS.ot=function(){
   const tot=rows.reduce((a,x)=>a+x.r.ot,0);
   // shift-wise (credited to the 2nd shift)
   const sw=['A','B','C'].map(id=>{const R=rows.filter(x=>x.r.otShift===id);return{id,n:R.length,w:new Set(R.map(x=>x.e.id)).size,h:R.reduce((a,x)=>a+x.r.ot,0)}});
-  const shiftRows=sw.map(x=>`<tr><td><b>Shift ${x.id}</b></td><td class="muted">${SHIFTS[x.id].name.split(' ').pop()}</td><td>${x.id==='A'?'C → A':x.id==='B'?'A → B':'B → C'}</td><td>${x.n}</td><td>${x.w}</td><td><b style="color:#ea580c">${x.h}</b></td><td>${tot?Math.round(x.h/tot*100):0}%</td></tr>`).join('');
+  const shiftRows=sw.map(x=>`<tr><td><b>Shift ${x.id}</b></td><td class="muted">${SHIFTS[x.id].name.split(' ').pop()}</td><td>${x.id==='A'?'C → A':x.id==='B'?'A → B':'B → C'}</td><td>${x.n}</td><td>${x.w}</td><td><b style="color:var(--report-header)">${x.h}</b></td><td>${tot?Math.round(x.h/tot*100):0}%</td></tr>`).join('');
   // day-wise
   const dayData=[];for(let d=1;d<=n;d++){const R=rows.filter(x=>x.d===d);dayData.push({d,A:R.filter(x=>x.r.otShift==='A').length*FULL,B:R.filter(x=>x.r.otShift==='B').length*FULL,C:R.filter(x=>x.r.otShift==='C').length*FULL,w:R.length})}
   const mx=Math.max(8,...dayData.map(x=>x.A+x.B+x.C));
-  const dayRows=dayData.filter(x=>x.w).map(x=>`<tr><td><b>${pad(x.d)} ${MON[S.m]}</b> <span class="muted">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(S.y,S.m,x.d).getDay()]}</span></td><td>${x.A||'—'}</td><td>${x.B||'—'}</td><td>${x.C||'—'}</td><td>${x.w}</td><td><b style="color:#ea580c">${x.A+x.B+x.C}</b></td></tr>`).join('');
-  const siteRows=scopeLocs().filter(l=>l.type==='site').map(l=>{const R=rows.filter(x=>x.e.loc===l.id);return`<tr><td class="report-text"><b>${l.name}</b></td><td>${emps.filter(e=>e.loc===l.id).length}</td><td>${R.length}</td><td>${new Set(R.map(x=>x.e.id)).size}</td><td><b style="color:#ea580c">${R.reduce((a,x)=>a+x.r.ot,0)}</b></td></tr>`}).join('');
+  const dayRows=dayData.filter(x=>x.w).map(x=>`<tr><td><b>${pad(x.d)} ${MON[S.m]}</b> <span class="muted">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(S.y,S.m,x.d).getDay()]}</span></td><td>${x.A||'—'}</td><td>${x.B||'—'}</td><td>${x.C||'—'}</td><td>${x.w}</td><td><b style="color:var(--report-header)">${x.A+x.B+x.C}</b></td></tr>`).join('');
+  const siteRows=scopeLocs().filter(l=>l.type==='site').map(l=>{const R=rows.filter(x=>x.e.loc===l.id);return`<tr><td class="report-text"><b>${l.name}</b></td><td>${emps.filter(e=>e.loc===l.id).length}</td><td>${R.length}</td><td>${new Set(R.map(x=>x.e.id)).size}</td><td><b style="color:var(--report-header)">${R.reduce((a,x)=>a+x.r.ot,0)}</b></td></tr>`}).join('');
   const tr=rows.slice().sort((a,b)=>b.d-a.d).map(({e,d,r})=>`<tr style="cursor:pointer" onclick="openDay('${e.id}',${d})"><td class="report-date">${d} ${MON[S.m]}</td><td class="report-text"><div class="emp"><b>${e.name}</b><small>${e.id} · ${e.desig}</small></div></td><td>${LOC[e.loc].short}</td>
     <td><span class="tag gr">Shift ${r.shift.id}</span> + <span class="tag a">Shift ${r.otShift}</span></td><td>${fmt(r.inT)} – ${fmt(r.outT)}</td><td>${h1(r.hours)}</td><td><b>${r.ot}</b></td><td>${srcTag(e.src)}${r.raw&&r.raw.live?' <span class="tag v">live</span>':''}</td><td>${h1(per[e.id])}</td></tr>`).join('');
   $('view').innerHTML=`${md==='mixed'?'<div class="note" style="margin-bottom:14px">Showing <b>site workers</b> only — staff and offices have no OT.</div>':''}
@@ -1307,7 +1309,7 @@ VIEWS.ot=function(){
    <div class="kpis report-kpis">${kpi('a','Total OT Hours',tot,'payable · no approval','ot')}${kpi('b','Double Shifts',rows.length,'second shift worked','clock')}${kpi('g','Workers with OT',Object.keys(per).length,`of ${emps.length} workers`,'users')}${kpi('v2','Avg OT / Worker',Object.keys(per).length?h1(tot/Object.keys(per).length)+' h':'0 h','this month','trend')}</div>
    <div class="grid2b report-grid">
      <div class="card"><div class="hd"><div><h3>Shift-wise OT Summary</h3><p>OT is credited to the second shift worked</p></div></div>
-       <div class="tw report-scroll" role="region" aria-label="Shift-wise overtime summary" tabindex="0"><table class="report-table ot-shift"><thead><tr><th scope="col">OT shift</th><th scope="col">Timing</th><th scope="col">Pattern</th><th scope="col">Double shifts</th><th scope="col">Workers</th><th scope="col">OT h</th><th scope="col">Share</th></tr></thead><tbody>${shiftRows}<tr class="report-total"><td colspan="3"><b>Total</b></td><td><b>${rows.length}</b></td><td><b>${Object.keys(per).length}</b></td><td><b style="color:#ea580c">${tot}</b></td><td>100%</td></tr></tbody></table></div>
+       <div class="tw report-scroll" role="region" aria-label="Shift-wise overtime summary" tabindex="0"><table class="report-table ot-shift"><thead><tr><th scope="col">OT shift</th><th scope="col">Timing</th><th scope="col">Pattern</th><th scope="col">Double shifts</th><th scope="col">Workers</th><th scope="col">OT h</th><th scope="col">Share</th></tr></thead><tbody>${shiftRows}<tr class="report-total"><td colspan="3"><b>Total</b></td><td><b>${rows.length}</b></td><td><b>${Object.keys(per).length}</b></td><td><b style="color:var(--report-header)">${tot}</b></td><td>100%</td></tr></tbody></table></div>
        ${siteRows&&scopeLocs().filter(l=>l.type==='site').length>1?`<div class="tw report-scroll" role="region" aria-label="Site-wise overtime summary" tabindex="0"><table class="report-table ot-site"><thead><tr><th scope="col">Site</th><th scope="col">Workers</th><th scope="col">Double shifts</th><th scope="col">On OT</th><th scope="col">OT h</th></tr></thead><tbody>${siteRows}</tbody></table></div>`:''}</div>
      <div class="card"><div class="hd"><div><h3>Day-wise OT Hours</h3><p>Stacked by shift · hover a bar</p></div></div><div class="bd">
        <div class="ot-chart-scroll" role="region" aria-label="Daily overtime chart" tabindex="0"><div class="ot-chart" style="--ot-days:${Math.max(1,dayData.length)}">
@@ -1629,7 +1631,7 @@ VIEWS.leave=function(){
     ${S.lvf?`<span class="tag v" style="font-size:12px;padding:5px 10px">Showing: ${LVN[S.lvf]} (${LF.length}) <a style="cursor:pointer;margin-left:6px" onclick="S.lvf=null;VIEWS.leave()">✕ Clear</a></span>`:''}<input class="search" aria-label="Search employees by name or ID" placeholder="Search employee" value="${esc(S.search)}" onchange="S.search=this.value;VIEWS.leave()"></div>
   <div class="tw report-scroll" role="region" aria-label="Leave and compensatory time balances" tabindex="0"><table class="report-table leave-report-table">
     <colgroup span="${showW?4:3}"></colgroup><colgroup span="4"></colgroup>${showC?'<colgroup span="7"></colgroup>':''}
-    <thead><tr><th scope="col" rowspan="2">Employee</th><th scope="col" rowspan="2">Location</th><th scope="col" rowspan="2">Leave group</th>${showW?'<th scope="col" rowspan="2" class="report-number">Days worked</th>':''}<th scope="colgroup" colspan="4">Leave</th>${showC?'<th scope="colgroup" colspan="7" class="report-comp-off">Comp-off (C-OFF)</th>':''}</tr>
+    <thead><tr><th scope="col" rowspan="2">Employee</th><th scope="col" rowspan="2">Location</th><th scope="col" rowspan="2">Leave group</th>${showW?'<th scope="col" rowspan="2" class="report-number">Days worked</th>':''}<th scope="colgroup" colspan="4">Leave</th>${showC?'<th scope="colgroup" colspan="7">Comp-off (C-OFF)</th>':''}</tr>
     <tr><th scope="col" class="report-number">Opening</th><th scope="col" class="report-number">Credit</th><th scope="col" class="report-number">Availed</th><th scope="col" class="report-number">Balance</th>${showC?'<th scope="col" class="report-number">Opening</th><th scope="col" class="report-number">Earned</th><th scope="col" class="report-number">Taken</th><th scope="col" class="report-number">Adjusted</th><th scope="col" class="report-number">Balance</th><th scope="col">Expires</th><th scope="col">Actions</th>':''}</tr></thead>
     <tbody>${rows||`<tr><td colspan="${(showW?8:7)+(showC?7:0)}" class="empty">No employees match the current scope and filters.</td></tr>`}</tbody></table></div></div>`;
 };
