@@ -462,9 +462,15 @@ const SHIFTS={
 };
 const COMPANIES=[{id:'CMLL',name:'Caliber Mining and Logistics Limited'},{id:'KSR',name:'KSR Freight Carriers'},{id:'CMPL',name:'CMPL SCR Joint Venture'},{id:'CHADDA',name:'Chadda Trading Co.'}];
 const LOCS=[
-  {id:'JYT',name:'NCL Jayant Project',short:'Jayant',company:'CMLL',type:'site',hg:'NCL',wo:[],tpl:'site'},
-  {id:'DDC',name:'NCL Dudhichua Project',short:'Dudhichua',company:'CMLL',type:'site',hg:'NCL',wo:[],tpl:'site'},
-  {id:'UMR',name:'WCL Umrer Project',short:'Umrer',company:'CMLL',type:'site',hg:'WCL',wo:[],tpl:'site'},
+  {id:'JYT',name:'NCL Jayant OB East',short:'Jayant OB East',company:'CMLL',type:'site',hg:'NCL',wo:[],tpl:'site'},
+  {id:'JYW',name:'NCL Jayant OB West',short:'Jayant OB West',company:'CMLL',type:'site',hg:'NCL',wo:[],tpl:'site'},
+  {id:'DDC',name:'NCL Dudhichua OB East',short:'Dudhichua OB East',company:'CMLL',type:'site',hg:'NCL',wo:[],tpl:'site'},
+  {id:'DDW',name:'NCL Dudhichua OB West',short:'Dudhichua OB West',company:'CMLL',type:'site',hg:'NCL',wo:[],tpl:'site'},
+  {id:'UMR',name:'WCL Sasti OB',short:'Sasti OB',company:'CMLL',type:'site',hg:'WCL',wo:[],tpl:'site'},
+  {id:'DHO',name:'WCL Dhoptala OB 2nd',short:'Dhoptala OB 2nd',company:'CMLL',type:'site',hg:'WCL',wo:[],tpl:'site'},
+  {id:'MAJ',name:'WCL Majri OB',short:'Majri OB',company:'CMLL',type:'site',hg:'WCL',wo:[],tpl:'site'},
+  {id:'GAU',name:'WCL Gauri Pauni OB 2nd',short:'Gauri Pauni OB 2nd',company:'CMLL',type:'site',hg:'WCL',wo:[],tpl:'site'},
+  {id:'LAL',name:'WCL Lalpeth OB',short:'Lalpeth OB',company:'CMLL',type:'site',hg:'WCL',wo:[],tpl:'site'},
   {id:'NGP',name:'Corporate Office, Nagpur',short:'Nagpur CO',company:'CMLL',type:'office',hg:'CORP',wo:[0],altSat:true,tpl:'corp'},
   {id:'SGR',name:'Head Office, Chandrapur',short:'Chandrapur HO',company:'CMLL',type:'office',hg:'CORP',wo:[0],altSat:true,tpl:'ro'}
 ];
@@ -894,7 +900,7 @@ function reqCard(q){const st=q.status;const icon={REG:'🕘',OT:'⏱',UNLOCK:'�
   return`<div class="alert" style="align-items:flex-start"><span style="font-size:20px">${icon}</span><div class="grow"><b>${q.id} · ${q.title}</b> <span class="tag ${LOC[q.loc].type==='site'?'a':'b'}">${LOC[q.loc].short}</span><div style="margin-top:3px">${q.detail}</div><div class="muted" style="font-size:11px;margin-top:2px">${q.why} · raised by ${q.by} · ${agoTxt(q.ts)}</div><div class="toolbar" style="margin-top:7px">${a}</div></div></div>`}
 const S={company:'ALL',type:'ALL',loc:'ALL',tab:'dash',search:'',dept:'ALL',src:'ALL',day:null,pendOnly:false};
 {const pm=new Date(TODAY.getFullYear(),TODAY.getMonth()-1,1);S.y=pm.getFullYear();S.m=pm.getMonth();}
-const scopeLocs=()=>LOCS.filter(l=>(!R().locs||R().locs.includes(l.id))&&(S.company==='ALL'||l.company===S.company)&&(S.type==='ALL'||l.type===S.type)&&(S.loc==='ALL'||l.id===S.loc));
+const scopeLocs=()=>LOCS.filter(l=>(!R().locs||R().locs.includes(l.id))&&(S.company==='ALL'||l.company===S.company)&&(S.type==='ALL'||l.type===S.type)&&(S.type!=='site'||!S.region||S.region==='ALL'||l.hg===S.region)&&(S.loc==='ALL'||l.id===S.loc));
 const scopeEmps=()=>{const ids=new Set(scopeLocs().map(l=>l.id));return EMPS.filter(e=>ids.has(e.loc)&&(!S.cat||S.cat==='ALL'||e.cat===S.cat))};
 function mode(){const t=[...new Set(scopeLocs().map(l=>l.type))];return t.length===1?t[0]:'mixed'}
 const refDay=()=>elapsed(S.y,S.m);
@@ -906,9 +912,11 @@ const $=id=>document.getElementById(id);
 function renderScope0(){
   $('coSel').innerHTML=`<option value="ALL">All companies</option>`+COMPANIES.map(c=>`<option value="${c.id}" ${S.company===c.id?'selected':''}>${c.name}</option>`).join('');
   $('typeSeg').innerHTML=[['ALL','All'],['site','Sites'],['office','Offices']].map(([v,t])=>`<button class="${S.type===v?'on':''}" onclick="setScope('type','${v}')">${t}</button>`).join('');
-  const locs=LOCS.filter(l=>(S.company==='ALL'||l.company===S.company)&&(S.type==='ALL'||l.type===S.type));
+  const regions=[...new Set(LOCS.filter(l=>l.type==='site'&&(S.company==='ALL'||l.company===S.company)).map(l=>l.hg))];
+  const regionSel=S.type==='site'?`<select class="sel" aria-label="Region" onchange="setScope('region',this.value)"><option value="ALL" ${!S.region||S.region==='ALL'?'selected':''}>All regions</option>${regions.map(r=>`<option value="${r}" ${S.region===r?'selected':''}>${r}</option>`).join('')}</select>`:'';
+  const locs=LOCS.filter(l=>(S.company==='ALL'||l.company===S.company)&&(S.type==='ALL'||l.type===S.type)&&(S.type!=='site'||!S.region||S.region==='ALL'||l.hg===S.region));
   /* Location drill-down: a dropdown instead of pills so every site / office fits. */
-  $('locSeg').innerHTML=`<select class="sel" aria-label="Location" onchange="setScope('loc',this.value)"><option value="ALL" ${S.loc==='ALL'?'selected':''}>All locations</option>`+locs.map(l=>`<option value="${l.id}" ${S.loc===l.id?'selected':''}>${l.short} · ${l.type==='site'?'SITE':'OFFICE'}</option>`).join('')+'</select>';
+  $('locSeg').innerHTML=regionSel+`<select class="sel" aria-label="Location" onchange="setScope('loc',this.value)"><option value="ALL" ${S.loc==='ALL'?'selected':''}>All locations</option>`+locs.map(l=>`<option value="${l.id}" ${S.loc===l.id?'selected':''}>${l.short} · ${l.type==='site'?'SITE':'OFFICE'}</option>`).join('')+'</select>';
   let opts='';for(let i=3;i>=0;i--){const d=new Date(TODAY.getFullYear(),TODAY.getMonth()-i,1);opts+=`<option value="${d.getFullYear()}-${d.getMonth()}" ${d.getFullYear()===S.y&&d.getMonth()===S.m?'selected':''}>${MON[d.getMonth()]} ${d.getFullYear()}${i===0?' (current)':''}</option>`}
   $('monSel').innerHTML=opts;
 }
@@ -933,7 +941,7 @@ function renderTabs(){
     return`<button class="${S.tab===k?'on':''}" onclick="setTab('${k}')">${t}${n?`<span class="n">${n}</span>`:''}</button>`}).join('');
 }
 function render(){if(!R().tabs.includes(S.tab))S.tab=R().tabs[0];renderScope();renderPolicy();renderTabs();VIEWS[S.tab]();tgBadge();}
-function setScope(k,v){S[k]=v;if(k==='type'||k==='company')S.loc='ALL';S.day=null;render()}
+function setScope(k,v){S[k]=v;if(k==='type'||k==='company'||k==='region')S.loc='ALL';if(k==='type'||k==='company')S.region='ALL';S.day=null;render()}
 function setTab(k){S.tab=k;render()}
 $('coSel').onchange=e=>setScope('company',e.target.value);
 $('monSel').onchange=e=>{const[y,m]=e.target.value.split('-').map(Number);S.y=y;S.m=m;S.day=null;render()};
