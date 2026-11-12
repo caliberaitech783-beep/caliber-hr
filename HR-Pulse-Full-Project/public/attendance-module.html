@@ -460,13 +460,13 @@ const SHIFTS={
   C:{id:'C',name:'Shift C 21:00–05:00',start:1260,end:1740,otAfter:8,night:true},
   G:{id:'G',name:'General 09:30–18:00',start:570,end:1080,otAfter:9}
 };
-const COMPANIES=[{id:'CMLL',name:'Caliber Mining & Logistics Ltd'},{id:'CIPL',name:'Caliber Infra Projects Pvt Ltd'}];
+const COMPANIES=[{id:'CMLL',name:'Caliber Mining and Logistics Limited'},{id:'KSR',name:'KSR Freight Carriers'},{id:'CMPL',name:'CMPL SCR Joint Venture'},{id:'CHADDA',name:'Chadda Trading Co.'}];
 const LOCS=[
   {id:'JYT',name:'NCL Jayant Project',short:'Jayant',company:'CMLL',type:'site',hg:'NCL',wo:[],tpl:'site'},
   {id:'DDC',name:'NCL Dudhichua Project',short:'Dudhichua',company:'CMLL',type:'site',hg:'NCL',wo:[],tpl:'site'},
-  {id:'UMR',name:'WCL Umrer Project',short:'Umrer',company:'CIPL',type:'site',hg:'WCL',wo:[],tpl:'site'},
+  {id:'UMR',name:'WCL Umrer Project',short:'Umrer',company:'CMLL',type:'site',hg:'WCL',wo:[],tpl:'site'},
   {id:'NGP',name:'Corporate Office, Nagpur',short:'Nagpur CO',company:'CMLL',type:'office',hg:'CORP',wo:[0],altSat:true,tpl:'corp'},
-  {id:'SGR',name:'Head Office, Singrauli',short:'Singrauli HO',company:'CIPL',type:'office',hg:'CORP',wo:[0],altSat:true,tpl:'ro'}
+  {id:'SGR',name:'Head Office, Singrauli',short:'Singrauli HO',company:'CMLL',type:'office',hg:'CORP',wo:[0],altSat:true,tpl:'ro'}
 ];
 LOCS.forEach(l=>l.devices=[`ESSL-${l.id}-01`,`ESSL-${l.id}-02`]);
 const LOC=Object.fromEntries(LOCS.map(l=>[l.id,l]));
