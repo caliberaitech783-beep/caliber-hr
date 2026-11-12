@@ -7,7 +7,8 @@ import {api,savedSession} from './api';
 import {AadhaarUpload} from './EmployeeLocation';
 import TrialWorkflowPreview from './trial-workflow-preview/TrialWorkflowPreview';
 import './trial-form.css';
-import {saveTrialHandoff,type TrialHandoff} from './trialHandoff';
+import {prepareTrialJoining,saveTrialHandoff,type TrialHandoff} from './trialHandoff';
+import type {Trial} from './trial-workflow-preview/records';
 
 /* Trial Joining Form – Driver & Operator. Mirrors Trial_Joining_Form_Driver_Operator.docx.
    Shown under Employee Master when the top bar's department is Driver or Operator. */
@@ -43,10 +44,15 @@ type TrialFormProps = {
  onPassed?: (handoff: TrialHandoff) => void;
  canManage?: boolean;
 };
-export default function TrialForm({selection}: TrialFormProps) {
+export default function TrialForm({selection,onPassed}: TrialFormProps) {
  const profile = savedSession()?.profile;
+ const owner=profile?.actor||profile?.username||profile?.email||'local';
  const {company, site, department} = selection;
- return <TrialWorkflowPreview owner={profile?.actor||profile?.username||'local'} name="" site={site} company={companyShort[company]||company} department={department}/>;
+ async function join(rows: Trial[]) {
+  const handoff=await prepareTrialJoining(rows,selection,owner);
+  if (handoff) {saveTrialHandoff(handoff,{});onPassed?.(handoff);}
+ }
+ return <TrialWorkflowPreview owner={owner} name="" site={site} company={companyShort[company]||company} department={department} onCleared={onPassed?join:undefined}/>;
 }
 
 export function CurrentTrialForm({selection,onPassed,canManage=false}:TrialFormProps){

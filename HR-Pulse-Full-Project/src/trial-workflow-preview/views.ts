@@ -73,7 +73,7 @@ export function approvalTable(records: Trial[], selected: Set<string>) {
       <td>${esc(dateTime(row.trialDate))}</td><td class="small">${last?esc(ROLES[last.role])+': '+esc(last.by):''}<div class="muted">${esc(dateTime(last?.at||''))}</div></td></tr>`;
   }).join(''));
 }
-export function detailView(row: Trial, role: Role) {
+export function detailView(row: Trial, role: Role, canOpenJoining = false) {
   const item = (label: string,value: string) => `<div class="row"><div class="k">${label}</div><div class="v">${value||'<span class="muted">–</span>'}</div></div>`;
   const section = (data: [string,string][])=>data.map(([label,value])=>item(label,esc(value))).join('');
   const out=row.outcome;
@@ -85,7 +85,7 @@ export function detailView(row: Trial, role: Role) {
     return `<div class="sig ${cls}"><b>${label}</b><span class="st">${esc(action)}</span><span>${esc(entry?.by)}</span><span class="muted">${entry?esc(date(indiaDay(new Date(entry.at)))):''}</span></div>`;
   }).join('');
   return `<div class="panel-head"><div><h2>${esc(row.name)}</h2><span class="mono muted small">${esc(row.formNo)}${row.batch?' · Batch '+esc(row.batch):''} · ${esc(row.site)}</span></div>
-      <div class="actions">${stagePill(row)}${row.result==='PASS'?'<button type="button" class="btn tg sm" id="mTelegram">Telegram message</button>':''}<button type="button" class="btn sm" id="mClose">Close</button></div></div>
+      <div class="actions">${stagePill(row)}${canOpenJoining&&row.stage==='done'&&row.result==='PASS'?'<button type="button" class="btn pri sm" data-open-joining>Open Employee Management</button>':''}${row.result==='PASS'?'<button type="button" class="btn tg sm" id="mTelegram">Telegram message</button>':''}<button type="button" class="btn sm" id="mClose">Close</button></div></div>
     <div class="secbar">Part 1 – Candidate details <em>Site HR</em></div>
     <div class="grid-form"><div class="rows">${section([
       ["Father's name",row.father],['Date of birth',date(row.dob)],['Mobile no.',row.mobile],['Aadhaar no.',row.aadhaar],['Address',row.address],

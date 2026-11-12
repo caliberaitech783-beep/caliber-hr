@@ -21,7 +21,7 @@ const empty = (title: string, message: string, action = '') => `<div class="empt
 export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   reset: () => void;
   setDisabled: (disabled: boolean) => void;
-}) {
+}, onCleared?: (rows: Trial[])=>Promise<void>|undefined) {
   const style = document.createElement('style');
   style.textContent = css;
   const frame = document.createElement('div');
@@ -44,6 +44,8 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   let submittingResults = false;
   let modalFocus: HTMLElement | null = null;
   let telegramFocus: HTMLElement | null = null;
+  let afterTelegram: (()=>void) | undefined;
+  let openingJoining = false;
 
   function toast(message: string) {
     const alert = $('#toast');
@@ -555,7 +557,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     renderApprovals();
     if(approved&&reviewer==='director'){
       const passed=changed.filter(row=>row.result==='PASS');
-      if (passed.length) showTelegram(passed.map(resultMessage),'Cleared to join – final approval');
+      if (passed.length) showTelegram(passed.map(resultMessage),'Cleared to join – final approval',onCleared?()=>void openJoining(passed):undefined);
     }
     return true;
   }
@@ -580,7 +582,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if (!row) return;
     detailId=id;
     modalFocus=source;
-    $('#modalBox').innerHTML=detailView(row,role);
+    $('#modalBox').innerHTML=detailView(row,role,Boolean(onCleared));
     $('#modal').hidden=false;
     $('#mClose').focus();
   }
@@ -608,6 +610,10 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   $('#modal').onclick=event=>{
     const target=event.target as HTMLElement;
     if(target.id==='modal'||target.id==='mClose') return closeDetails();
+    if(target.hasAttribute('data-open-joining')){
+      const row=records.find(item=>item.id===detailId);
+      if (row?.stage==='done'&&row.result==='PASS') void openJoining([row]);
+    }
     if(target.hasAttribute('data-download-result')){
       const attachment=records.find(row=>row.id===detailId)?.outcome?.attachment;
       if (attachment) void downloadTrialResult(attachment);
@@ -623,9 +629,17 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     }
   };
 
-  function showTelegram(messages: string[], summary: string) {
+  async function openJoining(rows: Trial[]) {
+    if (!onCleared||openingJoining) return;
+    openingJoining=true;
+    try {await onCleared(rows);}
+    catch {if (!effects.signal.aborted) toast('Could not prepare the joining draft. Open the candidate in All candidates and try again.');}
+    finally {openingJoining=false;}
+  }
+  function showTelegram(messages: string[], summary: string, onClose?: ()=>void) {
     const text=messages.join('\n\n———\n\n'), time=indiaTime();
     telegramFocus=root.activeElement instanceof HTMLElement ? root.activeElement : null;
+    afterTelegram=onClose;
     $('#tgpop').innerHTML=`<div class="tghead"><div class="tgav">CT</div><div><div class="nm">${esc(scope.company||'CMLL')} Trial Bot</div><div class="sub">${esc(summary)} · ${messages.length} message${messages.length===1?'':'s'} · Preview only</div></div><button type="button" aria-label="Close Telegram preview" id="tgClose">×</button></div>
       <div class="tgbody">${messages.map(message=>`<div class="bubble">${esc(message)}<span class="tm">${time}</span></div>`).join('')}<textarea id="tgText" aria-label="Telegram message text" readonly hidden>${esc(text)}</textarea></div>
       <div class="tgfoot"><button type="button" class="btn tg" id="tgCopy">Copy for Telegram</button><button type="button" class="btn" id="tgClose2">Close</button></div>`;
@@ -649,6 +663,9 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     else if (!$('#modal').hidden) $('#mClose').focus();
     else $<HTMLButtonElement>('#tabs .on').focus();
     telegramFocus=null;
+    const done=afterTelegram;
+    afterTelegram=undefined;
+    done?.();
   }
   $('#tgPassList').onclick=()=>{
     const today=indiaDay();

@@ -6,6 +6,7 @@ import {createAttendance} from './attendance.mjs';
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './joining-hierarchy.mjs';
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
+import {validateTrialJoining} from './trial-joining.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
@@ -243,7 +244,13 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         await audit(db,profile.actor,'DEACTIVATE',kind,id);return result.rows[0];
       });
     },
-    async importEmployees(profile,records,submitForApproval=false) {
+    async saveTrialEmployee(profile,input) {
+      if (!grantedMenus(profile).has('Employee Master')) throw problem('Employee Master permission required',403);
+      const {employee,trial}=input||{};
+      const clearance=validateTrialJoining(trial,employee||{},employee?.__officeData);
+      return this.importEmployees(profile,[employee],false,clearance);
+    },
+    async importEmployees(profile,records,submitForApproval=false,trialClearance) {
       authorize(profile,'employees',true);
       if(!Array.isArray(records)||!records.length||records.length>500)throw problem('Import 1–500 rows at a time');
       return transaction(async(db,afterCommit)=>{
@@ -252,6 +259,17 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
           const input={...record};
           const officeData=input.__officeData;delete input.__officeData;
           if(officeData&&(!officeData.constructor||officeData.constructor!==Object))throw problem(`Row ${count+1}: Corporate / HO employee data is invalid`);
+          if (trialClearance) {
+            await locationAccess(db,profile,'employees',input);
+            await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['trial-joining:'+trialClearance.id]);
+            const used=(await db.query("SELECT t.data,t.created_by,e.status FROM hr_records t LEFT JOIN hr_records e ON e.id::text=t.data->>'employeeId' AND e.kind='employees' WHERE t.kind='trialJoinings' AND t.code=$1",[trialClearance.id])).rows[0];
+            if (used) {
+              if (used.status==='ACTIVE' && used.created_by===profile.actor && used.data.employeeCode===input.code && used.data.siteId===(input.siteId||'')) {
+                return {imported:1,submitted:0,status:'ACTIVE'};
+              }
+              throw problem('This trial is already linked to an employee.',409);
+            }
+          }
           if(!input.companyId){
             const companies=await db.query("SELECT id FROM hr_records WHERE kind='companies' AND status IN ('ACTIVE','APPROVED') ORDER BY (lower(code)='cmll') DESC,created_at LIMIT 2");
             if(companies.rowCount>1){const cmll=await db.query("SELECT id FROM hr_records WHERE kind='companies' AND lower(code)='cmll' AND status IN ('ACTIVE','APPROVED') LIMIT 2");if(cmll.rowCount===1)companies.rows=[cmll.rows[0]];companies.rowCount=cmll.rowCount;}
@@ -265,10 +283,24 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
               input[field.key]=found.rows[0].id;
             }
           }
-           try { const saved=await save(db,profile,'employees',input);if(officeData)await db.query("UPDATE hr_records SET data=data||jsonb_build_object('officeData',$1::jsonb) WHERE id=$2",[JSON.stringify(officeData),saved.id]);if(submitForApproval){const configured=await db.query("SELECT 1 FROM hr_records h JOIN hr_records s ON s.code=h.code WHERE h.kind='joiningHierarchies' AND h.status='ACTIVE' AND s.kind='sites' AND s.id::text=$1",[saved.data.siteId||'']);if(configured.rowCount){await submitRecord(db,profile,'employees',saved.id,saved.version,afterCommit);submitted++;}} } catch(error){throw problem(`Row ${count+1}: ${error.code==='23505'?'employee number already exists':error.status?error.message:'unable to save this row'}`,error.status||400);}
+          try {
+            const saved=await save(db,profile,'employees',input);
+            if (trialClearance) {
+              await db.query("UPDATE hr_records SET status='ACTIVE',data=data||jsonb_build_object('officeData',$1::jsonb,'trialJoiningId',$2::text) WHERE id=$3",[JSON.stringify(officeData),trialClearance.id,saved.id]);
+              const link={...trialClearance,employeeId:saved.id,employeeCode:saved.code,siteId:saved.data.siteId};
+              await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES($1,'trialJoinings',$2,$3,$4,'ACTIVE',$5,$5)",[randomUUID(),trialClearance.id,trialClearance.formNo,link,profile.actor]);
+              await audit(db,profile.actor,'JOIN_FROM_TRIAL','employees',saved.id,{trialFormNo:trialClearance.formNo,post:trialClearance.post});
+            } else {
+              if(officeData)await db.query("UPDATE hr_records SET data=data||jsonb_build_object('officeData',$1::jsonb) WHERE id=$2",[JSON.stringify(officeData),saved.id]);
+              if(submitForApproval){
+                const configured=await db.query("SELECT 1 FROM hr_records h JOIN hr_records s ON s.code=h.code WHERE h.kind='joiningHierarchies' AND h.status='ACTIVE' AND s.kind='sites' AND s.id::text=$1",[saved.data.siteId||'']);
+                if(configured.rowCount){await submitRecord(db,profile,'employees',saved.id,saved.version,afterCommit);submitted++;}
+              }
+            }
+          } catch(error){throw problem(`Row ${count+1}: ${error.code==='23505'?'employee number already exists':error.status?error.message:'unable to save this row'}`,error.status||400);}
           count++;
         }
-        return {imported:count,submitted,status:submitted===count?'PENDING':'DRAFT'};
+        return {imported:count,submitted,status:trialClearance?'ACTIVE':submitted===count?'PENDING':'DRAFT'};
       });
     },
     async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction((db,afterCommit)=>submitRecord(db,profile,kind,id,version,afterCommit));},

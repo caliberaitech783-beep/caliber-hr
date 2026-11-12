@@ -53,3 +53,9 @@ test('Aadhaar scan requires authentication before any paid request',async()=>{
   assert.equal((await fetch(url+'/api/aadhaar/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
  });
 });
+
+test('trial employee direct save requires Pulse authentication',async()=>{
+ await withApi(()=>{throw Error('must not query');},async url=>{
+  assert.equal((await fetch(url+'/api/import/trial-employee',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
+ });
+});

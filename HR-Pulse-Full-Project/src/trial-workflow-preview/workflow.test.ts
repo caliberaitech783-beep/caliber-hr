@@ -4,12 +4,13 @@ import {createElement} from 'react';
 import {utils,write} from 'xlsx';
 import TrialWorkflowPreview from './TrialWorkflowPreview';
 import * as trialResultFiles from './trialResultFiles';
+import type {Trial} from './records';
 
 const scope = {company:'CMLL',site:'Jayant OB East',name:'Sample Signer',owner:'sample',department:'Driver'};
 let dispose: (()=>void)|undefined;
-function setup(overrides: Partial<typeof scope> = {}) {
+function setup(overrides: Partial<typeof scope> = {},onCleared?: (rows: Trial[])=>Promise<void>) {
   dispose?.();
-  const {container,unmount,getByLabelText,getByRole} = render(createElement(TrialWorkflowPreview,{...scope,...overrides}));
+  const {container,unmount,getByLabelText,getByRole} = render(createElement(TrialWorkflowPreview,{...scope,...overrides,onCleared}));
   const root = container.querySelector('div')!.shadowRoot!;
   dispose = unmount;
   const el = <T extends HTMLElement=HTMLElement>(selector: string) => {
@@ -140,7 +141,8 @@ describe('Trial workflow preview',()=>{
     const createUrl = vi.spyOn(URL,'createObjectURL').mockReturnValue('blob:trial-result');
     vi.spyOn(URL,'revokeObjectURL').mockImplementation(()=>{});
     const download = vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
-    const {el,click,input,change} = setup();
+    const onCleared=vi.fn(async (_rows: Trial[])=>{});
+    const {el,click,input,change} = setup({},onCleared);
     change('#role','trainer');
     expect(el('#trList')).toHaveTextContent('Submit a candidate in Part 1');
     expect(el('#trList [aria-label="PASS"]')).toBeDisabled();
@@ -181,6 +183,7 @@ describe('Trial workflow preview',()=>{
     await waitFor(()=>expect(el('#tgpop')).toHaveTextContent('Sent to PM for approval'));
     expect(el('#tgpop').textContent).not.toContain('CLEARED TO JOIN');
     click('#tgClose2');
+    expect(onCleared).not.toHaveBeenCalled();
     for (const role of ['pm','rhr','director']) {
       change('#role',role);
       expect(el('#apList').textContent).toContain('Sample Pass');
@@ -189,6 +192,7 @@ describe('Trial workflow preview',()=>{
     }
     expect(el('#tgpop').textContent).toContain('CLEARED TO JOIN');
     click('#tgClose2');
+    expect(onCleared).toHaveBeenCalledWith([expect.objectContaining({stage:'done',result:'PASS',name:'Sample Pass'})]);
     click('[data-stage="done"]');
     expect(el('#ovTitle')).toHaveTextContent('Completed (1)');
     expect(el('#ovList').textContent).toContain('Cleared to join');
