@@ -17,6 +17,8 @@ type Scope = {company: string; site: string; owner: string; legacyOwner?: string
 export type PrepareJoining = (rows: Trial[]) => Promise<(() => void) | void>;
 const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
 const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',ohr:'approve',rhr:'approve',director:'approve'};
+/* Tabs each role may open: Site HR → Aadhaar + Part 1; Driver Trainer → Part 2; approvers → Approvals; everyone → All candidates. */
+const roleTabs: Record<Role,Tab[]> = {hr:['aadhaar','hr','overview'],trainer:['trainer','overview'],pm:['approve','overview'],ohr:['approve','overview'],rhr:['approve','overview'],director:['approve','overview']};
 const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',trainer:'',remarks:''});
 const digits = (value: string) => value.replace(/\D/g,'');
 const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -127,6 +129,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       const active = button.dataset.tab===next;
       button.classList.toggle('on',active);
       button.setAttribute('aria-pressed',String(active));
+      button.hidden = !roleTabs[role].includes(button.dataset.tab as Tab);
     });
     tabs.forEach(item=>{$('#v-'+item).hidden = item !== next;});
     if (tab==='overview') renderOverview();
@@ -825,7 +828,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   $('#tabs').onclick=event=>{
     const target=(event.target as Element).closest<HTMLButtonElement>('[data-tab]');
     const next=tabs.find(item=>item===target?.dataset.tab);
-    if (next) {
+    if (next&&roleTabs[role].includes(next)) {
       if(next==='overview'&&stageFilter){stageFilter='';tab=next;refresh();}
       else showTab(next);
     }
