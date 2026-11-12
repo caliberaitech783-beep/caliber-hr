@@ -140,9 +140,10 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
   const canDecide=!!selected&&!(selected.kind==='employees'&&localReviewChanged)&&stepsFor(selected)[selected.stage]?.approvers.includes(actor)&&selected.requested_by!==actor;
 
   const employeeApprovals=kind==='employees';
+  const transferApprovals=kind==='employeeTransfers';
   return <section className={employeeApprovals?'data-card employee-approvals':'data-card'}>
     <div className="data-heading">
-      <div><h2>{completed?'Completed employee forms':employeeApprovals?'Employee Verify':'Your approval inbox'}</h2><p>Requests assigned to you or submitted by you. Latest 200 requests.</p></div>
+      <div><h2>{completed?'Completed employee forms':employeeApprovals?'Employee Verify':transferApprovals?'Transfer approvals':'Your approval inbox'}</h2><p>Requests assigned to you or submitted by you. Latest 200 requests.</p></div>
       <button onClick={()=>void load()} disabled={loading}><RefreshCw/>Refresh</button>
     </div>
     <ErrorBox message={error}/>
@@ -150,7 +151,7 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
       <div className="table-scroll" role="region" aria-label={completed?'Completed employee forms':'Approval requests'} tabIndex={0}>
         <table className={completed?'approval-table completed-approval-table':'approval-table'}>
           <thead><tr>
-            <th scope="col">Record</th><th scope="col">Module</th><th scope="col">Status</th><th scope="col">Stage / approver</th><th scope="col">Designation</th><th scope="col">Action</th>
+            <th scope="col">Record</th><th scope="col">Module</th><th scope="col">Status</th><th scope="col">Stage / approver</th><th scope="col">{transferApprovals?'To designation':'Designation'}</th><th scope="col">Action</th>
             {completed&&<><th scope="col">Offer Letter</th><th scope="col">Appointment Letter</th></>}
           </tr></thead>
           <tbody>{rows.map((row,index)=>{
@@ -158,10 +159,10 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
             const step=steps[row.stage];
             return <tr key={row.id}>
               <td className="approval-record"><strong>{row.code}</strong><span>{row.name}</span></td>
-              <td>{row.kind==='employees'?'Employee':row.kind==='leaveEncashments'?'Encashment':row.kind==='outDutyRequests'?'Out duty':'Leave'}</td>
+              <td>{row.kind==='employees'?'Employee':row.kind==='employeeTransfers'?'Employee transfer':row.kind==='leaveEncashments'?'Encashment':row.kind==='outDutyRequests'?'Out duty':'Leave'}</td>
               <td><Status value={row.state}/></td>
               <td><strong className="approval-stage-count">{Math.min(row.stage+1,steps.length)} / {steps.length}</strong><br/>{row.state==='PENDING'?`Stage ${step?.stage} · ${step?.label}: ${step?.approvers.join(' / ')}`:'Completed'}</td>
-              <td className="approval-designation">{row.designation||(row.data?.officeData as Record<string,string>|undefined)?.['Designation *']||(row.data?.designationTitle as string|undefined)||'—'}</td>
+              <td className="approval-designation">{transferApprovals?String(row.data?.toDesignation||'—'):row.designation||(row.data?.officeData as Record<string,string>|undefined)?.['Designation *']||(row.data?.designationTitle as string|undefined)||'—'}</td>
               <td><button onClick={()=>{setLocalReviewChanged(false);setSelected(row);setComments('');setError('');}}>Review</button></td>
               {completed&&<>
                 <td><button onClick={()=>setLetter({employee:row,kind:'offer',serial:rows.length-index})}>View Offer Letter</button></td>
