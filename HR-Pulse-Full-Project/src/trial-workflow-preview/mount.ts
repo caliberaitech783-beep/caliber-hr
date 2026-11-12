@@ -6,10 +6,10 @@ import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime
   NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerTable} from './views';
 
-type Tab = 'overview' | 'hr' | 'trainer' | 'approve';
+type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
 type Scope = {company: string; site: string; owner: string; name: string; department: string};
-const tabs: Tab[] = ['overview','hr','trainer','approve'];
-const roleTab: Record<Role,Tab> = {hr:'hr',trainer:'trainer',pm:'approve',rhr:'approve',director:'approve'};
+const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
+const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',rhr:'approve',director:'approve'};
 const blankRow = () => ({name:'',father:'',mobile:'',aadhaar:'',dl:'',dlValid:'',experience:'',referredBy:'',dlSeen:false,aSeen:false,medSeen:false});
 const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',retrial:'',remarks:''});
 const digits = (value: string) => value.replace(/\D/g,'');
@@ -32,7 +32,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   const drafts = new Map<string,Outcome>();
   const selected = new Set<string>();
   const effects = new AbortController();
-  let tab: Tab = 'overview', role: Role = 'hr', stageFilter = '', records: Trial[] = [], bulk = Array.from({length:3},blankRow);
+  let tab: Tab = 'aadhaar', role: Role = 'hr', stageFilter = '', records: Trial[] = [], bulk = Array.from({length:3},blankRow);
   let photo = '', photoLoading = false, photoVersion = 0, photoUrl = '', detailId = '', toastTimer: ReturnType<typeof setTimeout>;
   let aadhaarScanVersion = 0, aadhaarScanPending = false;
   let modalFocus: HTMLElement | null = null;
@@ -184,6 +184,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
     for (const selector of ['#aadhaarUpload', '#aadhaarCamera']) {
       $<HTMLButtonElement>(selector).disabled = !canEdit || aadhaarScanPending;
     }
+    $<HTMLButtonElement>('#aadhaarContinue').disabled = aadhaarScanPending;
   }
   async function scanAadhaar(input: HTMLInputElement) {
     const file = input.files?.[0];
@@ -558,15 +559,22 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
     $<HTMLButtonElement>(`#pipe [data-stage="${stage}"]`).focus();
   };
   $('#search').oninput=renderOverview;
-  $('#hrMode').onclick=event=>{
-    const button=(event.target as Element).closest<HTMLButtonElement>('[data-m]');
-    if(!button) return;
-    const single=button.dataset.m==='single';
+  function setCandidateMode(single: boolean) {
     $('#single').hidden=!single;$('#bulk').hidden=single;
     $$<HTMLButtonElement>('#hrMode button').forEach(item=>{
-      item.classList.toggle('on',item===button);
-      item.setAttribute('aria-pressed',String(item===button));
+      const active = (item.dataset.m === 'single') === single;
+      item.classList.toggle('on', active);
+      item.setAttribute('aria-pressed', String(active));
     });
+  }
+  $('#hrMode').onclick=event=>{
+    const button=(event.target as Element).closest<HTMLButtonElement>('[data-m]');
+    if(button) setCandidateMode(button.dataset.m === 'single');
+  };
+  $('#aadhaarContinue').onclick=()=>{
+    setCandidateMode(true);
+    showTab('hr');
+    $('#part1Title').focus();
   };
   $<HTMLSelectElement>('#role').onchange=event=>{
     const next=(event.target as HTMLSelectElement).value;
@@ -588,8 +596,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope) {
   $('#storeNote').textContent='Saved in this browser only.';
   try{records=read();}
   catch {toast('Could not read the saved preview records.');}
-  $('#hrMode [data-m="single"]').setAttribute('aria-pressed','true');
-  $('#hrMode [data-m="bulk"]').setAttribute('aria-pressed','false');
+  setCandidateMode(true);
   renderBulk();
   refresh();
   return ()=>{

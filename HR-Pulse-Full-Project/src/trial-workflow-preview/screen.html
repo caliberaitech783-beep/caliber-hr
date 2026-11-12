@@ -18,29 +18,34 @@
   <nav class="pipe" id="pipe" aria-label="Workflow stages"></nav>
 
   <div class="tabs" role="group" aria-label="Trial workflow" id="tabs">
-    <button data-tab="overview" class="on">All candidates</button>
+    <button data-tab="aadhaar" class="on">Upload Aadhaar</button>
     <button data-tab="hr">Part 1 · Site HR</button>
     <button data-tab="trainer">Part 2 · Driver Trainer<span class="badge" id="bTrainer" hidden></span></button>
     <button data-tab="approve">Approvals<span class="badge" id="bApprove" hidden></span></button>
+    <button data-tab="overview">All candidates</button>
   </div>
 
-  <!-- OVERVIEW -->
-  <section class="panel" id="v-overview">
-    <div class="panel-head">
-      <h2 id="ovTitle">All candidates</h2>
-      <div class="filters">
-        <input id="search" type="search" aria-label="Search candidates" placeholder="Search name, form no, mobile, referred by">
-        <button class="btn sm" id="tgPassList">Telegram: today's pass list</button>
+  <section class="panel" id="v-aadhaar">
+    <div class="panel-head"><h2>Upload Aadhaar Card</h2></div>
+    <div class="aadhaar-scan">
+      <div class="aadhaar-scan-actions">
+        <button type="button" class="btn" id="aadhaarUpload" aria-describedby="aadhaarScanHelp">Upload Aadhaar Card</button>
+        <button type="button" class="btn" id="aadhaarCamera" aria-describedby="aadhaarScanHelp">Scan with camera</button>
       </div>
+      <input type="file" id="aadhaarFile" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" hidden>
+      <input type="file" id="aadhaarCapture" accept="image/jpeg,image/png" capture="environment" hidden>
+      <p class="note" id="aadhaarScanHelp">Use a sample JPG, PNG or unlocked PDF. Google Gemini reads the upload and fills empty fields in Part 1. Scan each side separately if needed.</p>
+      <p class="note" id="aadhaarScanStatus" role="status" aria-live="polite"></p>
     </div>
-    <div id="ovList"></div>
-    <p class="offline" id="storeNote"></p>
+    <div class="actions">
+      <button type="button" class="btn pri" id="aadhaarContinue">Continue to Part 1 →</button>
+    </div>
   </section>
 
   <!-- PART 1 -->
   <section class="panel" id="v-hr" hidden>
     <div class="panel-head">
-      <h2>Part 1 – Candidate details &amp; document check</h2>
+      <h2 id="part1Title" tabindex="-1">Part 1 – Candidate details &amp; document check</h2>
       <div class="seg" id="hrMode"><button data-m="single" class="on">Single candidate</button><button data-m="bulk">Bulk trial (many candidates)</button></div>
     </div>
     <div id="hrRoleWarn" class="warn-note" hidden>Part 1 is filled by Site HR. Switch "Working as" to Site HR to submit.</div>
@@ -48,16 +53,6 @@
     <form id="single" class="sheet" autocomplete="off">
       <div class="sheet-title"><h3>TRIAL JOINING FORM – DRIVER &amp; OPERATOR</h3><span class="note">Candidate joins only after the vehicle / machine trial result is PASS and all approvals are done.</span></div>
       <div class="secbar">1. Candidate details <em id="sFormNo" class="mono"></em></div>
-      <div class="aadhaar-scan">
-        <div class="aadhaar-scan-actions">
-          <button type="button" class="btn" id="aadhaarUpload" aria-describedby="aadhaarScanHelp">Upload Aadhaar Card</button>
-          <button type="button" class="btn" id="aadhaarCamera" aria-describedby="aadhaarScanHelp">Scan with camera</button>
-        </div>
-        <input type="file" id="aadhaarFile" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" hidden>
-        <input type="file" id="aadhaarCapture" accept="image/jpeg,image/png" capture="environment" hidden>
-        <p class="note" id="aadhaarScanHelp">Use a sample JPG, PNG or unlocked PDF. Google Gemini reads the upload and fills empty fields. Scan each side separately if needed.</p>
-        <p class="note" id="aadhaarScanStatus" role="status" aria-live="polite"></p>
-      </div>
       <div class="grid-form">
         <div class="rows">
           <div class="row"><label for="f_name">Name of candidate *</label><div class="v"><input id="f_name" type="text" required></div></div>
@@ -145,6 +140,19 @@
     </div>
     <div id="apRoleWarn" class="warn-note" hidden></div>
     <div id="apList"></div>
+  </section>
+
+  <!-- ALL CANDIDATES -->
+  <section class="panel" id="v-overview" hidden>
+    <div class="panel-head">
+      <h2 id="ovTitle">All candidates</h2>
+      <div class="filters">
+        <input id="search" type="search" aria-label="Search candidates" placeholder="Search name, form no, mobile, referred by">
+        <button class="btn sm" id="tgPassList">Telegram: today's pass list</button>
+      </div>
+    </div>
+    <div id="ovList"></div>
+    <p class="offline" id="storeNote"></p>
   </section>
 </div>
 

@@ -20,9 +20,10 @@ it('opens the full trial workflow directly from the Trial Form menu',async()=>{
  fireEvent.click(await screen.findByRole('button',{name:/^Trial Form$/}));
  expect(screen.queryByRole('group',{name:'Trial Form views'})).toBeNull();
  const preview=container.querySelector('[aria-label="Trial workflow local preview"]')?.shadowRoot;
- expect(preview?.querySelector('#ovTitle')?.textContent).toBe('All candidates (0)');
+ expect(preview?.querySelector('#tabs button[aria-pressed="true"]')).toHaveTextContent('Upload Aadhaar');
  expect(preview?.querySelectorAll('#pipe button')).toHaveLength(6);
- expect(preview?.querySelector('#tabs')?.textContent).toContain('Approvals');
+ expect(Array.from(preview?.querySelectorAll('#tabs button')??[],button=>button.getAttribute('data-tab')))
+  .toEqual(['aadhaar','hr','trainer','approve','overview']);
  window.location.hash='';
 });
 

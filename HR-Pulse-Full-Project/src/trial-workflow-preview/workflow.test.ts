@@ -43,15 +43,19 @@ describe('Trial workflow preview',()=>{
     const {el,click,input} = setup();
     click('[data-tab="hr"]');
     input('#f_name','Verified Name');
+    click('[data-tab="aadhaar"]');
     const file = new File(['%PDF-1.7'],'sample-aadhaar.pdf',{type:'application/pdf'});
     fireEvent.change(el('#aadhaarFile'),{target:{files:[file]}});
     expect(el('#aadhaarScanStatus')).toHaveTextContent('Scanning Aadhaar');
-    expect(el('#sSubmit')).toBeDisabled();
+    expect(el('#aadhaarContinue')).toBeDisabled();
     await waitFor(()=>expect(el('#aadhaarScanStatus')).toHaveTextContent('Aadhaar details filled'));
     expect(scan).toHaveBeenCalledWith(expect.stringMatching(/\/api\/aadhaar\/scan$/),expect.objectContaining({
       method:'POST',
       headers:{Authorization:'Bearer '+grant,'Content-Type':'application/json'},
     }));
+    click('#aadhaarContinue');
+    expect(el('#v-hr').hidden).toBe(false);
+    expect(el('#v-aadhaar').hidden).toBe(true);
     expect(el('#f_name')).toHaveValue('Verified Name');
     expect(el('#f_father')).toHaveValue(details.relationName);
     expect(el('#f_dob')).toHaveValue(details.dob);
@@ -60,6 +64,7 @@ describe('Trial workflow preview',()=>{
     expect(el('#sSubmit')).toBeEnabled();
     expect(localStorage.length).toBe(0);
 
+    click('[data-tab="aadhaar"]');
     fireEvent.change(el('#aadhaarFile'),{target:{files:[file]}});
     await waitFor(()=>expect(el('#aadhaarScanStatus')).toHaveTextContent('The card could not be read.'));
     expect(el('#f_aadhaar')).toHaveValue(details.uid);
@@ -69,6 +74,7 @@ describe('Trial workflow preview',()=>{
   it('checks documents, moves a single PASS through each approval, and persists the final status without calling HR or Telegram',()=>{
     const network = vi.spyOn(window,'fetch').mockRejectedValue(new Error('Network is disabled in the preview'));
     const {el,click,input,change} = setup();
+    click('[data-tab="overview"]');
     click('[data-go="hr"]');
     input('#f_name','Sample Pass');
     input('#f_mobile','9876543210');
@@ -103,8 +109,10 @@ describe('Trial workflow preview',()=>{
     expect(el('#modalBox').textContent).toContain('Approvals');
     expect(el('#modalBox .sigs').textContent).toContain('DirectorApproved');
     const next = setup();
+    next.click('[data-tab="overview"]');
     expect(next.el('#ovList').textContent).toContain('Cleared to join');
     const other = setup({site:'Another site'});
+    other.click('[data-tab="overview"]');
     expect(other.el('#ovList').textContent).toContain('No trial forms yet');
     expect(network).not.toHaveBeenCalled();
   });
