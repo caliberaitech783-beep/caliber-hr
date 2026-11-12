@@ -34,6 +34,17 @@ Install dependencies from the lockfile, use Node.js 22 or later, and start with
 `node index.mjs`. App Service supplies `PORT`. Set its health check path to
 `/api/health`. Confirm network access and database permissions before rollout.
 
+## Attendance bridge
+
+`/api/attendance/bridge/*` is called by the site bridge PC, not by a browser, and
+is authenticated only by the `X-Bridge-Key` header. Set `ATTENDANCE_BRIDGE_KEY`
+(at least 32 random characters) as a private App Service setting. Without it the
+bridge routes return HTTP 503 and the page disables **Fetch attendance**. All
+other `/api/attendance/*` routes require a Pulse sign-in with the Employee Master
+menu and are filtered to the user's sites. Tables are created idempotently from
+`attendance-schema.sql` at startup. Setup steps for the PC are in
+`integrations/attendance-bridge/README.md`.
+
 ## Verification
 
 - `node --test app.test.mjs security.test.mjs` tests origin restrictions, readiness,

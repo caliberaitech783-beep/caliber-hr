@@ -1,0 +1,27 @@
+.attendance{gap:14px}
+.attendance-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.attendance .module-tabs{margin:0}
+.attendance-success+.help-text,.attendance>.help-text,.attendance>.error{margin:0}
+.attendance-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.attendance-actions button{display:inline-flex;align-items:center;gap:8px;border-radius:8px;padding:11px 18px;font-size:14px;font-weight:600;min-height:42px;cursor:pointer}
+.attendance-actions button svg{width:17px;height:17px}
+.attendance-actions button:disabled{opacity:.55;cursor:not-allowed}
+.attendance-bridge{font-size:12px;padding:6px 11px;border-radius:999px;border:1px solid #e4ddea;background:#faf7fc;color:#5d4f6c}
+.attendance-bridge.online{background:#edf8f1;border-color:#bfe3cc;color:#1f6b3d}
+.attendance-bridge.offline{background:#fff6e9;border-color:#f0d6a8;color:#8a5a0a}
+.attendance-success{margin:0;padding:12px 15px;background:#edf8f1;color:#1f6b3d;border:1px solid #bfe3cc;border-radius:8px;font-size:13px}
+.attendance-filters{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.attendance-filters label{display:grid;gap:5px;font-size:12px;color:#7a698b;font-weight:600}
+.attendance-filters span{font-size:13px;color:#687385;margin-right:auto;padding-bottom:10px}
+.attendance input,.attendance select{border:1px solid #ded4e9;border-radius:8px;padding:9px 11px;background:#fff;font:inherit;color:#30263c;min-width:0;max-width:320px}
+.attendance-table{overflow-x:auto}
+.attendance table{width:100%;border-collapse:collapse;font-size:13px}
+.attendance th{text-align:left;font-size:11px;color:#7a698b;font-weight:600;background:#faf7fc;white-space:nowrap}
+.attendance th,.attendance td{padding:11px 10px;border-bottom:1px solid #eee7f3}
+.attendance td{color:#3f354b}
+.attendance td small{color:#7a698b}
+.attendance-unlinked{color:#8a5a0a!important}
+.attendance-empty{text-align:center;color:#687385!important;padding:28px 10px!important}
+.attendance .spin{animation:attendance-spin 1s linear infinite}
+@keyframes attendance-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.attendance .spin{animation:none}}

@@ -35,7 +35,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Test API
         working-directory: HR-Pulse-Full-Project/server
-        run: node --test app.test.mjs security.test.mjs joining-hierarchy.test.mjs telegram.test.mjs leave-approval.test.mjs
+        run: node --test app.test.mjs security.test.mjs joining-hierarchy.test.mjs telegram.test.mjs leave-approval.test.mjs attendance.test.mjs
       - name: Prepare deployment package
         working-directory: HR-Pulse-Full-Project/server
         run: |

@@ -2,6 +2,7 @@ import {createTelegram,telegramLeaveFlow,odSiteFlow,telegramSteps,queueTelegram,
 import {odApprovalWorkflow} from './out-duty.mjs';
 import {createTransferFlows,transferWorkflow,applyTransfer} from './employee-transfer-flow.mjs';
 import {createAssets} from './assets.mjs';
+import {createAttendance} from './attendance.mjs';
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './joining-hierarchy.mjs';
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
@@ -145,7 +146,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
          if(kind==='employees'&&hierarchy?.code==='CMLL-CO')afterCommit?.(()=>telegram.approvalRequested({siteCode:hierarchy.code,record:snapshot,step:steps[0],stage:1,total:steps.length,requestedBy:profile.actor}));
         return {status:'PENDING'};
   }
-  return {...createTelegram(pool),...createAssets(pool),...employeeDocuments,
+  return {...createTelegram(pool),...createAssets(pool),...createAttendance(pool),...employeeDocuments,
     ...createDeletion(pool),
     ...createHierarchies(pool),
     ...createTransferFlows(pool),

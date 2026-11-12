@@ -33,6 +33,7 @@ await pool.query(await readFile(new URL('./schema.sql',import.meta.url),'utf8'))
 await pool.query(await readFile(new URL('./asset-schema.sql',import.meta.url),'utf8'));
 await seedAssets(pool);
 await pool.query(await readFile(new URL('./telegram-schema.sql',import.meta.url),'utf8'));
+await pool.query(await readFile(new URL('./attendance-schema.sql',import.meta.url),'utf8'));
 await seedTelegram(pool);
 void registerTrialWebhook();
 void registerJoiningWebhook();
