@@ -1,4 +1,5 @@
 import {buildPdf} from './pdf.mjs';
+import {hierarchyTemplates,currentHierarchy,withOfficeHr,withDriverTrainer} from './joining-hierarchy.mjs';
 import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
 import {grantedMenus} from './modules.mjs';
 import {assignedSites} from './scope.mjs';
@@ -71,6 +72,18 @@ const norm=v=>String(v||'').trim().toLowerCase().replace(/\s+/g,' ');
 export function recipientInScope(r,target){const scope=String(r.scope||'').split(',').map(norm).filter(Boolean);if(!scope.length||scope.includes('all'))return true;
  const keys=[target?.site,target?.siteCode,target?.region,target?.company,target?.group].map(norm).filter(Boolean);return scope.some(x=>keys.some(k=>k===x||k.startsWith(x+' ')||x.startsWith(k+' ')));}
 export const scopedRecipients=(list,target)=>target?list.filter(r=>recipientInScope(r,target)):list;
+/* Recipients taken from Approval Master › Hierarchy (joining hierarchy per site), so nothing has to be typed twice:
+   part1  → the site's "Driver Trainer" step
+   result → Project Manager, Office HR, HR Manager — either one (regional), Final approval (directors) */
+const HIERARCHY_STEPS={part1:['Driver Trainer'],result:['Project Manager','Office HR — either one','HR Manager — either one','Final approval — any one']};
+export async function hierarchyRecipients(db,stage,target){
+ const rows=(await db.query("SELECT code,data FROM hr_records WHERE kind='joiningHierarchies'")).rows;
+ const out=[];for(const t of hierarchyTemplates){const saved=rows.find(r=>r.code===t.code);const data={...t,...withOfficeHr(withDriverTrainer(currentHierarchy(saved?.data)))};
+  if(target&&!recipientInScope({scope:t.name},target))continue;
+  for(const step of data.steps||[])if(HIERARCHY_STEPS[stage].includes(step.label))for(const actor of step.approvers||[]){const a=String(actor).trim().toLowerCase();if(a&&!out.some(r=>r.actor===a&&r.site===t.name))out.push({actor:a,name:a,phone:'',scope:t.name,site:t.name,role:step.label,source:'hierarchy'});}}
+ return out;}
+/* Manual list (scoped) + hierarchy for a site, de-duplicated by actor. */
+export async function trialRecipientsFor(db,stage,target){const manual=scopedRecipients(await trialRecipients(db,stage),target),auto=await hierarchyRecipients(db,stage,target);const seen=new Set(manual.map(recipientActor));return [...manual,...auto.filter(r=>!seen.has(r.actor))];}
 /* stage 'result' = Part 2 result messages (default list); stage 'part1' = "Trial Form Submitted" messages to the driver trainer. */
 export async function trialRecipients(db,stage='result'){const row=(await db.query("SELECT data FROM hr_records WHERE kind='trialForms' AND code='SETTINGS'")).rows[0];const d=row?.data||{};if(stage==='part1')return Array.isArray(d.part1Recipients)?d.part1Recipients:[];const saved=d.recipients||[];const merged=[...saved];for(const x of DEFAULT_TRIAL_RECIPIENTS)if(ALWAYS_TRIAL_ACTORS.includes(x.actor)&&!merged.some(r=>r.actor===x.actor))merged.push(x);return merged;}
 const fmtDate=v=>{if(!v)return '';const d=new Date(v);if(Number.isNaN(d.valueOf())){const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[3]}-${m[2]}-${m[1]}`:String(v);}return d.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');};
@@ -210,11 +223,11 @@ export function createTelegram(pool){
    return out;
   }
   if(route==='trial-recipients'&&method==='GET'){
-   const result=await trialRecipients(pool,'result'),part1=await trialRecipients(pool,'part1'),all=[...result,...part1];
+   const result=await trialRecipients(pool,'result'),part1=await trialRecipients(pool,'part1'),hierarchy={part1:await hierarchyRecipients(pool,'part1'),result:await hierarchyRecipients(pool,'result')},all=[...result,...part1,...hierarchy.part1,...hierarchy.result];
    const linked=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor = ANY($1)',[all.map(recipientActor)])).rows.map(r=>r.actor);
    const issues=Object.fromEntries((await pool.query("SELECT DISTINCT ON (actor) actor,last_error FROM hr_telegram_outbox WHERE bot='trial' AND state<>'SENT' AND last_error IS NOT NULL ORDER BY actor,id DESC")).rows.map(r=>[r.actor,r.last_error]));
    const decorate=list=>list.map(r=>({...r,connected:linked.includes(recipientActor(r)),issue:issues[recipientActor(r)]||''}));
-   return {recipients:decorate(result),part1Recipients:decorate(part1),botUsername:botUsername('trial'),configured:!!process.env.TELEGRAM_TRIAL_BOT_TOKEN};
+   return {recipients:decorate(result),part1Recipients:decorate(part1),hierarchy:{part1:decorate(hierarchy.part1),result:decorate(hierarchy.result)},botUsername:botUsername('trial'),configured:!!process.env.TELEGRAM_TRIAL_BOT_TOKEN};
   }
   if(route==='trial-recipients'&&method==='POST'){
    if(!grantedMenus(profile).has('Approval Management'))fail('Approval Management permission required',403);
@@ -277,7 +290,7 @@ export function createTelegram(pool){
    const records=items.map(c=>{const fields=cleanFields(c.fields),formNo=String(c.formNo||'').trim().slice(0,40);if(!formNo)fail('Form number is required');const name=String(fields['Name of candidate']||'').trim();if(!name)fail('Candidate name is required for every row');
     return {formNo,heading,site,company,department,fields,stage:'PART1',status:'Sent to driver trainer',batchId,trialBy,attachments:cleanAttachments(c.attachments),part1By:profile.actor,part1At:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};});
    const target={site,region:String(input.region||'').slice(0,80),company,group:String(input.group||'').slice(0,80)};
-   const recipients=scopedRecipients(await trialRecipients(pool,'part1'),target).map(recipientActor);
+   const recipients=(await trialRecipientsFor(pool,'part1',target)).map(recipientActor);
    let message,files=[];
    if(batchId){const batch={batchId,site,trialBy,trialDate:records[0].fields['Trial date & time']};message=trialBatchSubmittedMessage(batch,records);
     const pdf=buildPdf({title:`Vehicle trial – Batch ${batchId}`,subtitle:[`Site: ${site||heading||'-'} · Trial date: ${fmtDate(batch.trialDate)||'-'} · Trial by: ${trialBy||'driver trainer'} · Submitted by: ${profile.name||profile.actor}`,company||''].filter(Boolean),
@@ -315,7 +328,7 @@ export function createTelegram(pool){
    const prev=(await pool.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1",[formNo])).rows[0];
    const attachments=cleanAttachments(input.attachments);
    const record={...(prev?.data||{}),formNo,heading:String(input.heading||'').slice(0,120),site:String(input.site||'').slice(0,80),company:String(input.company||'').slice(0,120),department:String(input.department||'').slice(0,80),batchId:String(input.batchId||prev?.data?.batchId||'').slice(0,40),fields:{...(prev?.data?.fields||{}),...fields},attachments:attachments.length?attachments:prev?.data?.attachments||[],stage:'RESULT',status:'Sent to PM for approval',trialBy:String(input.trialBy||fields['Examiner name']||profile.name||profile.actor).slice(0,80),resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
-   const message=trialResultMessage(record,profile.name||profile.actor),recipients=scopedRecipients(await trialRecipients(pool,'result'),{site:record.site,region:String(input.region||'').slice(0,80),company:record.company,group:String(input.group||'').slice(0,80)}).map(recipientActor);
+   const message=trialResultMessage(record,profile.name||profile.actor),recipients=(await trialRecipientsFor(pool,'result',{site:record.site,region:String(input.region||'').slice(0,80),company:record.company,group:String(input.group||'').slice(0,80)})).map(recipientActor);
    await tx(async db=>{let id=prev?.id;
     if(id)await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[record.fields['Name of candidate'],record,profile.actor,id]);
     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[formNo,record.fields['Name of candidate'],record,profile.actor])).rows[0].id;
@@ -332,7 +345,7 @@ export function createTelegram(pool){
    if(!results.length||results.some(r=>!r.result))fail('Mark PASS or FAIL for every candidate');
    const trialBy=String(input.trialBy||profile.name||profile.actor).slice(0,80);
    const xlsx=input.xlsx?String(input.xlsx).replace(/^data:[^,]*,/,'').slice(0,8*1024*1024):'';
-   const recipients=scopedRecipients(await trialRecipients(pool,'result'),{site:String(input.site||''),region:String(input.region||'').slice(0,80),company:String(input.company||''),group:String(input.group||'').slice(0,80)}).map(recipientActor);
+   const recipients=(await trialRecipientsFor(pool,'result',{site:String(input.site||''),region:String(input.region||'').slice(0,80),company:String(input.company||''),group:String(input.group||'').slice(0,80)})).map(recipientActor);
    let message;const records=[];
    const site=String(input.site||'').slice(0,80),company=String(input.company||'').slice(0,120),department=String(input.department||'').slice(0,80),heading=String(input.heading||'').slice(0,120);
    const given=new Map((Array.isArray(input.rows)?input.rows:[]).slice(0,100).map(r=>[String(r.formNo||'').slice(0,40),{fields:cleanFields(r.fields),attachments:cleanAttachments(r.attachments)}]));
