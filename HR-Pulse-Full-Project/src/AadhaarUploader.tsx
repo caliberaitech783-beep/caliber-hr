@@ -11,6 +11,7 @@ type Props = {
   fillDetails: (details: AadhaarDetails, slot: 1 | 2) => string;
   disabled?: boolean;
   onBusy?: (busy: boolean) => void;
+  showScanInstructions?: boolean;
 };
 
 const imageTypes = '.jpg,.jpeg,.png,image/jpeg,image/png';
@@ -26,7 +27,9 @@ function usePreview(file?: File) {
   return preview;
 }
 
-export default function AadhaarUploader({photo, photo2, onPhoto, onPhoto2, fillDetails, disabled, onBusy}: Props) {
+export default function AadhaarUploader({
+  photo, photo2, onPhoto, onPhoto2, fillDetails, disabled, onBusy, showScanInstructions = true,
+}: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
@@ -83,7 +86,8 @@ export default function AadhaarUploader({photo, photo2, onPhoto, onPhoto2, fillD
   }
 
   return <section className="aadhaar-upload">
-    <p>Upload up to two Aadhaar images in JPG, JPEG, PNG, or PDF format. Images and PDFs are sent to Google Gemini to read the details. Use an unlocked PDF up to 1.3 MB. Verify the extracted fields before saving.</p>
+    <p>Upload up to two Aadhaar images in JPG, JPEG, PNG, or PDF format.{showScanInstructions &&
+      ' Images and PDFs are sent to Google Gemini to read the details. Use an unlocked PDF up to 1.3 MB. Verify the extracted fields before saving.'}</p>
     <div className="aadhaar-upload-actions">
       <button disabled={locked} type="button" className="employee-import" aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}><Upload/>Upload Aadhaar Image 1</button>
       {menuOpen && <div className="aadhaar-source-menu">

@@ -24,7 +24,8 @@ export default function TrialWorkflowPreview({owner,name,site,company,department
   },[owner,name,site,company,department]);
   return <div ref={host} aria-label="Trial workflow local preview">
     {workflow && <div slot="aadhaar-upload">
-      <AadhaarUploader key={uploadVersion} disabled={disabled} onBusy={workflow.setAadhaarBusy} fillDetails={workflow.fillAadhaarDetails}/>
+      <AadhaarUploader key={uploadVersion} disabled={disabled} onBusy={workflow.setAadhaarBusy}
+        fillDetails={workflow.fillAadhaarDetails} showScanInstructions={false}/>
     </div>}
   </div>;
 }
