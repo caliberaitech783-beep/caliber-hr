@@ -368,17 +368,22 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
  useEffect(()=>{const source=`${defaults.department} ${defaults.designation}`.toLowerCase();const automatic=source.includes('driver')?'Driver':source.includes('operator')?'Operator':'';if(automatic&&automatic!==employeeCategory)setEmployeeCategory(automatic);},[defaults.department,defaults.designation]);
  const showMineCompliance=employeeGroup==='OB / COAL'&&['Driver','Staff','Operator'].includes(employeeCategory);
  const activeSteps=joiningSteps,activeStep=activeSteps[step];
- const visibleDocuments=documents.filter(([name])=>!conditionalDocuments.has(name)||showMineCompliance);
+ const requiresDrivingLicence=employeeCategory==='Driver'||employeeCategory==='Operator';
+ const visibleDocuments=documents
+  .filter(([name])=>!conditionalDocuments.has(name)||showMineCompliance||(name==='Driving licence'&&requiresDrivingLicence))
+  .map(([name,rule])=>[name,name==='Driving licence'&&requiresDrivingLicence?'Mandatory':rule]);
  function validateStep(index:number,showNativeMessage=true){
   if(!enforceJoiningMandatoryFields){setSaveError('');return true;}
   if(index===0&&!photo&&!handoff&&!directTrial){setSaveError('Please upload the Aadhaar document before continuing.');return false;}
   if(index===1&&!employeeCategory){setSaveError('Please select Employee Category before continuing.');requestAnimationFrame(()=>formRef.current?.querySelector<HTMLButtonElement>('.employee-category-trigger')?.focus());return false;}
   const panel=formRef.current?.querySelector<HTMLElement>(`[data-joining-step="${index}"]`);
   const invalid=panel?Array.from(panel.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('input[required], select[required], textarea[required]')).find(control=>
-   control instanceof HTMLInputElement&&control.type==='file'&&!control.disabled?!control.files?.length:!control.checkValidity()):undefined;
+   control instanceof HTMLInputElement&&control.type==='file'&&!control.disabled?!control.files?.[0]?.size:!control.checkValidity()):undefined;
   if(!invalid){setSaveError('');return true;}
   const label=invalid.name||invalid.closest('label')?.querySelector('span')?.textContent?.replace('*','').trim()||'mandatory field';
-  setSaveError(`Please fill the mandatory field: ${label}.`);
+  setSaveError(invalid instanceof HTMLInputElement&&invalid.type==='file'
+   ?`Please upload the mandatory document: ${label.replace(/^Upload /,'')}.`
+   :`Please fill the mandatory field: ${label}.`);
   if(showNativeMessage)requestAnimationFrame(()=>invalid.reportValidity());
   return false;
  }

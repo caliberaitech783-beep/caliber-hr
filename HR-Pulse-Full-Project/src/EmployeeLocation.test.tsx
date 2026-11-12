@@ -399,6 +399,7 @@ describe('Employee Master tabs',()=>{
   expect((screen.getByLabelText(/Medical Examination Date/) as HTMLInputElement).required).toBe(false);
   expect(screen.getByLabelText(/Safety Induction Date/)).toBeTruthy();
   expect(screen.queryByLabelText(/Driving Licence No/)).toBeNull();
+  expect(screen.getByLabelText('Upload Driving licence')).not.toBeRequired();
   fireEvent.click(screen.getByRole('button',{name:'Employee Category'}));
   fireEvent.click(within(screen.getByRole('listbox',{name:'Employee Category options'})).getByRole('option',{name:'Driver'}));
   expect(screen.getByRole('button',{name:'Employee Category'}).textContent).toContain('Driver');
@@ -465,7 +466,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Upload Medical fitness certificate')).toBeTruthy();
   expect((screen.getByLabelText('Upload VTC certificate') as HTMLInputElement).required).toBe(false);
   expect((screen.getByLabelText('Upload Medical fitness certificate') as HTMLInputElement).required).toBe(false);
-  expect(screen.getByLabelText('Upload Driving licence')).toBeTruthy();
+  expect(screen.getByLabelText('Upload Driving licence')).toBeRequired();
   expect(screen.getByRole('button',{name:'Bulk Upload'})).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Bulk upload documents'),{target:{files:[new File(['a'],'offer.pdf',{type:'application/pdf'}),new File(['b'],'photo.png',{type:'image/png'})]}});
   expect(screen.getByText('Bulk uploaded documents (2)')).toBeTruthy();
@@ -517,6 +518,25 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Chandrapur Head Office'}).length).toBeGreaterThan(0);
   expect(screen.getByText('Sign in to load Pulse C-Directory.')).toBeTruthy();
  },30000);
+
+ it('blocks a Corporate / HO operator submission without a driving licence upload',async()=>{
+  const {container}=render(<EmployeeLocation/>);
+  const setField=(name:string,value:string)=>fireEvent.change(container.querySelector(`[name="${name}"]`)!,{target:{value}});
+  const upload=(label:string,name:string,type:string)=>fireEvent.change(screen.getByLabelText(label),{target:{files:[new File(['document'],name,{type})]}});
+  await act(async()=>{upload('Choose Aadhaar card from gallery','aadhaar.pdf','application/pdf');});
+  fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'Nagpur Corporate Office'}});
+  fireEvent.change(screen.getByLabelText('Department',{exact:true,selector:'select:not([name])'}),{target:{value:'Operator'}});
+  fireEvent.change(screen.getByLabelText('Sub-department',{exact:true,selector:'select:not([name])'}),{target:{value:'Drilling'}});
+  fireEvent.change(screen.getByLabelText('Designation',{exact:true,selector:'select:not([name])'}),{target:{value:'Drill Operator'}});
+  for(const [field,value] of Object.entries({'Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB'}))setField(field,value);
+  fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+  upload('Upload Candidate photo','photo.jpg','image/jpeg');
+  upload('Upload Aadhaar (masked display)','aadhaar.pdf','application/pdf');
+  expect(screen.getByLabelText('Upload Driving licence')).toBeRequired();
+  fireEvent.click(screen.getByRole('button',{name:'Submit Employee'}));
+  expect(screen.getByRole('alert')).toHaveTextContent('Please upload the mandatory document: Driving licence.');
+ });
 });
 
 
