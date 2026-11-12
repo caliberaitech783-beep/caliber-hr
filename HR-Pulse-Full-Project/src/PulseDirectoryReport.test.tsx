@@ -1,4 +1,4 @@
-import {render,screen,fireEvent,waitFor} from '@testing-library/react';
+import {render,screen,fireEvent,waitFor,within} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import Report from './PulseDirectoryReport';
 afterEach(()=>vi.unstubAllGlobals());
@@ -9,6 +9,8 @@ it('fetches live Pulse data with the HR grant and filters offices, region, site 
  vi.stubGlobal('fetch',fetcher);
  const view=render(<Report grant="test-grant" employeeGroup="Corporate / HO"/>);
  await screen.findByText('Person 0');expect(screen.queryByText('Person 1')).toBeNull();
+ expect(screen.getAllByRole('columnheader').slice(0,3).map(header=>header.textContent)).toEqual(['Serial No','EMPLOYEE ID','NAME']);
+ expect(within(screen.getByRole('row',{name:/Person 0/})).getAllByRole('cell')[0]).toHaveTextContent('1');
  expect(fetcher.mock.calls[0][0]).toBe('https://pulse.cmll.in/api/integrations/hr/directory');
  view.rerender(<Report grant="test-grant" employeeGroup="OB / COAL"/>);
  await screen.findByText('Person 1');expect(screen.queryByText('Person 0')).toBeNull();

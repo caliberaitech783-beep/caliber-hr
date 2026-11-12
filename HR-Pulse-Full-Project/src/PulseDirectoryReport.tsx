@@ -81,9 +81,13 @@ export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:strin
    </div>
    <div className="table-scroll" role="region" aria-label="Region employee details table" tabIndex={0}>
     <table className="employee-report-table">
-     <thead><tr>{columns.map(([key,label])=><th key={key} scope="col">{label}</th>)}</tr></thead>
+     <thead><tr>
+      <th scope="col">Serial No</th>
+      {columns.map(([key,label])=><th key={key} scope="col">{label.toUpperCase()}</th>)}
+     </tr></thead>
      <tbody>{rows.map((row,index)=><tr key={`${row.siteId}-${row.employeeId}-${index}`}>
-      {columns.map(([key])=><td key={key}>{row[key]||'—'}</td>)}
+      <td>{index+1}</td>
+      {columns.map(([key])=><td key={key}>{row[key]}</td>)}
      </tr>)}</tbody>
     </table>
    </div>
