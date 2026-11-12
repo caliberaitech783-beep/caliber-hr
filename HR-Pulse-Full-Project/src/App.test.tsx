@@ -40,11 +40,12 @@ it('opens the full trial workflow directly from the Trial Form menu',async()=>{
  window.location.hash='';
 });
 
-it('opens Step 2 with candidate details from a completed trial even if session storage cannot hold the handoff',async()=>{
- const profile={name:'HR user',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
+it('finds candidates saved under the original sign-in and current HR account keys, and opens Step 2',async()=>{
+ const profile={name:'HR user',username:'TestUser',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
+ const currentProfile={...profile,name:'Configured HR user',actor:'testuser'};
  window.location.hash='Employee%20Master';
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
- vi.stubGlobal('fetch',async()=>Response.json({profile,modules:{}}));
+ vi.stubGlobal('fetch',async(url:string)=>Response.json({profile:url.endsWith('/config')?currentProfile:profile,modules:{}}));
  vi.spyOn(joiningDrafts,'listJoiningDrafts').mockResolvedValue([]);
  const saveDraft=vi.spyOn(joiningDrafts,'saveJoiningDraft').mockResolvedValue(undefined);
  const writeStorage=Storage.prototype.setItem;
@@ -58,14 +59,26 @@ it('opens Step 2 with candidate details from a completed trial even if session s
   dl:'DL123',dlValid:'',referredBy:'',employer:'',batch:'',createdAt:'2026-11-12',trialDate:'2026-11-12T10:00',
   photo:'',post:'Driver',experience:'',vehicles:['Excavator'],otherVehicle:'',
   docs:Object.fromEntries(DOCS.map(([key])=>[key,{seen:'',remarks:''}])) as Trial['docs'],
-  history:[],outcome:{at:'2026-11-12',result:'PASS',post:'Driver',machine:'Excavator',reason:'',trainer:'Sample Trainer',remarks:''},
+  history:[{role:'director',action:'Approved',by:'Sample Director',at:'2026-11-12'}],
+  outcome:{at:'2026-11-12',result:'PASS',post:'Driver',machine:'Excavator',reason:'',trainer:'Sample Trainer',remarks:''},
  };
  const failed={...trial,id:'failed',formNo:'TF/2026-27/0002',result:'FAIL',name:'Failed trial'};
- localStorage.setItem('hrPulse.localTrialWorkflow.v1:'+JSON.stringify(['test','','']),JSON.stringify([trial,failed]));
+ const pending={...trial,stage:'trainer',result:'',outcome:undefined};
+ const other={...trial,id:'unrelated',formNo:'TF/2026-27/0003',name:'Other account candidate'};
+ const key=(owner:string)=>'hrPulse.localTrialWorkflow.v1:'+JSON.stringify([owner,'','']);
+ localStorage.setItem(key('TestUser'),JSON.stringify([trial]));
+ localStorage.setItem(key('testuser'),JSON.stringify([failed,{...pending,history:[]}]));
+ localStorage.setItem(key('other'),JSON.stringify([other]));
  const {container}=render(<App/>);
+ await screen.findAllByText('Configured HR user');
  fireEvent.change(await screen.findByRole('combobox',{name:'Department'}),{target:{value:'Driver'}});
  fireEvent.click(await screen.findByRole('button',{name:'Trial Form'}));
  const preview=container.querySelector('[aria-label="Trial workflow local preview"]')!.shadowRoot!;
+ fireEvent.click(preview.querySelector('[data-tab="overview"]')!);
+ expect(preview.querySelector('#ovList')).toHaveTextContent(trial.name);
+ expect(preview.querySelector('#ovList')).toHaveTextContent(failed.name);
+ expect(preview.querySelector('#ovList')).not.toHaveTextContent(other.name);
+ expect(preview.querySelectorAll('#ovList [data-open="passed"]')).toHaveLength(1);
  fireEvent.click(preview.querySelector('[data-stage="done"]')!);
  expect(preview.querySelector('[data-join-trial="failed"]')).toBeNull();
  const open=preview.querySelector('[data-join-trial="passed"]')!;
@@ -74,7 +87,7 @@ it('opens Step 2 with candidate details from a completed trial even if session s
  expect(await screen.findByRole('heading',{name:'Joining & Personal Details',level:2})).toBeVisible();
  expect(screen.getByLabelText(/^Full Name \*/)).toHaveValue(trial.name);
  expect(screen.getByLabelText(/^Mobile \*/)).toHaveValue(trial.mobile);
- expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({step:1,trialHandoff:expect.objectContaining({id:trial.id})}));
+ expect(saveDraft).toHaveBeenCalledWith(expect.objectContaining({owner:'testuser',step:1,trialHandoff:expect.objectContaining({id:trial.id})}));
  const trialDraftIds=saveDraft.mock.calls.flatMap(([draft])=>draft.trialHandoff?.id===trial.id?[draft.id]:[]);
  expect(new Set(trialDraftIds).size).toBe(1);
  window.location.hash='';

@@ -9,7 +9,7 @@ import {approvalTable, detailView, esc, overviewTable, trainerForms} from './vie
 import {getTrialResultFile, removeTrialResultFiles, saveTrialResultFiles} from './trialResultFiles';
 
 type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
-type Scope = {company: string; site: string; owner: string; name: string; department: string};
+type Scope = {company: string; site: string; owner: string; legacyOwner?: string; name: string; department: string};
 export type PrepareJoining = (rows: Trial[]) => Promise<(() => void) | void>;
 const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
 const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',rhr:'approve',director:'approve'};
@@ -31,7 +31,9 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   const $ = <T extends HTMLElement = HTMLElement>(selector: string) => frame.querySelector<T>(selector)!;
   const $$ = <T extends HTMLElement = HTMLElement>(selector: string) => Array.from(frame.querySelectorAll<T>(selector));
   const value = (selector: string) => $<HTMLInputElement>(selector).value.trim();
-  const persistKey = 'hrPulse.localTrialWorkflow.v1:' + JSON.stringify([scope.owner,scope.company,scope.site]);
+  const keyFor = (owner: string) => 'hrPulse.localTrialWorkflow.v1:' + JSON.stringify([owner,scope.company,scope.site]);
+  const persistKey = keyFor(scope.owner);
+  const legacyKey = scope.legacyOwner && scope.legacyOwner!==scope.owner ? keyFor(scope.legacyOwner) : undefined;
   const site = scope.site || 'JAYANT OB EAST';
   const defaults = () => post(scope.department);
   const drafts = new Map<string,Outcome>();
@@ -55,13 +57,24 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     clearTimeout(toastTimer);
     toastTimer = setTimeout(()=>{alert.hidden = true;},3000);
   }
-  function read(): Trial[] {
-    const data: unknown = JSON.parse(localStorage.getItem(persistKey) || '[]');
+  function readKey(key: string): Trial[] {
+    const data: unknown = JSON.parse(localStorage.getItem(key) || '[]');
     if (!Array.isArray(data) || data.some(item=>!item || typeof item.formNo !== 'string' || !Array.isArray(item.history)
       || !Array.isArray(item.vehicles) || typeof item.createdAt !== 'string' || !item.docs)) {
       throw new Error('The saved preview records could not be read.');
     }
     return data;
+  }
+  function read(): Trial[] {
+    const current = readKey(persistKey);
+    if (!legacyKey) return current;
+    // Read the old sign-in key as well as the current HR actor key without rewriting the original records.
+    const merged = new Map(current.map(row=>[row.id,row]));
+    for (const row of readKey(legacyKey)) {
+      const saved = merged.get(row.id);
+      if (!saved || row.history.length > saved.history.length) merged.set(row.id,row);
+    }
+    return [...merged.values()];
   }
   function commit(update: (latest: Trial[])=>Trial[]) {
     try {
@@ -753,7 +766,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     refresh();
   };
   window.addEventListener('storage',event=>{
-    if (event.key!==persistKey) return;
+    if (event.key!==persistKey && event.key!==legacyKey) return;
     try{records=read();refresh();}
     catch {toast('Could not read the saved preview records.');}
   },{signal:effects.signal});

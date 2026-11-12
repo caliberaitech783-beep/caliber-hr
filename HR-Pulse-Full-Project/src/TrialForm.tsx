@@ -44,8 +44,9 @@ type TrialFormProps = {
  selection: TrialSelection;
  onPassed?: (draft: JoiningDraft) => void;
  owner?: string;
+ legacyOwner?: string;
 };
-export default function TrialForm({selection,onPassed,owner: draftOwner}: TrialFormProps) {
+export default function TrialForm({selection,onPassed,owner: draftOwner,legacyOwner}: TrialFormProps) {
  const profile = savedSession()?.profile;
  const owner=draftOwner??(profile?.actor||profile?.username||profile?.email||'local');
  const {company, site, department} = selection;
@@ -55,7 +56,7 @@ export default function TrialForm({selection,onPassed,owner: draftOwner}: TrialF
   saveTrialHandoff(draft.trialHandoff,{});
   return ()=>onPassed?.(draft);
  }
- return <TrialWorkflowPreview owner={owner} name="" site={site} company={companyShort[company]||company} department={department} onCleared={onPassed?join:undefined}/>;
+ return <TrialWorkflowPreview owner={owner} legacyOwner={legacyOwner} name="" site={site} company={companyShort[company]||company} department={department} onCleared={onPassed?join:undefined}/>;
 }
 
 export function CurrentTrialForm({selection,onPassed,canManage=false}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void;canManage?:boolean}){

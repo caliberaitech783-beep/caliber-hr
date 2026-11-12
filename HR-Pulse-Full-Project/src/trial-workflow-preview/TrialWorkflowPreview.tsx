@@ -4,8 +4,8 @@ import {mountTrialPreview,type PrepareJoining} from './mount';
 
 type Workflow = ReturnType<typeof mountTrialPreview>;
 
-export default function TrialWorkflowPreview({owner,name,site,company,department,onCleared}: {
-  owner: string; name: string; site: string; company: string; department: string; onCleared?: PrepareJoining;
+export default function TrialWorkflowPreview({owner,legacyOwner,name,site,company,department,onCleared}: {
+  owner: string; legacyOwner?: string; name: string; site: string; company: string; department: string; onCleared?: PrepareJoining;
 }) {
   const host=useRef<HTMLDivElement>(null);
   const [workflow,setWorkflow] = useState<Workflow | null>(null);
@@ -16,14 +16,14 @@ export default function TrialWorkflowPreview({owner,name,site,company,department
   useEffect(()=>{
     const node=host.current;
     if (!node) return;
-    const mounted = mountTrialPreview(node.shadowRoot||node.attachShadow({mode:'open'}),{owner,name,site,company,department},{
+    const mounted = mountTrialPreview(node.shadowRoot||node.attachShadow({mode:'open'}),{owner,legacyOwner,name,site,company,department},{
       reset: () => setUploadVersion(version => version + 1),
       setDisabled,
     },onCleared?async rows=>cleared.current?.(rows):undefined);
     setDisabled(false);
     setWorkflow(mounted);
     return mounted.dispose;
-  },[owner,name,site,company,department]);
+  },[owner,legacyOwner,name,site,company,department]);
   return <div ref={host} aria-label="Trial workflow local preview">
     {workflow && <div slot="aadhaar-upload">
       <AadhaarUploader key={uploadVersion} disabled={disabled} onBusy={workflow.setAadhaarBusy}
