@@ -55,5 +55,8 @@ jobs:
             az webapp log download -g "$group" -n "$app" --log-file "$zip" --only-show-errors || exit 1
             unzip -p "$zip" '*.log' > "$log" || true
           fi
-          grep -Eaio "ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|Cannot find (module|package) '[^']+'|Missing required setting: (PGHOST|PGDATABASE|PGUSER)|ENOENT|EADDRINUSE|did not respond to HTTP pings|failed to start|container exited|startup probe failed|startup probe succeeded|permission denied|password authentication failed|npm error code [A-Z0-9_]+|JavaScript heap out of memory|segmentation fault|ENOEXEC|health probe timed out|node:internal" "$log" |
+          grep -Eaio "ERR_[A-Z_0-9]+|MODULE_NOT_FOUND|Cannot find (module|package) '[^']+'|Missing required setting: (PGHOST|PGDATABASE|PGUSER)|ENOENT|EADDRINUSE|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|did not respond to HTTP pings|failed to start|container exited|startup probe failed|startup probe succeeded|permission denied|password authentication failed|npm error code [A-Z0-9_]+|JavaScript heap out of memory|segmentation fault|ENOEXEC|health probe timed out|node:internal" "$log" |
             sort | uniq -c || true
+          grep -Eai '(SyntaxError|TypeError|ReferenceError|RangeError|Error \[[A-Z_]+\]|Error:|ConnectionError|error:)' "$log" |
+            grep -Eavi 'token|password|secret|authorization|connection.?string|https?://|bearer|select |insert |update |delete ' |
+            cut -c 1-250 | sort | uniq | tail -n 22 || true
