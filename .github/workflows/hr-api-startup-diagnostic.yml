@@ -1,0 +1,38 @@
+name: Inspect HR API startup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hr-api-startup-diagnostic.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_C37CE79234A847D19AFDD5701BFE3EA7 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_9846DF1DEBB0406BB6F6FF1E2C39D1BA }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8BF09CD4DD2E4E12A4E95F35F288B3F2 }}
+      - name: Read App Service startup diagnostics
+        run: |
+          app=hr-api-cmll-783
+          group=$(az resource list --name "$app" --resource-type Microsoft.Web/sites --query '[0].resourceGroup' -o tsv)
+          test -n "$group"
+          az webapp show -g "$group" -n "$app" --query '{state:state,availability:availabilityState}' -o json
+          az webapp config show -g "$group" -n "$app" --query '{runtime:linuxFxVersion}' -o json
+          log=$(mktemp)
+          if az webapp log startup show -g "$group" -n "$app" > "$log" 2>/dev/null; then
+            echo 'Latest startup log received'
+          else
+            zip=$(mktemp)
+            az webapp log download -g "$group" -n "$app" --log-file "$zip" --only-show-errors || exit 1
+            unzip -p "$zip" '*.log' > "$log" || true
+          fi
+          grep -Eai "ERR_MODULE_NOT_FOUND|MODULE_NOT_FOUND|Cannot find (module|package)|Missing required setting: (PGHOST|PGDATABASE|PGUSER)|ENOENT:|EADDRINUSE|container.*(did not respond|failed to start)|error: (permission denied|relation .* does not exist|column .* does not exist|password authentication failed)|npm error (code|path)" "$log" |
+            grep -Eavi "token|secret|authorization|connection.?string|https?://" | tail -n 25 || true
