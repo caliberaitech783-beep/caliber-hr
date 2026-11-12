@@ -161,6 +161,70 @@
 .employee-report .employee-report-table th:first-child { z-index: 3; }
 .employee-report .employee-report-table td:first-child { z-index: 1; text-align: right; }
 .employee-report .employee-report-table td:is(:first-child, :nth-child(2), :nth-child(10)) { font-variant-numeric: tabular-nums; }
+.leave-management {
+  --leave-grid-line: #ae9abd;
+}
+.leave-management .data-heading {
+  flex-flow: row wrap;
+  align-items: center;
+  gap: 12px;
+}
+.leave-management .data-heading > div:first-child { flex: 1 1 250px; min-width: 0; }
+.leave-management .toolbar-buttons { flex-shrink: 1; }
+.leave-management .filter-bar > form { min-width: min(100%, 240px); }
+.leave-management .filter-bar:has(> label) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  align-items: end;
+}
+.leave-management .filter-bar > label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.leave-management .filter-bar > label :is(input, select) {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid #ddd3e4;
+  border-radius: 8px;
+}
+.leave-management .data-card > .table-scroll {
+  overflow: auto;
+  max-height: 620px;
+  border: 1px solid var(--leave-grid-line);
+  border-radius: 10px;
+}
+.leave-management .data-card > .table-scroll > table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.leave-management .data-card > .table-scroll > table :is(th, td) {
+  padding: 10px 12px;
+  border-right: 1px solid var(--leave-grid-line);
+  border-bottom: 1px solid var(--leave-grid-line);
+  text-align: left;
+  vertical-align: middle;
+}
+.leave-management .data-card > .table-scroll > table :is(th, td):last-child { border-right: 0; }
+.leave-management .data-card > .table-scroll > table tbody tr:last-child td { border-bottom: 0; }
+.leave-management .data-card > .table-scroll > table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f4eef9;
+  color: #503763;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.leave-management .data-card > .table-scroll > table td { max-width: 250px; }
+.leave-management .data-card > .table-scroll > table tbody tr:nth-child(even) { background: #faf7fc; }
+.leave-management .data-card > .table-scroll > table audio { width: 220px; max-width: 100%; }
 .employee-approval-review.modal {
   --review-padding: 24px;
   display: flex;
