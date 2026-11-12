@@ -139,7 +139,61 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
 
   const canDecide=!!selected&&!(selected.kind==='employees'&&localReviewChanged)&&stepsFor(selected)[selected.stage]?.approvers.includes(actor)&&selected.requested_by!==actor;
 
-  return <section className="data-card"><div className="data-heading"><div><h2>{completed?'Completed employee forms':'Your approval inbox'}</h2><p>Requests assigned to you or submitted by you. Latest 200 requests.</p></div><button onClick={()=>void load()} disabled={loading}><RefreshCw/>Refresh</button></div><ErrorBox message={error}/>{loading?<p role="status">Loading approvals…</p>:rows.length?<div className="table-scroll"><table className="approval-table"><thead><tr><th>Record</th><th>Module</th><th>Status</th><th>Stage / approver</th><th>Designation</th><th>Action</th>{completed&&<><th>Offer Letter</th><th>Appointment Letter</th></>}</tr></thead><tbody>{rows.map((row,index)=><tr key={row.id}><td className="approval-record"><strong>{row.code}</strong><span>{row.name}</span></td><td>{row.kind==='employees'?'Employee':row.kind==='leaveEncashments'?'Encashment':row.kind==='outDutyRequests'?'Out duty':'Leave'}</td><td><Status value={row.state}/></td><td>{Math.min(row.stage+1,stepsFor(row).length)} / {stepsFor(row).length}<br/>{row.state==='PENDING'?`Stage ${stepsFor(row)[row.stage]?.stage} · ${stepsFor(row)[row.stage]?.label}: ${stepsFor(row)[row.stage]?.approvers.join(' / ')}`:'Completed'}</td><td className="approval-designation">{row.designation||(row.data?.officeData as Record<string,string>|undefined)?.['Designation *']||(row.data?.designationTitle as string|undefined)||'—'}</td><td><button onClick={()=>{setLocalReviewChanged(false);setSelected(row);setComments('');setError('');}}>Review</button></td>{completed&&<><td><button onClick={()=>setLetter({employee:row,kind:'offer',serial:rows.length-index})}>View Offer Letter</button></td><td><button onClick={()=>setLetter({employee:row,kind:'appointment',serial:rows.length-index})}>View Appointment Letter</button></td></>}</tr>)}</tbody></table></div>:<div className="empty">{completed?'No completed employee forms yet.':'No approval requests assigned or submitted yet.'}</div>}{selected&&<div className="modal-backdrop"><section className="modal approval-review" role="dialog" aria-modal="true" aria-labelledby="approval-title"><div className="modal-heading"><h2 id="approval-title">{selected.code} · {selected.name}</h2><button aria-label="Close review" disabled={busy} onClick={()=>setSelected(null)}><X/></button></div><p>Requested by {selected.requested_by}</p>{selected.kind==='employees'?<LocalEmployeeReviewForm key={selected.id+selected.state} readOnly={selected.state==='APPROVED'} owner={actor} record={{id:selected.id,code:selected.code,name:selected.name,data:selected.data}} onChange={setLocalReviewChanged}/>:<ReviewFields data={selected.data}/>}<h3>Decision history</h3>{selected.history.length?selected.history.map((h,i)=><p key={i}>Stage {h.stage}: {h.decision} by {h.actor} · {new Date(h.at).toLocaleString()}<br/>{h.comments}</p>):<p>No decisions yet.</p>}<ErrorBox message={error}/>{selected.state==='PENDING'&&<div className="approval-decision"><p>{canDecide?'Review the employee details, then approve this stage or reject with a reason.':selected.kind==='employees'&&localReviewChanged?'Local changes are saved only on this browser. Reset to the submitted form before making an approval decision.':`Awaiting approval from ${stepsFor(selected)[selected.stage]?.approvers.join(' / ')||'the assigned approver'}. Only the assigned approver can approve this stage.`}</p>{canDecide&&selected.telegram_flow&&selected.stage===1&&<label>Charge handed over to (required for approval)<select value={chargeEmployeeId} onChange={e=>setChargeEmployeeId(e.target.value)}><option value="">Select employee</option>{chargeEmployees.map(e=><option key={e.id} value={e.id}>{e.code} · {e.name}</option>)}</select></label>}{canDecide&&<label className="comments-label">Comments (required for rejection)<textarea maxLength={2000} value={comments} onChange={e=>setComments(e.target.value)}/></label>}<div className="form-actions">{canDecide&&<button disabled={busy||!comments.trim()} onClick={()=>void decide('REJECTED')}>Reject</button>}<button className="primary" disabled={busy||!canDecide} onClick={()=>void decide('APPROVED')}>{busy?'Saving…':'Approve'}</button></div></div>}</section></div>}{letter&&<EmployeeLetter employee={letter.employee} kind={letter.kind} serial={letter.serial} close={()=>setLetter(null)}/>}</section>;
+  const employeeApprovals=kind==='employees';
+  return <section className={employeeApprovals?'data-card employee-approvals':'data-card'}>
+    <div className="data-heading">
+      <div><h2>{completed?'Completed employee forms':employeeApprovals?'Employee Verify':'Your approval inbox'}</h2><p>Requests assigned to you or submitted by you. Latest 200 requests.</p></div>
+      <button onClick={()=>void load()} disabled={loading}><RefreshCw/>Refresh</button>
+    </div>
+    <ErrorBox message={error}/>
+    {loading?<p role="status">Loading approvals…</p>:rows.length?(
+      <div className="table-scroll" role="region" aria-label={completed?'Completed employee forms':'Approval requests'} tabIndex={0}>
+        <table className={completed?'approval-table completed-approval-table':'approval-table'}>
+          <thead><tr>
+            <th scope="col">Record</th><th scope="col">Module</th><th scope="col">Status</th><th scope="col">Stage / approver</th><th scope="col">Designation</th><th scope="col">Action</th>
+            {completed&&<><th scope="col">Offer Letter</th><th scope="col">Appointment Letter</th></>}
+          </tr></thead>
+          <tbody>{rows.map((row,index)=>{
+            const steps=stepsFor(row);
+            const step=steps[row.stage];
+            return <tr key={row.id}>
+              <td className="approval-record"><strong>{row.code}</strong><span>{row.name}</span></td>
+              <td>{row.kind==='employees'?'Employee':row.kind==='leaveEncashments'?'Encashment':row.kind==='outDutyRequests'?'Out duty':'Leave'}</td>
+              <td><Status value={row.state}/></td>
+              <td><strong className="approval-stage-count">{Math.min(row.stage+1,steps.length)} / {steps.length}</strong><br/>{row.state==='PENDING'?`Stage ${step?.stage} · ${step?.label}: ${step?.approvers.join(' / ')}`:'Completed'}</td>
+              <td className="approval-designation">{row.designation||(row.data?.officeData as Record<string,string>|undefined)?.['Designation *']||(row.data?.designationTitle as string|undefined)||'—'}</td>
+              <td><button onClick={()=>{setLocalReviewChanged(false);setSelected(row);setComments('');setError('');}}>Review</button></td>
+              {completed&&<>
+                <td><button onClick={()=>setLetter({employee:row,kind:'offer',serial:rows.length-index})}>View Offer Letter</button></td>
+                <td><button onClick={()=>setLetter({employee:row,kind:'appointment',serial:rows.length-index})}>View Appointment Letter</button></td>
+              </>}
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>
+    ):<div className="empty">{completed?'No completed employee forms yet.':'No approval requests assigned or submitted yet.'}</div>}
+    {selected&&<div className="modal-backdrop"><section className={selected.kind==='employees'?'modal approval-review employee-approval-review':'modal approval-review'} role="dialog" aria-modal="true" aria-labelledby="approval-title">
+      <div className="modal-heading">
+        <div><h2 id="approval-title">{selected.code} · {selected.name}</h2><p className="approval-requester">Requested by {selected.requested_by}</p></div>
+        <button aria-label="Close review" disabled={busy} onClick={()=>setSelected(null)}><X/></button>
+      </div>
+      <div className="approval-review-body">
+        {selected.kind==='employees'?<LocalEmployeeReviewForm key={selected.id+selected.state} readOnly={selected.state==='APPROVED'} owner={actor} record={{id:selected.id,code:selected.code,name:selected.name,data:selected.data}} onChange={setLocalReviewChanged}/>:<ReviewFields data={selected.data}/>}
+        <div className="approval-history">
+          <h3>Decision history</h3>
+          {selected.history.length?selected.history.map((h,i)=><p key={i}>Stage {h.stage}: {h.decision} by {h.actor} · {new Date(h.at).toLocaleString()}<br/>{h.comments}</p>):<p>No decisions yet.</p>}
+        </div>
+      </div>
+      <ErrorBox message={error}/>
+      {selected.state==='PENDING'&&<div className="approval-decision">
+        <p>{canDecide?'Review the employee details, then approve this stage or reject with a reason.':selected.kind==='employees'&&localReviewChanged?'Local changes are saved only on this browser. Reset to the submitted form before making an approval decision.':`Awaiting approval from ${stepsFor(selected)[selected.stage]?.approvers.join(' / ')||'the assigned approver'}. Only the assigned approver can approve this stage.`}</p>
+        {canDecide&&selected.telegram_flow&&selected.stage===1&&<label>Charge handed over to (required for approval)<select value={chargeEmployeeId} onChange={e=>setChargeEmployeeId(e.target.value)}><option value="">Select employee</option>{chargeEmployees.map(e=><option key={e.id} value={e.id}>{e.code} · {e.name}</option>)}</select></label>}
+        {canDecide&&<label className="comments-label">Comments (required for rejection)<textarea maxLength={2000} value={comments} onChange={e=>setComments(e.target.value)}/></label>}
+        <div className="form-actions">{canDecide&&<button disabled={busy||!comments.trim()} onClick={()=>void decide('REJECTED')}>Reject</button>}<button className="primary" disabled={busy||!canDecide} onClick={()=>void decide('APPROVED')}>{busy?'Saving…':'Approve'}</button></div>
+      </div>}
+    </section></div>}
+    {letter&&<EmployeeLetter employee={letter.employee} kind={letter.kind} serial={letter.serial} close={()=>setLetter(null)}/>}
+  </section>;
 
 }
 
