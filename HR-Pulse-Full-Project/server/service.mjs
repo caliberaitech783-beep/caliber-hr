@@ -358,6 +358,24 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         return {state};
       });
     },
+    /* Next employee code for a company (CMLL001, CMLL002 …). The same Aadhaar always gets the same code; numbers come from
+       existing employees + reservations, so two HR users scanning at the same time never get the same code. */
+    async nextEmployeeCode(profile,input){
+      const aadhaar=String(input?.aadhaar||'').replace(/\D/g,'').slice(-12);
+      const companyKey=String(input?.company||'').trim().toLowerCase();
+      const companies=(await pool.query("SELECT code,name FROM hr_records WHERE kind='companies' AND status='ACTIVE'")).rows;
+      const company=companies.find(c=>c.code.toLowerCase()===companyKey||c.name.toLowerCase()===companyKey)||companies.find(c=>c.code.toLowerCase()==='cmll')||companies[0];
+      const prefix=(String(input?.prefix||company?.code||'CMLL').replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,6))||'CMLL';
+      return transaction(async db=>{
+        await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['employee-code:'+prefix]);
+        if(aadhaar.length===12){const held=(await db.query("SELECT code FROM hr_records WHERE kind='employeeCodes' AND data->>'aadhaar'=$1 AND code LIKE $2",[aadhaar,prefix+'%'])).rows[0];if(held)return {code:held.code,prefix,reused:true};}
+        await db.query("DELETE FROM hr_records r WHERE r.kind='employeeCodes' AND r.created_at<now()-interval '7 days' AND NOT EXISTS(SELECT 1 FROM hr_records e WHERE e.kind='employees' AND e.code=r.code)");
+        const used=(await db.query("SELECT code FROM hr_records WHERE kind IN ('employees','employeeCodes') AND code ~ $1",['^'+prefix+'[0-9]+$'])).rows.map(r=>Number(r.code.slice(prefix.length))).filter(n=>Number.isFinite(n));
+        const next=(used.length?Math.max(...used):0)+1,code=prefix+String(next).padStart(3,'0');
+        await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'employeeCodes',$1,$2,$3,'ACTIVE',$4,$4) ON CONFLICT(kind,code) DO NOTHING",[code,'Reserved employee code',{aadhaar,company:company?.code||'',reservedBy:profile.actor,reservedAt:new Date().toISOString()},profile.actor]);
+        return {code,prefix,reused:false};
+      });
+    },
     async summary(profile) {
       if(!['Dashboard','Reports & MIS'].some(x=>grantedMenus(profile).has(x)))throw problem('Dashboard or Reports permission required',403);
       const ids=await siteIds(pool,profile);
