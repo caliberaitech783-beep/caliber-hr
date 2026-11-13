@@ -36,6 +36,9 @@ INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALU
  ('10000000-0000-4000-8000-000000000003','regions','WCL','WCL','{"code":"WCL","name":"WCL","state":"Maharashtra"}','ACTIVE','system','system'),
  ('10000000-0000-4000-8000-000000000004','regions','NCL','NCL','{"code":"NCL","name":"NCL","state":"Madhya Pradesh / Uttar Pradesh"}','ACTIVE','system','system')
 ON CONFLICT(kind,code) DO NOTHING;
+-- Spelling fix for already-seeded site names (Dudichua -> Dudhichua).
+UPDATE hr_records SET name='Dudhichua OB East',updated_at=now() WHERE kind='sites' AND code='NCL-DUDE' AND name<>'Dudhichua OB East';
+UPDATE hr_records SET name='Dudhichua OB West',updated_at=now() WHERE kind='sites' AND code='NCL-DUDW' AND name<>'Dudhichua OB West';
 
 INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by)
 SELECT source.id::uuid,'sites',source.code,source.name,
@@ -47,8 +50,8 @@ FROM (VALUES
  ('20000000-0000-4000-8000-000000000003','KSR','KSR FREIGHT CARRIERS','CO-HO','Maharashtra','Office'),
  ('20000000-0000-4000-8000-000000000004','CHADDA','CHADDA TRADING CO.','CO-HO','Maharashtra','Office'),
  ('20000000-0000-4000-8000-000000000005','NCL-JAYANT','Jayant OB','NCL','Madhya Pradesh / Uttar Pradesh','Mine'),
- ('20000000-0000-4000-8000-000000000006','NCL-DUDW','Dudichua OB west','NCL','Madhya Pradesh / Uttar Pradesh','Mine'),
- ('20000000-0000-4000-8000-000000000007','NCL-DUDE','Dudichua OB East','NCL','Madhya Pradesh / Uttar Pradesh','Mine'),
+ ('20000000-0000-4000-8000-000000000006','NCL-DUDW','Dudhichua OB West','NCL','Madhya Pradesh / Uttar Pradesh','Mine'),
+ ('20000000-0000-4000-8000-000000000007','NCL-DUDE','Dudhichua OB East','NCL','Madhya Pradesh / Uttar Pradesh','Mine'),
  ('20000000-0000-4000-8000-000000000008','WCL-SASTI','Sasti OB','WCL','Maharashtra','Mine'),
  ('20000000-0000-4000-8000-000000000009','WCL-DHOPTALA','Dhoptala OB','WCL','Maharashtra','Mine'),
  ('20000000-0000-4000-8000-000000000010','WCL-MAJRI','Majri OB','WCL','Maharashtra','Mine'),
