@@ -70,49 +70,37 @@ jobs:
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_8BF09CD4DD2E4E12A4E95F35F288B3F2 }}
       - name: Deploy to Azure Web App (zip deploy)
         id: deploy-to-webapp
+        env:
+          HR_API_APP: hr-api-cmll-783
+          HR_API_RESOURCE_GROUP: coalmine-fleet-maintenance-rg
         run: |
-          set -e
-          cd app && zip -qr ../app.zip . && cd ..
-          app_id=$(az resource list --name hr-api-cmll-783 --resource-type Microsoft.Web/sites --query '[0].id' -o tsv)
-          test -n "$app_id"
-          rg=$(echo "$app_id" | sed -E 's#.*/resourceGroups/([^/]+)/.*#\1#')
-          # A stuck deployment session in the Kudu (SCM) container blocks every upload with "deployment in progress".
-          # Restart does not recycle Kudu on Linux; Stop + Start does.
-          az webapp stop --ids "$app_id"
-          sleep 30
-          az webapp start --ids "$app_id"
-          for i in $(seq 1 24); do
-            state=$(az rest --method get --url "https://hr-api-cmll-783.scm.azurewebsites.net/api/deployments/latest" --resource "https://management.azure.com/" --query 'complete' -o tsv 2>/dev/null || echo unknown)
-            echo "Kudu latest deployment complete=$state"
-            [ "$state" = "true" ] || [ "$state" = "unknown" ] && break
-            sleep 10
-          done
-          sleep 20
-          for attempt in 1 2 3; do
-            if az webapp deploy --resource-group "$rg" --name hr-api-cmll-783 --src-path app.zip --type zip --clean true --restart true --timeout 600000; then exit 0; fi
-            echo "Deploy attempt $attempt failed – Azure deployment log:"
-            az webapp log deployment show --resource-group "$rg" --name hr-api-cmll-783 -o table || true
-            echo "Deploy attempt $attempt failed – retrying with Kudu zipdeploy"
-            if az webapp deployment source config-zip --resource-group "$rg" --name hr-api-cmll-783 --src app.zip --timeout 600; then exit 0; fi
-            sleep 30
-          done
-          exit 1
+          set -euo pipefail
+          (cd app && zip -qr ../app.zip .)
+          if ! app_state=$(az webapp show --resource-group "$HR_API_RESOURCE_GROUP" --name "$HR_API_APP" --query state -o tsv); then
+            echo "::error::Azure could not read the production HR App Service through its deployment identity."
+            exit 1
+          fi
+          if [ "$app_state" = "Stopped" ]; then
+            if ! az webapp start --resource-group "$HR_API_RESOURCE_GROUP" --name "$HR_API_APP"; then
+              echo "::error::Azure could not start the stopped HR App Service."
+              exit 1
+            fi
+          fi
+          # Submit the upload once. The health step below verifies startup and the deployed commit.
+          if ! az webapp deploy --resource-group "$HR_API_RESOURCE_GROUP" --name "$HR_API_APP" \
+            --src-path app.zip --type zip --restart true --async true --track-status false --enriched-errors true; then
+            echo "::error::Azure could not submit the HR API package to Kudu. Check the deployment step log for the Azure error."
+            exit 1
+          fi
       - name: Check health
         run: |
-          wait_for_release() {
-            for i in $(seq 1 "$1"); do
-              if curl -fsS --max-time 10 https://hr-api-cmll-783.azurewebsites.net/api/health |
-                jq -e --arg commit "$GITHUB_SHA" '.status == "ok" and .release == $commit' > /dev/null; then
-                echo "API is serving $GITHUB_SHA"
-                return 0
-              fi
-              sleep 5
-            done
-            return 1
-          }
-          if wait_for_release 6; then exit 0; fi
-          echo "The App Service worker is still serving the previous release. Restarting the app once."
-          app_id=$(az resource list --name hr-api-cmll-783 --resource-type Microsoft.Web/sites --query '[0].id' -o tsv)
-          test -n "$app_id"
-          az webapp restart --ids "$app_id"
-          wait_for_release 18
+          for attempt in $(seq 1 36); do
+            if curl -fsS --max-time 8 https://hr-api-cmll-783.azurewebsites.net/api/health |
+              jq -e --arg commit "$GITHUB_SHA" '.status == "ok" and .release == $commit' > /dev/null; then
+              echo "API is serving $GITHUB_SHA"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Azure accepted the upload, but the HR API did not serve the new release within the health check window."
+          exit 1
