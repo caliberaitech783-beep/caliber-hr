@@ -54,7 +54,7 @@ export default function SalaryFields({enforce=true,defaults={}}:{enforce?:boolea
   <F id="site-project" label="Site / Project" required={enforce} hint={S?`Company: ${S.company}`+(S.plans?' · mess plan site – choose per day or per month below':''):(defaults.company?`Company: ${defaults.company}`:'Auto from the site selected above')}>
    <select id="site-project" name="Site / Project" required={enforce} defaultValue="" onChange={sync}><option value="">Select</option>{sites.map(k=><option key={k.site} value={k.site}>{siteDisplayName(k.site)}</option>)}</select></F>
   <F id="accommodation-category" label="Accommodation Category" required={enforce} hint="Decides the food (mess) deduction at the site" hidden={st||hasPlan}>
-   <select id="accommodation-category" name="Accommodation Category" defaultValue="Camp" onChange={sync}><option value="Camp">Camp (Non-local)</option><option value="NonCamp">Non-Camp (Local)</option></select></F>
+   <select id="accommodation-category" name="Accommodation Category" required={enforce&&!st&&!hasPlan} defaultValue="Camp" onChange={sync}><option value="Camp">Camp (Non-local)</option><option value="NonCamp">Non-Camp (Local)</option></select></F>
   <F id="mess-deduction" label="Food (Mess) Deduction" hint={fr?`Food: ${fr.food} · ${fr.rem}`:'HPC / Non-HPC only – from the site-wise food deduction master'} hidden={st}>
    <input id="mess-deduction" name="Mess Deduction" className="salary-ro" readOnly value={fr?.label||''} placeholder="Auto from Site + Category + Salary Type"/></F>
   <F id="mess-plan" label="Mess Plan" required={enforce} hint="Per day = rate × paid days · Per month = fixed amount" hidden={!hasPlan}>
@@ -62,7 +62,7 @@ export default function SalaryFields({enforce=true,defaults={}}:{enforce?:boolea
   <F id="special-approval" label="Special Approval (food)" hint="Individual rate approved for this worker" hidden={!hasSp}>
    <select id="special-approval" name="Special Approval (food)" defaultValue="" onChange={sync}><option value="">None – as per site master</option>{sp0.slice(1).map(p=><option key={p.id} value={p.id}>₹{p.r} per day – {p.rem}</option>)}</select></F>
   <F id="pt-state" label="PT State" required={enforce} hint="Professional Tax slab from PT Master (state-wise)">
-   <select id="pt-state" name="PT State" defaultValue={PT_STATES[0]} onChange={sync}>{PT_STATES.map(s=><option key={s}>{s}</option>)}</select></F>
+   <select id="pt-state" name="PT State" required={enforce} defaultValue={PT_STATES[0]} onChange={sync}>{PT_STATES.map(s=><option key={s}>{s}</option>)}</select></F>
   <div className={'salary-preview'+(canOpen?' ready':'')} role={canOpen?'button':undefined} tabIndex={canOpen?0:-1} onClick={()=>canOpen&&setOpen(true)} onKeyDown={e=>{if(canOpen&&(e.key==='Enter'||e.key===' ')){e.preventDefault();setOpen(true);}}}>
    {preview?<><div className="salary-preview-chips">{preview}</div><span className="salary-preview-link">View full salary summary ›</span></>:<span><b>Salary preview</b> – select Salary Type and fill the salary fields</span>}
   </div>

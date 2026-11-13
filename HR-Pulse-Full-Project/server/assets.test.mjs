@@ -35,7 +35,7 @@ test('tag allocation uses atomic upsert and preserves long counters',async()=>{
 });
 test('category custom fields validate required values, types and dropdown choices',()=>{
  const c=categoryData({name:'Vehicle',prefix:'VEH',group:'Vehicles & Tools',rate:15,method:'WDV',fields:[{key:'reg',label:'Registration',type:'text',required:true},{key:'expiry',label:'Expiry',type:'date'},{key:'fuel',label:'Fuel',type:'dropdown',options:['Diesel']}]});
- assert.throws(()=>customData(c.fields,{}),/required/);assert.throws(()=>customData(c.fields,{reg:'AB',expiry:'2026-02-30'}),/date/);assert.throws(()=>customData(c.fields,{reg:'AB',fuel:'Water'}),/Invalid/);
+ assert.throws(()=>customData(c.fields,{}),/required/);assert.throws(()=>customData(c.fields,{reg:'  '}),/Registration is required/);assert.throws(()=>customData(c.fields,{reg:'AB',expiry:'2026-02-30'}),/date/);assert.throws(()=>customData(c.fields,{reg:'AB',fuel:'Water'}),/Invalid/);
  assert.deepEqual(customData(c.fields,{reg:'AB',untrusted:'ignored'}),{reg:'AB'});
 });
 test('employee self-view fails closed without verified employee link',async()=>{

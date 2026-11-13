@@ -6,6 +6,7 @@ import {assetPrintHtml} from './assetPrint';
 import {departmentStructure} from './joiningDepartments';
 import {readPaddlePasses} from './paddleOcr';
 import AadhaarUploader from './AadhaarUploader';
+import {requiredEmployeeDetail} from '../server/joining-required.mjs';
 import type {AadhaarDetails} from './geminiOcr';
 import PulseDirectoryReport from './PulseDirectoryReport';
 import SalaryFields from './SalaryFields';
@@ -25,7 +26,6 @@ const companiesWithoutSites=new Set(['CHADDA TRADING COMPANY','KSR FREIGHT CARRI
 const locations={Site:['NCL','WCL'],Office:['Nagpur CO','Chandrapur HO']};
 const tabs=['Add Temp. Employee','Update Existing Employee','Employee Verify','Completed Form','Reports'];
 const enforceJoiningMandatoryFields=true;
-const enforceJoiningStepNavigation=false;
 const corporateOfficeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Reference Type','Reference Name','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Mess Deduction','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 const corporateOfficeUploadHeaders=[corporateOfficeHeaders[0],corporateOfficeHeaders[2],corporateOfficeHeaders[1],...corporateOfficeHeaders.slice(3)];
 const corporateDateHeaders=new Set(['Date of Birth','Joining Date *']);
@@ -231,6 +231,12 @@ function EmployeeDetailsEditor({row,sheets,initialSection,save,close}:{row:Recor
   <form onSubmit={async event=>{
    event.preventDefault();
    if(saving||!Object.keys(patch).length)return;
+   const missing=Object.keys(patch).find(header=>requiredEmployeeDetail(header)&&!patch[header]);
+   if(missing){
+    setSection(editableSheets.find(sheet=>sheet.columns.includes(missing))?.name??section);
+    setError(missing.replace(/\s*\*$/,'')+' is required.');
+    return;
+   }
    setSaving(true);setError('');
    try{await save(row,patch);dismiss();}catch(error){setError((error as Error).message);setSaving(false);}
   }}>
@@ -338,8 +344,8 @@ function DocumentChecklist({visibleDocuments,onCandidatePhotoChange,onPhotoRemov
  return <Section title="Document Checklist"><div className="joining-table-wrap"><table className="joining-table documents-table"><thead><tr><th>S.No.</th><th>Document Name</th><th>Upload</th><th>Preview</th><th>Remove</th><th>Verified By</th><th>Remarks</th></tr></thead><tbody>{visibleDocuments.map(([name,rule],index)=>{const required=enforceJoiningMandatoryFields&&rule.startsWith('Mandatory');return <tr key={name}><td>{index+1}</td><td>{name}{required&&<b className="document-required"> *</b>}</td><td><input ref={element=>{inputs.current[name]=element;}} name={`Upload ${name}`} aria-label={`Upload ${name}`} required={required} type="file" accept={name==='Candidate photo'?'.jpg,.jpeg,.png,image/jpeg,image/png':'.jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf'} onChange={event=>selected(name,event.target.files?.[0])}/></td><td><button type="button" className="document-action preview" disabled={!files[name]} onClick={()=>show(name)}><Eye/>Preview</button></td><td><button type="button" className="document-action remove" disabled={!files[name]} onClick={()=>remove(name)}><Trash2/>Remove</button></td><td><input name={`Verified by ${name}`} aria-label={`Verified by ${name}`}/></td><td><input name={`Remarks for ${name}`} aria-label={`Remarks for ${name}`}/></td></tr>})}</tbody></table></div><input ref={bulkInput} id="bulk-documents" name={bulkDocumentsInput} aria-label="Bulk upload documents" type="file" multiple hidden accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={event=>void addBulk(Array.from(event.target.files||[]))}/>{bulkNote&&<p className="help-text" role="status">{bulkNote}</p>}{bulk.length>0&&<div className="bulk-documents"><h4>Bulk uploaded documents ({bulk.length})</h4><div className="joining-table-wrap"><table className="joining-table documents-table"><thead><tr><th>S.No.</th><th>File Name</th><th>Preview</th><th>Remove</th></tr></thead><tbody>{bulk.map((file,index)=><tr key={index+file.name}><td>{index+1}</td><td>{file.name}</td><td><button type="button" className="document-action preview" onClick={()=>showBulk(file)}><Eye/>Preview</button></td><td><button type="button" className="document-action remove" onClick={()=>removeBulk(index)}><Trash2/>Remove</button></td></tr>)}</tbody></table></div></div>}{preview&&<div className="document-preview" role="dialog" aria-label={`Preview ${preview.name}`}><div className="document-preview-heading"><strong>{preview.name}</strong><button type="button" aria-label="Close document preview" onClick={closePreview}><X/></button></div>{preview.pdf?<object data={preview.url} type="application/pdf" aria-label={`${preview.name} PDF preview`}/>:<img src={preview.url} alt={`${preview.name} preview`}/>}</div>}</Section>;
 }
 
-function JoiningStep({activeStep,employeeGroup,employeeCategory,setEmployeeCategory,visibleDocuments,defaults,subdepartments,designations,aadhaarLocked=false,onCandidatePhotoChange,onPhotoRemoveReady}:{onPhotoRemoveReady?:(remove:()=>void)=>void;onCandidatePhotoChange?:(file?:File)=>void;activeStep:string;employeeGroup:'Corporate / HO'|'OB / COAL';employeeCategory:string;setEmployeeCategory:(value:string)=>void;visibleDocuments:string[][];defaults:FormDefaults;subdepartments:string[];designations:string[];aadhaarLocked?:boolean}){
- if(activeStep==='Joining & Personal Details')return <><Section title="Joining & Personal Details"><div className="joining-grid"><Field label="Joining Category" required options={employeeGroup==='Corporate / HO'?[...companyOptions.filter(option=>option!=='CHADDA TRADING COMPANY'),'CORPORATE','HO','CHADDA TRADING CO.']:['WCL','NCL']} value={defaults.joiningCategory}/><Field label="A-Form No." required={employeeGroup==='OB / COAL'} placeholder={employeeGroup==='OB / COAL'?'Required for OB / COAL':'If applicable'}/><Field label="Full Name as per Aadhaar" required disabled={aadhaarLocked} placeholder="Exactly as printed on Aadhaar"/><Field label="Full Name" required placeholder="Enter full name"/><Field label="Employee Code" required placeholder="Auto (e.g. CMLL001)"/><Field label="Father / Spouse Name" required disabled={aadhaarLocked} placeholder="Enter full name"/><Field label="Date of Birth" type="date" disabled={aadhaarLocked}/><Field label="Gender" options={['Male','Female','Other']} disabled={aadhaarLocked}/><Field label="Caste / Category" options={['SC','ST','OBC','General']}/><Field label="Identification Mark"/><Field label="Blood Group" options={['A+','A-','B+','B-','AB+','AB-','O+','O-']}/><Field label="Mobile" required type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} placeholder="10-digit mobile number"/><Field label="Alternate Mobile" type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} placeholder="Optional – 10 digits"/><Field label="Candidate E-mail" required type="email" placeholder="name@example.com"/><Field label="Aadhaar No." required disabled={aadhaarLocked} inputMode="numeric" pattern="[0-9]{12}" minLength={12} maxLength={12} placeholder="12-digit Aadhaar number"/><Field label="PAN No." required pattern="[A-Z]{5}[0-9]{4}[A-Z]" minLength={10} maxLength={10} placeholder="10-character PAN in CAPITALS (e.g. ABCDE1234F)"/><Field label="UAN No." inputMode="numeric" maxLength={12} placeholder="12-digit UAN"/><Field label="ESIC" inputMode="numeric" maxLength={10} placeholder="10-digit ESIC number"/><Field label="Permanent Address" type="textarea" wide disabled={aadhaarLocked} placeholder="House, street, city, state, PIN"/><Field label="Present Address" type="textarea" wide required placeholder="If same, write 'Same as permanent'"/><ReferenceFields/><Field label="Emergency Contact Name" required placeholder="Name"/><Field label="Emergency Contact Number" required type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} placeholder="10-digit number"/></div></Section><JobPostingSections employeeGroup={employeeGroup} employeeCategory={employeeCategory} setEmployeeCategory={setEmployeeCategory} defaults={defaults} subdepartments={subdepartments} designations={designations}/></>;
+function JoiningStep({activeStep,employeeGroup,employeeCategory,setEmployeeCategory,visibleDocuments,defaults,subdepartments,designations,onCandidatePhotoChange,onPhotoRemoveReady}:{onPhotoRemoveReady?:(remove:()=>void)=>void;onCandidatePhotoChange?:(file?:File)=>void;activeStep:string;employeeGroup:'Corporate / HO'|'OB / COAL';employeeCategory:string;setEmployeeCategory:(value:string)=>void;visibleDocuments:string[][];defaults:FormDefaults;subdepartments:string[];designations:string[]}){
+ if(activeStep==='Joining & Personal Details')return <><Section title="Joining & Personal Details"><div className="joining-grid"><Field label="Joining Category" required options={employeeGroup==='Corporate / HO'?[...companyOptions.filter(option=>option!=='CHADDA TRADING COMPANY'),'CORPORATE','HO','CHADDA TRADING CO.']:['WCL','NCL']} value={defaults.joiningCategory}/><Field label="A-Form No." required={employeeGroup==='OB / COAL'} placeholder={employeeGroup==='OB / COAL'?'Required for OB / COAL':'If applicable'}/><Field label="Full Name as per Aadhaar" required placeholder="Exactly as printed on Aadhaar"/><Field label="Full Name" required placeholder="Enter full name"/><Field label="Employee Code" required placeholder="Auto (e.g. CMLL001)"/><Field label="Father / Spouse Name" required placeholder="Enter full name"/><Field label="Date of Birth" type="date"/><Field label="Gender" options={['Male','Female','Other']}/><Field label="Caste / Category" options={['SC','ST','OBC','General']}/><Field label="Identification Mark"/><Field label="Blood Group" options={['A+','A-','B+','B-','AB+','AB-','O+','O-']}/><Field label="Mobile" required type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} placeholder="10-digit mobile number"/><Field label="Alternate Mobile" type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} placeholder="Optional – 10 digits"/><Field label="Candidate E-mail" required type="email" placeholder="name@example.com"/><Field label="Aadhaar No." required inputMode="numeric" pattern="[0-9]{12}" minLength={12} maxLength={12} placeholder="12-digit Aadhaar number"/><Field label="PAN No." required pattern="[A-Z]{5}[0-9]{4}[A-Z]" minLength={10} maxLength={10} placeholder="10-character PAN in CAPITALS (e.g. ABCDE1234F)"/><Field label="UAN No." inputMode="numeric" maxLength={12} placeholder="12-digit UAN"/><Field label="ESIC" inputMode="numeric" maxLength={10} placeholder="10-digit ESIC number"/><Field label="Permanent Address" type="textarea" wide placeholder="House, street, city, state, PIN"/><Field label="Present Address" type="textarea" wide required placeholder="If same, write 'Same as permanent'"/><ReferenceFields/><Field label="Emergency Contact Name" required placeholder="Name"/><Field label="Emergency Contact Number" required type="tel" inputMode="numeric" pattern="[0-9]{10}" minLength={10} maxLength={10} placeholder="10-digit number"/></div></Section><JobPostingSections employeeGroup={employeeGroup} employeeCategory={employeeCategory} setEmployeeCategory={setEmployeeCategory} defaults={defaults} subdepartments={subdepartments} designations={designations}/></>;
  if(activeStep==='Mine Compliance (OB / COAL where applicable)')return <Section title="Mine Compliance (OB / COAL where applicable)"><div className="joining-grid"><Field label="VT Certificate No." placeholder="Required as applicable"/><Field label="VTC Centre Name" placeholder="Training centre"/><Field label="VTC Valid Upto" type="date"/><Field label="WUIN No." placeholder="If applicable"/><Field label="Medical Examination Date" type="date"/><Field label="Medical Fitness Valid Upto" type="date"/><Field label="Medical Fitness Status" options={['Fit','Pending','Unfit']}/><Field label="Safety Induction Date" type="date"/><Field label="Driving Licence No." required placeholder="For drivers/operators where applicable"/><Field label="DL Class" options={['LMV','HMV','Transport','Other']}/><Field label="DL Issue Date" required type="date"/><Field label="DL Valid Upto" required type="date"/><Field label="Operator Competency Certificate" placeholder="No. / type / validity"/><Field label="Other Mine Permit / Training" type="textarea" wide placeholder="Details"/></div></Section>;
  if(activeStep==='Educational Details')return <Section title="Educational Details"><EntryTable columns={['Qualification','Board / University','Institute / College','Year of Passing','Percentage / CGPA']}/></Section>;
  if(activeStep==='Family Details')return <Section title="Family Details"><EntryTable columns={['Family Member Name','Relationship','Date of Birth','Contact No.','Occupation','Dependent? (Y/N)']}/></Section>;
@@ -360,7 +366,7 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
  const[step,setStep]=useState(trial?Math.max(1,savedStep):savedStep);
  const[employeeCategory,setEmployeeCategory]=useState(draft?.category||(handoff&&['Driver','Operator'].includes(handoff.post)?handoff.post:''));
  const directTrial=trial&&employeeCategory===trial.post&&defaults.department===trial.post?trial:undefined;
- const[draftStatus,setDraftStatus]=useState('Progress saves automatically on this browser.'),[photo,setPhoto]=useState<File|undefined>(draft?.photo||(handoff?trialHandoffPhotos().photo:undefined)),[photo2,setPhoto2]=useState<File|undefined>(draft?.photo2||(handoff?trialHandoffPhotos().photo2:undefined));
+ const[draftStatus,setDraftStatus]=useState('Progress is saved as a draft on this browser until you submit.'),[photo,setPhoto]=useState<File|undefined>(draft?.photo||(handoff?trialHandoffPhotos().photo:undefined)),[photo2,setPhoto2]=useState<File|undefined>(draft?.photo2||(handoff?trialHandoffPhotos().photo2:undefined));
  const candidatePhotoRemover=useRef<()=>void>(()=>{});
  const[candidatePhoto,setCandidatePhoto]=useState<File|undefined>(draft?.files?.['Upload Candidate photo']?.[0]);
  const draftId=useRef(draft?.id||crypto.randomUUID()),dirty=useRef(!!draft),finished=useRef(false),queue=useRef<Promise<unknown>>(Promise.resolve()),saveVersion=useRef(0);
@@ -378,22 +384,44 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
  const visibleDocuments=documents
   .filter(([name])=>!conditionalDocuments.has(name)||showMineCompliance||(name==='Driving licence'&&requiresDrivingLicence))
   .map(([name,rule])=>[name,name==='Driving licence'&&requiresDrivingLicence?'Mandatory':rule]);
- function validateStep(index:number,showNativeMessage=true){
-  if(!enforceJoiningMandatoryFields){setSaveError('');return true;}
-  if(index===0&&!photo&&!handoff&&!directTrial){setSaveError('Please upload the Aadhaar document before continuing.');return false;}
-  if(index===1&&!employeeCategory){setSaveError('Please select Employee Category before continuing.');requestAnimationFrame(()=>formRef.current?.querySelector<HTMLButtonElement>('.employee-category-trigger')?.focus());return false;}
+ function stepIssue(index:number):{message:string;control?:HTMLElement}|undefined{
+  if(index===0&&!photo?.size&&!photo2?.size&&!handoff&&!directTrial){
+   return {message:'Please upload the Aadhaar document before continuing.',control:formRef.current?.querySelector<HTMLButtonElement>('.aadhaar-upload-actions button')??undefined};
+  }
   const panel=formRef.current?.querySelector<HTMLElement>(`[data-joining-step="${index}"]`);
-  const invalid=panel?Array.from(panel.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('input[required], select[required], textarea[required]')).find(control=>
-   control instanceof HTMLInputElement&&control.type==='file'&&!control.disabled?!control.files?.[0]?.size:!control.checkValidity()):undefined;
-  if(!invalid){setSaveError('');return true;}
-  const label=invalid.name||invalid.closest('label')?.querySelector('span')?.textContent?.replace('*','').trim()||'mandatory field';
-  setSaveError(invalid instanceof HTMLInputElement&&invalid.type==='file'
-   ?`Please upload the mandatory document: ${label.replace(/^Upload /,'')}.`
-   :`Please fill the mandatory field: ${label}.`);
-  if(showNativeMessage)requestAnimationFrame(()=>invalid.reportValidity());
-  return false;
+  if(!panel)return;
+  const controls=panel.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|HTMLButtonElement>('input, select, textarea, .employee-category-trigger');
+  for(const control of controls){
+   const hidden=control.closest('[hidden]');
+   if(hidden&&hidden!==panel&&panel.contains(hidden))continue;
+   if(control instanceof HTMLButtonElement){
+    if(!employeeCategory)return {message:'Please select Employee Category before continuing.',control};
+    continue;
+   }
+   if(!control.willValidate)continue;
+   const label=control.name||control.getAttribute('aria-label')||control.closest('label')?.textContent?.trim()||'field';
+   if(control instanceof HTMLInputElement&&control.type==='file'){
+    if(control.required&&!control.files?.[0]?.size)return {message:`Please upload the mandatory document: ${label.replace(/^Upload /,'')}.`,control};
+    continue;
+   }
+   if(control.required&&!control.value.trim())return {message:`Please fill the mandatory field: ${label}.`,control};
+   if(!control.validity.valid)return {message:`Please enter a valid value for ${label}. ${control.validationMessage}`,control};
+  }
  }
- /* Joining approval (OTP / Approve on Telegram) gates leaving Joining & Personal Details. */
+ const allStepIndices=activeSteps.map((_,index)=>index);
+ function validateSteps(indices:number[]){
+  for(const index of indices){
+   const issue=stepIssue(index);
+   if(!issue)continue;
+   setSaveError(issue.message);
+   setStep(index);
+   requestAnimationFrame(()=>issue.control?.focus());
+   return false;
+  }
+  setSaveError('');
+  return true;
+ }
+ /* Joining approval is requested after the final validation. */
  const[approval,setApproval]=useState<JoiningApprovalState>(()=>loadJoiningApproval(draftId.current)),[gate,setGate]=useState(false),[approvalNeeded,setApprovalNeeded]=useState<boolean|null>(null);
  useEffect(()=>{if(trial)return;let live=true;void joiningApprovalRequired().then(v=>{if(live)setApprovalNeeded(v);});return()=>{live=false;};},[trial]);
  const fieldValue=(name:string)=>{const el=formRef.current?.elements.namedItem(name) as HTMLInputElement|HTMLSelectElement|null;return el&&'value' in el?el.value:'';};
@@ -406,7 +434,7 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
  },[activeStep,defaults.company]);
  function approvalInfo(){return {candidate:fieldValue('Full Name'),post:fieldValue('Designation')||employeeCategory||fieldValue('Department'),site:fieldValue('Site')||defaults.site||'',company:fieldValue('Joining Category')||defaults.company||''};}
  async function submitEmployee(formEl:HTMLFormElement){
-  if(!onSave||saving)return;
+  if(!onSave||saving||!validateSteps(allStepIndices))return;
   const values:Record<string,string>={};
   for(const [key,value] of new FormData(formEl).entries())values[key]=typeof value==='string'?value:value.size?value.name:'';
   for(const control of Array.from(formEl.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('[name]:disabled')))values[control.name]=control.value;
@@ -425,21 +453,22 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
   }catch(error){setSaveError((error as Error).message);}
   finally{setSaving(false);}
  }
- function moveToStep(target:number){if(!enforceJoiningStepNavigation){setSaveError('');setStep(Math.max(0,Math.min(target,activeSteps.length-1)));return;}if(target<=step){setSaveError('');setStep(target);return;}if(!validateStep(step))return;setStep(Math.min(target,step+1));}
+ function moveToStep(target:number){setSaveError('');setStep(Math.max(firstStep,Math.min(target,activeSteps.length-1)));}
+ function continueJoining(){if(!saving&&validateSteps([step]))setStep(step+1);}
  /* Submit Employee (Document Checklist) runs `go` at once unless joining approval (OTP / Approve on Telegram) is required and not yet given. */
  function gated(go:()=>void){if(directTrial||approval.status==='APPROVED'){go();return;}if(approvalNeeded===true){setGate(true);return;}if(approvalNeeded===false||!savedSession()?.grant){go();return;}void joiningApprovalRequired().then(v=>{setApprovalNeeded(v);if(v)setGate(true);else go();});}
  function approved(state:JoiningApprovalState){setApproval(state);setGate(false);const el=formRef.current?.elements.namedItem('Joining Approval') as HTMLInputElement|null;if(el){el.value=state.approvedBy?`${state.approvedBy} · ${state.approvedAt?new Date(state.approvedAt).toLocaleString():''}`:'Approved';el.dispatchEvent(new Event('change',{bubbles:true}));}if(formRef.current)submitEmployee(formRef.current);}
- return <form ref={formRef} className="joining-form" noValidate autoComplete="off" onKeyDown={event=>{if(event.key!=='Enter'||event.shiftKey)return;const target=event.target as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement;if(target.tagName==='TEXTAREA'||target.tagName==='BUTTON'||target.type==='file'||target.tagName==='SELECT'&&!target.value)return;const controls=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('input:not([type="hidden"]):not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])')).filter(control=>!control.closest('[hidden]')&&!control.classList.contains('employee-import-input'));const index=controls.indexOf(target);if(index<0||index===controls.length-1)return;event.preventDefault();controls[index+1].focus();}} onSubmit={event=>{event.preventDefault();if(directTrial&&step!==activeSteps.length-1)return;for(const index of [0,1,5])if(!validateStep(index,false)){setStep(index);return;}if(!onSave)return;const formEl=event.currentTarget;gated(()=>submitEmployee(formEl));}}>
+ return <form ref={formRef} className="joining-form" noValidate autoComplete="off" onKeyDown={event=>{if(event.key!=='Enter'||event.shiftKey)return;const target=event.target as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement;if(target.tagName==='TEXTAREA'||target.tagName==='BUTTON'||target.type==='file'||target.tagName==='SELECT'&&!target.value)return;const controls=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('input:not([type="hidden"]):not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])')).filter(control=>!control.closest('[hidden]')&&!control.classList.contains('employee-import-input'));const index=controls.indexOf(target);if(index<0||index===controls.length-1)return;event.preventDefault();controls[index+1].focus();}} onSubmit={event=>{event.preventDefault();if(step!==activeSteps.length-1||saving||gate||!onSave)return;if(!validateSteps(allStepIndices))return;const formEl=event.currentTarget;gated(()=>submitEmployee(formEl));}}>
   <p className="joining-draft-status" role="status">{draftStatus}</p>
   <div className="joining-steps" aria-label="Employee joining steps" style={{gridTemplateColumns:`repeat(${activeSteps.length-(handoff?1:0)},minmax(0,1fr))`}}>{activeSteps.map((label,index)=><button type="button" key={label} hidden={Boolean(handoff)&&index===0} className={step===index?'active':''} onClick={()=>moveToStep(index)}><i>{index+1}</i><span>{label}</span></button>)}</div>
   <div className="joining-card">
    <div className="joining-heading"><div><h2>{activeSteps[step]}</h2><p>Complete all applicable details from the Caliber Mining And Logistics Ltd employee joining form.</p></div>{activeStep==='Joining & Personal Details'&&<CandidatePhotoHeader photo={candidatePhoto} remove={()=>{dirty.current=true;candidatePhotoRemover.current();latestPersist.current();}} upload={()=>formRef.current?.querySelector<HTMLInputElement>('input[name="Upload Candidate photo"]')?.click()}/>}{activeSteps[step]==='Document Checklist'&&<button type="button" className="bulk-upload-button" onClick={()=>document.getElementById('bulk-documents')?.click()}><Upload/>Bulk Upload</button>}</div>
    <div data-joining-step="0" hidden={activeStep!=='Upload Aadhaar Card'}><AadhaarUpload form={formRef} photo={photo} photo2={photo2} onPhoto={file=>{dirty.current=true;setPhoto(file);}} onPhoto2={file=>{dirty.current=true;setPhoto2(file);}}/></div>
-   {activeSteps.filter(section=>section!=='Upload Aadhaar Card').map(section=>{const index=activeSteps.indexOf(section);return <div key={section} data-joining-step={index} hidden={section!==activeStep}><JoiningStep activeStep={section} employeeGroup={employeeGroup} employeeCategory={employeeCategory} setEmployeeCategory={setEmployeeCategory} visibleDocuments={visibleDocuments} defaults={formDefaults} subdepartments={subdepartments} designations={designations} aadhaarLocked={Boolean(photo||photo2)} onCandidatePhotoChange={setCandidatePhoto} onPhotoRemoveReady={remove=>{candidatePhotoRemover.current=remove;}}/></div>})}
+   {activeSteps.filter(section=>section!=='Upload Aadhaar Card').map(section=>{const index=activeSteps.indexOf(section);return <div key={section} data-joining-step={index} hidden={section!==activeStep}><JoiningStep activeStep={section} employeeGroup={employeeGroup} employeeCategory={employeeCategory} setEmployeeCategory={setEmployeeCategory} visibleDocuments={visibleDocuments} defaults={formDefaults} subdepartments={subdepartments} designations={designations} onCandidatePhotoChange={setCandidatePhoto} onPhotoRemoveReady={remove=>{candidatePhotoRemover.current=remove;}}/></div>})}
    <input type="hidden" name="Joining Approval" defaultValue={approval.status==='APPROVED'?`${approval.approvedBy||'Approved'}${approval.approvedAt?' · '+new Date(approval.approvedAt).toLocaleString():''}`:''}/>
    {approval.status==='APPROVED'&&activeStep==='Document Checklist'&&<p className="employee-import-status">Joining approved – {approval.approvedBy}{approval.approvedAt?' · '+new Date(approval.approvedAt).toLocaleString():''}</p>}
    {gate&&<JoiningApprovalGate draftId={draftId.current} info={approvalInfo()} onApproved={approved} onClose={()=>setGate(false)}/>}
-   {saveError&&<p className="employee-import-error" role="alert">{saveError}</p>}<div className="joining-actions"><button type="button" disabled={step===firstStep||saving} onClick={()=>moveToStep(step-1)}>Previous</button>{step<activeSteps.length-1?<button type="button" className="next" onClick={()=>moveToStep(step+1)}>Save & Continue</button>:<button type="submit" className="next" disabled={saving}>{saving?'Saving…':directTrial?'Save Employee':'Submit Employee'}</button>}</div>
+   {saveError&&<p className="employee-import-error" role="alert">{saveError}</p>}<div className="joining-actions"><button type="button" disabled={step===firstStep||saving} onClick={()=>moveToStep(step-1)}>Previous</button>{step<activeSteps.length-1?<button type="button" className="next" onClick={continueJoining}>Save & Continue</button>:<button type="submit" className="next" disabled={saving}>{saving?'Saving…':directTrial?'Save Employee':'Submit Employee'}</button>}</div>
   </div>
  </form>;
 }

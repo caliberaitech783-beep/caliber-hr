@@ -44,8 +44,6 @@ it('opens a completed operator trial at step two and saves it on the sixth step 
  expect(screen.getByLabelText(/^Trial Form No\./)).toHaveValue(row.formNo);
  expect(screen.getByRole('heading',{name:'Joining & Personal Details',level:2})).toBeInTheDocument();
  expect(screen.queryByRole('heading',{name:'Upload Aadhaar Card'})).toBeNull();
- for(let index=0;index<4;index++)await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'Save & Continue'}));});
- expect(screen.getByRole('heading',{name:'Document Checklist',level:2})).toBeInTheDocument();
  const form=container.querySelector<HTMLFormElement>('.joining-form')!;
  for(const control of form.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('[required]')){
   if(control.value||control.disabled)continue;
@@ -55,12 +53,18 @@ it('opens a completed operator trial at step two and saves it on the sixth step 
    fireEvent.change(control,{target:{files:[new File(['sample'],'sample.jpg',{type:'image/jpeg'})]}});
    continue;
   }
-  const value=name==='Employee Code'?'EMP-TEST':name==='PAN No.'?'ABCDE1234F':name==='Aadhaar No.'?'234500000000':control instanceof HTMLInputElement&&control.type==='date'?'2026-11-12':control instanceof HTMLInputElement&&control.type==='email'?'sample@example.test':control instanceof HTMLInputElement&&control.type==='tel'?'9876543211':'Sample';
+  const value=name==='Monthly Gross Salary'?'30000':name==='Employee Code'?'EMP-TEST':name==='PAN No.'?'ABCDE1234F':name==='Aadhaar No.'?'234500000000':control instanceof HTMLInputElement&&control.type==='date'?'2026-11-12':control instanceof HTMLInputElement&&control.type==='email'?'sample@example.test':control instanceof HTMLInputElement&&control.type==='tel'?'9876543211':'Sample';
   fireEvent.change(control,{target:{value}});
  }
  // The selected recommendation changed from Driver to Operator, so choose its posting.
  fireEvent.change(screen.getByRole('combobox',{name:'Sub-department'}),{target:{value:'Drilling'}});
  fireEvent.change(screen.getByRole('combobox',{name:'Designation'}),{target:{value:'Excavator Operator'}});
+ fireEvent.change(screen.getByLabelText(/^Mess Plan/),{target:{value:'NO'}});
+ for(let index=0;index<4;index++){
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'Save & Continue'}));});
+  expect(screen.queryByRole('alert')?.textContent).toBeUndefined();
+ }
+ expect(screen.getByRole('heading',{name:'Document Checklist',level:2})).toBeInTheDocument();
  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'Save Employee'}));});
  await waitFor(()=>{
   expect(screen.queryByRole('alert')?.textContent).toBeUndefined();

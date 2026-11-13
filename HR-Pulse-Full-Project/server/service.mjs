@@ -7,6 +7,7 @@ import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
 import {validateTrialJoining} from './trial-joining.mjs';
+import {missingJoiningField, requiredEmployeeDetail} from './joining-required.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
@@ -185,6 +186,8 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       if(!officeData||typeof officeData!=='object'||Array.isArray(officeData))throw problem('Employee details are required');
       const changes=Object.entries(officeData);
       if(!changes.length||changes.length>250||changes.some(([key,value])=>key.length>150||typeof value!=='string'||value.length>4000))throw problem('Invalid employee details');
+      const missing=changes.find(([key,value])=>requiredEmployeeDetail(key)&&!value.trim());
+      if(missing)throw problem(missing[0].replace(/\s*\*$/,'')+' is required');
       if(changes.some(([key])=>lockedEmployeeDetails.has(key)))throw problem('Use Employee Transfer for posting site changes. Employee code and status cannot be edited here.');
       return transaction(async db=>{
         const record=(await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind='employees' FOR UPDATE",[id])).rows[0];
@@ -259,6 +262,10 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
           const input={...record};
           const officeData=input.__officeData;delete input.__officeData;
           if(officeData&&(!officeData.constructor||officeData.constructor!==Object))throw problem(`Row ${count+1}: Corporate / HO employee data is invalid`);
+          if (submitForApproval||trialClearance) {
+            const missing=missingJoiningField(officeData);
+            if(missing)throw problem('Row '+(count+1)+': '+missing.replace(/\s*\*$/,'')+' is required');
+          }
           if (trialClearance) {
             await locationAccess(db,profile,'employees',input);
             await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['trial-joining:'+trialClearance.id]);

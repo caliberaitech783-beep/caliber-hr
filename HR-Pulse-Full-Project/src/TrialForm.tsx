@@ -89,8 +89,9 @@ export function CurrentTrialForm({selection,onPassed,canManage=false}:{selection
  function deleteDrafts(formNos:string[]){if(!formNos.length||!window.confirm(`Delete ${formNos.length} trial draft${formNos.length>1?'s':''}? Saved details will be removed from this browser.`))return;removeTrialDrafts(formNos);setDrafts(listTrialDrafts());setSelectedDrafts(new Set());}
  async function save(){const f=form.current;if(!f)return;setError('');const data:Record<string,string>={};for(const el of Array.from(f.elements)){if(!(el instanceof HTMLInputElement||el instanceof HTMLSelectElement||el instanceof HTMLTextAreaElement)||!el.name||el.type==='file')continue;if(el instanceof HTMLInputElement&&['checkbox','radio'].includes(el.type)){if(el.checked)data[el.name]=(data[el.name]?data[el.name]+', ':'')+el.value;continue;}data[el.name]=el.value;}
   const aadhaar=digits(data['Aadhaar no.']||'',12);if(trialCheck.blocked){setError('This candidate has already passed. View the previous result or start another trial.');return;}if(!trialCheck.complete||trialCheck.aadhaar!==aadhaar||trialCheck.pending||trialCheck.error){setError('Enter the 12-digit Aadhaar number and wait for the previous-result check before saving.');return;}
+  data['Name of candidate']=data['Name of candidate']?.trim()||'';
   if(!data['Name of candidate']){setError('Candidate name is required.');return;}
-  if(!data['Result']){setError('Select the trial Result (PASS / FAIL) before saving.');return;}
+  if(!['PASS','FAIL'].includes(data['Result'])){setError('Select the trial Result (PASS / FAIL) before saving.');return;}
   const record={formNo:no.current,heading,...selection,savedAt:new Date().toISOString(),fields:data,photo:candidatePhoto||undefined};
 
   const grant=savedSession()?.grant;if(!grant){setError('Sign in again to save the trial form.');return;}

@@ -39,6 +39,7 @@ test('individual employee edits reject stale, inactive, out-of-scope and read-on
  await assert.rejects(service.updateEmployeeDetails({...profile,permissions:{...profile.permissions,site:'other-site'}},employeeId,input),error=>error.status===403);
  await assert.rejects(service.updateEmployeeDetails({...profile,permissions:{hrDesktopAccess:['Employee Directory']}},employeeId,input),error=>error.status===403);
  await assert.rejects(service.updateEmployeeDetails(profile,employeeId,{...input,officeData:{'Site *':'Other site'}}),error=>error.status===400);
+ await assert.rejects(service.updateEmployeeDetails(profile,employeeId,{...input,officeData:{'Candidate E-mail *':'  '}}),/Candidate E-mail is required/);
  record.status='PENDING';
  await assert.rejects(service.updateEmployeeDetails(profile,employeeId,input),error=>error.status===409);
  assert.ok(!calls.some(call=>call.sql.startsWith('UPDATE')));

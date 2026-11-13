@@ -26,13 +26,16 @@ it('preserves repeated field names and checkbox state',()=>{
  const form=document.createElement('form');form.innerHTML='<input name="Name" value="one"><input name="Name" value="two"><input type="checkbox" name="checked" checked>';
  const snapshot=captureJoiningFields(form);form.reset();(form.elements[0] as HTMLInputElement).value='';restoreJoiningFields(form,snapshot);expect((form.elements[0] as HTMLInputElement).value).toBe('one');expect(snapshot.Name[1].value).toBe('two');expect((form.elements[2] as HTMLInputElement).checked).toBe(true);
 });
-it('keeps the draft when employee submission fails offline',async()=>{
- vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('Network unavailable')));
+it('keeps an incomplete form as a local draft when final submission is blocked',async()=>{
+ const request=vi.fn().mockRejectedValue(new Error('Network unavailable'));
+ vi.stubGlobal('fetch',request);
  render(<EmployeeLocation draftOwner="alice" grant="test-grant"/>);
  fireEvent.input(screen.getByLabelText(/^Full Name\s*\*?$/),{target:{value:'Offline employee'}});
  fireEvent.input(screen.getByLabelText(/Employee Code/),{target:{value:'TEMP-9'}});
- fireEvent.submit(document.querySelector('form.joining-form')!);
- await screen.findByRole('alert');
+ fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+ fireEvent.click(screen.getByRole('button',{name:'Submit Employee'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('Please upload the Aadhaar document');
+ expect(request).not.toHaveBeenCalled();
  await waitFor(()=>expect([...memory.values()].some(d=>d.fields['Employee Code'][0].value==='TEMP-9')).toBe(true));
  expect(memory.size).toBe(1);vi.unstubAllGlobals();
 });

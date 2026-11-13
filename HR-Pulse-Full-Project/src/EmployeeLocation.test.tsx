@@ -523,6 +523,25 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByText('Sign in to load Pulse C-Directory.')).toBeTruthy();
  },30000);
 
+ it('blocks Save & Continue and final submission when a required joining field is empty',async()=>{
+  const {container}=render(<EmployeeLocation/>);
+  fireEvent.click(screen.getByRole('button',{name:'Save & Continue'}));
+  expect(screen.getByRole('alert')).toHaveTextContent('Please upload the Aadhaar document');
+  const file=new File(['document'],'aadhaar.pdf',{type:'application/pdf'});
+  await act(async()=>{fireEvent.change(screen.getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[file]}});});
+  fireEvent.click(screen.getByRole('button',{name:'Save & Continue'}));
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'Nagpur Corporate Office'}});
+  const scannedName=screen.getByLabelText(/Full Name as per Aadhaar/);
+  expect(scannedName).toBeEnabled();
+  fireEvent.change(scannedName,{target:{value:'   '}});
+  fireEvent.click(screen.getByRole('button',{name:'Save & Continue'}));
+  expect(screen.getByRole('alert')).toHaveTextContent('Full Name as per Aadhaar');
+  expect(screen.getByRole('heading',{name:'Joining & Personal Details',level:2})).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+  fireEvent.submit(container.querySelector('form.joining-form')!);
+  expect(screen.getByRole('alert')).toHaveTextContent('Full Name as per Aadhaar');
+  expect(screen.getByRole('heading',{name:'Joining & Personal Details',level:2})).toBeVisible();
+ });
  it('blocks a Corporate / HO operator submission without a driving licence upload',async()=>{
   const {container}=render(<EmployeeLocation/>);
   const setField=(name:string,value:string)=>fireEvent.change(container.querySelector(`[name="${name}"]`)!,{target:{value}});
@@ -533,7 +552,7 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Department',{exact:true,selector:'select:not([name])'}),{target:{value:'Operator'}});
   fireEvent.change(screen.getByLabelText('Sub-department',{exact:true,selector:'select:not([name])'}),{target:{value:'Drilling'}});
   fireEvent.change(screen.getByLabelText('Designation',{exact:true,selector:'select:not([name])'}),{target:{value:'Drill Operator'}});
-  for(const [field,value] of Object.entries({'Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB'}))setField(field,value);
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
   upload('Upload Candidate photo','photo.jpg','image/jpeg');
   upload('Upload Aadhaar (masked display)','aadhaar.pdf','application/pdf');

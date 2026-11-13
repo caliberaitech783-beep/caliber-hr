@@ -1,4 +1,5 @@
 import WorkDuration from './WorkDuration';
+import {requiredEmployeeDetail} from '../server/joining-required.mjs';
 import FormInput,{AgeDisplay,isBirthDateField} from './BirthDateInput';
 import {siteFieldValue} from './siteNames';
 import {useEffect,useMemo,useState,type FormEvent} from 'react';
@@ -46,7 +47,10 @@ export default function LocalEmployeeReviewForm({record,owner,onChange,readOnly=
   const date=/Date|Valid Upto/.test(label)&&(!value||/^\d{4}-\d{2}-\d{2}$/.test(value));
   return <FormInput birthDate={isBirthDateField(label)} showAge={section!=='Family Details'} aria-label={accessible} readOnly={readOnly||!editing} type={date?'date':'text'} min={date?'1000-01-01':undefined} max={date?'9999-12-31':undefined} value={value} onChange={event=>change(date?event.target.value.replace(/^(\d{4})\d+(?=-)/,'$1'):event.target.value)}/>;
  }
- function save(event:FormEvent){event.preventDefault();if(!editing)return;setError('');if(!owner){setError('Sign in to save a local copy.');return;}try{localStorage.setItem(key,JSON.stringify({source,form,savedAt:new Date().toISOString()}));setSavedForm(form);setEditing(false);setMessage('Changes saved locally on this browser. Form locked.');}catch{setError('Local storage is unavailable or full. Keep this form open so you do not lose your changes.');}}
+ function save(event:FormEvent){event.preventDefault();if(!editing)return;setError('');
+  const missing=Object.keys(form.office).find(label=>requiredEmployeeDetail(label)&&!form.office[label].trim()&&(initial.office[label]?.trim()||savedForm.office[label]?.trim()));
+  if(missing){setSection(groups.find(group=>group.fields.includes(missing))?.name??'Additional details');setError(missing.replace(/\s*\*$/,'')+' is required.');return;}
+  if(!owner){setError('Sign in to save a local copy.');return;}try{localStorage.setItem(key,JSON.stringify({source,form,savedAt:new Date().toISOString()}));setSavedForm(form);setEditing(false);setMessage('Changes saved locally on this browser. Form locked.');}catch{setError('Local storage is unavailable or full. Keep this form open so you do not lose your changes.');}}
  function reset(){if(!editing)return;try{localStorage.removeItem(key);setForm(initial);setSavedForm(initial);setEditing(false);setMessage('Submitted details restored.');setError('');}catch{setError('The saved local copy could not be cleared.');}}
  const known=new Set(groups.flatMap(group=>group.fields)),extra=Object.keys(displayedForm.office).filter(label=>!known.has(label)),tabs=[...groups.map(group=>group.name),...(extra.length?['Additional details']:[])],group=groups.find(group=>group.name===section),displayFields=group?.fields.flatMap(label=>group.name==='Family Details'&&isBirthDateField(label)?[label,'Age']:group.name==='Previous Work Experience'&&label==='To Date'?[label,'Work Duration']:label)||[];
  return <form className="local-employee-review-form" aria-label="Editable joining review form" onSubmit={save}>
