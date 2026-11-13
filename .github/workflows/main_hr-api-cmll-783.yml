@@ -81,6 +81,8 @@ jobs:
           sleep 20
           for attempt in 1 2 3; do
             if az webapp deploy --resource-group "$rg" --name hr-api-cmll-783 --src-path app.zip --type zip --clean true --restart true --timeout 600000; then exit 0; fi
+            echo "Deploy attempt $attempt failed – Azure deployment log:"
+            az webapp log deployment show --resource-group "$rg" --name hr-api-cmll-783 -o table || true
             echo "Deploy attempt $attempt failed – retrying with Kudu zipdeploy"
             if az webapp deployment source config-zip --resource-group "$rg" --name hr-api-cmll-783 --src app.zip --timeout 600; then exit 0; fi
             sleep 30
