@@ -76,8 +76,17 @@ jobs:
           app_id=$(az resource list --name hr-api-cmll-783 --resource-type Microsoft.Web/sites --query '[0].id' -o tsv)
           test -n "$app_id"
           rg=$(echo "$app_id" | sed -E 's#.*/resourceGroups/([^/]+)/.*#\1#')
-          # Restart first so a stuck Kudu/OneDeploy session does not block the upload.
-          az webapp restart --ids "$app_id"
+          # A stuck deployment session in the Kudu (SCM) container blocks every upload with "deployment in progress".
+          # Restart does not recycle Kudu on Linux; Stop + Start does.
+          az webapp stop --ids "$app_id"
+          sleep 30
+          az webapp start --ids "$app_id"
+          for i in $(seq 1 24); do
+            state=$(az rest --method get --url "https://hr-api-cmll-783.scm.azurewebsites.net/api/deployments/latest" --resource "https://management.azure.com/" --query 'complete' -o tsv 2>/dev/null || echo unknown)
+            echo "Kudu latest deployment complete=$state"
+            [ "$state" = "true" ] || [ "$state" = "unknown" ] && break
+            sleep 10
+          done
           sleep 20
           for attempt in 1 2 3; do
             if az webapp deploy --resource-group "$rg" --name hr-api-cmll-783 --src-path app.zip --type zip --clean true --restart true --timeout 600000; then exit 0; fi
