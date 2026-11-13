@@ -361,7 +361,11 @@ describe('Employee Master tabs',()=>{
   expect(within(referenceType).queryAllByRole('option').map(option=>option.textContent)).toEqual(['Select','Regional HR Manager','Supervisor','Driver','Others']);
   expect((screen.getByLabelText(/Emergency Contact Name/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/Emergency Contact Number/) as HTMLInputElement).required).toBe(true);
-  const salaryType=screen.getByLabelText(/^Salary Type/);
+  const salarySection=screen.getByRole('heading',{name:'Salary Details'}).closest('section')!;
+  const salary=within(salarySection);
+  const salaryType=salary.getByLabelText(/^Salary Type/);
+  expect(salary.getByLabelText(/^PT State/)).toBeTruthy();
+  expect(salary.queryByLabelText('Bank Name')).toBeNull();
   expect(within(salaryType).queryAllByRole('option').map(option=>option.textContent)).toEqual(['Select','HPC Rate (Govt daily wage)','Non-HPC (Fixed monthly salary)','Standard Salary (Corporate / Head Office)','Standard Salary (Women)','Without Compliance']);
   fireEvent.change(salaryType,{target:{value:'HPC'}});
   fireEvent.change(screen.getByLabelText(/^Skill Category/),{target:{value:'1341'}});
@@ -369,7 +373,7 @@ describe('Employee Master tabs',()=>{
   expect((screen.getByLabelText(/^Gross Salary \(for 26 days\)/) as HTMLInputElement).value).toContain('₹34,866');
   fireEvent.change(screen.getByLabelText(/^Site \/ Project/),{target:{value:'Majri OB'}});
   expect((screen.getByLabelText(/^Food \(Mess\) Deduction/) as HTMLInputElement).value).toBe('₹205 per day');
-  fireEvent.click(screen.getByText('View full salary summary ›'));
+  fireEvent.click(salary.getByText('View full salary summary ›'));
   expect(screen.getByRole('dialog',{name:'Salary Summary'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Close'}));
   expect(screen.getByRole('heading',{name:'Job & Posting Details'})).toBeTruthy();
