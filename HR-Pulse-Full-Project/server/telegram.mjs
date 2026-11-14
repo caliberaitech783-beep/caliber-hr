@@ -209,7 +209,8 @@ async function applyTrialStage(pool,db,{rows,reviewer,decision,target,batchId,xl
  await db.query("UPDATE hr_records SET status='CLOSED',updated_at=now() WHERE kind='trialApprovals' AND status='PENDING' AND data->>'role'=$1 AND data->'formNos' ?| $2::text[]",[reviewer,rows.map(r=>r.formNo)]);
  if(!recipients.length)return {stage,messages,recipients};
  const markup=stage==='reject'||stage==='final'?null:await openApprovalGroup(db,{role:stage,formNos:rows.map(r=>r.formNo),target,batchId,actor});
- const files=r=>[...(r.attachments||[]).map(a=>({name:`${r.formNo.replace(/\//g,'-')}_${a.name}`,mime:a.mime,data:a.data,caption:`${r.formNo} · ${r.fields['Name of candidate']||''}`})),{name:`${r.formNo.replace(/\//g,'-')}_${stage==='final'?'Joining_Approval':'Trial_Form'}.pdf`,mime:'application/pdf',data:trialFormPdf(r,stage==='final'?'Joining approval':'Trial joining form'),caption:stage==='final'?'Joining approval':'Trial joining form'}];
+ /* Only the form PDF travels with the message – photos / uploaded images are not sent as separate files. */
+ const files=r=>[{name:`${r.formNo.replace(/\//g,'-')}_${stage==='final'?'Joining_Approval':'Trial_Form'}.pdf`,mime:'application/pdf',data:trialFormPdf(r,stage==='final'?'Joining approval':'Trial joining form'),caption:stage==='final'?'Joining approval':'Trial joining form'}];
  const key=`trial-approval:${reviewer}:${batchId||rows[0].formNo}:${Date.now()}`;
  if(rows.length===1){const m=trialApprovalMessage(rows[0],reviewer,decision);messages.push(m);await queueTelegram(db,key,recipients,m,'trial',markup,stage==='reject'?[]:files(rows[0]));
   if(stage==='final'){const j=joiningApprovedMessage(rows[0]);messages.push(j);await queueTelegram(db,key+':join',recipients,j,'trial',null,files(rows[0]));}}
@@ -426,7 +427,7 @@ export function createTelegram(pool){
     if(id)await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[record.fields['Name of candidate'],record,profile.actor,id]);
     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[formNo,record.fields['Name of candidate'],record,profile.actor])).rows[0].id;
     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_TRIAL_FORM','trialForms',$2,$3)",[profile.actor,id,{formNo,result:fields.Result}]);
-    const files=[...(record.attachments||[]).map(a=>({name:`${formNo.replace(/\//g,'-')}_${a.name}`,mime:a.mime,data:a.data,caption:`${record.fields['Name of candidate']} – ${formNo}`})),{name:`${formNo.replace(/\//g,'-')}_Trial_Form.pdf`,mime:'application/pdf',data:trialFormPdf(record,'Trial joining form'),caption:'Trial joining form'}];
+    const files=[{name:`${formNo.replace(/\//g,'-')}_Trial_Form.pdf`,mime:'application/pdf',data:trialFormPdf(record,'Trial joining form'),caption:'Trial joining form'}];
     const markup=fields.Result==='PASS'&&recipients.length?await openApprovalGroup(db,{role:'pm',formNos:[formNo],target:{site:record.site,region:String(input.region||'').slice(0,80),company:record.company,group:String(input.group||'').slice(0,80)},batchId:record.batchId||'',actor:profile.actor}):null;
     if(recipients.length)await queueTelegram(db,`trial:${formNo}:${fields.Result}:${Date.now()}`,recipients,message,'trial',markup,files);});
    return {saved:true,result:fields.Result,telegram:{...(await recipientIssues(pool,recipients)),message}};
@@ -450,7 +451,7 @@ export function createTelegram(pool){
      if(row.id)await db.query('UPDATE hr_records SET data=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[data,profile.actor,row.id]);
      else row.id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[row.code,data.fields['Name of candidate']||row.code,data,profile.actor])).rows[0].id;
      await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_TRIAL_FORM','trialForms',$2,$3)",[profile.actor,row.id,{formNo:row.code,result:res.result,batchId}]);records.push(data);}
-    const files=[];for(const r of records)for(const a of r.attachments||[])files.push({name:`${r.formNo.replace(/\//g,'-')}_${a.name}`,mime:a.mime,data:a.data,caption:`${r.fields['Name of candidate']} – ${r.formNo}`});
+    const files=[];
     for(const r of records)files.push({name:`${r.formNo.replace(/\//g,'-')}_Trial_Form.pdf`,mime:'application/pdf',data:trialFormPdf(r,'Trial joining form'),caption:`Trial joining form – ${r.fields['Name of candidate']||r.formNo}`});
     if(xlsx)files.push({name:`Trial_${batchId}.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',data:xlsx,caption:`Trial result sheet – ${batchId}`});
     const first=records[0];message=trialBatchResultMessage({batchId,site:first.site||first.heading,trialBy,trialDate:first.fields['Trial date & time'],vehicle:vehicleOf(first.fields),post:first.fields['Post applied for']||first.department},records,files.length-(xlsx?1:0));
