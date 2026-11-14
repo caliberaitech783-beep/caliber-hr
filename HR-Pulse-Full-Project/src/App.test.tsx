@@ -150,7 +150,11 @@ it.each([true,false])('loads only the HR employee register when the configuratio
   expect(within(table).getByRole('columnheader',{name:'EMPLOYEE ID'})).toBeVisible();
   expect(within(table).getByText('Imported Employee')).toBeVisible();
   fireEvent.click(within(table).getByRole('button',{name:'View details for Imported Employee'}));
-  expect(await within(configuration).findByText('Test workbook')).toBeVisible();
+  const details=screen.getByRole('dialog',{name:'Imported Employee'});
+  expect(await within(details).findByText('Test workbook')).toBeVisible();
+  expect(within(details).getByText('Operator')).toBeVisible();
+  fireEvent.click(within(details).getByRole('button',{name:'Close details'}));
+  expect(screen.queryByRole('dialog',{name:'Imported Employee'})).toBeNull();
  }else{
   expect([...configuration.children]).toEqual([within(configuration).getByLabelText('Master configuration menus')]);
  }

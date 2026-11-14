@@ -1,4 +1,4 @@
-import {useEffect, useState, type FormEvent} from 'react';
+import {useEffect, useRef, useState, type FormEvent} from 'react';
 import {api} from './api';
 
 const columns = [
@@ -13,6 +13,54 @@ type EmployeeDetails = {
 };
 type Register = {rows:Employee[];total:number;pageSize:number;sites:{code:string;label:string}[];canImport:boolean};
 
+function EmployeeDetailsDialog({employee,grant,onClose}:{employee:Employee;grant:string;onClose:()=>void}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [details,setDetails] = useState<EmployeeDetails>();
+  const [error,setError] = useState('');
+  const [retry,setRetry] = useState(0);
+
+  useEffect(()=>{
+    const element = dialog.current!;
+    if (typeof element.showModal === 'function') element.showModal();
+    else element.open = true;
+    return ()=>{if (typeof element.close === 'function') element.close();};
+  },[]);
+
+  useEffect(()=>{
+    let active = true;
+    setError('');
+    api<EmployeeDetails>(grant,`employee-master-register/${employee.id}`).then(result=>{
+      if (active) setDetails(result);
+    }).catch(error=>{
+      if (active) setError(error.message);
+    });
+    return ()=>{active=false;};
+  },[grant,employee.id,retry]);
+
+  return <dialog
+    ref={dialog}
+    className="modal hr-register-details"
+    aria-labelledby="hr-register-details-title"
+    onCancel={event=>{event.preventDefault();onClose();}}
+  >
+    <div className="modal-heading">
+      <h2 id="hr-register-details-title">{employee.name}</h2>
+      <button type="button" onClick={onClose}>Close details</button>
+    </div>
+    <p>{[employee.employeeId,employee.site].filter(Boolean).join(' · ')}</p>
+    {error && <>
+      <p role="alert" className="error">{error}</p>
+      <button type="button" onClick={()=>setRetry(attempt=>attempt+1)}>Retry</button>
+    </>}
+    {!details && !error && <p role="status">Loading employee details…</p>}
+    {details?.sources.length===0 && <p>No workbook details are available for this entry.</p>}
+    {details?.sources.map((source,index)=><details key={index} open={index===0}>
+      <summary>{source.label}</summary>
+      <dl>{source.fields.map(([label,value],index)=><div key={index}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+    </details>)}
+  </dialog>;
+}
+
 export default function EmployeeMasterRegister({grant}:{grant:string}) {
   const [data,setData] = useState<Register>();
   const [site,setSite] = useState('');
@@ -20,9 +68,8 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
   const [query,setQuery] = useState('');
   const [page,setPage] = useState(1);
   const [revision,setRevision] = useState(0);
-  const [selectedId,setSelectedId] = useState('');
-  const [selected,setSelected] = useState<EmployeeDetails>();
-  const [detailError,setDetailError] = useState('');
+  const [selected,setSelected] = useState<Employee>();
+  const viewButton = useRef<HTMLButtonElement>(null);
   const [loading,setLoading] = useState(true);
   const [importing,setImporting] = useState(false);
   const [error,setError] = useState('');
@@ -32,7 +79,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
     let active = true;
     setLoading(true);
     setError('');
-    setSelectedId('');
+    setSelected(undefined);
     const params = new URLSearchParams({site,search:query,page:String(page)});
     api<Register>(grant,`employee-master-register?${params}`).then(result=>{
       if (active) setData(result);
@@ -46,19 +93,6 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
     });
     return ()=>{active=false;};
   },[grant,site,query,page,revision]);
-
-  useEffect(()=>{
-    setSelected(undefined);
-    setDetailError('');
-    if (!selectedId) return;
-    let active = true;
-    api<EmployeeDetails>(grant,`employee-master-register/${selectedId}`).then(result=>{
-      if (active) setSelected(result);
-    }).catch(error=>{
-      if (active) setDetailError(error.message);
-    });
-    return ()=>{active=false;};
-  },[grant,selectedId]);
 
   async function importData(file:File) {
     setImporting(true);
@@ -121,7 +155,10 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
           <thead><tr><th scope="col">Serial No</th>{columns.map(([key,label])=><th key={key} scope="col">{label.toUpperCase()}</th>)}<th scope="col">DETAILS</th></tr></thead>
           <tbody>{data.rows.map((row,index)=><tr key={row.id}>
             <td>{first+index+1}</td>{columns.map(([key])=><td key={key}>{row[key]}</td>)}
-            <td><button type="button" aria-label={`View details for ${row.name}`} onClick={()=>setSelectedId(row.id)}>View</button></td>
+            <td><button type="button" aria-label={`View details for ${row.name}`} onClick={event=>{
+              viewButton.current = event.currentTarget;
+              setSelected(row);
+            }}>View</button></td>
           </tr>)}</tbody>
         </table>
       </div>
@@ -130,14 +167,9 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
         <button type="button" disabled={first+data.pageSize>=data.total} onClick={()=>setPage(page+1)}>Next</button>
       </div>
     </> : <p>No employees match the current selection.</p>)}
-    {selectedId && <section aria-label="Employee details">
-      <div className="data-heading"><h3>{selected?.name || 'Employee details'}</h3><button type="button" onClick={()=>setSelectedId('')}>Close details</button></div>
-      {detailError && <p role="alert" className="error">{detailError}</p>}
-      {!selected && !detailError && <p role="status">Loading employee details…</p>}
-      {selected?.sources.map((source,index)=><details key={index} open={index===0}>
-        <summary>{source.label}</summary>
-        <dl>{source.fields.map(([label,value],index)=><div key={index}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-      </details>)}
-    </section>}
+    {selected && <EmployeeDetailsDialog key={selected.id} employee={selected} grant={grant} onClose={()=>{
+      setSelected(undefined);
+      requestAnimationFrame(()=>viewButton.current?.focus({preventScroll:true}));
+    }}/>}
   </section>;
 }

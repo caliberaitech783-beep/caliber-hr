@@ -196,6 +196,20 @@
 .employee-report .employee-report-table th:nth-child(11) { min-width: 180px; }
 .employee-report .employee-report-table td:first-child { text-align: right; }
 .employee-report .employee-report-table td:is(:first-child, :nth-child(2), :nth-child(10)) { font-variant-numeric: tabular-nums; }
+.hr-register-details { max-height: min(85vh, 760px); }
+.hr-register-details details { margin-top: 12px; border: 1px solid #ddd3e4; border-radius: 8px; }
+.hr-register-details summary { padding: 12px; font-weight: 600; cursor: pointer; overflow-wrap: anywhere; }
+.hr-register-details dl { margin: 0; padding: 0 12px 12px; }
+.hr-register-details dl > div {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr);
+  gap: 12px;
+  padding: 7px 0;
+  border-top: 1px solid #eee7f3;
+  overflow-wrap: anywhere;
+}
+.hr-register-details dt { font-weight: 600; }
+.hr-register-details dd { margin: 0; white-space: pre-wrap; }
 :is(.leave-management, .transfer-management) .approval-table th:nth-child(n) { width: auto; }
 :is(.leave-management, .transfer-management) .approval-table th:nth-child(4) { min-width: 160px; }
 :is(.leave-management, .transfer-management) .table-scroll .row-actions { white-space: nowrap; }
