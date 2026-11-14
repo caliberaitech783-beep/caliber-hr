@@ -84,7 +84,10 @@ export async function hierarchyRecipients(db,stage,target){
   const officeHr=['ohr','all'].includes(stage)&&t.code==='CMLL-CO';
   if(!officeHr&&target&&!recipientInScope({scope:t.name},target))continue;
   const labels=officeHr?['HR Executive','HR Manager']:HIERARCHY_STEPS[stage];
-  for(const step of data.steps||[])if(labels.includes(step.label))for(const actor of step.approvers||[]){const a=String(actor).trim().toLowerCase();if(a&&!out.some(r=>r.actor===a&&r.site===t.name))out.push({actor:a,name:a,phone:'',scope:officeHr?'ALL':t.name,site:officeHr?'All sites (Office HR – Nagpur Office)':t.name,role:officeHr?`Office HR – ${step.label}`:step.label,source:'hierarchy'});}}
+  for(const step of data.steps||[])if(labels.includes(step.label))for(const actor of step.approvers||[]){const a=String(actor).trim().toLowerCase();const global=officeHr||directors;if(a&&!out.some(r=>r.actor===a&&r.site===t.name))out.push({actor:a,name:a,phone:'',scope:global?'ALL':t.name,site:global?'All sites (Nagpur Office)':t.name,role:global?`${step.label==='Final approval — any one'?'Directors':'Office HR'} – ${step.label}`:step.label,source:'hierarchy'});}}
+ /* A stage with nobody at the site (e.g. PM / Regional HR for an office) falls back to Nagpur Office HR so the chain never stalls. */
+ if(!out.length&&target&&['result','rhr','part1','siteHr'].includes(stage)){const co=hierarchyTemplates.find(t=>t.code==='CMLL-CO');const saved=rows.find(r=>r.code==='CMLL-CO');const data={...co,...currentHierarchy(saved?.data)};
+  for(const step of data.steps||[])if(['HR Executive','HR Manager'].includes(step.label))for(const actor of step.approvers||[]){const a=String(actor).trim().toLowerCase();if(a&&!out.some(r=>r.actor===a))out.push({actor:a,name:a,phone:'',scope:'ALL',site:'Fallback – Nagpur Office',role:`${step.label} (no ${stage==='result'?'PM':stage==='rhr'?'Regional HR':stage==='part1'?'Driver Trainer':'Site HR'} at this site)`,source:'hierarchy'});}}
  return out;}
 /* Manual list (scoped) + hierarchy for a site, de-duplicated by actor. */
 export async function trialRecipientsFor(db,stage,target){const manual=scopedRecipients(await trialRecipients(db,stage),target),auto=await hierarchyRecipients(db,stage,target);const seen=new Set(manual.map(recipientActor));return [...manual,...auto.filter(r=>!seen.has(r.actor))];}
