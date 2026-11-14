@@ -6,6 +6,7 @@ import {createAttendance} from './attendance.mjs';
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval} from './joining-hierarchy.mjs';
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
+import {createEmployeeMasterRegister} from './employee-master-register.mjs';
 import {validateTrialJoining} from './trial-joining.mjs';
 import {missingJoiningField, requiredEmployeeDetail} from './joining-required.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
@@ -153,6 +154,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     ...createHierarchies(pool),
     ...createTransferFlows(pool),
     ...createHolidayDocuments(pool),
+    ...createEmployeeMasterRegister(pool),
     async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests'].includes(kind))}]))}; },
     async list(profile,kind,params) {
       authorize(profile,kind);

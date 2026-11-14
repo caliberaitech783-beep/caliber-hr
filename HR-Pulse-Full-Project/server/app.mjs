@@ -43,12 +43,13 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const assetRoute=path.startsWith('/api/asset-management/')?path.slice('/api/asset-management/'.length):null;
       const documents=path==='/api/holiday-documents';
       const employeeDocuments=path==='/api/employee-documents';
+      const employeeMasterRegister=path.match(/^\/api\/employee-master-register(?:\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}))?$/i);
       const deletion=path.match(/^\/api\/deletion\/([a-zA-Z]+)\/(preview|confirm)$/);
       const record=path.match(/^\/api\/records\/([a-zA-Z]+)(?:\/([a-fA-F0-9-]+))?(?:\/(submit|deactivate|cancel))?$/);
       const masterImport=path.match(/^\/api\/import\/(assets|assetCategories|assetEmployees|assetAllocationLog|assetExitClearances|holidays|leaveTypes|leavePolicies|leavePeriods|leaveAllocations|leaveRequests|leaveEncashments|leaveBlocks)$/);
       const decision=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/decision$/);
       const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/transfer-flows':'transferFlows','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
-      if(!telegramRoute&&!attendanceRoute&&!assetRoute&&!documents&&!employeeDocuments&&!deletion&&!masterImport&&!record&&!decision&&!simple[path]&&!['/api/import/employees','/api/import/trial-employee','/api/aadhaar/scan','/api/letters/email','/api/employee-code/next'].includes(path))return send(404,{error:'Not found'});
+      if(!telegramRoute&&!attendanceRoute&&!assetRoute&&!documents&&!employeeDocuments&&!employeeMasterRegister&&!deletion&&!masterImport&&!record&&!decision&&!simple[path]&&!['/api/import/employees','/api/import/trial-employee','/api/aadhaar/scan','/api/letters/email','/api/employee-code/next'].includes(path))return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
       if(!profile)return send(401,{error:'Sign in with your Caliber Pulse account to continue'});
@@ -73,6 +74,10 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       else if(assetRoute&&['GET','POST'].includes(req.method))result=await service.assetApi(profile,assetRoute,req.method,req.method==='POST'?await body(req):{},url.searchParams);
       else if(documents&&['GET','POST'].includes(req.method))result=await service.holidayDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);
       else if(employeeDocuments&&['GET','POST'].includes(req.method))result=await service.employeeDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);
+      else if(employeeMasterRegister&&req.method==='GET')result=employeeMasterRegister[1]
+        ?await service.employeeMasterRegisterDetails(profile,employeeMasterRegister[1])
+        :await service.employeeMasterRegister(profile,url.searchParams);
+      else if(employeeMasterRegister&&!employeeMasterRegister[1]&&req.method==='POST')result=await service.importEmployeeMasterRegister(profile,(await body(req,36_000_000)).rows);
       else if(deletion&&req.method==='POST')result=deletion[2]==='preview'?await service.deletePreview(profile,deletion[1]):await service.deleteRecords(profile,deletion[1],await body(req));
       else if(path==='/api/hierarchies'&&req.method==='POST')result=await service.saveHierarchy(profile,await body(req));
       else if(path==='/api/transfer-flows'&&req.method==='POST')result=await service.saveTransferFlow(profile,await body(req));

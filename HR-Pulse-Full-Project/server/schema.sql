@@ -6,6 +6,12 @@ CREATE TABLE IF NOT EXISTS hr_records (
  UNIQUE(kind,code)
 );
 CREATE INDEX IF NOT EXISTS hr_records_kind_status ON hr_records(kind,status);
+CREATE TABLE IF NOT EXISTS hr_employee_master_register (
+ id uuid PRIMARY KEY, import_key text NOT NULL UNIQUE, site_id uuid NOT NULL,
+ site_code text NOT NULL, site_name text NOT NULL, name text NOT NULL,
+ data jsonb NOT NULL, created_by text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS hr_employee_master_register_site ON hr_employee_master_register(site_id);
 CREATE TABLE IF NOT EXISTS hr_approvals (
  id uuid PRIMARY KEY, record_id uuid NOT NULL REFERENCES hr_records(id),
  approvers jsonb NOT NULL, record_snapshot jsonb NOT NULL, stage integer NOT NULL DEFAULT 0, state text NOT NULL DEFAULT 'PENDING',

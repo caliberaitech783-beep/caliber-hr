@@ -14,6 +14,7 @@ import {api,savedSession,type Session,type HRConfig} from './api';
 import Logo from './Logo';
 import {Records,Approvals,Overview,Audit,AccessAdministration} from './Modules';
 import EmployeeLocation from './EmployeeLocation';
+import EmployeeMasterRegister from './EmployeeMasterRegister';
 import type {JoiningDraft} from './joiningDrafts';
 import './modules.css';
 const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Approval Master',ShieldCheck],['Telegram Hierarchy',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Reports & MIS',FileBarChart],['Audit Logs',FileBarChart]] as const;
@@ -64,7 +65,9 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
       {masterMenu==='Shift Master'?<ShiftMaster grant={session.grant} module={config.shifts}/>
         :masterMenu==='Hierarchy'?<HierarchyMaster grant={session.grant}/>
         :masterMenu==='Holiday & Leave Master'?<LeaveMaster grant={session.grant} config={config} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>
-        :null}
+        :masterMenu==='Employee Master'&&access.has('Master Configuration')&&access.has('Employee Master')
+          ?<EmployeeMasterRegister grant={session.grant}/>
+          :null}
     </section>} {page==='Employee Master'&&<>{employeeMenu==='Leave/OD Management'&&<LeaveRequests grant={session.grant} module={config.leaveRequests} odModule={config.outDutyRequests} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>} {employeeMenu==='Employee Transfer'&&<section className="transfer-management" aria-labelledby="employee-transfer-title">
       <div className="page-title"><div>
         <h1 id="employee-transfer-title">Employee Transfer</h1>

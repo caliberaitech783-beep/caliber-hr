@@ -123,17 +123,33 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  window.location.hash='';
 });
 
-it.each([true,false])('keeps the Employee Master configuration tab empty regardless of employee access (%s)',async(hasEmployeeAccess)=>{
+it.each([true,false])('loads only the HR employee register when the configuration tab is permitted (%s)',async(hasEmployeeAccess)=>{
  const profile={name:'HR administrator',actor:'test',permissions:{application:'HR',hrDesktopAccess:hasEmployeeAccess?['Master Configuration','Employee Master']:['Master Configuration']}};
  window.location.hash='Master%20Configuration';
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
- vi.stubGlobal('fetch',async(url:string)=>Response.json(url.endsWith('/config')?{profile,modules:{}}:url.endsWith('/lookups')?[]:{rows:[],total:0,page:1,pageSize:50}));
+ const request=vi.fn(async(url:string)=>Response.json(url.endsWith('/config')?{profile,modules:{}}:url.endsWith('/lookups')?[]:url.endsWith('/employee-master-register/local-1')?{
+  name:'Imported Employee',sources:[{label:'Test workbook',fields:[['Designation','Operator']]}],
+ }:{
+  rows:url.includes('/employee-master-register?')?[{id:'local-1',employeeId:'HR123',name:'Imported Employee',site:'Sasti OB',region:'WCL',department:'Operations',designation:'Operator'}]:[],
+  total:1,page:1,pageSize:50,sites:[],canImport:false,
+ }));
+ vi.stubGlobal('fetch',request);
  render(<App/>);
  const configuration=await screen.findByRole('region',{name:'Master Configuration'});
  const employeeTab=within(configuration).getByRole('button',{name:'Employee Master'});
  fireEvent.click(employeeTab);
  expect(employeeTab).toHaveAttribute('aria-pressed','true');
- expect([...configuration.children]).toEqual([within(configuration).getByLabelText('Master configuration menus')]);
+ if(hasEmployeeAccess){
+  const table=await within(configuration).findByRole('table');
+  expect(within(table).getByRole('columnheader',{name:'EMPLOYEE ID'})).toBeVisible();
+  expect(within(table).getByText('Imported Employee')).toBeVisible();
+  fireEvent.click(within(table).getByRole('button',{name:'View details for Imported Employee'}));
+  expect(await within(configuration).findByText('Test workbook')).toBeVisible();
+ }else{
+  expect([...configuration.children]).toEqual([within(configuration).getByLabelText('Master configuration menus')]);
+ }
+ expect(request.mock.calls.some(([url])=>url.includes('/employee-master-register?'))).toBe(hasEmployeeAccess);
+ expect(request.mock.calls.every(([url])=>url.startsWith('https://hr-api-cmll-783.azurewebsites.net/'))).toBe(true);
  window.location.hash='';
 });
 
