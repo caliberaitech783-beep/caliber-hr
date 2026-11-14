@@ -176,6 +176,45 @@ export async function joiningApprovers(db){const row=(await db.query("SELECT dat
 export function joiningApprovalMessage(d,otp){return `Joining approval request\nCandidate: ${d.candidate||'-'}\nPost: ${d.post||'-'}\nSite: ${d.site||'-'}\nCompany: ${d.company||'-'}\nSubmitted by: ${d.submittedBy||'-'}\n\nOTP: ${otp} (valid ${JOINING_OTP_MINUTES} min)\nTell the OTP to HR, or tap Approve / Reject below.`;}
 const joiningMarkup=code=>({inline_keyboard:[[{text:'✅ Approve',callback_data:`ja:${code}:approve`},{text:'❌ Reject',callback_data:`ja:${code}:reject`}]]});
 async function answerCallback(bot,id,text){const token=botToken(bot);if(!token)return;try{await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({callback_query_id:id,text,show_alert:false}),signal:AbortSignal.timeout(8000)});}catch{/* best effort */}}
+/* ---- Telegram approval groups: one pending group per stage message; Approve / Decline buttons act on it ---- */
+const STAGE_ROLE={result:'pm',ohr:'ohr',rhr:'rhr',director:'director'};   /* hierarchy step key → reviewer role */
+const ROLE_STEP={pm:'result',ohr:'ohr',rhr:'rhr',director:'director'};
+const NEXT_ROLE={pm:'ohr',ohr:'rhr',rhr:'director',director:'done'};
+const approvalMarkup=code=>({inline_keyboard:[[{text:'✅ Approve',callback_data:`ta:${code}:a`},{text:'❌ Decline',callback_data:`ta:${code}:d`}]]});
+async function openApprovalGroup(db,{role,formNos,target,batchId,actor}){
+ await db.query("UPDATE hr_records SET status='CLOSED',updated_at=now() WHERE kind='trialApprovals' AND status='PENDING' AND data->>'role'=$1 AND data->'formNos' ?| $2::text[]",[role,formNos]);
+ const code='TA-'+randomBytes(6).toString('hex').toUpperCase();
+ await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialApprovals',$1,$2,$3,'PENDING',$4,$4)",[code,`${ROLE_TITLE[role]} approval – ${batchId||formNos[0]}`,{role,formNos,target,batchId,openedAt:new Date().toISOString()},actor]);
+ return approvalMarkup(code);}
+const historyEntry=(role,approved,by,at,note)=>({role,action:approved?'Approved':'Rejected',by,at,note});
+/* Advance one stage for a set of forms: save, notify the next stage (with Approve/Decline buttons + Trial_Form.pdf), or broadcast the final joining approval. */
+async function applyTrialStage(pool,db,{rows,reviewer,decision,target,batchId,xlsx,actor}){
+ const stage=!decision.approved?'reject':reviewer==='pm'?'ohr':reviewer==='ohr'?'rhr':reviewer==='rhr'?'director':'final';
+ const stageStatus=!decision.approved?`Rejected by ${ROLE_TITLE[reviewer]}`:stage==='final'?'Cleared to join':NEXT_STATUS[reviewer];
+ const nextRecipients=stage==='reject'?[...await hierarchyRecipients(db,'siteHr',target),...await hierarchyRecipients(db,'part1',target),...await hierarchyRecipients(db,'result',target)]
+   :stage==='final'?[...await hierarchyRecipients(db,'all',target),...scopedRecipients(await trialRecipients(db,'result'),target)]
+   :await hierarchyRecipients(db,stage,target);
+ const recipients=[...new Set(nextRecipients.map(recipientActor))];
+ const messages=[];
+ for(const r of rows){const old=(await db.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1 FOR UPDATE",[r.formNo])).rows[0];
+  const data={...(old?.data||{}),formNo:r.formNo,site:r.site||old?.data?.site,company:r.company||old?.data?.company,department:r.department||old?.data?.department,batchId:batchId||old?.data?.batchId||'',fields:{...(old?.data?.fields||{}),...r.fields},attachments:r.attachments?.length?r.attachments:old?.data?.attachments||[],history:r.history,docs:r.docs||old?.data?.docs||{},trialBy:r.trialBy||old?.data?.trialBy||r.fields['Examiner name']||'',stage:stage==='reject'?'REJECTED':stage==='final'?'CLEARED':'APPROVAL',pendingRole:stage==='reject'||stage==='final'?'':stage,status:stageStatus,lastDecision:{reviewer,...decision},savedBy:actor,savedAt:new Date().toISOString()};
+  let id=old?.id;if(id)await db.query('UPDATE hr_records SET data=$1,status=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[data,stage==='reject'?'REJECTED':'ACTIVE',actor,id]);
+  else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[r.formNo,data.fields['Name of candidate']||r.formNo,data,actor])).rows[0].id;
+  await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'TRIAL_APPROVAL','trialForms',$2,$3)",[actor,id,{formNo:r.formNo,reviewer,approved:decision.approved,via:decision.via||'web'}]);
+  Object.assign(r,{site:data.site,company:data.company,department:data.department,trialBy:data.trialBy,attachments:data.attachments,status:stageStatus,fields:data.fields,history:data.history,docs:data.docs});}
+ /* the reviewer's own pending group is closed whichever way the decision came in */
+ await db.query("UPDATE hr_records SET status='CLOSED',updated_at=now() WHERE kind='trialApprovals' AND status='PENDING' AND data->>'role'=$1 AND data->'formNos' ?| $2::text[]",[reviewer,rows.map(r=>r.formNo)]);
+ if(!recipients.length)return {stage,messages,recipients};
+ const markup=stage==='reject'||stage==='final'?null:await openApprovalGroup(db,{role:stage,formNos:rows.map(r=>r.formNo),target,batchId,actor});
+ const files=r=>[...(r.attachments||[]).map(a=>({name:`${r.formNo.replace(/\//g,'-')}_${a.name}`,mime:a.mime,data:a.data,caption:`${r.formNo} · ${r.fields['Name of candidate']||''}`})),{name:`${r.formNo.replace(/\//g,'-')}_${stage==='final'?'Joining_Approval':'Trial_Form'}.pdf`,mime:'application/pdf',data:trialFormPdf(r,stage==='final'?'Joining approval':'Trial joining form'),caption:stage==='final'?'Joining approval':'Trial joining form'}];
+ const key=`trial-approval:${reviewer}:${batchId||rows[0].formNo}:${Date.now()}`;
+ if(rows.length===1){const m=trialApprovalMessage(rows[0],reviewer,decision);messages.push(m);await queueTelegram(db,key,recipients,m,'trial',markup,stage==='reject'?[]:files(rows[0]));
+  if(stage==='final'){const j=joiningApprovedMessage(rows[0]);messages.push(j);await queueTelegram(db,key+':join',recipients,j,'trial',null,files(rows[0]));}}
+ else{const header=!decision.approved?`❌ REJECTED BY ${ROLE_TITLE[reviewer].toUpperCase()} – Batch ${batchId||''} (${rows.length} candidates)`:stage==='final'?`🎉 FINAL APPROVAL – DIRECTORS – Batch ${batchId||''} (${rows.length} candidates)`:`✅ APPROVED BY ${ROLE_TITLE[reviewer].toUpperCase()} – Batch ${batchId||''} (${rows.length} candidates)`;
+  const m=[header,'',`Site: ${dash(target.site)}`,`${decision.approved?'Approved':'Rejected'} by: ${ROLE_TITLE[reviewer]} · ${fmtDateTime(decision.at)}`,decision.note?`Remark: ${decision.note}`:'',`Status: ${stage==='final'?'✅ CLEARED TO JOIN':stageStatus}`,'',...rows.map((r,i)=>`${i+1}. ${dash(r.fields['Name of candidate'])} – ${dash(r.fields['If PASS – recommended for']||r.fields['Post applied for']||r.department)} – ${r.formNo} – ${r.fields.Result==='PASS'?'✅ PASS':'❌ FAIL'}`),markup?'\nTap Approve / Decline below to act on all candidates in this batch.':''].filter(l=>l!=='').join('\n');
+  messages.push(m);await queueTelegram(db,key,recipients,m,'trial',markup,stage==='reject'?[]:rows.flatMap(files));
+  if(stage==='final'){const j=bulkJoiningApprovedMessage(batchId||'-',rows);messages.push(j);await queueTelegram(db,key+':join',recipients,j,'trial',null,xlsx?[{name:`${batchId||'batch'}_Joining_List.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',data:xlsx,caption:`${rows.length} candidates, joining columns pending`}]:[]);}}
+ return {stage,messages,recipients};}
 export function createTelegram(pool){
  const admin=p=>{if(!grantedMenus(p).has('Master Configuration')||assignedSites(p)!==null)fail('Unrestricted Master Configuration access required',403);};
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const result=await fn(db);await db.query('COMMIT');return result;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
@@ -354,36 +393,21 @@ export function createTelegram(pool){
   if(route==='trial-approval'&&method==='POST'){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const reviewer=String(input.reviewer||'');if(!ROLE_TITLE[reviewer])fail('Unknown reviewer stage');
-   const decision={approved:!!input.approved,note:String(input.note||'').slice(0,300),at:input.at&&!Number.isNaN(new Date(input.at).valueOf())?input.at:new Date().toISOString(),by:String(input.by||profile.name||profile.actor).slice(0,80)};
+   const decision={approved:!!input.approved,note:String(input.note||'').slice(0,300),at:input.at&&!Number.isNaN(new Date(input.at).valueOf())?input.at:new Date().toISOString(),by:String(input.by||profile.name||profile.actor).slice(0,80),via:'web'};
    const target={site:String(input.site||'').slice(0,80),region:String(input.region||'').slice(0,80),company:String(input.company||'').slice(0,120),group:String(input.group||'').slice(0,80)};
    const batchId=String(input.batchId||'').slice(0,40);
    const rows=(Array.isArray(input.rows)?input.rows:[]).slice(0,100).map(r=>{const formNo=String(r.formNo||'').slice(0,40);if(!formNo)fail('Form number is required');return {formNo,fields:cleanFields(r.fields),attachments:cleanAttachments(r.attachments),history:(Array.isArray(r.history)?r.history:[]).slice(0,40).map(h=>({role:String(h.role||'').slice(0,20),action:String(h.action||'').slice(0,80),by:String(h.by||'').slice(0,80),at:String(h.at||'').slice(0,40),note:String(h.note||'').slice(0,300)})),docs:Object.fromEntries(Object.entries(r.docs&&typeof r.docs==='object'?r.docs:{}).slice(0,10).map(([k,v])=>[String(k).slice(0,20),String(v??'').slice(0,10)])),site:target.site,company:target.company,department:String(input.department||'').slice(0,80),batchId,trialBy:String(r.trialBy||'').slice(0,80)};});
    if(!rows.length)fail('No forms to notify');
-   const stage=!decision.approved?'reject':reviewer==='pm'?'ohr':reviewer==='ohr'?'rhr':reviewer==='rhr'?'director':'final';
-   const stageStatus=!decision.approved?`Rejected by ${ROLE_TITLE[reviewer]}`:stage==='final'?'Cleared to join':NEXT_STATUS[reviewer];
-   const nextRecipients=stage==='reject'?[...await hierarchyRecipients(pool,'siteHr',target),...await hierarchyRecipients(pool,'part1',target),...await hierarchyRecipients(pool,'result',target)]
-     :stage==='final'?[...await hierarchyRecipients(pool,'all',target),...scopedRecipients(await trialRecipients(pool,'result'),target)]
-     :[...await hierarchyRecipients(pool,stage,target),...scopedRecipients(await trialRecipients(pool,'result'),target).filter(r=>r.stages?.includes?.(stage))];
-   const recipients=[...new Set(nextRecipients.map(recipientActor))];
    const xlsx=input.xlsx?String(input.xlsx).replace(/^data:[^,]*,/,'').slice(0,8*1024*1024):'';
-   const messages=[];
-   await tx(async db=>{
-    for(const r of rows){const old=(await db.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1 FOR UPDATE",[r.formNo])).rows[0];
-     const data={...(old?.data||{}),formNo:r.formNo,site:r.site||old?.data?.site,company:r.company||old?.data?.company,department:r.department||old?.data?.department,batchId:batchId||old?.data?.batchId||'',fields:{...(old?.data?.fields||{}),...r.fields},attachments:r.attachments.length?r.attachments:old?.data?.attachments||[],history:r.history,docs:r.docs,trialBy:r.trialBy||old?.data?.trialBy||r.fields['Examiner name']||'',stage:stage==='reject'?'REJECTED':stage==='final'?'CLEARED':'APPROVAL',status:stageStatus,lastDecision:{reviewer,...decision},savedBy:profile.actor,savedAt:new Date().toISOString()};
-     let id=old?.id;if(id)await db.query('UPDATE hr_records SET data=$1,status=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[data,stage==='reject'?'REJECTED':'ACTIVE',profile.actor,id]);
-     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[r.formNo,data.fields['Name of candidate']||r.formNo,data,profile.actor])).rows[0].id;
-     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'TRIAL_APPROVAL','trialForms',$2,$3)",[profile.actor,id,{formNo:r.formNo,reviewer,approved:decision.approved}]);
-     Object.assign(r,{site:data.site,company:data.company,department:data.department,trialBy:data.trialBy,attachments:data.attachments,status:stageStatus,fields:data.fields});}
-    if(!recipients.length)return;
-    const files=r=>[...(r.attachments||[]).map(a=>({name:`${r.formNo.replace(/\//g,'-')}_${a.name}`,mime:a.mime,data:a.data,caption:`${r.formNo} · ${r.fields['Name of candidate']||''}`})),{name:`${r.formNo.replace(/\//g,'-')}_${stage==='final'?'Joining_Approval':'Trial_Form'}.pdf`,mime:'application/pdf',data:trialFormPdf(r,stage==='final'?'Joining approval':'Trial joining form'),caption:stage==='final'?'Joining approval':'Trial joining form'}];
-    const key=`trial-approval:${reviewer}:${batchId||rows[0].formNo}:${Date.now()}`;
-    if(rows.length===1){const m=trialApprovalMessage(rows[0],reviewer,decision);messages.push(m);await queueTelegram(db,key,recipients,m,'trial',null,stage==='reject'?[]:files(rows[0]));
-     if(stage==='final'){const j=joiningApprovedMessage(rows[0]);messages.push(j);await queueTelegram(db,key+':join',recipients,j,'trial',null,files(rows[0]));}}
-    else{const header=!decision.approved?`❌ REJECTED BY ${ROLE_TITLE[reviewer].toUpperCase()} – Batch ${batchId||''} (${rows.length} candidates)`:stage==='final'?`🎉 FINAL APPROVAL – DIRECTORS – Batch ${batchId||''} (${rows.length} candidates)`:`✅ APPROVED BY ${ROLE_TITLE[reviewer].toUpperCase()} – Batch ${batchId||''} (${rows.length} candidates)`;
-     const m=[header,'',`Site: ${dash(target.site)}`,`${decision.approved?'Approved':'Rejected'} by: ${ROLE_TITLE[reviewer]} · ${fmtDateTime(decision.at)}`,decision.note?`Remark: ${decision.note}`:'',`Status: ${stage==='final'?'✅ CLEARED TO JOIN':stageStatus}`,'',...rows.map((r,i)=>`${i+1}. ${dash(r.fields['Name of candidate'])} – ${dash(r.fields['If PASS – recommended for']||r.fields['Post applied for']||r.department)} – ${r.formNo} – ${r.fields.Result==='PASS'?'✅ PASS':'❌ FAIL'}`)].filter(l=>l!=='').join('\n');
-     messages.push(m);await queueTelegram(db,key,recipients,m,'trial',null,stage==='reject'?[]:rows.flatMap(files));
-     if(stage==='final'){const j=bulkJoiningApprovedMessage(batchId||'-',rows);messages.push(j);await queueTelegram(db,key+':join',recipients,j,'trial',null,xlsx?[{name:`${batchId||'batch'}_Joining_List.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',data:xlsx,caption:`${rows.length} candidates, joining columns pending`}]:[]);}}});
-   return {saved:true,stage,telegram:{...(await recipientIssues(pool,recipients)),message:messages.join('\n\n———\n\n')}};
+   const out=await tx(db=>applyTrialStage(pool,db,{rows,reviewer,decision,target,batchId,xlsx,actor:profile.actor}));
+   return {saved:true,stage:out.stage,telegram:{...(await recipientIssues(pool,out.recipients)),message:out.messages.join('\n\n———\n\n')}};
+  }
+  /* ---- Browser sync: decisions taken on Telegram since the browser last looked ---- */
+  if(route==='trial-sync'&&method==='POST'){
+   if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
+   const formNos=(Array.isArray(input.formNos)?input.formNos:[]).slice(0,500).map(f=>String(f).slice(0,40));if(!formNos.length)return {rows:[]};
+   const rows=(await pool.query("SELECT code,data FROM hr_records WHERE kind='trialForms' AND code = ANY($1)",[formNos])).rows;
+   return {rows:rows.map(r=>({formNo:r.code,history:(r.data.history||[]).filter(h=>h&&h.role&&h.at),stage:r.data.stage||'',pendingRole:r.data.pendingRole||'',status:r.data.status||''}))};
   }
   /* ---- Part 2 single result (driver trainer) → PM, with the candidate's attachments ---- */
   if(route==='trial-result'&&method==='POST'){
@@ -393,13 +417,15 @@ export function createTelegram(pool){
    const prev=(await pool.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1",[formNo])).rows[0];
    const attachments=cleanAttachments(input.attachments);
    const record={...(prev?.data||{}),formNo,heading:String(input.heading||'').slice(0,120),site:String(input.site||'').slice(0,80),company:String(input.company||'').slice(0,120),department:String(input.department||'').slice(0,80),batchId:String(input.batchId||prev?.data?.batchId||'').slice(0,40),fields:{...(prev?.data?.fields||{}),...fields},attachments:attachments.length?attachments:prev?.data?.attachments||[],stage:'RESULT',status:'Sent to PM for approval',trialBy:String(input.trialBy||fields['Examiner name']||profile.name||profile.actor).slice(0,80),resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
+   Object.assign(record,{pendingRole:'pm',history:Array.isArray(record.history)?record.history:[]});
    const message=trialResultMessage(record,profile.name||profile.actor),recipients=(await trialRecipientsFor(pool,'result',{site:record.site,region:String(input.region||'').slice(0,80),company:record.company,group:String(input.group||'').slice(0,80)})).map(recipientActor);
    await tx(async db=>{let id=prev?.id;
     if(id)await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[record.fields['Name of candidate'],record,profile.actor,id]);
     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[formNo,record.fields['Name of candidate'],record,profile.actor])).rows[0].id;
     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_TRIAL_FORM','trialForms',$2,$3)",[profile.actor,id,{formNo,result:fields.Result}]);
-    const files=(record.attachments||[]).map(a=>({name:`${formNo.replace(/\//g,'-')}_${a.name}`,mime:a.mime,data:a.data,caption:`${record.fields['Name of candidate']} – ${formNo}`}));
-    if(recipients.length)await queueTelegram(db,`trial:${formNo}:${fields.Result}:${Date.now()}`,recipients,message,'trial',null,files);});
+    const files=[...(record.attachments||[]).map(a=>({name:`${formNo.replace(/\//g,'-')}_${a.name}`,mime:a.mime,data:a.data,caption:`${record.fields['Name of candidate']} – ${formNo}`})),{name:`${formNo.replace(/\//g,'-')}_Trial_Form.pdf`,mime:'application/pdf',data:trialFormPdf(record,'Trial joining form'),caption:'Trial joining form'}];
+    const markup=fields.Result==='PASS'&&recipients.length?await openApprovalGroup(db,{role:'pm',formNos:[formNo],target:{site:record.site,region:String(input.region||'').slice(0,80),company:record.company,group:String(input.group||'').slice(0,80)},batchId:record.batchId||'',actor:profile.actor}):null;
+    if(recipients.length)await queueTelegram(db,`trial:${formNo}:${fields.Result}:${Date.now()}`,recipients,message,'trial',markup,files);});
    return {saved:true,result:fields.Result,telegram:{...(await recipientIssues(pool,recipients)),message}};
   }
   /* ---- Part 2 batch result (driver trainer): PASS/FAIL per candidate → PM, with Excel sheet + attachments ---- */
@@ -417,14 +443,17 @@ export function createTelegram(pool){
    await tx(async db=>{const stored=(await db.query("SELECT id,code,data FROM hr_records WHERE kind='trialForms' AND status='ACTIVE' AND data->>'batchId'=$1 FOR UPDATE",[batchId])).rows;
     const rows=[...stored];for(const [formNo,g] of given)if(!stored.some(r=>r.code===formNo))rows.push({id:null,code:formNo,data:{formNo,heading,site,company,department,batchId,fields:g.fields,attachments:g.attachments,stage:'PART1',status:'Sent to driver trainer'}});
     if(!rows.length)fail('Batch not found',404);
-    for(const row of rows){const res=results.find(r=>r.formNo===row.code);if(!res)fail(`Missing result for ${row.code}`);const g=given.get(row.code);const data={...row.data,fields:{...row.data.fields,...(g?.fields||{}),Result:res.result,'If FAIL – reason':res.result==='FAIL'?res.reason:'', 'Examiner remarks':res.remarks,'Examiner name':trialBy},attachments:g?.attachments?.length?g.attachments:row.data.attachments||[],stage:'RESULT',status:'Sent to PM for approval',trialBy,resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
+    for(const row of rows){const res=results.find(r=>r.formNo===row.code);if(!res)fail(`Missing result for ${row.code}`);const g=given.get(row.code);const data={...row.data,fields:{...row.data.fields,...(g?.fields||{}),Result:res.result,'If FAIL – reason':res.result==='FAIL'?res.reason:'', 'Examiner remarks':res.remarks,'Examiner name':trialBy},attachments:g?.attachments?.length?g.attachments:row.data.attachments||[],stage:'RESULT',pendingRole:res.result==='PASS'?'pm':'',history:Array.isArray(row.data.history)?row.data.history:[],status:'Sent to PM for approval',trialBy,resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
      if(row.id)await db.query('UPDATE hr_records SET data=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[data,profile.actor,row.id]);
      else row.id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[row.code,data.fields['Name of candidate']||row.code,data,profile.actor])).rows[0].id;
      await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_TRIAL_FORM','trialForms',$2,$3)",[profile.actor,row.id,{formNo:row.code,result:res.result,batchId}]);records.push(data);}
     const files=[];for(const r of records)for(const a of r.attachments||[])files.push({name:`${r.formNo.replace(/\//g,'-')}_${a.name}`,mime:a.mime,data:a.data,caption:`${r.fields['Name of candidate']} – ${r.formNo}`});
+    for(const r of records)files.push({name:`${r.formNo.replace(/\//g,'-')}_Trial_Form.pdf`,mime:'application/pdf',data:trialFormPdf(r,'Trial joining form'),caption:`Trial joining form – ${r.fields['Name of candidate']||r.formNo}`});
     if(xlsx)files.push({name:`Trial_${batchId}.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',data:xlsx,caption:`Trial result sheet – ${batchId}`});
     const first=records[0];message=trialBatchResultMessage({batchId,site:first.site||first.heading,trialBy,trialDate:first.fields['Trial date & time'],vehicle:vehicleOf(first.fields),post:first.fields['Post applied for']||first.department},records,files.length-(xlsx?1:0));
-    if(recipients.length)await queueTelegram(db,`trial-batch:${batchId}:${Date.now()}`,recipients,message,'trial',null,files);});
+    const passedNos=records.filter(r=>r.fields.Result==='PASS').map(r=>r.formNo);
+    const markup=passedNos.length&&recipients.length?await openApprovalGroup(db,{role:'pm',formNos:passedNos,target:{site,region:String(input.region||'').slice(0,80),company,group:String(input.group||'').slice(0,80)},batchId,actor:profile.actor}):null;
+    if(recipients.length)await queueTelegram(db,`trial-batch:${batchId}:${Date.now()}`,recipients,message+(markup?'\n\nTap Approve / Decline below to act on the PASSED candidates.':''),'trial',markup,files);});
    return {saved:true,batchId,passed:records.filter(r=>r.fields.Result==='PASS').map(r=>r.formNo),telegram:{...(await recipientIssues(pool,recipients)),message}};
   }
   if(route==='trial-forms'&&method==='POST'){
@@ -508,6 +537,22 @@ export function createTelegram(pool){
   await tx(async db=>{
    if(!(await db.query('INSERT INTO hr_telegram_updates(id) VALUES($1) ON CONFLICT DO NOTHING RETURNING id',[update.update_id])).rowCount)return;
    const cb=update.callback_query;
+   if(cb&&bot==='trial'){const m=String(cb.data||'').match(/^ta:(TA-[0-9A-F]{12}):(a|d)$/);if(!m||!cb.from?.id){callback={bot,id:cb.id,text:'Unknown action'};return;}
+    const account=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(cb.from.id)])).rows[0];const actor=account?.actor?.replace(/^trial:/,'');
+    const group=(await db.query("SELECT id,data,status FROM hr_records WHERE kind='trialApprovals' AND code=$1 FOR UPDATE",[m[1]])).rows[0];
+    if(!group){callback={bot,id:cb.id,text:'This approval request was not found'};return;}
+    if(group.status!=='PENDING'){callback={bot,id:cb.id,text:`Already ${group.data.decision||'handled'}${group.data.decidedBy?' by '+group.data.decidedBy:''}`};return;}
+    const g=group.data,role=g.role,target=g.target||{};
+    const allowed=(await hierarchyRecipients(db,ROLE_STEP[role],target)).map(r=>r.actor);
+    if(!actor||!allowed.includes(actor)){callback={bot,id:cb.id,text:`Only the ${ROLE_TITLE[role]} for ${target.site||'this site'} can act on this`};return;}
+    const approved=m[2]==='a',at=new Date().toISOString(),name=(await db.query("SELECT name FROM hr_records WHERE kind='employees' AND lower(code)=$1",[actor])).rows[0]?.name||cb.from.first_name||actor;
+    const stored=(await db.query("SELECT code,data FROM hr_records WHERE kind='trialForms' AND code = ANY($1)",[g.formNos])).rows.filter(r=>r.data.pendingRole===role);
+    if(!stored.length){callback={bot,id:cb.id,text:'These forms have already moved on'};return;}
+    const rows=stored.map(r=>({formNo:r.code,fields:r.data.fields||{},attachments:r.data.attachments||[],history:[...(r.data.history||[]),historyEntry(role,approved,name,at,approved?'Approved via Telegram':'Declined via Telegram')],docs:r.data.docs||{},site:r.data.site,company:r.data.company,department:r.data.department,batchId:r.data.batchId||'',trialBy:r.data.trialBy||''}));
+    await applyTrialStage(pool,db,{rows,reviewer:role,decision:{approved,note:approved?'':'Declined via Telegram',at,by:name,via:'telegram'},target,batchId:g.batchId||'',xlsx:'',actor:actor});
+    await db.query("UPDATE hr_records SET status='CLOSED',data=$2,updated_at=now() WHERE id=$1",[group.id,{...g,decision:approved?'approved':'declined',decidedBy:name,decidedAt:at}]);
+    await queueTelegram(db,`trial-ack:${m[1]}`,[actor],`${approved?'✅':'❌'} ${approved?'Approved':'Declined'} by you (${ROLE_TITLE[role]}) – ${rows.map(r=>r.fields['Name of candidate']||r.formNo).join(', ')}${approved&&NEXT_ROLE[role]!=='done'?'. Sent to '+ROLE_TITLE[NEXT_ROLE[role]]+'.':approved?'. Cleared to join – joining approval sent to all.':'.'}`,'trial');
+    callback={bot,id:cb.id,text:approved?'Approved ✅':'Declined ❌'};return;}
    if(cb&&bot==='joining'){const m=String(cb.data||'').match(/^ja:(JA-[0-9A-F]{12}):(approve|reject)$/);if(!m||!cb.from?.id){callback={bot,id:cb.id,text:'Unknown action'};return;}
     const actor=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(cb.from.id)])).rows[0]?.actor;
     const row=(await db.query("SELECT data FROM hr_records WHERE kind='joiningApprovals' AND code=$1 FOR UPDATE",[m[1]])).rows[0];

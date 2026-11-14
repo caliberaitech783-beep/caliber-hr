@@ -7,7 +7,7 @@ import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime
   NEXT, nextNumber, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
 import {getTrialResultFile, removeTrialResultFiles, saveTrialResultFiles} from './trialResultFiles';
-import {deliveryStatus, sendApproval, sendPart1, sendResults} from './telegramSend';
+import {deliveryStatus, fetchDecisions, sendApproval, sendPart1, sendResults} from './telegramSend';
 import {siteDisplayName} from '../siteNames';
 import {findPreviousTrial} from './previousTrial';
 import type {TrialMatch} from '../TrialAadhaarHistory';
@@ -870,6 +870,33 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     $<HTMLInputElement>('#apNote').value='';
     refresh();
   };
+  /* Telegram approvals: PM / Office HR / Regional HR / Director can tap Approve or Decline on their phone.
+     Every 20 s (and on load) decisions recorded on the server are merged into the browser records, so the form
+     leaves that approver's queue here too. */
+  async function syncFromServer() {
+    if (effects.signal.aborted || !savedSession()?.grant) return;
+    const open = read().filter(row => row.stage!=='done' && row.stage!=='rejected' && row.stage!=='trainer');
+    if (!open.length) return;
+    let rows;
+    try { rows = await fetchDecisions(open.map(row => row.formNo)); } catch { return; }
+    if (effects.signal.aborted || !rows.length) return;
+    let changed = 0;
+    commit(latest => latest.map(row => {
+      const remote = rows.find(r => r.formNo===row.formNo);
+      if (!remote) return row;
+      const missing = (remote.history||[]).filter(h => h.role && ['Approved','Rejected'].includes(h.action) && !row.history.some(x => x.role===h.role && x.at===h.at));
+      if (!missing.length) return row;
+      const history = [...row.history, ...missing];
+      const last = history[history.length-1];
+      const stage = last.action==='Rejected' ? 'rejected' : (NEXT as Record<string,string>)[last.role] || row.stage;
+      changed++;
+      return {...row, history, stage: stage as Trial['stage']};
+    }));
+    if (changed) toast(`${changed} form(s) updated from Telegram approvals.`);
+  }
+  void syncFromServer();
+  const syncTimer = setInterval(() => { if (document.visibilityState==='visible') void syncFromServer(); }, 20000);
+  effects.signal.addEventListener('abort', () => clearInterval(syncTimer));
   window.addEventListener('storage',event=>{
     if (event.key!==persistKey && event.key!==legacyKey) return;
     try{records=read();refresh();}

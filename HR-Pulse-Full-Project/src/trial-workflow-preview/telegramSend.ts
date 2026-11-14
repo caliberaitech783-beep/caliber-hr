@@ -102,3 +102,12 @@ export async function sendApproval(changed: Trial[], reviewer: 'pm'|'ohr'|'rhr'|
   });
   return out.telegram;
 }
+
+/* Decisions taken on Telegram (Approve / Decline buttons) for the given forms. */
+export type SyncRow = {formNo: string; history: Trial['history']; stage: string; pendingRole: string; status: string};
+export async function fetchDecisions(formNos: string[]): Promise<SyncRow[]> {
+  const grant = savedSession()?.grant;
+  if (!grant || !formNos.length) return [];
+  const out = await api<{rows: SyncRow[]}>(grant, 'telegram/trial-sync', 'POST', {formNos});
+  return out.rows || [];
+}
