@@ -70,3 +70,23 @@ test('details correct only the employee ID fields copied from the workbook',asyn
   ]);
   assert.equal(fields[0][1],'CMPL001');
 });
+
+test('export returns the full filtered register within the assigned sites',async()=>{
+  const queries = [];
+  const service = createEmployeeMasterRegister({query:async(sql,params)=>{
+    if (sql.includes("kind='sites'")) return {rows:[{id:siteId}]};
+    queries.push({sql,params});
+    return {rows:Array.from({length:51},(_,index)=>({
+      id:String(index),site_name:'Sasti OB',site_code:'WCL-SASTI',data:{employeeId:`CMLL${index}`,name:'Test Operator'},
+    }))};
+  }});
+  const scoped = {actor:'hr-test',permissions:{hrDesktopAccess:menus,site:'WCL-SASTI'}};
+  const result = await service.employeeMasterRegister(scoped,new URLSearchParams({export:'1',site:'WCL-SASTI',search:'Operator'}));
+  assert.equal(queries.length,1);
+  assert.deepEqual(queries[0].params,[[siteId],'WCL-SASTI','Operator']);
+  assert.match(queries[0].sql,/site_id=ANY\(\$1\)/);
+  assert.match(queries[0].sql,/data-'sources'/);
+  assert.doesNotMatch(queries[0].sql,/\b(?:LIMIT|OFFSET)\b/i);
+  assert.equal(result.rows.length,51);
+  assert.equal(result.rows.at(-1).region,'WCL');
+});

@@ -72,15 +72,21 @@ export function createEmployeeMasterRegister(pool) {
         AND ($2='' OR site_code=$2)
         AND ($3='' OR strpos(lower(concat_ws(' ',name,data->>'employeeId',data->>'department',data->>'designation')),lower($3))>0)
         AND ${isEmployeeEntry}`;
+      const selectRows = `SELECT id, site_name, site_code, data-'sources' AS data FROM hr_employee_master_register
+        WHERE ${filter} ORDER BY lower(name),id`;
+      const formatRows = ({rows}) => rows.map(row=>({
+        id:row.id,...row.data,site:row.site_name,region:row.site_code.split('-')[0],
+      }));
+      if (params.get('export') === '1') {
+        return {complete:true,rows:formatRows(await pool.query(selectRows,values))};
+      }
       const [count, listing, sites] = await Promise.all([
         pool.query(`SELECT count(*) AS total FROM hr_employee_master_register WHERE ${filter}`, values),
-        pool.query(`SELECT id, site_name, site_code, data-'sources' AS data FROM hr_employee_master_register
-          WHERE ${filter} ORDER BY lower(name),id LIMIT ${pageSize} OFFSET $4`, [...values,(page-1)*pageSize]),
+        pool.query(`${selectRows} LIMIT ${pageSize} OFFSET $4`, [...values,(page-1)*pageSize]),
         pool.query(`SELECT DISTINCT site_code AS code, site_name AS label FROM hr_employee_master_register
           WHERE ($1::uuid[] IS NULL OR site_id=ANY($1)) AND ${isEmployeeEntry} ORDER BY label`, [scope]),
       ]);
-      const rows = listing.rows.map(row=>({id:row.id,...row.data,site:row.site_name,region:row.site_code.split('-')[0]}));
-      return {rows, total:Number(count.rows[0].total), page, pageSize, sites:sites.rows, canImport:scope===null};
+      return {rows:formatRows(listing), total:Number(count.rows[0].total), page, pageSize, sites:sites.rows, canImport:scope===null};
     },
     async employeeMasterRegisterDetails(profile, id) {
       const scope = await access(pool, profile);

@@ -1,11 +1,18 @@
 import {useEffect, useRef, useState, type FormEvent} from 'react';
-import {api} from './api';
+import {api, csv, download, downloadBlob} from './api';
+import {assetPrintHtml} from './assetPrint';
 
 const columns = [
-  ['employeeId','Employee ID'], ['name','Name'], ['region','Region'], ['site','Site / Office'],
-  ['department','Department'], ['designation','Designation'], ['category','Category'],
-  ['reportingTo','Reporting to'], ['contact','Contact'], ['email','Email'], ['status','Status'],
+  ['employeeId','Employee ID',18], ['name','Name',28], ['region','Region',12], ['site','Site / Office',27],
+  ['department','Department',24], ['designation','Designation',29], ['category','Category',18],
+  ['reportingTo','Reporting to',25], ['contact','Contact',19], ['email','Email',36], ['status','Status',16],
 ] as const;
+const exportColumns: {key:'serial' | typeof columns[number][0];label:string}[] = [
+  {key:'serial',label:'Serial No'},
+  ...columns.map(([key,label])=>({key,label:label.toUpperCase()})),
+];
+const formats = [['excel','Download Excel'], ['csv','Download CSV'], ['pdf','Download PDF']] as const;
+type ExportFormat = typeof formats[number][0];
 type Employee = Record<typeof columns[number][0], string> & {id:string};
 type EmployeeDetails = {
   name:string;
@@ -72,6 +79,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
   const viewButton = useRef<HTMLButtonElement>(null);
   const [loading,setLoading] = useState(true);
   const [importing,setImporting] = useState(false);
+  const [exporting,setExporting] = useState<ExportFormat>();
   const [error,setError] = useState('');
   const [message,setMessage] = useState('');
 
@@ -114,6 +122,54 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
     }
   }
 
+  async function exportEmployees(format:ExportFormat) {
+    setError('');
+    const popup = format==='pdf' ? window.open('','_blank') : null;
+    if (format==='pdf' && !popup) {
+      setError('The PDF window was blocked. Allow pop-ups for HR Pulse and try again.');
+      return;
+    }
+    if (popup) {
+      popup.opener = null;
+      popup.document.title = 'Employee Master';
+      popup.document.body.textContent = 'Preparing employee report…';
+    }
+    setExporting(format);
+    try {
+      const params = new URLSearchParams({site,search:query,export:'1'});
+      const {complete,rows} = await api<{complete:boolean;rows:Employee[]}>(grant,`employee-master-register?${params}`);
+      if (!complete) throw new Error('The full employee export is temporarily unavailable. Try again shortly.');
+      if (!rows.length) throw new Error('No employees match the current selection.');
+      if (format==='excel') {
+        const {regionEmployeeExcel} = await import('./regionEmployeeExcel');
+        const workbook = await regionEmployeeExcel(
+          columns.map(([,header,width])=>({header,width})),
+          rows.map(row=>columns.map(([key])=>row[key] ?? '')),
+        );
+        downloadBlob('hr-employee-master.xlsx',workbook);
+      } else {
+        const records = rows.map((row,index)=>({...row,serial:index+1}));
+        if (format==='csv') {
+          const headings = exportColumns.map(({label})=>label);
+          const values = records.map(row=>Object.fromEntries(exportColumns.map(({key,label})=>[label,row[key]])));
+          download('hr-employee-master.csv',csv(headings,values));
+        } else if (popup) {
+          if (popup.closed) throw new Error('The PDF window was closed. Try Download PDF again.');
+          popup.document.open();
+          popup.document.write(assetPrintHtml('Employee Master',exportColumns,records));
+          popup.document.close();
+          popup.focus();
+          popup.print();
+        }
+      }
+    } catch (error) {
+      popup?.close();
+      setError(error instanceof Error ? error.message : 'Unable to download employee data.');
+    } finally {
+      setExporting(undefined);
+    }
+  }
+
   function searchEmployees(event:FormEvent) {
     event.preventDefault();
     setPage(1);
@@ -126,6 +182,13 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       <div>
         <h2 id="employee-master-register-title">Employee Master</h2>
         {data && <p>{data.total.toLocaleString('en-IN')} employee entries</p>}
+      </div>
+      <div className="toolbar-buttons" aria-label="Download employee data">
+        {formats.map(([format,label])=><button
+          type="button" key={format}
+          disabled={loading||importing||Boolean(exporting)||!data?.total}
+          onClick={()=>void exportEmployees(format)}
+        >{exporting===format?'Preparing…':label}</button>)}
       </div>
       {data?.canImport && <label className="file-label">Import HR employee data
         <input aria-label="Import HR employee data" type="file" accept=".json" disabled={importing||loading} onChange={event=>{
