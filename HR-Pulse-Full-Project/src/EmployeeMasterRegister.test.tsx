@@ -56,9 +56,17 @@ it('prints all matching rows, including records on later pages, with the current
   fireEvent.change(screen.getByLabelText('Site'),{target:{value:'WCL-SASTI'}});
   fireEvent.change(screen.getByRole('searchbox'),{target:{value:'employee'}});
   fireEvent.click(screen.getByRole('button',{name:'Search'}));
-  const download = screen.getByRole('button',{name:'Download PDF'});
+  const download = screen.getByRole('button',{name:'Download'});
   await waitFor(()=>expect(download).toBeEnabled());
+  expect(screen.queryByRole('group',{name:'Download format'})).toBeNull();
   fireEvent.click(download);
+  const formats = screen.getByRole('group',{name:'Download format'});
+  expect(within(formats).getAllByRole('button').map(button=>button.textContent)).toEqual(['CSV','Excel','PDF']);
+  fireEvent.keyDown(within(formats).getByRole('button',{name:'PDF'}),{key:'Escape'});
+  expect(download).toHaveFocus();
+  expect(download).toHaveAttribute('aria-expanded','false');
+  fireEvent.click(download);
+  fireEvent.click(screen.getByRole('button',{name:'PDF'}));
   expect(open).toHaveBeenCalledOnce();
   await waitFor(()=>expect(print).toHaveBeenCalledOnce());
   const url = fetchMock.mock.calls.at(-1)?.[0] ?? '';

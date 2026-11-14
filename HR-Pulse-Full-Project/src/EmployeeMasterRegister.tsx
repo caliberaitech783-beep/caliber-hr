@@ -1,4 +1,5 @@
 import {useEffect, useRef, useState, type FormEvent} from 'react';
+import {ChevronDown, Download} from 'lucide-react';
 import {api, csv, download, downloadBlob} from './api';
 import {assetPrintHtml} from './assetPrint';
 
@@ -11,7 +12,7 @@ const exportColumns: {key:'serial' | typeof columns[number][0];label:string}[] =
   {key:'serial',label:'Serial No'},
   ...columns.map(([key,label])=>({key,label:label.toUpperCase()})),
 ];
-const formats = [['excel','Download Excel'], ['csv','Download CSV'], ['pdf','Download PDF']] as const;
+const formats = [['csv','CSV'], ['excel','Excel'], ['pdf','PDF']] as const;
 type ExportFormat = typeof formats[number][0];
 type Employee = Record<typeof columns[number][0], string> & {id:string};
 type RegisterColumn = typeof columns[number];
@@ -178,6 +179,8 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
   const [loading,setLoading] = useState(true);
   const [importing,setImporting] = useState(false);
   const [exporting,setExporting] = useState<ExportFormat>();
+  const [downloadOpen,setDownloadOpen] = useState(false);
+  const downloadButton = useRef<HTMLButtonElement>(null);
   const [error,setError] = useState('');
   const [message,setMessage] = useState('');
 
@@ -252,7 +255,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
           const values = records.map(row=>Object.fromEntries(exportColumns.map(({key,label})=>[label,row[key]])));
           download('hr-employee-master.csv',csv(headings,values));
         } else if (popup) {
-          if (popup.closed) throw new Error('The PDF window was closed. Try Download PDF again.');
+          if (popup.closed) throw new Error('The PDF window was closed. Choose PDF from the Download menu again.');
           popup.document.open();
           popup.document.write(assetPrintHtml('Employee Master',exportColumns,records));
           popup.document.close();
@@ -280,18 +283,36 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
   }
 
   const first = (page-1)*(data?.pageSize ?? 50);
+  const canDownload = !loading && !importing && !exporting && Boolean(data?.total);
   return <section className="data-card employee-report" aria-labelledby="employee-master-register-title">
     <div className="data-heading">
       <div>
         <h2 id="employee-master-register-title">Employee Master</h2>
         {data && <p>{data.total.toLocaleString('en-IN')} employee entries</p>}
       </div>
-      <div className="toolbar-buttons" aria-label="Download employee data">
-        {formats.map(([format,label])=><button
-          type="button" key={format}
-          disabled={loading||importing||Boolean(exporting)||!data?.total}
-          onClick={()=>void exportEmployees(format)}
-        >{exporting===format?'Preparing…':label}</button>)}
+      <div className="employee-export hr-register-download"
+        onBlur={event=>{
+          if (!event.currentTarget.contains(event.relatedTarget)) setDownloadOpen(false);
+        }}
+        onKeyDown={event=>{
+          if (event.key!=='Escape' || !downloadOpen) return;
+          event.preventDefault();
+          setDownloadOpen(false);
+          downloadButton.current?.focus();
+        }}>
+        <button ref={downloadButton} type="button" className="employee-import" disabled={!canDownload}
+          aria-expanded={downloadOpen&&canDownload} aria-controls="hr-register-download-formats"
+          onClick={()=>setDownloadOpen(open=>!open)}>
+          <Download aria-hidden="true"/>{exporting?'Preparing…':'Download'}<ChevronDown aria-hidden="true"/>
+        </button>
+        <div id="hr-register-download-formats" className="employee-export-menu" role="group" aria-label="Download format"
+          hidden={!downloadOpen||!canDownload}>
+          {formats.map(([format,label])=><button type="button" key={format} onClick={()=>{
+            setDownloadOpen(false);
+            downloadButton.current?.focus();
+            void exportEmployees(format);
+          }}>{label}</button>)}
+        </div>
       </div>
       {data?.canImport && <label className="file-label">Import HR employee data
         <input aria-label="Import HR employee data" type="file" accept=".json" disabled={importing||loading} onChange={event=>{

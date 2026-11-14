@@ -196,6 +196,9 @@
 .employee-report .employee-report-table th:nth-child(11) { min-width: 180px; }
 .employee-report .employee-report-table td:first-child { text-align: right; }
 .employee-report .employee-report-table td:is(:first-child, :nth-child(2), :nth-child(10)) { font-variant-numeric: tabular-nums; }
+.hr-register-download { margin-inline-start: auto; }
+.hr-register-download .employee-export-menu { width: max(100%, 120px); }
+.hr-register-download .employee-export-menu button { justify-content: flex-start; }
 .hr-register-details { max-height: min(85vh, 760px); }
 .hr-register-details details { margin-top: 12px; border: 1px solid #ddd3e4; border-radius: 8px; }
 .hr-register-details summary { padding: 12px; font-weight: 600; cursor: pointer; overflow-wrap: anywhere; }
