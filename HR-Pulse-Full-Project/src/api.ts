@@ -4,6 +4,7 @@ export type Profile={name:string;username?:string;email?:string;actor?:string;as
 export type Session={grant:string;profile:Profile};
 export type Field={key:string;label:string;type:string;required?:boolean;reference?:string;options?:string[];min?:number};
 export type Module={autoCode?:boolean;title:string;menu:string;fields:Field[];canWrite:boolean};
+export type HRConfig={profile:Profile;modules:Record<string,Module>};
 export type RecordRow={id:string;kind:string;code:string;name:string;data:Record<string,string|number>;status:string;version:number;updated_at:string};
 export type Lookup={department_id?:string;id:string;kind:string;code:string;name:string};
 export async function pulse(action:string,data:object){
@@ -14,7 +15,13 @@ export function clearSession(){localStorage.removeItem('hrPulseSession');session
 export function savedSession():Session|null{try{return JSON.parse(sessionStorage.getItem('hrPulseSession')||localStorage.getItem('hrPulseSession')||'null');}catch{return null;}}
 export async function api<T>(grant:string,path:string,method='GET',body?:unknown):Promise<T>{
   const response=await fetch(API+'/api/'+path,{method,headers:{Authorization:'Bearer '+grant,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(30000)});
-  const result=await response.json();if(!response.ok){if(response.status===401){clearSession();window.dispatchEvent(new Event('hr-session-expired'));}throw new Error(result.error||'Unable to complete the request');}return displaySiteRecords(result,path.split('?')[0]==='hierarchies'||/^records\/(sites|joiningHierarchies)(\/|$)/.test(path.split('?')[0]));
+  if(!response.ok){
+    if(response.status===401){clearSession();window.dispatchEvent(new Event('hr-session-expired'));}
+    const result=await response.json().catch(()=>null);
+    throw new Error(result?.error||'Unable to complete the request');
+  }
+  const result=await response.json();
+  return displaySiteRecords(result,path.split('?')[0]==='hierarchies'||/^records\/(sites|joiningHierarchies)(\/|$)/.test(path.split('?')[0]));
 }
 export function csv(columns:string[],rows:Record<string,unknown>[]){
   const cell=(value:unknown)=>{let s=String(value??'');if(/^[=+@\-\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};

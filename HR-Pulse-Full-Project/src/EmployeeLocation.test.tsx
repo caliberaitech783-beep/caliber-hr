@@ -148,6 +148,7 @@ describe('Employee Master tabs',()=>{
    await screen.findByText('EMP-CSV');
    fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
    fireEvent.click(screen.getByRole('menuitem',{name:'Download as Excel'}));
+   await waitFor(()=>expect(writeFile).toHaveBeenCalled());
    const [workbook,fileName]=vi.mocked(writeFile).mock.calls.at(-1)!;
    expect(fileName).toBe('joining-personal-details.xlsx');
    const grid=utils.sheet_to_json<string[]>(workbook.Sheets[workbook.SheetNames[0]],{header:1});

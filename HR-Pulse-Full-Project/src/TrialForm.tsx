@@ -1,15 +1,16 @@
 import TrialAadhaarHistory,{type TrialCheck} from './TrialAadhaarHistory';
 import FormInput from './BirthDateInput';
 import {ageText} from './age';
-import {useEffect,useId,useRef,useState,type ReactNode} from 'react';
+import {lazy,Suspense,useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {Camera,Printer,Save,Send,X} from 'lucide-react';
 import {api,savedSession} from './api';
 import {AadhaarUpload} from './EmployeeLocation';
-import TrialWorkflowPreview from './trial-workflow-preview/TrialWorkflowPreview';
 import './trial-form.css';
 import {prepareTrialJoining,saveTrialHandoff,type TrialHandoff} from './trialHandoff';
 import type {JoiningDraft} from './joiningDrafts';
 import type {Trial} from './trial-workflow-preview/records';
+
+const TrialWorkflowPreview=lazy(()=>import('./trial-workflow-preview/TrialWorkflowPreview'));
 
 /* Trial Joining Form – Driver & Operator. Mirrors Trial_Joining_Form_Driver_Operator.docx.
    Shown under Employee Master when the top bar's department is Driver or Operator. */
@@ -56,7 +57,7 @@ export default function TrialForm({selection,onPassed,owner: draftOwner,legacyOw
   saveTrialHandoff(draft.trialHandoff,{});
   return ()=>onPassed?.(draft);
  }
- return <TrialWorkflowPreview owner={owner} legacyOwner={legacyOwner} name="" site={site} company={companyShort[company]||company} department={department} onCleared={onPassed?join:undefined}/>;
+ return <Suspense fallback={<p role="status">Loading Trial Form…</p>}><TrialWorkflowPreview owner={owner} legacyOwner={legacyOwner} name="" site={site} company={companyShort[company]||company} department={department} onCleared={onPassed?join:undefined}/></Suspense>;
 }
 
 export function CurrentTrialForm({selection,onPassed,canManage=false}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void;canManage?:boolean}){

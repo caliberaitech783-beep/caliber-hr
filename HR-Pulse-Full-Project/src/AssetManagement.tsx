@@ -1,6 +1,5 @@
 import {EmployeeAssets} from './EmployeeAssets';
 import {useEffect,useState} from 'react';
-import * as XLSX from 'xlsx';
 import {api,type Module} from './api';
 import LegacyAssetManagement from './LegacyAssetManagement';
 import './assetManagement.css';
@@ -28,7 +27,7 @@ export default function AssetManagement({grant,config,notice}:{grant:string;conf
  const exits=boot?.employees.filter(e=>/exit|notice|terminat/i.test(e.employment_status)||!['ACTIVE','APPROVED'].includes(e.status))||[];
  async function open(a:Asset){setError('');try{setDetail(await api(grant,'asset-management/detail/'+a.id));setDialog('Detail');setForm({});}catch(e){setError((e as Error).message);}}
  async function save(path:string,data:any){setBusy(true);setError('');try{await api(grant,'asset-management/'+path,'POST',data);setDialog('');notice('Saved successfully');await refresh();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
- function exportExcel(){const workbook=XLSX.utils.book_new();const data=filtered.map(a=>({'Asset tag':a.tag,Name:a.data.name,Category:a.category,'Make / model':a.data.makeModel,Serial:a.serial,Location:boot?.locations.find(l=>l.id===a.site_id)?.name,Condition:a.data.condition,'Purchase date':day(a.data.purchaseDate),'Purchase cost (INR)':a.data.purchaseCost,'Book value (INR)':a.bookValue,Vendor:a.data.vendor,Invoice:a.data.invoice,'Warranty expiry':day(a.data.warrantyExpiry),Status:a.status,Employee:a.employee||'','Expected return':day(a.data.expectedReturn),'Custom fields':JSON.stringify(a.data.custom||{})}));XLSX.utils.book_append_sheet(workbook,XLSX.utils.json_to_sheet(data.length?data:[{'Asset tag':'',Name:'',Category:''}]),'Assets');XLSX.writeFile(workbook,'asset-register.xlsx');}
+ async function exportExcel(){try{const XLSX=await import('xlsx');const workbook=XLSX.utils.book_new();const data=filtered.map(a=>({'Asset tag':a.tag,Name:a.data.name,Category:a.category,'Make / model':a.data.makeModel,Serial:a.serial,Location:boot?.locations.find(l=>l.id===a.site_id)?.name,Condition:a.data.condition,'Purchase date':day(a.data.purchaseDate),'Purchase cost (INR)':a.data.purchaseCost,'Book value (INR)':a.bookValue,Vendor:a.data.vendor,Invoice:a.data.invoice,'Warranty expiry':day(a.data.warrantyExpiry),Status:a.status,Employee:a.employee||'','Expected return':day(a.data.expectedReturn),'Custom fields':JSON.stringify(a.data.custom||{})}));XLSX.utils.book_append_sheet(workbook,XLSX.utils.json_to_sheet(data.length?data:[{'Asset tag':'',Name:'',Category:''}]),'Assets');XLSX.writeFile(workbook,'asset-register.xlsx');}catch(error){setError((error as Error).message);}}
  const table=(items:Asset[],label:string)=><>
    <div className="table-scroll" role="region" aria-label={label} tabIndex={0}>
      <table className="asset-register-table">

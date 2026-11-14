@@ -1,4 +1,4 @@
-import {fireEvent,render,screen,within} from '@testing-library/react';
+import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import App from './App';
 import * as joiningDrafts from './joiningDrafts';
@@ -20,6 +20,7 @@ it('opens the full trial workflow directly from the Trial Form menu',async()=>{
  const {container}=render(<App/>);
  fireEvent.change(await screen.findByRole('combobox',{name:/^Department$/}),{target:{value:'Driver'}});
  fireEvent.click(await screen.findByRole('button',{name:/^Trial Form$/}));
+ await screen.findByRole('button',{name:'Upload Aadhaar Image 1'});
  expect(screen.queryByRole('group',{name:'Trial Form views'})).toBeNull();
  const preview=container.querySelector('[aria-label="Trial workflow local preview"]')?.shadowRoot;
  expect(preview?.querySelector('#tabs button[aria-pressed="true"]')).toHaveTextContent('Upload Aadhaar');
@@ -73,6 +74,7 @@ it('finds candidates saved under the original sign-in and current HR account key
  await screen.findAllByText('Configured HR user');
  fireEvent.change(await screen.findByRole('combobox',{name:'Department'}),{target:{value:'Driver'}});
  fireEvent.click(await screen.findByRole('button',{name:'Trial Form'}));
+ await screen.findByRole('button',{name:'Upload Aadhaar Image 1'});
  const preview=container.querySelector('[aria-label="Trial workflow local preview"]')!.shadowRoot!;
  fireEvent.click(preview.querySelector('[data-tab="overview"]')!);
  expect(preview.querySelector('#ovList')).toHaveTextContent(trial.name);
@@ -141,3 +143,37 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
   await screen.findByRole('heading',{name:'Joining Approval Hierarchy'});
   window.location.hash='';
  });
+
+it('restores a saved session with one authenticated configuration request',async()=>{
+ const profile={name:'Saved user',actor:'test',permissions:{application:'HR',hrDesktopAccess:[]}};
+ sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
+ const request=vi.fn(async()=>Response.json({profile,modules:{}}));
+ vi.stubGlobal('fetch',request);
+ render(<App/>,{reactStrictMode:true});
+ await screen.findByText('No HR menus are assigned. Contact your Pulse administrator.');
+ expect(request).toHaveBeenCalledTimes(1);
+ expect(request).toHaveBeenCalledWith(expect.stringMatching(/\/api\/config$/),expect.anything());
+});
+
+it('keeps the saved session during an API outage and retries configuration',async()=>{
+ const profile={name:'Saved user',actor:'test',permissions:{application:'HR',hrDesktopAccess:[]}};
+ sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
+ const request=vi.fn()
+  .mockResolvedValueOnce(new Response('<html>Service unavailable</html>',{status:503}))
+  .mockResolvedValueOnce(Response.json({profile,modules:{}}));
+ vi.stubGlobal('fetch',request);
+ render(<App/>);
+ expect(await screen.findByRole('alert')).toHaveTextContent('Unable to complete the request');
+ expect(sessionStorage.getItem('hrPulseSession')).not.toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Retry connection'}));
+ await screen.findByText('No HR menus are assigned. Contact your Pulse administrator.');
+ expect(request).toHaveBeenCalledTimes(2);
+});
+
+it('returns to sign-in when the HR API rejects a saved session',async()=>{
+ sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+ vi.stubGlobal('fetch',async()=>new Response(null,{status:401}));
+ render(<App/>);
+ await screen.findByRole('button',{name:'Sign in'});
+ await waitFor(()=>expect(sessionStorage.getItem('hrPulseSession')).toBeNull());
+});
