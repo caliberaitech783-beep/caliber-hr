@@ -45,10 +45,28 @@ test('import writes to the separate register and can be safely retried', async()
     return {rowCount:0};
   }};
   const service = createEmployeeMasterRegister({connect:async()=>db});
-  assert.deepEqual(await service.importEmployeeMasterRegister(admin,[employee]),{inserted:1,alreadyImported:0});
-  assert.deepEqual(await service.importEmployeeMasterRegister(admin,[employee]),{inserted:0,alreadyImported:1});
+  const imported = {...employee,employeeId:'cmpl-001a',reportingTo:'CMPL-002'};
+  assert.deepEqual(await service.importEmployeeMasterRegister(admin,[imported]),{inserted:1,alreadyImported:0});
+  assert.deepEqual(await service.importEmployeeMasterRegister(admin,[imported]),{inserted:0,alreadyImported:1});
   assert.equal(stored.get(employee.key).site_id,siteId);
+  assert.equal(stored.get(employee.key).data.employeeId,'CMLL-001a');
+  assert.equal(stored.get(employee.key).data.reportingTo,'CMPL-002');
   assert.equal(stored.get(employee.key).data.sources[0].label,'Test workbook');
   assert.equal(statements.filter(sql=>sql==='COMMIT').length,2);
   assert.ok(statements.every(sql=>!/(INSERT INTO|UPDATE|DELETE FROM) hr_records/.test(sql)));
+});
+
+test('details correct only the employee ID fields copied from the workbook',async()=>{
+  const fields = [
+    ['Employee Code','CMPL001'],['EMPLOYEE ID','cmpl-002a'],['EMP ID','CMLL003'],
+    ['Employee ID','OTHER-CMPL004'],['Company Code','CMPL'],['Reports To Employee Code','CMPL005'],
+  ];
+  const service = createEmployeeMasterRegister({
+    query:async()=>({rowCount:1,rows:[{name:'Test Employee',sources:[{label:'Workbook',fields}]}]}),
+  });
+  const result = await service.employeeMasterRegisterDetails(admin,siteId);
+  assert.deepEqual(result.sources[0].fields,[
+    ['Employee Code','CMLL001'],['EMPLOYEE ID','CMLL-002a'],...fields.slice(2),
+  ]);
+  assert.equal(fields[0][1],'CMPL001');
 });

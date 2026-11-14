@@ -26,6 +26,8 @@ const siteNames = {
 };
 const fields = ['employeeId','name','department','designation','category','reportingTo','contact','email','status'];
 const fail = (message, status = 400) => Object.assign(new Error(message), {status});
+const normalizeEmployeeId = value => value.replace(/^CMPL/i,'CMLL');
+const employeeIdLabels = new Set(['EMPLOYEECODE','EMPLOYEEID','EMPID']);
 
 async function access(db, profile) {
   const menus = grantedMenus(profile);
@@ -44,7 +46,7 @@ function parseRow(row, index) {
   const data = {};
   for (const field of fields) {
     if (typeof row[field] !== 'string' || row[field].length > 1000) throw invalid();
-    data[field] = row[field];
+    data[field] = field==='employeeId' ? normalizeEmployeeId(row[field]) : row[field];
   }
   if (!Array.isArray(row.sources) || !row.sources.length || row.sources.length > 30) throw invalid();
   data.sources = row.sources.map(source => {
@@ -85,7 +87,13 @@ export function createEmployeeMasterRegister(pool) {
       const result = await pool.query(`SELECT name,data->'sources' AS sources FROM hr_employee_master_register
         WHERE id=$1 AND ($2::uuid[] IS NULL OR site_id=ANY($2)) AND ${isEmployeeEntry}`, [id,scope]);
       if (!result.rowCount) throw fail('Employee entry not found.', 404);
-      return result.rows[0];
+      const entry = result.rows[0];
+      return {...entry,sources:entry.sources.map(source=>({
+        ...source,
+        fields:source.fields.map(([label,value])=>[
+          label,employeeIdLabels.has(label.toUpperCase().replace(/[^A-Z]/g,'')) ? normalizeEmployeeId(value) : value,
+        ]),
+      }))};
     },
     async importEmployeeMasterRegister(profile, rows) {
       if (await access(pool, profile) !== null) throw fail('Import requires access to all HR sites.', 403);

@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS hr_employee_master_register (
  data jsonb NOT NULL, created_by text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS hr_employee_master_register_site ON hr_employee_master_register(site_id);
+-- Correct only the employee ID prefix in the separate HR register.
+UPDATE hr_employee_master_register
+SET data = jsonb_set(data, '{employeeId}', to_jsonb('CMLL' || substr(data->>'employeeId', 5)))
+WHERE data->>'employeeId' ~* '^CMPL';
 CREATE TABLE IF NOT EXISTS hr_approvals (
  id uuid PRIMARY KEY, record_id uuid NOT NULL REFERENCES hr_records(id),
  approvers jsonb NOT NULL, record_snapshot jsonb NOT NULL, stage integer NOT NULL DEFAULT 0, state text NOT NULL DEFAULT 'PENDING',
