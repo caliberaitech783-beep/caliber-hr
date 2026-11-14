@@ -123,6 +123,25 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  window.location.hash='';
 });
 
+it.each([true,false])('opens Employee Master from Master Configuration according to employee access (%s)',async(hasEmployeeAccess)=>{
+ const profile={name:'HR administrator',actor:'test',permissions:{application:'HR',hrDesktopAccess:hasEmployeeAccess?['Master Configuration','Employee Master']:['Master Configuration']}};
+ window.location.hash='Master%20Configuration';
+ sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
+ vi.stubGlobal('fetch',async(url:string)=>Response.json(url.endsWith('/config')?{profile,modules:{}}:url.endsWith('/lookups')?[]:{rows:[],total:0,page:1,pageSize:50}));
+ render(<App/>);
+ const configuration=await screen.findByRole('region',{name:'Master Configuration'});
+ const employeeTab=within(configuration).getByRole('button',{name:'Employee Master'});
+ fireEvent.click(employeeTab);
+ expect(employeeTab).toHaveAttribute('aria-pressed','true');
+ if(hasEmployeeAccess){
+  expect(within(configuration).getByRole('region',{name:'Employee Master'})).toBeVisible();
+  expect(within(configuration).getByRole('button',{name:'Update Existing Employee'})).toBeVisible();
+ }else{
+  expect(within(configuration).getByText('Employee Master access is required to manage employees.')).toBeVisible();
+ }
+ window.location.hash='';
+});
+
  it('opens the existing hierarchy setup screens from Approval Master',async()=>{
   const profile={name:'HR administrator',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Master Configuration']}};
   window.location.hash='Approval%20Master';
