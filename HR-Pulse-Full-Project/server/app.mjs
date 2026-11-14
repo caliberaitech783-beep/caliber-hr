@@ -2,7 +2,6 @@ import { createServer } from 'node:http';
 import { problem } from './service.mjs';
 import {sendMail} from './mail.mjs';
 import {createAadhaarReader} from './aadhaar-ocr.mjs';
-import {importApprovedEmployeeBatch} from './employee-master-batch-once.mjs';
 async function body(req,limit=2_000_000) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw problem('JSON content type required',415);
   let size=0; const chunks=[];
@@ -24,7 +23,6 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
     }
     const url=new URL(req.url,'http://localhost');const path=url.pathname;
     try {
-      if(path==='/api/maintenance/approved-hr-register-batch')return send(200,await importApprovedEmployeeBatch(req,service,problem));
       if(['/api/health','/api/ready'].includes(path)){
         if(req.method!=='GET'){res.setHeader('Allow','GET');return send(405,{error:'Method not allowed'});}
         if(path==='/api/health')return send(200,{status:'ok',service:'hr-api',release});
