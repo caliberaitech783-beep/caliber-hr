@@ -5,7 +5,7 @@ import { siteIds } from './scope.mjs';
 const kind = 'employeeMasterRegister';
 const pageSize = 50;
 // Keep the imported source rows while hiding unused formulas and entries
-// sourced solely from the specified supplemental tabs in Dudhichua East.
+// sourced solely from workbook tabs excluded from the register.
 const isEmployeeEntry = `NOT (
   site_code='NCL-DUDE' AND name='0'
   AND COALESCE(data->>'employeeId','')=''
@@ -17,6 +17,11 @@ const isEmployeeEntry = `NOT (
 ) AND NOT EXISTS (
   SELECT 1 FROM jsonb_array_elements(data->'sources') AS source
   HAVING bool_and(COALESCE(source->>'label','') ~ '^DUDHICHUA EAST OB / (LEFT EMPLOYEE|NOC DATA|Sheet6 [(]2[)]) / row [0-9]+$')
+) AND NOT (
+  site_code='WCL-GAURI' AND EXISTS (
+    SELECT 1 FROM jsonb_array_elements(data->'sources') AS source
+    HAVING bool_and(COALESCE(source->>'label','') ~ '^GOURI POUNI OB 2ND / Joining Form / row [0-9]+$')
+  )
 )`;
 const siteNames = {
   'NCL-DUDE': 'Dudhichua OB East',
