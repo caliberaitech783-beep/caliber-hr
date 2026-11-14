@@ -80,10 +80,12 @@ const HIERARCHY_STEPS={part1:['Driver Trainer'],result:['Project Manager'],ohr:[
 export async function hierarchyRecipients(db,stage,target){
  const rows=(await db.query("SELECT code,data FROM hr_records WHERE kind='joiningHierarchies'")).rows;
  const out=[];for(const t of hierarchyTemplates){const saved=rows.find(r=>r.code===t.code);const data={...t,...withOfficeHr(withDriverTrainer(currentHierarchy(saved?.data)))};
-  /* Nagpur Office (CMLL-CO) HR Executive / HR Manager are the Office HR for every site: Part 2 results reach them for all sites. */
+  /* Nagpur Office (CMLL-CO) HR Executive / HR Manager are the Office HR for every site, and its "Final approval" list is the
+     Directors for every site – both are company-wide, so they are included whatever the site. */
   const officeHr=['ohr','all'].includes(stage)&&t.code==='CMLL-CO';
-  if(!officeHr&&target&&!recipientInScope({scope:t.name},target))continue;
-  const labels=officeHr?['HR Executive','HR Manager']:HIERARCHY_STEPS[stage];
+  const directors=['director','all'].includes(stage)&&t.code==='CMLL-CO';
+  if(!officeHr&&!directors&&target&&!recipientInScope({scope:t.name},target))continue;
+  const labels=officeHr?['HR Executive','HR Manager',...(directors?['Final approval — any one']:[])]:directors?['Final approval — any one']:HIERARCHY_STEPS[stage];
   for(const step of data.steps||[])if(labels.includes(step.label))for(const actor of step.approvers||[]){const a=String(actor).trim().toLowerCase();const global=officeHr||directors;if(a&&!out.some(r=>r.actor===a&&r.site===t.name))out.push({actor:a,name:a,phone:'',scope:global?'ALL':t.name,site:global?'All sites (Nagpur Office)':t.name,role:global?`${step.label==='Final approval — any one'?'Directors':'Office HR'} – ${step.label}`:step.label,source:'hierarchy'});}}
  /* A stage with nobody at the site (e.g. PM / Regional HR for an office) falls back to Nagpur Office HR so the chain never stalls. */
  if(!out.length&&target&&['result','rhr','part1','siteHr'].includes(stage)){const co=hierarchyTemplates.find(t=>t.code==='CMLL-CO');const saved=rows.find(r=>r.code==='CMLL-CO');const data={...co,...currentHierarchy(saved?.data)};

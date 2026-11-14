@@ -142,3 +142,16 @@ test('approval stage messages follow the agreed formats',async()=>{
  assert.match(bulkJoiningApprovedMessage('B261112-7F3A',[row,row]),/^📢 BULK JOINING APPROVED – CLEARED TO JOIN[\s\S]*Batch: B261112-7F3A[\s\S]*✅ Cleared to join \(2\)\n1\. Apurva/);
  assert.equal(trialFormPdf(row,'Trial joining form').subarray(0,5).toString(),'%PDF-');
 });
+
+test('hierarchy recipients per stage: site steps, company-wide Office HR and Directors, office fallback',async()=>{
+ const {hierarchyRecipients}=await import('./telegram.mjs');
+ const rows=[{code:'CMLL-CO',data:{code:'CMLL-CO',steps:[{label:'HR Executive',approvers:['mayuriumate']},{label:'HR Manager',approvers:['vinod']},{label:'Final approval — any one',approvers:['mohit']}]}},{code:'NCL-JAYANT',data:{code:'NCL-JAYANT',group:'NCL',steps:[{label:'HR Manager',approvers:['site']},{label:'Project Manager',approvers:['pm1']},{label:'Driver Trainer',approvers:['dt']},{label:'HR Manager — either one',approvers:['rhr']},{label:'Final approval — any one',approvers:['dir']}]}}];
+ const db={query:async q=>({rows:q.includes('joiningHierarchies')?rows:[]})};
+ const actors=async(stage,site)=>(await hierarchyRecipients(db,stage,{site})).map(r=>r.actor);
+ assert.deepEqual(await actors('result','Jayant OB East'),['pm1']);
+ assert.deepEqual(await actors('ohr','Jayant OB East'),['mayuriumate','vinod']);
+ assert.deepEqual(await actors('director','Jayant OB East'),['dir','mohit']);
+ assert.deepEqual(await actors('result','Nagpur CO'),['mayuriumate','vinod']);
+ assert.deepEqual(await actors('director','Nagpur CO'),['mohit']);
+ assert.deepEqual((await hierarchyRecipients(db,'part1')).map(r=>r.actor),['dt']);
+});
