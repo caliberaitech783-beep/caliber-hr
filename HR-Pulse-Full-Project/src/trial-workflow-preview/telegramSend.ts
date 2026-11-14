@@ -64,16 +64,21 @@ export async function sendResults(changed: Trial[], resultFiles: Map<string, Fil
     });
     return out.telegram;
   }
-  const sheet = xlsxUtils.json_to_sheet(changed.map((row, i) => ({
-    '#': i+1, 'Form No': row.formNo, 'Name': row.name, 'Post': row.outcome?.post || row.post, 'Vehicle': row.outcome?.machine || equipment(row),
-    'Experience (yrs)': row.experience, 'Referred by': row.referredBy, 'Aadhaar': row.aadhaar, 'Mobile': row.mobile, 'Trial date': row.trialDate,
-    'Result': row.result, 'Reason (if FAIL)': row.outcome?.reason || '', 'Remarks': row.outcome?.remarks || '', 'Trial by': row.outcome?.trainer || trialBy, 'Site': row.site, 'Batch': batchId,
-  })));
-  const wb = xlsxUtils.book_new();
-  xlsxUtils.book_append_sheet(wb, sheet, 'Trial results');
-  const xlsx = xlsxWrite(wb, {type: 'base64', bookType: 'xlsx'});
+  /* Two Excel files: PASSED and FAILED candidates. */
+  const sheetFor = (list: Trial[]) => {
+    const sheet = xlsxUtils.json_to_sheet(list.map((row, i) => ({
+      '#': i+1, 'Form No': row.formNo, 'Name': row.name, 'Post': row.outcome?.post || row.post, 'Vehicle': row.outcome?.machine || equipment(row),
+      'Experience (yrs)': row.experience, 'Referred by': row.referredBy, 'Aadhaar': row.aadhaar, 'Mobile': row.mobile, 'Trial date': row.trialDate,
+      'Result': row.result, 'Reason (if FAIL)': row.outcome?.reason || '', 'Remarks': row.outcome?.remarks || '', 'Trial by': row.outcome?.trainer || trialBy, 'Site': row.site, 'Batch': batchId,
+    })));
+    const wb = xlsxUtils.book_new();
+    xlsxUtils.book_append_sheet(wb, sheet, 'Trial results');
+    return xlsxWrite(wb, {type: 'base64', bookType: 'xlsx'});
+  };
+  const passedRows = changed.filter(row => row.result==='PASS'), failedRows = changed.filter(row => row.result!=='PASS');
+  const xlsxPass = passedRows.length ? sheetFor(passedRows) : '', xlsxFail = failedRows.length ? sheetFor(failedRows) : '';
   const out = await api<{telegram: Delivery}>(grant, 'telegram/trial-batch-result', 'POST', {
-    batchId, trialBy, xlsx, heading: scope.site, ...target(scope), department: scope.department,
+    batchId, trialBy, xlsxPass, xlsxFail, heading: scope.site, ...target(scope), department: scope.department,
     rows, results: changed.map(row => ({formNo: row.formNo, result: row.result, reason: row.outcome?.reason || '', remarks: row.outcome?.remarks || ''})),
   });
   return out.telegram;
