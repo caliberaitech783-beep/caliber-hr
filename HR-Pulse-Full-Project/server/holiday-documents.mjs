@@ -1,12 +1,13 @@
 import {randomUUID} from 'node:crypto';
 import {canRead,canWrite} from './modules.mjs';
 import {siteIds} from './scope.mjs';
+const corporateOffice='Corporate Office';
 export const holidayGroups=[
  {name:'NCL',sites:[{name:'DCH-E',aliases:['DCH-E','NCL-DCH E','NCL-DUDE']},{name:'DCH W',aliases:['DCH W','NCL-DCH W','NCL-DUDW']},{name:'Jayant OB',aliases:['Jayant OB','NCL-JAYANT']}]},
  {name:'WCL',sites:[{name:'Sasti',aliases:['Sasti','Sasti OC','WCL-SASTI']},{name:'Majri',aliases:['Majri','Majri OC','WCL-MAJRI']},{name:'Dhoptala',aliases:['Dhoptala','Dhoptala OC','WCL-DHOPTALA']}]},
- {name:'CO/HO',sites:[{name:'CHP',aliases:['CHP','CHO','CMLL-HO','Chandrapur HO']},{name:'NGP',aliases:['NGP','CMLL-CO','Nagpur CO']},{name:'KSR',aliases:['KSR']}]}
+ {name:corporateOffice,sites:[{name:'CHP',aliases:['CHP','CHO','CMLL-HO','Chandrapur HO']},{name:'NGP',aliases:['NGP','CMLL-CO','Nagpur CO']},{name:'KSR',aliases:['KSR']}]}
 ];
-export function holidayAliases(site,group){return holidayGroups.filter(g=>!group||g.name===group).flatMap(g=>g.sites).filter(s=>!site||s.name===site).flatMap(s=>s.aliases);}
+export function holidayAliases(site,group){const groupName=group==='CO/HO'?corporateOffice:group;return holidayGroups.filter(g=>!groupName||g.name===groupName).flatMap(g=>g.sites).filter(s=>!site||s.name===site).flatMap(s=>s.aliases);}
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 export function validateDocument(input){
  const types={pdf:'application/pdf',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg'};

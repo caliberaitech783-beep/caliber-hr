@@ -32,11 +32,17 @@ test('Nagpur requires sequential site approvals then any one final approver',()=
 test('saved Nagpur hierarchy removes HOD while preserving assigned usernames',async()=>{
  const {currentHierarchy}=await import('./joining-hierarchy.mjs');
  const template=hierarchyTemplates.find(t=>t.code==='CMLL-CO');
+ assert.equal(template.group,'Corporate Office');
  assert.deepEqual(template.steps.map(s=>s.label),['HR Executive','HR Manager','Final approval — any one']);
  const steps=template.steps.map((s,i)=>({...s,approvers:['assigned-'+i]}));
- const saved={...template,steps:[steps[0],{stage:1,label:'HOD',approvers:[]},...steps.slice(1)]};
+ const saved={...template,group:'CO/HO',steps:[steps[0],{stage:1,label:'HOD',approvers:[]},...steps.slice(1)]};
  assert.deepEqual(currentHierarchy(saved).steps,steps);
  assert.equal(saved.steps.length,4);
+ const service=createHierarchies({query:async()=>({rows:[{code:saved.code,data:saved,status:'ACTIVE'}]})});
+ const {rows}=await service.hierarchies({permissions:{hrDesktopAccess:['Master Configuration']}});
+ const nagpur=rows.find(row=>row.code===saved.code);
+ assert.equal(nagpur.group,'Corporate Office');
+ assert.deepEqual(nagpur.steps,steps);
 });
 
 test('NCL and WCL add Driver Trainer after Project Manager; Nagpur does not',()=>{
