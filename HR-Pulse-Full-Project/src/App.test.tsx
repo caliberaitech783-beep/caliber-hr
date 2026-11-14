@@ -137,8 +137,14 @@ it.each([true,false])('loads only the HR employee register when the configuratio
  render(<App/>);
  const configuration=await screen.findByRole('region',{name:'Master Configuration'});
  const employeeTab=within(configuration).getByRole('button',{name:'Employee Master'});
- fireEvent.click(employeeTab);
+ const sidebar=screen.getByRole('complementary');
+ const masterConfiguration=within(sidebar).getByRole('button',{name:'Master Configuration'});
+ expect(masterConfiguration).toHaveAttribute('aria-expanded','true');
+ const configurationSubmenu=within(sidebar).getByLabelText('Master Configuration submenus');
+ const employeeLink=within(configurationSubmenu).getByRole('button',{name:'Employee Master'});
+ fireEvent.click(employeeLink);
  expect(employeeTab).toHaveAttribute('aria-pressed','true');
+ expect(employeeLink).toHaveAttribute('aria-pressed','true');
  if(hasEmployeeAccess){
   const table=await within(configuration).findByRole('table');
   expect(within(table).getByRole('columnheader',{name:'EMPLOYEE ID'})).toBeVisible();
