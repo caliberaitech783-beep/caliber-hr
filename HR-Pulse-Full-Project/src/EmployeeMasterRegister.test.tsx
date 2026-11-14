@@ -1,10 +1,37 @@
-import {fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import EmployeeMasterRegister from './EmployeeMasterRegister';
 
 afterEach(()=>{
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+it('saves changes for the selected employee and refreshes the register',async()=>{
+  let name = 'Before edit';
+  const fetchMock = vi.fn(async(url:string,options?:RequestInit)=>{
+    if (options?.method==='PATCH') {
+      const input = JSON.parse(String(options.body));
+      expect(url).toMatch(/\/employee-master-register\/employee-1$/);
+      expect(input).toEqual({version:4,changes:{name:'After edit'}});
+      name = input.changes.name;
+      return Response.json({saved:true});
+    }
+    const sites = [{code:'WCL-SASTI',label:'Sasti OB'}];
+    if (url.endsWith('?edit=1')) return Response.json({name,version:4,siteCode:'WCL-SASTI',sites,fields:{employeeId:'CMLL001'}});
+    return Response.json({rows:[{id:'employee-1',name,employeeId:'CMLL001',site:'Sasti OB'}],total:1,pageSize:50,sites,canImport:false});
+  });
+  vi.stubGlobal('fetch',fetchMock);
+  render(<EmployeeMasterRegister grant={'a'.repeat(43)}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Edit details for Before edit'}));
+  const dialog = screen.getByRole('dialog',{name:'Edit employee details'});
+  const input = await within(dialog).findByLabelText('Name');
+  expect(input).toHaveValue('Before edit');
+  fireEvent.change(input,{target:{value:'After edit'}});
+  fireEvent.click(within(dialog).getByRole('button',{name:'Save changes'}));
+  expect(await screen.findByText('Employee details saved.')).toBeVisible();
+  expect(await screen.findByRole('button',{name:'Edit details for After edit'})).toBeVisible();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 
 it('prints all matching rows, including records on later pages, with the current filters',async()=>{

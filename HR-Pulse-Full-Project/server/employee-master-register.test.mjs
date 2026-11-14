@@ -90,3 +90,25 @@ test('export returns the full filtered register within the assigned sites',async
   assert.equal(result.rows.length,51);
   assert.equal(result.rows.at(-1).region,'WCL');
 });
+
+test('editing a register entry preserves site scope and rejects stale saves',async()=>{
+  const writes = [];
+  const employeeId = '20000000-0000-4000-8000-000000000009';
+  const scoped = {actor:'hr-test',permissions:{hrDesktopAccess:menus,site:'WCL-SASTI'}};
+  const db = {release(){},query:async(sql,params)=>{
+    if (sql.includes('FOR UPDATE')) {
+      assert.deepEqual(params,[employeeId,[siteId]]);
+      return {rows:[{version:3,site_id:siteId,site_code:'WCL-SASTI',site_name:'Sasti OB'}]};
+    }
+    if (sql.startsWith('SELECT id,code')) return {rows:[{id:siteId,code:'WCL-SASTI'}]};
+    if (sql.includes('UPDATE hr_employee_master_register')) writes.push(params);
+    return {rowCount:0};
+  }};
+  const service = createEmployeeMasterRegister({connect:async()=>db,query:async()=>({rows:[{id:siteId}]})});
+  await assert.rejects(service.updateEmployeeMasterRegister(scoped,employeeId,{version:2,changes:{name:'New name'}}),{status:409});
+  await assert.rejects(service.updateEmployeeMasterRegister(scoped,employeeId,{version:3,changes:{siteCode:'NCL-DUDE'}}),{status:403});
+  await assert.rejects(service.updateEmployeeMasterRegister(scoped,employeeId,{version:3,changes:{sources:[]}}),{status:400});
+  assert.equal(writes.length,0);
+  assert.deepEqual(await service.updateEmployeeMasterRegister(scoped,employeeId,{version:3,changes:{employeeId:'CMPL-04',contact:'123'}}),{saved:true});
+  assert.deepEqual(writes,[[employeeId,'{"employeeId":"CMLL-04","contact":"123"}',siteId,'WCL-SASTI','Sasti OB']]);
+});

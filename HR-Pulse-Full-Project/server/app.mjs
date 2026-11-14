@@ -75,8 +75,9 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       else if(documents&&['GET','POST'].includes(req.method))result=await service.holidayDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);
       else if(employeeDocuments&&['GET','POST'].includes(req.method))result=await service.employeeDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);
       else if(employeeMasterRegister&&req.method==='GET')result=employeeMasterRegister[1]
-        ?await service.employeeMasterRegisterDetails(profile,employeeMasterRegister[1])
+        ?await service.employeeMasterRegisterDetails(profile,employeeMasterRegister[1],url.searchParams.get('edit')==='1')
         :await service.employeeMasterRegister(profile,url.searchParams);
+      else if(employeeMasterRegister?.[1]&&req.method==='PATCH')result=await service.updateEmployeeMasterRegister(profile,employeeMasterRegister[1],await body(req,64_000));
       else if(employeeMasterRegister&&!employeeMasterRegister[1]&&req.method==='POST')result=await service.importEmployeeMasterRegister(profile,(await body(req,36_000_000)).rows);
       else if(deletion&&req.method==='POST')result=deletion[2]==='preview'?await service.deletePreview(profile,deletion[1]):await service.deleteRecords(profile,deletion[1],await body(req));
       else if(path==='/api/hierarchies'&&req.method==='POST')result=await service.saveHierarchy(profile,await body(req));

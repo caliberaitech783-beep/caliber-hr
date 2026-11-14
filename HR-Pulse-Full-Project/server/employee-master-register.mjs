@@ -37,6 +37,28 @@ async function access(db, profile) {
   return siteIds(db, profile);
 }
 
+async function availableSites(db, scope) {
+  const result = await db.query(`SELECT id,code FROM hr_records WHERE kind='sites' AND status='ACTIVE'
+    AND code=ANY($1) AND ($2::uuid[] IS NULL OR id=ANY($2)) ORDER BY code`, [Object.keys(siteNames),scope]);
+  return result.rows;
+}
+
+function parseChanges(input) {
+  if (!Number.isInteger(input.version) || input.version < 1 || !input.changes ||
+      typeof input.changes !== 'object' || Array.isArray(input.changes)) throw fail('Invalid employee changes.');
+  const changes = {};
+  for (const [key,value] of Object.entries(input.changes)) {
+    if ((!fields.includes(key) && key!=='siteCode') || typeof value!=='string' || value.length>1000 || value.includes('\0')) {
+      throw fail('Invalid employee field or value.');
+    }
+    changes[key] = key==='employeeId' ? normalizeEmployeeId(value.trim()) : value.trim();
+  }
+  if (!Object.keys(changes).length) throw fail('Make a change before saving.');
+  if (changes.name==='') throw fail('Name is required.');
+  if (changes.siteCode!==undefined && !Object.hasOwn(siteNames,changes.siteCode)) throw fail('Select a valid site.');
+  return changes;
+}
+
 function parseRow(row, index) {
   const invalid = () => fail(`Invalid employee import data at row ${index + 1}.`);
   if (!row || typeof row !== 'object' || !/^[a-f0-9]{64}$/.test(row.key) ||
@@ -88,18 +110,57 @@ export function createEmployeeMasterRegister(pool) {
       ]);
       return {rows:formatRows(listing), total:Number(count.rows[0].total), page, pageSize, sites:sites.rows, canImport:scope===null};
     },
-    async employeeMasterRegisterDetails(profile, id) {
+    async employeeMasterRegisterDetails(profile, id, edit=false) {
       const scope = await access(pool, profile);
-      const result = await pool.query(`SELECT name,data->'sources' AS sources FROM hr_employee_master_register
+      const projection = edit ? "name,version,site_code AS \"siteCode\",data-'sources' AS fields" : "name,data->'sources' AS sources, data-'sources' AS fields";
+      const result = await pool.query(`SELECT ${projection} FROM hr_employee_master_register
         WHERE id=$1 AND ($2::uuid[] IS NULL OR site_id=ANY($2)) AND ${isEmployeeEntry}`, [id,scope]);
       if (!result.rowCount) throw fail('Employee entry not found.', 404);
       const entry = result.rows[0];
-      return {...entry,sources:entry.sources.map(source=>({
+      if (edit) {
+        const sites = (await availableSites(pool,scope)).map(({code})=>({code,label:siteNames[code]}));
+        return {...entry,sites};
+      }
+      return {name:entry.name,fields:entry.fields,sources:entry.sources.map(source=>({
         ...source,
         fields:source.fields.map(([label,value])=>[
           label,employeeIdLabels.has(label.toUpperCase().replace(/[^A-Z]/g,'')) ? normalizeEmployeeId(value) : value,
         ]),
       }))};
+    },
+    async updateEmployeeMasterRegister(profile, id, input) {
+      const scope = await access(pool, profile);
+      const {siteCode,...changes} = parseChanges(input);
+      const db = await pool.connect();
+      try {
+        await db.query('BEGIN');
+        const result = await db.query(`SELECT version,site_id,site_code,site_name FROM hr_employee_master_register
+          WHERE id=$1 AND ($2::uuid[] IS NULL OR site_id=ANY($2)) AND ${isEmployeeEntry} FOR UPDATE`, [id,scope]);
+        const entry = result.rows[0];
+        if (!entry) throw fail('Employee entry not found.',404);
+        if (entry.version!==input.version) throw fail('This entry changed while you were editing. Close and reopen it before saving.',409);
+        const moving = siteCode!==undefined && siteCode!==entry.site_code;
+        if (!moving && !Object.keys(changes).length) throw fail('Make a change before saving.');
+        const destination = moving ? (await availableSites(db,scope)).find(site=>site.code===siteCode) : undefined;
+        if (moving && !destination) throw fail('The selected site is outside your access or is inactive.',403);
+        const site = destination ? {id:destination.id,code:destination.code,name:siteNames[destination.code]} :
+          {id:entry.site_id,code:entry.site_code,name:entry.site_name};
+        await db.query(`UPDATE hr_employee_master_register
+          SET data=data || $2::jsonb, name=COALESCE($2::jsonb->>'name',name),
+            site_id=$3,site_code=$4,site_name=$5,version=version+1 WHERE id=$1`,
+          [id,JSON.stringify(changes),site.id,site.code,site.name]);
+        const editedFields = Object.keys(changes);
+        if (moving) editedFields.push('siteCode');
+        await db.query("INSERT INTO hr_audit (actor,action,kind,record_id,detail) VALUES ($1,'UPDATE',$2,$3,$4)",
+          [profile.actor,kind,id,{fields:editedFields}]);
+        await db.query('COMMIT');
+        return {saved:true};
+      } catch (error) {
+        await db.query('ROLLBACK');
+        throw error;
+      } finally {
+        db.release();
+      }
     },
     async importEmployeeMasterRegister(profile, rows) {
       if (await access(pool, profile) !== null) throw fail('Import requires access to all HR sites.', 403);

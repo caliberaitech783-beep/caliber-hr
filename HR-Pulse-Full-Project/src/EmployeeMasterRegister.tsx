@@ -14,24 +14,117 @@ const exportColumns: {key:'serial' | typeof columns[number][0];label:string}[] =
 const formats = [['excel','Download Excel'], ['csv','Download CSV'], ['pdf','Download PDF']] as const;
 type ExportFormat = typeof formats[number][0];
 type Employee = Record<typeof columns[number][0], string> & {id:string};
+type RegisterColumn = typeof columns[number];
+type EditableColumn = Exclude<RegisterColumn,readonly ['region'|'site',string,number]>;
+const editableColumns = columns.filter((column):column is EditableColumn=>column[0]!=='region'&&column[0]!=='site');
+type EditField = EditableColumn[0] | 'siteCode';
+type EditValues = Record<EditField,string>;
+type EmployeeEditSnapshot = {
+  name:string;
+  version:number;
+  siteCode:string;
+  fields:Partial<EditValues>;
+  sites:{code:string;label:string}[];
+};
 type EmployeeDetails = {
   name:string;
+  fields?:Partial<Employee>;
   sources:{label:string;fields:[string,string][]}[];
 };
 type Register = {rows:Employee[];total:number;pageSize:number;sites:{code:string;label:string}[];canImport:boolean};
 
-function EmployeeDetailsDialog({employee,grant,onClose}:{employee:Employee;grant:string;onClose:()=>void}) {
+function useRegisterDialog() {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [details,setDetails] = useState<EmployeeDetails>();
-  const [error,setError] = useState('');
-  const [retry,setRetry] = useState(0);
-
   useEffect(()=>{
     const element = dialog.current!;
     if (typeof element.showModal === 'function') element.showModal();
     else element.open = true;
     return ()=>{if (typeof element.close === 'function') element.close();};
   },[]);
+  return dialog;
+}
+
+function EmployeeEditDialog({employee,grant,onClose,onSaved}:{
+  employee:Employee;grant:string;onClose:()=>void;onSaved:()=>void;
+}) {
+  const dialog = useRegisterDialog();
+  const [snapshot,setSnapshot] = useState<EmployeeEditSnapshot>();
+  const [values,setValues] = useState<EditValues>();
+  const [original,setOriginal] = useState<EditValues>();
+  const [error,setError] = useState('');
+  const [saving,setSaving] = useState(false);
+  const path = `employee-master-register/${employee.id}`;
+
+  useEffect(()=>{
+    let active = true;
+    api<EmployeeEditSnapshot>(grant,`${path}?edit=1`).then(result=>{
+      if (!active) return;
+      if (!Number.isInteger(result.version) || !Array.isArray(result.sites) || !result.fields) {
+        throw new Error('Editing is temporarily unavailable. Try again shortly.');
+      }
+      const initial = Object.fromEntries(editableColumns.map(([key])=>[key,result.fields[key] ?? ''])) as EditValues;
+      initial.name = result.name;
+      initial.siteCode = result.siteCode;
+      setOriginal(initial);
+      setValues(initial);
+      setSnapshot(result);
+    }).catch(error=>{if (active) setError(error.message);});
+    return ()=>{active=false;};
+  },[grant,path]);
+
+  const changes = Object.fromEntries(Object.entries(values ?? {}).filter(([key,value])=>value!==original?.[key as EditField])
+    .map(([key,value])=>[key,value.trim()]));
+  async function save(event:FormEvent) {
+    event.preventDefault();
+    if (!snapshot || saving || !Object.keys(changes).length) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(grant,path,'PATCH',{version:snapshot.version,changes});
+      onSaved();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to save employee details.');
+      setSaving(false);
+    }
+  }
+
+  return <dialog ref={dialog} className="modal hr-register-details" aria-labelledby="hr-register-edit-title"
+    onCancel={event=>{event.preventDefault();if (!saving) onClose();}}>
+    <div className="modal-heading">
+      <h2 id="hr-register-edit-title">Edit employee details</h2>
+      <button type="button" disabled={saving} onClick={onClose}>Cancel</button>
+    </div>
+    <p>{employee.name}</p>
+    {error && <p role="alert" className="error">{error}</p>}
+    {!snapshot && !error && <p role="status">Loading employee details…</p>}
+    {snapshot && values && <form onSubmit={save} aria-label="Employee details form">
+      <div className="record-form">
+        {editableColumns.map(([key,label])=><label key={key}>{label}
+          <input value={values[key]} maxLength={1000} required={key==='name'} disabled={saving}
+            onChange={event=>setValues({...values,[key]:event.target.value})}/>
+        </label>)}
+        <label>Site / Office
+          <select value={values.siteCode} disabled={saving} onChange={event=>setValues({...values,siteCode:event.target.value})}>
+            {!snapshot.sites.some(site=>site.code===snapshot.siteCode) &&
+              <option value={snapshot.siteCode}>{employee.site}</option>}
+            {snapshot.sites.map(site=><option key={site.code} value={site.code}>{site.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="form-actions">
+        <button type="submit" className="primary" disabled={saving||!values.name.trim()||!Object.keys(changes).length}>
+          {saving?'Saving…':'Save changes'}
+        </button>
+      </div>
+    </form>}
+  </dialog>;
+}
+
+function EmployeeDetailsDialog({employee,grant,onClose}:{employee:Employee;grant:string;onClose:()=>void}) {
+  const dialog = useRegisterDialog();
+  const [details,setDetails] = useState<EmployeeDetails>();
+  const [error,setError] = useState('');
+  const [retry,setRetry] = useState(0);
 
   useEffect(()=>{
     let active = true;
@@ -60,8 +153,13 @@ function EmployeeDetailsDialog({employee,grant,onClose}:{employee:Employee;grant
       <button type="button" onClick={()=>setRetry(attempt=>attempt+1)}>Retry</button>
     </>}
     {!details && !error && <p role="status">Loading employee details…</p>}
+    {details?.fields && <details open>
+      <summary>Current employee details</summary>
+      <dl>{editableColumns.map(([key,label])=><div key={key}><dt>{label}</dt>
+        <dd>{details.fields?.[key] || '—'}</dd></div>)}</dl>
+    </details>}
     {details?.sources.length===0 && <p>No workbook details are available for this entry.</p>}
-    {details?.sources.map((source,index)=><details key={index} open={index===0}>
+    {details?.sources.map((source,index)=><details key={index} open={!details.fields&&index===0}>
       <summary>{source.label}</summary>
       <dl>{source.fields.map(([label,value],index)=><div key={index}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     </details>)}
@@ -75,8 +173,8 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
   const [query,setQuery] = useState('');
   const [page,setPage] = useState(1);
   const [revision,setRevision] = useState(0);
-  const [selected,setSelected] = useState<Employee>();
-  const viewButton = useRef<HTMLButtonElement>(null);
+  const [selected,setSelected] = useState<{employee:Employee;mode:'view'|'edit'}>();
+  const dialogButton = useRef<HTMLButtonElement>(null);
   const [loading,setLoading] = useState(true);
   const [importing,setImporting] = useState(false);
   const [exporting,setExporting] = useState<ExportFormat>();
@@ -176,6 +274,11 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
     setQuery(search.trim());
   }
 
+  function closeDetails() {
+    setSelected(undefined);
+    requestAnimationFrame(()=>dialogButton.current?.focus({preventScroll:true}));
+  }
+
   const first = (page-1)*(data?.pageSize ?? 50);
   return <section className="data-card employee-report" aria-labelledby="employee-master-register-title">
     <div className="data-heading">
@@ -218,10 +321,16 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
           <thead><tr><th scope="col">Serial No</th>{columns.map(([key,label])=><th key={key} scope="col">{label.toUpperCase()}</th>)}<th scope="col">DETAILS</th></tr></thead>
           <tbody>{data.rows.map((row,index)=><tr key={row.id}>
             <td>{first+index+1}</td>{columns.map(([key])=><td key={key}>{row[key]}</td>)}
-            <td><button type="button" aria-label={`View details for ${row.name}`} onClick={event=>{
-              viewButton.current = event.currentTarget;
-              setSelected(row);
-            }}>View</button></td>
+            <td className="row-actions">
+              <button type="button" aria-label={`View details for ${row.name}`} onClick={event=>{
+                dialogButton.current = event.currentTarget;
+                setSelected({employee:row,mode:'view'});
+              }}>View</button>
+              <button type="button" aria-label={`Edit details for ${row.name}`} onClick={event=>{
+                dialogButton.current = event.currentTarget;
+                setSelected({employee:row,mode:'edit'});
+              }}>Edit</button>
+            </td>
           </tr>)}</tbody>
         </table>
       </div>
@@ -230,9 +339,12 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
         <button type="button" disabled={first+data.pageSize>=data.total} onClick={()=>setPage(page+1)}>Next</button>
       </div>
     </> : <p>No employees match the current selection.</p>)}
-    {selected && <EmployeeDetailsDialog key={selected.id} employee={selected} grant={grant} onClose={()=>{
-      setSelected(undefined);
-      requestAnimationFrame(()=>viewButton.current?.focus({preventScroll:true}));
-    }}/>}
+    {selected?.mode==='view' && <EmployeeDetailsDialog key={selected.employee.id} employee={selected.employee} grant={grant} onClose={closeDetails}/>}
+    {selected?.mode==='edit' && <EmployeeEditDialog key={selected.employee.id} employee={selected.employee} grant={grant} onClose={closeDetails}
+      onSaved={()=>{
+        closeDetails();
+        setMessage('Employee details saved.');
+        setRevision(value=>value+1);
+      }}/>}
   </section>;
 }
