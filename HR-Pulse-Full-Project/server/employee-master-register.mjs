@@ -4,8 +4,8 @@ import { siteIds } from './scope.mjs';
 
 const kind = 'employeeMasterRegister';
 const pageSize = 50;
-// The Dudhichua East workbook's SOFTWARE DATA sheet contains unused formula
-// rows with zeroes in the employee fields. Keep the source rows for traceability.
+// Keep the imported source rows while hiding unused formulas and entries
+// whose only source is the Dudhichua East workbook's LEFT EMPLOYEE tab.
 const isEmployeeEntry = `NOT (
   site_code='NCL-DUDE' AND name='0'
   AND COALESCE(data->>'employeeId','')=''
@@ -14,6 +14,9 @@ const isEmployeeEntry = `NOT (
   AND COALESCE(data->>'contact','')='0'
   AND COALESCE(jsonb_array_length(data->'sources'),0)=1
   AND COALESCE(data->'sources'->0->>'label','') ~ '^DUDHICHUA EAST OB / SOFTWARE DATA / row (121[2-9]|12[2-7][0-9]|128[0-2])$'
+) AND NOT EXISTS (
+  SELECT 1 FROM jsonb_array_elements(data->'sources') AS source
+  HAVING bool_and(COALESCE(source->>'label','') ~ '^DUDHICHUA EAST OB / LEFT EMPLOYEE / row [0-9]+$')
 )`;
 const siteNames = {
   'NCL-DUDE': 'Dudhichua OB East',
