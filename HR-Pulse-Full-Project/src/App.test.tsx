@@ -123,7 +123,7 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  window.location.hash='';
 });
 
-it.each([true,false])('opens Employee Master from Master Configuration according to employee access (%s)',async(hasEmployeeAccess)=>{
+it.each([true,false])('keeps the Employee Master configuration tab empty regardless of employee access (%s)',async(hasEmployeeAccess)=>{
  const profile={name:'HR administrator',actor:'test',permissions:{application:'HR',hrDesktopAccess:hasEmployeeAccess?['Master Configuration','Employee Master']:['Master Configuration']}};
  window.location.hash='Master%20Configuration';
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
@@ -133,12 +133,7 @@ it.each([true,false])('opens Employee Master from Master Configuration according
  const employeeTab=within(configuration).getByRole('button',{name:'Employee Master'});
  fireEvent.click(employeeTab);
  expect(employeeTab).toHaveAttribute('aria-pressed','true');
- if(hasEmployeeAccess){
-  expect(within(configuration).getByRole('region',{name:'Employee Master'})).toBeVisible();
-  expect(within(configuration).getByRole('button',{name:'Update Existing Employee'})).toBeVisible();
- }else{
-  expect(within(configuration).getByText('Employee Master access is required to manage employees.')).toBeVisible();
- }
+ expect([...configuration.children]).toEqual([within(configuration).getByLabelText('Master configuration menus')]);
  window.location.hash='';
 });
 

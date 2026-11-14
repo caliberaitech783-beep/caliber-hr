@@ -57,26 +57,14 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
   const activeKind=employeePage?'employees':kind;
   const groups=masterGroups[group].kinds.filter(k=>config[k]);
   const initials=profile.name?.split(' ').map(x=>x[0]).slice(0,2).join('')||'HR';
-  const employeeManagement=<EmployeeLocation
-    canApprove={access.has('Approval Management')}
-    draftOwner={draftOwner}
-    initialTrialDraft={trialDraft}
-    onTrialDraftOpened={()=>setTrialDraft(undefined)}
-    grant={session.grant}
-    module={config.employees}
-    notice={setNotice}
-    employeeGroup={employeeGroup}
-    onEmployeeGroupChange={setEmployeeGroup}
-    onSelectionChange={updateSelection}
-  />;
   return <div className={'app '+(collapsed?'collapsed':'')}><aside><div className="side-head"><Logo/><button aria-label="Toggle navigation" onClick={()=>setCollapsed(!collapsed)}><Menu/></button></div><div className="workspace"><small>WORKSPACE</small><strong>Caliber HR</strong><span>Azure HR database</span></div><nav>{permitted.map(([name,Icon])=>{const children=name==='Employee Master'?[...(trialVisible?['Trial Form']:[]),'Employee Management','Leave/OD Management','Employee Transfer','Attendance Management']:name==='Payroll Management'?['Salary Scheme','Payroll Processing','Loan and Advances','Expense Claims']:[];const selected=name==='Employee Master'?employeeMenu:payrollMenu;return <div className="nav-entry" key={name}><button className={page===name?'active':''} title={name} aria-expanded={children.length?expandedMenu===name:undefined} aria-controls={children.length?`submenu-${name.replaceAll(' ','-')}`:undefined} onClick={()=>{if(children.length){setExpandedMenu(expandedMenu===name?'':name);setCollapsed(false);}navigate(name);}}><Icon/><span>{name}</span>{children.length>0&&<ChevronDown className={'chev '+(expandedMenu===name?'expanded':'')}/>}</button>{children.length>0&&expandedMenu===name&&<div id={`submenu-${name.replaceAll(' ','-')}`} className="master-subnav employee-subnav" aria-label={`${name} submenus`}>{children.map(item=><button key={item} className={page===name&&selected===item?'selected':''} aria-pressed={page===name&&selected===item} onClick={()=>{name==='Employee Master'?setEmployeeMenu(item):setPayrollMenu(item);navigate(name);}}>{item}</button>)}</div>}</div>;})}</nav><div className="side-user"><div className="avatar">{initials}</div><div><strong>{profile.name}</strong><small>{profile.assignedRole}</small></div><button aria-label="Sign out" onClick={logout}><LogOut/></button></div></aside><main className="main"><header><button className="mobile-menu" aria-label="Open navigation" onClick={()=>setCollapsed(!collapsed)}><Menu/></button><strong>People & operations</strong><HeaderClock/><div className="header-actions"><div className="header-profile"><div className="avatar">{initials}</div><span><strong>{profile.name}</strong><small>{profile.assignedRole}</small></span></div><button aria-label="Sign out" onClick={logout}><LogOut/></button></div></header><div className="content">{page==='Master Configuration'&&<section className="master-configuration" aria-label="Master Configuration">
       <div className="module-tabs" aria-label="Master configuration menus">
         {['Shift Master','Holiday & Leave Master','Hierarchy','Employee Master'].map(item=><button type="button" key={item} className={masterMenu===item?'selected':''} aria-pressed={masterMenu===item} onClick={()=>setMasterMenu(item)}>{item}</button>)}
       </div>
       {masterMenu==='Shift Master'?<ShiftMaster grant={session.grant} module={config.shifts}/>
         :masterMenu==='Hierarchy'?<HierarchyMaster grant={session.grant}/>
-        :masterMenu==='Employee Master'?(access.has('Employee Master')?employeeManagement:<p>Employee Master access is required to manage employees.</p>)
-        :<LeaveMaster grant={session.grant} config={config} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>}
+        :masterMenu==='Holiday & Leave Master'?<LeaveMaster grant={session.grant} config={config} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>
+        :null}
     </section>} {page==='Employee Master'&&<>{employeeMenu==='Leave/OD Management'&&<LeaveRequests grant={session.grant} module={config.leaveRequests} odModule={config.outDutyRequests} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>} {employeeMenu==='Employee Transfer'&&<section className="transfer-management" aria-labelledby="employee-transfer-title">
       <div className="page-title"><div>
         <h1 id="employee-transfer-title">Employee Transfer</h1>
@@ -92,7 +80,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
         :config.employeeTransfers
           ?<Records grant={session.grant} kind="employeeTransfers" module={config.employeeTransfers} notice={setNotice} actionLabel="Create transfer"/>
           :<p role="status">Loading transfer configuration...</p>}
-    </section>} {employeeMenu==='Attendance Management'&&<AttendanceManagement grant={session.grant}/>}{employeeMenu==='Employee Management'&&employeeManagement}{employeeMenu==='Trial Form'&&<TrialForm selection={selection} owner={draftOwner} legacyOwner={legacyTrialOwner} onPassed={openTrialJoining}/>}</>} {page!=='Employee Master'&&page!=='Master Configuration'&&<><div className="page-title"><div><p>{new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p><h1>{page||'HR workspace'}</h1><small>Records are saved in your separate Azure HR database.</small></div></div>{error&&<div className="error" role="alert">{error} <button onClick={()=>void refreshConfig()}>Retry connection</button></div>}{!permitted.length?<p>No HR menus are assigned. Contact your Pulse administrator.</p>:<>
+    </section>} {employeeMenu==='Attendance Management'&&<AttendanceManagement grant={session.grant}/>}{employeeMenu==='Employee Management'&&<EmployeeLocation canApprove={access.has('Approval Management')} draftOwner={draftOwner} initialTrialDraft={trialDraft} onTrialDraftOpened={()=>setTrialDraft(undefined)} grant={session.grant} module={config.employees} notice={setNotice} employeeGroup={employeeGroup} onEmployeeGroupChange={setEmployeeGroup} onSelectionChange={updateSelection}/>}{employeeMenu==='Trial Form'&&<TrialForm selection={selection} owner={draftOwner} legacyOwner={legacyTrialOwner} onPassed={openTrialJoining}/>}</>} {page!=='Employee Master'&&page!=='Master Configuration'&&<><div className="page-title"><div><p>{new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p><h1>{page||'HR workspace'}</h1><small>Records are saved in your separate Azure HR database.</small></div></div>{error&&<div className="error" role="alert">{error} <button onClick={()=>void refreshConfig()}>Retry connection</button></div>}{!permitted.length?<p>No HR menus are assigned. Contact your Pulse administrator.</p>:<>
     {page==='Approval Master'&&<ApprovalMaster grant={session.grant}/>}
     {page==='Telegram Hierarchy'&&<TelegramHierarchy grant={session.grant}/>}
     {(page==='Dashboard'||page==='Reports & MIS')&&<Overview grant={session.grant} report={page==='Reports & MIS'} onEmployees={()=>navigate('Employee Directory')} showEmployees={access.has('Employee Directory')}/>}
@@ -105,7 +93,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
     {page==='Approval Management'&&<Approvals grant={session.grant} actor={profile.actor||''} notice={setNotice}/>}
     {page==='Audit Logs'&&<Audit grant={session.grant}/>}
     {page==='Administration'&&<AccessAdministration grant={session.grant} profile={profile} modules={config} notice={setNotice}/>}
-    </>}</>}</div>{notice&&(page!=='Master Configuration'||['Holiday & Leave Master','Employee Master'].includes(masterMenu))&&<div className="toast" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}><X/></button></div>}</main></div>;
+    </>}</>}</div>{notice&&(page!=='Master Configuration'||masterMenu==='Holiday & Leave Master')&&<div className="toast" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}><X/></button></div>}</main></div>;
 }
 
 function ModuleLanding({title}:{title:string}){return <section className="data-card"><h2>{title}</h2><div className="empty"><h3>Module setup pending</h3><p>This menu is ready. The management workflow is not yet configured.</p></div></section>;}
