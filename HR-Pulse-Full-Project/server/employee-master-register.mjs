@@ -4,6 +4,17 @@ import { siteIds } from './scope.mjs';
 
 const kind = 'employeeMasterRegister';
 const pageSize = 50;
+// The Dudhichua East workbook's SOFTWARE DATA sheet contains unused formula
+// rows with zeroes in the employee fields. Keep the source rows for traceability.
+const isEmployeeEntry = `NOT (
+  site_code='NCL-DUDE' AND name='0'
+  AND COALESCE(data->>'employeeId','')=''
+  AND COALESCE(data->>'department','')='0'
+  AND COALESCE(data->>'designation','')='0'
+  AND COALESCE(data->>'contact','')='0'
+  AND COALESCE(jsonb_array_length(data->'sources'),0)=1
+  AND COALESCE(data->'sources'->0->>'label','') ~ '^DUDHICHUA EAST OB / SOFTWARE DATA / row (121[2-9]|12[2-7][0-9]|128[0-2])$'
+)`;
 const siteNames = {
   'NCL-DUDE': 'Dudhichua OB East',
   'NCL-DUDW': 'Dudhichua OB West',
@@ -57,12 +68,14 @@ export function createEmployeeMasterRegister(pool) {
       const values = [scope, site, search];
       const filter = `($1::uuid[] IS NULL OR site_id=ANY($1))
         AND ($2='' OR site_code=$2)
-        AND ($3='' OR strpos(lower(concat_ws(' ',name,data->>'employeeId',data->>'department',data->>'designation')),lower($3))>0)`;
+        AND ($3='' OR strpos(lower(concat_ws(' ',name,data->>'employeeId',data->>'department',data->>'designation')),lower($3))>0)
+        AND ${isEmployeeEntry}`;
       const [count, listing, sites] = await Promise.all([
         pool.query(`SELECT count(*) AS total FROM hr_employee_master_register WHERE ${filter}`, values),
         pool.query(`SELECT id, site_name, site_code, data-'sources' AS data FROM hr_employee_master_register
           WHERE ${filter} ORDER BY lower(name),id LIMIT ${pageSize} OFFSET $4`, [...values,(page-1)*pageSize]),
-        pool.query('SELECT DISTINCT site_code AS code, site_name AS label FROM hr_employee_master_register WHERE ($1::uuid[] IS NULL OR site_id=ANY($1)) ORDER BY label', [scope]),
+        pool.query(`SELECT DISTINCT site_code AS code, site_name AS label FROM hr_employee_master_register
+          WHERE ($1::uuid[] IS NULL OR site_id=ANY($1)) AND ${isEmployeeEntry} ORDER BY label`, [scope]),
       ]);
       const rows = listing.rows.map(row=>({id:row.id,...row.data,site:row.site_name,region:row.site_code.split('-')[0]}));
       return {rows, total:Number(count.rows[0].total), page, pageSize, sites:sites.rows, canImport:scope===null};
@@ -70,7 +83,7 @@ export function createEmployeeMasterRegister(pool) {
     async employeeMasterRegisterDetails(profile, id) {
       const scope = await access(pool, profile);
       const result = await pool.query(`SELECT name,data->'sources' AS sources FROM hr_employee_master_register
-        WHERE id=$1 AND ($2::uuid[] IS NULL OR site_id=ANY($2))`, [id,scope]);
+        WHERE id=$1 AND ($2::uuid[] IS NULL OR site_id=ANY($2)) AND ${isEmployeeEntry}`, [id,scope]);
       if (!result.rowCount) throw fail('Employee entry not found.', 404);
       return result.rows[0];
     },

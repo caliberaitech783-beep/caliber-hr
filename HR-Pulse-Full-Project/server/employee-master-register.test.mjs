@@ -16,7 +16,7 @@ test('register requires both HR menus and restricts the rows and details to the 
     if (sql.includes("kind='sites'")) return {rows:[{id:siteId}]};
     assert.match(sql,/hr_employee_master_register/);
     assert.match(sql,/site_id=ANY/);
-    assert.deepEqual(sql.includes("data->'sources'")?params[1]:params[0],[siteId]);
+    assert.deepEqual(sql.includes('WHERE id=$1')?params[1]:params[0],[siteId]);
     return sql.includes('count(*)')?{rows:[{total:0}]}:{rows:[],rowCount:0};
   }});
   const scoped = {actor:'hr-test',permissions:{hrDesktopAccess:menus,site:'WCL-SASTI'}};
