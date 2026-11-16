@@ -1,6 +1,7 @@
 import {afterEach,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen} from '@testing-library/react';
 import FormInput from './BirthDateInput';
+import {lockAadhaarField} from './EmployeeLocation';
 import {restoreJoiningFields} from './joiningDrafts';
 import LocalEmployeeReviewForm from './LocalEmployeeReviewForm';
 afterEach(()=>{cleanup();vi.useRealTimers();});
@@ -44,7 +45,8 @@ it('saves the calendar choice in its own family row and respects scanned DOB loc
   expect([...new FormData(form).entries()]).toEqual([['Date of Birth 1',''],['Date of Birth 2','2000-03-15']]);
 
   const saved=form.elements.namedItem('Date of Birth 2') as HTMLInputElement;
-  await act(async()=>{saved.dataset.aadhaarLocked='1';});
+  await act(async()=>{lockAadhaarField(form,'Date of Birth 2');});
+  expect(saved.dataset.aadhaarLocked).toBe('1');
   expect(second).toHaveAttribute('readonly');
   expect(screen.queryByRole('button',{name:'Choose Date of Birth 2'})).not.toBeInTheDocument();
   expect(screen.getByRole('button',{name:'Choose Date of Birth 1'})).toBeEnabled();
