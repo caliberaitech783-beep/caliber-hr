@@ -1,4 +1,5 @@
 import {useId,useLayoutEffect,useRef,useState,type InputHTMLAttributes,type FormEvent} from 'react';
+import {CalendarDays} from 'lucide-react';
 import {ageText} from './age';
 import {dobDisplay,dobIso} from './dobFormat';
 import './birth-date.css';
@@ -15,14 +16,46 @@ function AadhaarInput(props:InputHTMLAttributes<HTMLInputElement>){
 }
 function BirthDateInput({showAge,onBirthDateValue,...props}:Omit<Props,'birthDate'|'aadhaar'>){
  const canonical=useRef<HTMLInputElement>(null),writing=useRef(false),visible=useRef<HTMLInputElement>(null),notify=useRef(onBirthDateValue),lastEmitted=useRef<string|undefined>(undefined),caret=useRef<number|null>(null),id=useId(),[text,setText]=useState(()=>dobDisplay(String(props.value??props.defaultValue??'')));notify.current=onBirthDateValue;
- useLayoutEffect(()=>{const control=canonical.current;if(!control)return;const sync=()=>{if(writing.current)return;setText(dobDisplay(control.value));notify.current?.(dobIso(dobDisplay(control.value)));};sync();control.addEventListener('input',sync);control.addEventListener('change',sync);return()=>{control.removeEventListener('input',sync);control.removeEventListener('change',sync);};},[]);
+ const picker=useRef<HTMLInputElement>(null);
+ const [aadhaarLocked,setAadhaarLocked]=useState(false);
+ const [useNativeField,setUseNativeField]=useState(()=>typeof HTMLInputElement.prototype.showPicker!=='function');
+ const readOnly=props.readOnly||aadhaarLocked;
+ useLayoutEffect(()=>{
+  const control=canonical.current;
+  if(!control)return;
+  const sync=()=>{
+   if(writing.current)return;
+   const display=dobDisplay(control.value);
+   setText(display);
+   notify.current?.(dobIso(display));
+  };
+  const syncLock=()=>setAadhaarLocked(control.dataset.aadhaarLocked==='1');
+  const observer=new MutationObserver(syncLock);
+  observer.observe(control,{attributes:true,attributeFilter:['data-aadhaar-locked']});
+  sync();
+  syncLock();
+  control.addEventListener('input',sync);
+  control.addEventListener('change',sync);
+  return()=>{
+   observer.disconnect();
+   control.removeEventListener('input',sync);
+   control.removeEventListener('change',sync);
+  };
+ },[]);
  useLayoutEffect(()=>{if(props.value!==undefined&&String(props.value)!==lastEmitted.current){const display=dobDisplay(String(props.value));setText(display);if(canonical.current)canonical.current.value=dobIso(display);notify.current?.(dobIso(display));}},[props.value]);
  function change(event:FormEvent<HTMLInputElement>){let raw=event.currentTarget.value;const previous=text;
   // Backspace over an automatic slash also removes the preceding digit.
   if(previous.endsWith('/')&&raw===previous.slice(0,-1))raw=raw.slice(0,-1);
-  const count=raw.slice(0,event.currentTarget.selectionStart??raw.length).replace(/\D/g,'').length;caret.current=Math.min(10,count+(count>=2?1:0)+(count>=4?1:0));const display=dobDisplay(raw),iso=dobIso(display);lastEmitted.current=iso;setText(display);
+  const count=raw.slice(0,event.currentTarget.selectionStart??raw.length).replace(/\D/g,'').length;
+  caret.current=Math.min(10,count+(count>=2?1:0)+(count>=4?1:0));
+  saveDate(dobDisplay(raw),event);
+ }
+ function saveDate(display:string,event:FormEvent<HTMLInputElement>){
   const control=canonical.current;
-  if(!control)return;
+  if(!control||readOnly||props.disabled||control.dataset.aadhaarLocked==='1'||event.currentTarget.matches(':disabled'))return;
+  const iso=dobIso(display);
+  lastEmitted.current=iso;
+  setText(display);
   control.value=iso;
   notify.current?.(iso);
   props.onChange?.({...event,target:control,currentTarget:control});
@@ -34,7 +67,24 @@ function BirthDateInput({showAge,onBirthDateValue,...props}:Omit<Props,'birthDat
  }
  useLayoutEffect(()=>{if(caret.current!==null&&visible.current===document.activeElement){visible.current?.setSelectionRange(caret.current,caret.current);caret.current=null;}visible.current?.setCustomValidity(text&&!dobIso(text)?'Enter a valid date of birth as DD/MM/YYYY.':'');},[text]);
  const iso=dobIso(text);
+ const label=props['aria-label']||props.name||'date of birth';
+ const calendarLabel=`Choose ${label}`;
  // Capture the edit before the form's native autosave listener reads the DOB.
- const control=<><input {...props} ref={visible} name={undefined} type="text" inputMode="numeric" min={undefined} max={undefined} minLength={10} maxLength={10} pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" placeholder="DD/MM/YYYY" defaultValue={undefined} value={text} onInput={undefined} onInputCapture={change} onChange={event=>{if(event.nativeEvent.type!=='input')change(event);}} aria-label={props['aria-label']||props.name} aria-describedby={[props['aria-describedby'],showAge?id:''].filter(Boolean).join(' ')||undefined}/><input ref={canonical} type="hidden" disabled={props.disabled} name={props.name} value={iso}/></>;
+ const control=<span className="birth-date-control">
+  <input {...props} ref={visible} name={undefined} type="text" inputMode="numeric" min={undefined} max={undefined} minLength={10} maxLength={10} pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" placeholder="DD/MM/YYYY" defaultValue={undefined} value={text} readOnly={readOnly} onInput={undefined} onInputCapture={change} onChange={event=>{if(event.nativeEvent.type!=='input')change(event);}} aria-label={props['aria-label']||props.name} aria-describedby={[props['aria-describedby'],showAge?id:''].filter(Boolean).join(' ')||undefined}/>
+  <input ref={canonical} type="hidden" disabled={props.disabled} name={props.name} value={iso}/>
+  {!readOnly&&!props.disabled&&<>
+   {!useNativeField&&<button className="birth-date-calendar" type="button" aria-label={calendarLabel} title={calendarLabel} onClick={event=>{
+    event.preventDefault();
+    if(!picker.current||canonical.current?.dataset.aadhaarLocked==='1')return;
+    try{picker.current.showPicker();}catch{setUseNativeField(true);picker.current.focus();}
+   }}><CalendarDays aria-hidden="true" size={16}/></button>}
+   <input ref={picker} className={useNativeField?'birth-date-native':'birth-date-picker-anchor'} type="date"
+    aria-label={useNativeField?calendarLabel:undefined} aria-hidden={useNativeField?undefined:true}
+    tabIndex={useNativeField?undefined:-1} min={props.min||'1000-01-01'} max={props.max||'9999-12-31'} value={iso}
+    onInputCapture={event=>saveDate(dobDisplay(event.currentTarget.value),event)}
+    onChange={event=>{if(event.currentTarget.value!==canonical.current?.value)saveDate(dobDisplay(event.currentTarget.value),event);}}/>
+  </>}
+ </span>;
  return showAge?<span className="birth-date-pair">{control}<span className="birth-age-field" id={id}><span className="birth-age-heading">Age</span><AgeDisplay value={iso}/></span></span>:control;
 }

@@ -1,5 +1,17 @@
 .birth-date-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:end;width:100%;min-width:0}
-.birth-date-pair>input{min-width:0;width:100%}
+.birth-date-control{display:grid;gap:4px;position:relative;width:100%;min-width:0}
+.birth-date-control>input[type=text]{width:100%;min-width:0}
+.birth-date-control:has(.birth-date-calendar:enabled)>input[type=text]{padding-inline-end:33px}
+.birth-date-calendar{position:absolute;inset-inline-end:4px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:27px;height:27px;padding:0;border:0;border-radius:5px;background:transparent;color:#554263;cursor:pointer}
+.birth-date-calendar:hover{background:#efe7ff}
+.birth-date-calendar:focus-visible{outline:2px solid #7b42dc;outline-offset:-1px}
+.birth-date-control .birth-date-picker-anchor{position:absolute;inset-inline-end:4px;bottom:0;width:1px;min-width:0;height:1px;min-height:0;padding:0;border:0;opacity:0;pointer-events:none}
+.birth-date-calendar:disabled,.birth-date-native:disabled{display:none}
+
+input:is([type=date],[type=datetime-local],[type=month]):enabled:not([readonly])::-webkit-calendar-picker-indicator{width:16px;height:16px;opacity:.8;cursor:pointer}
+input:is([type=date],[type=datetime-local],[type=month]):enabled:not([readonly])::-webkit-calendar-picker-indicator:hover{opacity:1}
+
+@media print{.birth-date-calendar,.birth-date-native{display:none}}
 .birth-age-field{display:grid;gap:3px;min-width:0;position:relative}
 .birth-age-heading{position:absolute;top:-21px;left:0;font-size:12px;color:#40354a;font-weight:600}
 .birth-age{display:flex;align-items:center;box-sizing:border-box;width:100%;min-height:43px;padding:9px 10px;border:1px solid #dcd5e2;border-radius:9px;background:#fff;font-size:11px;line-height:1.35;white-space:normal;color:#554263;font-weight:500;cursor:default}

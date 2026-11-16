@@ -20,6 +20,39 @@ it('shows ages for restored drafts and scanned values without saving a derived a
  expect(screen.getByLabelText('Age').textContent).toBe('26 years, 7 months, 22 days');
  expect([...new FormData(form).keys()]).toEqual(['Date of Birth']);
 });
+it('saves the calendar choice in its own family row and respects scanned DOB locks',async()=>{
+ const prototype=HTMLInputElement.prototype;
+ const original=Object.getOwnPropertyDescriptor(prototype,'showPicker');
+ const showPicker=vi.fn();
+ Object.defineProperty(prototype,'showPicker',{configurable:true,value:showPicker});
+ try{
+  today();
+  const view=render(<form><FormInput name="Date of Birth 1"/><FormInput name="Date of Birth 2"/></form>);
+  const form=view.container.querySelector('form')!;
+  const second=screen.getByRole('textbox',{name:'Date of Birth 2'});
+  const button=screen.getByRole('button',{name:'Choose Date of Birth 2'});
+  const picker=second.parentElement!.querySelector<HTMLInputElement>('input[type=date]')!;
+  const onInput=vi.fn(()=>new FormData(form).get('Date of Birth 2'));
+  form.addEventListener('input',onInput);
+
+  fireEvent.click(button);
+  expect(showPicker.mock.contexts).toEqual([picker]);
+  fireEvent.input(picker,{target:{value:'2000-03-15'}});
+  expect(onInput.mock.results[0].value).toBe('2000-03-15');
+  expect(second).toHaveValue('15/03/2000');
+  expect(screen.getAllByLabelText('Age')[1]).toHaveTextContent('26 years, 7 months, 22 days');
+  expect([...new FormData(form).entries()]).toEqual([['Date of Birth 1',''],['Date of Birth 2','2000-03-15']]);
+
+  const saved=form.elements.namedItem('Date of Birth 2') as HTMLInputElement;
+  await act(async()=>{saved.dataset.aadhaarLocked='1';});
+  expect(second).toHaveAttribute('readonly');
+  expect(screen.queryByRole('button',{name:'Choose Date of Birth 2'})).not.toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Choose Date of Birth 1'})).toBeEnabled();
+ }finally{
+  if(original)Object.defineProperty(prototype,'showPicker',original);
+  else Reflect.deleteProperty(prototype,'showPicker');
+ }
+});
 it('shows a separate age column beside each family DOB in approved reviews',()=>{
  today();render(<LocalEmployeeReviewForm record={{id:'e',code:'E',name:'Employee',data:{officeData:{'Family Date of Birth':'2000-03-15 | 2025-10-05'}}}} owner="test" readOnly/>);
  fireEvent.click(screen.getByRole('button',{name:'Family Details'}));
