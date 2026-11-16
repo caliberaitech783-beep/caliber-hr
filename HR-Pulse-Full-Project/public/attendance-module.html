@@ -942,7 +942,7 @@ function renderTabs(){
 }
 function render(){if(!R().tabs.includes(S.tab))S.tab=R().tabs[0];renderScope();renderPolicy();renderTabs();VIEWS[S.tab]();tgBadge();}
 function setScope(k,v){S[k]=v;if(k==='type'||k==='company'||k==='region')S.loc='ALL';if(k==='type'||k==='company')S.region='ALL';S.day=null;render()}
-function setTab(k){S.tab=k;render()}
+function setTab(k){if(k==='trip'&&window.parent!==window){window.parent.postMessage('open-hr-mis-attendance',location.origin);return}S.tab=k;render()}
 $('coSel').onchange=e=>setScope('company',e.target.value);
 $('monSel').onchange=e=>{const[y,m]=e.target.value.split('-').map(Number);S.y=y;S.m=m;S.day=null;render()};
 

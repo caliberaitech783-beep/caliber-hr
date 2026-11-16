@@ -1,0 +1,64 @@
+.trip-attendance { display: grid; gap: 14px; min-width: 0; }
+.trip-attendance h1, .trip-attendance h2, .trip-attendance p { margin: 0; }
+.trip-attendance .trip-attendance-card { padding: 0; min-width: 0; overflow: hidden; }
+.trip-attendance-header, .trip-attendance-filters, .trip-attendance-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--pulse-border, #e4d7ed);
+}
+.trip-attendance-header { justify-content: space-between; }
+.trip-attendance-header h2 { font-size: 19px; }
+.trip-attendance-header p { margin-top: 5px; color: #665d71; font-size: 13px; }
+.trip-attendance button, .trip-attendance input, .trip-attendance select {
+  border: 1px solid var(--pulse-border, #e4d7ed);
+  border-radius: 7px;
+  background: white;
+  color: inherit;
+  min-height: 36px;
+  padding: 6px 9px;
+}
+.trip-attendance-refresh { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.trip-attendance-refresh:disabled { opacity: .65; }
+.trip-attendance-filters { align-items: end; }
+.trip-attendance-filters label { display: grid; gap: 5px; font-size: 13px; font-weight: 600; }
+.trip-attendance-filters .trip-attendance-checkbox { display: flex; align-items: center; min-height: 36px; }
+.trip-attendance-checkbox input { min-height: auto; accent-color: var(--pulse-purple, #522e90); }
+.trip-attendance-summary { padding-block: 10px; font-size: 13px; color: #665d71; }
+.trip-attendance-summary strong { color: #373043; }
+.trip-attendance-sync { margin-inline-start: auto; }
+.trip-attendance .trip-attendance-feedback { padding: 12px 20px; background: #fff5e6; color: #834614; }
+.trip-attendance-table { overflow: auto; }
+.trip-attendance table { width: 100%; min-width: 910px; border-collapse: collapse; font-size: 13px; }
+.trip-attendance th, .trip-attendance td { padding: 11px 10px; border-bottom: 1px solid #eee7f3; text-align: left; vertical-align: top; }
+.trip-attendance th { background: #faf7fc; color: #625372; white-space: nowrap; }
+.trip-attendance td:first-child, .trip-attendance th:first-child { padding-left: 20px; }
+.trip-attendance td:last-child, .trip-attendance th:last-child { padding-right: 20px; }
+.trip-attendance tr:last-child td { border-bottom: 0; }
+.trip-attendance td small { display: block; color: #665d71; margin-top: 4px; }
+.trip-attendance-sources { display: flex; flex-wrap: wrap; gap: 4px; }
+.trip-attendance-tag { display: inline-block; white-space: nowrap; border-radius: 6px; padding: 3px 6px; background: #f1eaf9; color: #53347c; font-size: 12px; }
+.trip-attendance-tag.trip-present { background: #e8f6eb; color: #22633d; }
+.trip-attendance-tag.trip-pending { background: #fff2df; color: #864b16; }
+.trip-attendance-tag.trip-absent { background: #ffe9e7; color: #922e27; }
+.trip-attendance-ot { font-weight: 700; }
+.trip-attendance-ot small { font-weight: 400; }
+.trip-attendance td.trip-attendance-empty { text-align: center; color: #665d71; padding: 30px 12px; }
+.trip-attendance .trip-attendance-saved { margin: 0; padding: 10px 20px; color: #22633d; background: #e8f6eb; }
+.trip-attendance-edit { display: inline-flex; align-items: center; gap: 5px; }
+.trip-attendance-editor { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; padding: 12px; background: #faf7fc; }
+.trip-attendance-editor label { display: grid; gap: 4px; }
+.trip-attendance-editor .trip-attendance-reason { flex: 1 1 180px; }
+.trip-attendance-editor [role="alert"] { flex: 1 0 100%; color: #922e27; }
+.trip-attendance-pages {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--pulse-border, #e4d7ed);
+  font-size: 13px;
+}

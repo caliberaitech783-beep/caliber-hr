@@ -64,3 +64,14 @@ CREATE TABLE IF NOT EXISTS hr_attendance_bridge(
  id boolean PRIMARY KEY DEFAULT true CHECK(id),
  last_seen timestamptz NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS hr_mis_attendance_corrections(
+ duty_id text PRIMARY KEY,
+ status text NOT NULL CHECK(status IN ('mis','present','absent','pending')),
+ start_time text NOT NULL DEFAULT '',
+ end_time text NOT NULL DEFAULT '',
+ reason text NOT NULL,
+ updated_by text NOT NULL,
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ version integer NOT NULL DEFAULT 1 CHECK(version>0)
+);

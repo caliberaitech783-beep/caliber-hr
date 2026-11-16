@@ -70,7 +70,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       if(!service)throw problem('Service unavailable',503);
       let result;
       if(telegramRoute&&['GET','POST'].includes(req.method))result=await service.telegramApi(profile,telegramRoute,req.method,req.method==='POST'?await body(req):{});
-      else if(attendanceRoute&&['GET','POST'].includes(req.method))result=await service.attendanceApi(profile,attendanceRoute,req.method,req.method==='POST'?await body(req):{},url.searchParams);
+      else if(attendanceRoute&&['GET','POST'].includes(req.method))result=await service.attendanceApi(profile,attendanceRoute,req.method,req.method==='POST'?await body(req):{},url.searchParams,token);
       else if(assetRoute&&['GET','POST'].includes(req.method))result=await service.assetApi(profile,assetRoute,req.method,req.method==='POST'?await body(req):{},url.searchParams);
       else if(documents&&['GET','POST'].includes(req.method))result=await service.holidayDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);
       else if(employeeDocuments&&['GET','POST'].includes(req.method))result=await service.employeeDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);

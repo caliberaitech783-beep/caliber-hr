@@ -7,6 +7,7 @@
 import {createHash,randomUUID,timingSafeEqual} from 'node:crypto';
 import {assignedSites,siteIds} from './scope.mjs';
 import {grantedMenus,canWrite} from './modules.mjs';
+import {createMisAttendance} from './mis-attendance.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const uuid=value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value||'');
@@ -60,6 +61,7 @@ export function validateRange(params){
 }
 
 export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_KEY}={}){
+ const misAttendance=createMisAttendance(pool);
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
  const permit=profile=>{if(!grantedMenus(profile).has('Employee Master'))fail('Attendance Management is not assigned to your account',403);};
@@ -92,8 +94,9 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   fail('Not found',404);
  }
 
- async function api(profile,route,method,input,params){
+ async function api(profile,route,method,input,params,grant){
   permit(profile);
+  if(route==='mis'||route==='mis/correction')return misAttendance(profile,grant,route,method,input,params);
   const fetchId=route.match(/^fetch\/([0-9a-fA-F-]{36})$/)?.[1];
   if(route==='fetch'&&method==='POST')return tx(async db=>{
    await expire(db);

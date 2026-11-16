@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Download,RefreshCw} from 'lucide-react';
 import {api,csv,download,type Lookup} from './api';
+import MisAttendance from './MisAttendance';
 import './attendance.css';
 
 /* Punches come from the site fingerprint/face machines. Azure cannot reach a
@@ -40,9 +41,17 @@ export default function AttendanceManagement({grant}:{grant:string}){
  const [lookups,setLookups]=useState<Lookup[]>([]),[choice,setChoice]=useState<Record<string,string>>({});
  const [loading,setLoading]=useState(true),[fetching,setFetching]=useState(false),[busy,setBusy]=useState(false);
  const [error,setError]=useState(''),[message,setMessage]=useState('');
- const [tab,setTab]=useState<'module'|'punches'>('module');
+ const [tab,setTab]=useState<'module'|'punches'|'mis'>('module');
  const live=useRef(true);
+ const attendanceFrame=useRef<HTMLIFrameElement>(null);
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
+ useEffect(()=>{
+  const openMis=(event:MessageEvent)=>{
+   if(event.origin===window.location.origin&&event.source===attendanceFrame.current?.contentWindow&&event.data==='open-hr-mis-attendance')setTab('mis');
+  };
+  window.addEventListener('message',openMis);
+  return()=>window.removeEventListener('message',openMis);
+ },[]);
 
  const load=useCallback(async(showPunches:boolean)=>{
   setLoading(true);setError('');
@@ -110,8 +119,10 @@ export default function AttendanceManagement({grant}:{grant:string}){
   <div className="module-tabs" aria-label="Attendance views">
    <button className={tab==='module'?'selected':''} aria-pressed={tab==='module'} onClick={()=>setTab('module')}>Attendance module</button>
    <button className={tab==='punches'?'selected':''} aria-pressed={tab==='punches'} onClick={()=>setTab('punches')}>Machine punches</button>
+   <button className={tab==='mis'?'selected':''} aria-pressed={tab==='mis'} onClick={()=>setTab('mis')}>Trip Cards &amp; Logbook</button>
   </div>
-  {tab==='module'&&<iframe src="/attendance-module.html" title="Attendance Management module"/>}
+  {tab==='module'&&<iframe ref={attendanceFrame} src="/attendance-module.html" title="Attendance Management module"/>}
+  {tab==='mis'&&<MisAttendance grant={grant}/>}
   {tab==='punches'&&<>
 
   <div className="data-card">
