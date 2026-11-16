@@ -7,29 +7,37 @@ import './mis-attendance.css';
 const startOfRecords = '2026-11-01';
 const dateInIndia = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
 const displayDate = (date: string) => date.split('-').reverse().join('-');
+const shiftDate = (date: string, days: number) => new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 const columns = ['Date', 'Employee', 'Type', 'Equipment / vehicle', 'Time', 'Output', 'Hours', 'Status', 'Verification', 'OT'];
 const refreshMs = 30_000;
 const pageSize = 100;
 
 export default function MisAttendance({grant}: {grant: string}) {
   const today = dateInIndia();
-  const [from, setFrom] = useState(today < startOfRecords ? startOfRecords : today.slice(0, 7) + '-01');
-  const [to, setTo] = useState(today < startOfRecords ? startOfRecords : today);
+  const latest = today < startOfRecords ? startOfRecords : today;
+  const [date, setDate] = useState(latest);
   const [site, setSite] = useState('');
   const [search, setSearch] = useState('');
   const [pendingOnly, setPendingOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [refresh, setRefresh] = useState(0);
-  const [result, setResult] = useState<{range: string; rows: AttendanceRow[]; updated: Date; canEdit: boolean}>();
-  const [error, setError] = useState('');
+  const [result, setResult] = useState<{date: string; rows: AttendanceRow[]; updated: Date; canEdit: boolean}>();
+  const [failure, setFailure] = useState<{date: string; message: string}>();
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<AttendanceRow>();
   const [status, setStatus] = useState<CorrectionStatus>('mis');
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [saved, setSaved] = useState('');
-  const range = from + '/' + to;
-  const valid = from >= startOfRecords && to >= from && Date.parse(to) - Date.parse(from) <= 30 * 86_400_000;
+  const valid = date >= startOfRecords && date <= latest;
+  const error = failure?.date === date ? failure.message : '';
+
+  function selectDate(next: string) {
+    setDate(next);
+    setPage(0);
+    setEditing(undefined);
+    setSaved('');
+  }
 
   useEffect(() => {
     if (!valid) return;
@@ -38,15 +46,15 @@ export default function MisAttendance({grant}: {grant: string}) {
     async function load() {
       setLoading(true);
       try {
-        const query = new URLSearchParams({from, to});
+        const query = new URLSearchParams({from: date, to: date});
         const data = await api<{canEdit: boolean}>(grant, 'attendance/mis?' + query);
-        const rows = mapMisAttendance(data).filter(row => row.date >= from && row.date <= to);
+        const rows = mapMisAttendance(data).filter(row => row.date === date);
         if (lifetime.signal.aborted) return;
-        setResult({range, rows, updated: new Date(), canEdit: data.canEdit});
-        setError('');
+        setResult({date, rows, updated: new Date(), canEdit: data.canEdit});
+        setFailure(undefined);
       } catch (error) {
         if (!lifetime.signal.aborted) {
-          setError((error as Error).message);
+          setFailure({date, message: (error as Error).message});
         }
       } finally {
         if (!lifetime.signal.aborted) {
@@ -60,7 +68,7 @@ export default function MisAttendance({grant}: {grant: string}) {
       lifetime.abort();
       clearTimeout(timer);
     };
-  }, [from, to, range, valid, refresh, grant]);
+  }, [date, valid, refresh, grant]);
 
   async function saveCorrection(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -84,7 +92,8 @@ export default function MisAttendance({grant}: {grant: string}) {
     }
   }
 
-  const current = result?.range === range ? result : undefined;
+  const current = result?.date === date ? result : undefined;
+  const awaitingResult = valid && !current && !error;
   const all = current?.rows || [];
   const sites = [...new Set(all.map(row => row.site))];
   const activeSite = sites.includes(site) ? site : '';
@@ -110,8 +119,11 @@ export default function MisAttendance({grant}: {grant: string}) {
         </button>
       </div>
       <div className="trip-attendance-filters">
-        <label>From<input type="date" min={startOfRecords} max={to} value={from} onChange={e => {setFrom(e.target.value); setPage(0);}}/></label>
-        <label>To<input type="date" min={from || startOfRecords} value={to} onChange={e => {setTo(e.target.value); setPage(0);}}/></label>
+        <label>Attendance date<input type="date" min={startOfRecords} max={latest} value={date} disabled={saving} onChange={e => selectDate(e.target.value)}/></label>
+        <div className="trip-attendance-day-buttons" aria-label="Browse attendance dates">
+          <button type="button" disabled={!valid || date === startOfRecords || saving} onClick={() => selectDate(shiftDate(date, -1))}>Previous day</button>
+          <button type="button" disabled={!valid || date === latest || saving} onClick={() => selectDate(shiftDate(date, 1))}>Next day</button>
+        </div>
         <label>Site<select value={activeSite} onChange={e => {setSite(e.target.value); setPage(0);}}>
           <option value="">All sites</option>
           {sites.map(name => <option key={name}>{name}</option>)}
@@ -119,14 +131,14 @@ export default function MisAttendance({grant}: {grant: string}) {
         <label>Employee<input type="search" value={search} placeholder="Search name or code" onChange={e => {setSearch(e.target.value); setPage(0);}}/></label>
         <label className="trip-attendance-checkbox"><input type="checkbox" checked={pendingOnly} onChange={e => {setPendingOnly(e.target.checked); setPage(0);}}/> Pending only</label>
       </div>
-      {!valid && <p role="alert" className="trip-attendance-feedback">Choose up to 31 days from 1 November 2026 onward.</p>}
+      {!valid && <p role="alert" className="trip-attendance-feedback">Choose an attendance date from 1 November 2026 through today.</p>}
       {valid && error && <p role="alert" className="trip-attendance-feedback">{current && 'Showing the last successful sync. '}{error}</p>}
       {saved && <p className="trip-attendance-saved" role="status">{saved}</p>}
       <div className="trip-attendance-summary" role="status">
         <span><strong>{rows.length}</strong> duties</span>
         <span><strong>{pending}</strong> pending</span>
         <span><strong>{ot} h</strong> OT</span>
-        <span className="trip-attendance-sync">{current ? `Last synced ${current.updated.toLocaleTimeString('en-IN', {timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit'})} IST · refreshes every 30 sec` : loading && valid ? 'Loading MIS attendance…' : ''}</span>
+        <span className="trip-attendance-sync">{current ? `Last synced ${current.updated.toLocaleTimeString('en-IN', {timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit'})} IST · refreshes every 30 sec` : awaitingResult ? 'Loading MIS attendance…' : ''}</span>
       </div>
       <div className="trip-attendance-table" role="region" aria-label="Trip Cards and Logbook attendance table" tabIndex={0}>
         <table>
@@ -168,7 +180,7 @@ export default function MisAttendance({grant}: {grant: string}) {
             </td></tr>}
             </Fragment>)}
             {!rows.length && <tr><td className="trip-attendance-empty" colSpan={columns.length + Number(Boolean(current?.canEdit))}>
-              {loading && valid ? 'Loading attendance…' : 'No attendance records for this selection.'}
+              {awaitingResult ? 'Loading attendance…' : current ? 'No attendance records for this selection.' : 'Attendance is unavailable for this selection.'}
             </td></tr>}
           </tbody>
         </table>

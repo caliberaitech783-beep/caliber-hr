@@ -56,6 +56,23 @@ it('picks up a newly closed MIS batch and calculates overtime on the next automa
   expect(within(morningDuty).getAllByText('8 h')).toHaveLength(2);
 });
 
+it('loads an earlier closed day without requesting a month of MIS records', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-11-16T06:00:00Z'));
+  const request = vi.fn().mockResolvedValue({ok: true, json: async () => report('closed')});
+  vi.stubGlobal('fetch', request);
+  render(<MisAttendance grant="test"/>);
+  await act(async () => {});
+  expect(request.mock.calls[0][0]).toMatch(/from=2026-11-16&to=2026-11-16$/);
+  expect(screen.queryByRole('row', {name: /S3 Demo Operator/})).toBeNull();
+  fireEvent.click(screen.getByRole('button', {name: 'Previous day'}));
+  await act(async () => {});
+  expect(request.mock.calls[1][0]).toMatch(/from=2026-11-15&to=2026-11-15$/);
+  const previous = screen.getByRole('row', {name: /S3 Demo Operator/});
+  expect(within(previous).getByText('MIS batch closed')).toBeTruthy();
+  expect(screen.queryByRole('row', {name: /S1 Demo Operator/})).toBeNull();
+});
+
 it('saves a correction with the duty identity and version and reloads it from HR', async () => {
   const original = {...report('closed'), canEdit: true};
   const target = mapMisAttendance(original).find(row => row.employeeId === 'DEMO-1' && row.shift === 'S1')!;

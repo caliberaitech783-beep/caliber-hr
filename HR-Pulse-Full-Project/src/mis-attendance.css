@@ -24,6 +24,8 @@
 .trip-attendance-refresh:disabled { opacity: .65; }
 .trip-attendance-filters { align-items: end; }
 .trip-attendance-filters label { display: grid; gap: 5px; font-size: 13px; font-weight: 600; }
+.trip-attendance-day-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.trip-attendance-day-buttons button:disabled { opacity: .65; }
 .trip-attendance-filters .trip-attendance-checkbox { display: flex; align-items: center; min-height: 36px; }
 .trip-attendance-checkbox input { min-height: auto; accent-color: var(--pulse-purple, #522e90); }
 .trip-attendance-summary { padding-block: 10px; font-size: 13px; color: #665d71; }
