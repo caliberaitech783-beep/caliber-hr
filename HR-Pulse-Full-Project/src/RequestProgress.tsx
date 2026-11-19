@@ -55,3 +55,38 @@ export function RequestCards({kind,rows,byId,actions}:{kind:string;rows:RecordRo
   </article>;})}
   {rows.length>0&&<p className="request-legend">Green = done · purple ring = waiting here · red = rejected · grey = not reached</p>}</div>;
 }
+
+type ApprovalStepRow={stage:number;label:string;approvers:string[]};
+export type ApprovalRow={id:string;code:string;name:string;kind:string;data:Record<string,unknown>;state:string;stage:number;approvers:string[];requested_by:string;approval_steps?:ApprovalStepRow[];history:{stage:number;decision:string;at:string;actor:string}[]};
+
+const shortLabel=(label:string)=>String(label||'Approval').split(/\s+[—–-]\s+/)[0].trim()||'Approval';
+const approvalSteps=(a:ApprovalRow):ApprovalStepRow[]=>a.approval_steps?.length?a.approval_steps:a.approvers.map(x=>({stage:1,label:'Approval',approvers:[x]}));
+
+// The decision button's wording: gate security records the out and return times instead of "approving".
+export function approvalActionLabel(a?:{kind:string;stage:number}|null){return a?.kind==='gatePasses'&&a.stage===1?'Record gate out':a?.kind==='gatePasses'&&a.stage===2?'Record back in':'Approve';}
+
+// Approval progress of an approval row, with the time each step was approved.
+export function approvalProgress(a:ApprovalRow):RequestProgressData{
+  const history=[...(a.history||[])].reverse();
+  return {state:a.state,stage:a.stage,steps:approvalSteps(a).map((s,i)=>{const at=history.find(h=>Number(h.stage)===i+1&&h.decision==='APPROVED')?.at;return at?{label:shortLabel(s.label),at}:{label:shortLabel(s.label)};})};
+}
+
+// Gate pass approvals drawn as cards with a step bar; the cards waiting for this user come first and stand out.
+export function ApprovalCards({rows,actor,onReview}:{rows:ApprovalRow[];actor:string;onReview:(row:ApprovalRow)=>void}){
+  const mine=(a:ApprovalRow)=>a.state==='PENDING'&&a.requested_by!==actor&&!!approvalSteps(a)[a.stage]?.approvers.includes(actor);
+  const sorted=[...rows].sort((a,b)=>Number(mine(b))-Number(mine(a)));
+  return <div className="request-cards">{sorted.map(a=>{
+    const v=progressView(a.state==='PENDING'?'PENDING':a.state,approvalProgress(a)),d=a.data||{},waiting=approvalSteps(a)[a.stage],own=mine(a);
+    const details=[day(d.passDate),`Out ${d.outTime||'—'} → back ${d.returnTime||'—'}`,String(d.passType||'')].filter(Boolean);
+    return <article key={a.id} className={'request-card'+(own?' request-card-mine':'')} aria-label={`${a.code}: ${v.summary}`}>
+      <div className="request-card-top"><p><b>{[a.code,a.name].filter(Boolean).join(' · ')}</b>{details.map((x,i)=><span key={i}> · {x}</span>)}</p><span className={'request-progress-summary tone-'+v.tone}>{v.summary}</span></div>
+      {d.purpose?<p className="request-card-purpose">{String(d.purpose)}</p>:null}
+      <ProgressSteps steps={v.steps}/>
+      <div className="request-card-actions row-actions">
+        {a.state==='PENDING'&&!own&&waiting&&<span className="request-card-waiting">Waiting for {waiting.approvers.join(' / ')}</span>}
+        <button className={own?'primary':''} onClick={()=>onReview(a)}>{own?approvalActionLabel(a):'Review'}</button>
+      </div>
+    </article>;})}
+    <p className="request-legend">Green = done · purple ring = waiting here · red = rejected · grey = not reached</p>
+  </div>;
+}

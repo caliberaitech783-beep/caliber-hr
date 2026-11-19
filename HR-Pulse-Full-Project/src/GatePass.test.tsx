@@ -53,3 +53,25 @@ it('says why company or site stays blank on the leave form',async()=>{
  fireEvent.change(screen.getByLabelText(/Employee ID/),{target:{value:'employee'}});
  expect(await screen.findByText(/has no Company or Site saved in Employee Master/)).toBeTruthy();
 });
+
+it('shows gate pass approvals as cards, with the passes waiting for me first',async()=>{
+ const {Approvals}=await import('./Modules');
+ const steps=[{stage:1,label:'HOD (concerned) — any one',approvers:['hod.one']},{stage:2,label:'Gate out — security records the out time',approvers:['gate.one']},{stage:3,label:'Back in — security records the return time',approvers:['gate.one']}];
+ const base={kind:'gatePasses',approvers:['hod.one','gate.one'],requested_by:'clerk',version:1,approval_steps:steps};
+ const rows=[
+  {...base,id:'a1',code:'GP No.0001/20-11-2026/CMLL00012',name:'Apurva Kopulwar',state:'PENDING',stage:0,data:{passDate:'2026-11-20',outTime:'13:00',returnTime:'15:00',passType:'Personal',purpose:'Bank work'},history:[]},
+  {...base,id:'a2',code:'GP No.0002/20-11-2026/CMLL0006',name:'Stupal Baba Moon',state:'PENDING',stage:1,data:{passDate:'2026-11-20',outTime:'11:00',returnTime:'12:00',passType:'Medical'},history:[{actor:'hod.one',stage:1,decision:'APPROVED',comments:'',at:'2026-11-20T05:00:00Z'}]},
+ ];
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify(rows))));
+ render(<Approvals grant="t" actor="gate.one" notice={()=>{}} kind="gatePasses"/>);
+ const mine=await screen.findByRole('button',{name:'Record gate out'});
+ expect(screen.queryByRole('table')).toBeNull();
+ const cards=screen.getAllByRole('article');
+ expect(cards[0]).toHaveTextContent('GP No.0002/20-11-2026/CMLL0006');
+ expect(cards[0]).toHaveClass('request-card-mine');
+ expect(cards[1]).toHaveTextContent('Waiting for hod.one');
+ expect(cards[1]).toHaveTextContent('Bank work');
+ expect(screen.getAllByText('Pending · step 3 of 4').length).toBe(1);
+ fireEvent.click(mine);
+ expect(await screen.findByRole('dialog')).toHaveTextContent('GP No.0002/20-11-2026/CMLL0006');
+});

@@ -17,6 +17,7 @@ import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
 import {attachProgress,stepLabel} from './request-progress.mjs';
 import {gatePassWorkflow} from './gate-pass.mjs';
+import {nextRequestCode} from './request-number.mjs';
 import { randomUUID } from 'node:crypto';
 import { complianceKinds, modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
@@ -100,8 +101,8 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       if(!(existing.data.__importDraft==='true'&&existing.created_by===profile.actor))await locationAccess(db,profile,kind,existing.data,id);
     }
     if(existing?.data.__importDraft==='true')input=await resolveImportReferences(db,kind,input);
-    if(kind==='outDutyRequests')input={...input,code:existing?.code||'OD-'+randomUUID()};
-    if(kind==='gatePasses')input={...input,code:existing?.code||'GP-'+randomUUID()};
+    if(kind==='outDutyRequests')input={...input,code:await nextRequestCode(db,kind,existing?.code,input)};
+    if(kind==='gatePasses')input={...input,code:await nextRequestCode(db,kind,existing?.code,input)};
     data=validate(kind,input);
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);

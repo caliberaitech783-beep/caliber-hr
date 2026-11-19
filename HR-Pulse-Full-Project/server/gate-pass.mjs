@@ -17,3 +17,5 @@ export function validateGatePass(data){
   const fail=message=>{throw Object.assign(new Error(message),{status:400});};
   if(data.outTime&&data.returnTime&&data.returnTime<=data.outTime)fail('Expected return must be after the out time');
 }
+
+// Gate pass numbers (GP No.0001/<dd-mm-yyyy>/<Emp ID>) are made in request-number.mjs.

@@ -24,3 +24,4 @@ test('progress shows when each step was approved, such as the gate out time',()=
   const p=requestProgress({state:'PENDING',stage:2,approval_steps:gatePassWorkflow(null).data.steps,history:[{stage:1,decision:'APPROVED',at:'2026-11-20T07:30:00Z'},{stage:2,decision:'APPROVED',at:'2026-11-20T07:34:00Z'}]});
   assert.deepEqual(p.steps,[{label:'HOD',at:'2026-11-20T07:30:00Z'},{label:'Gate out',at:'2026-11-20T07:34:00Z'},{label:'Back in'}]);
 });
+
