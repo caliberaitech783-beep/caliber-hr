@@ -18,15 +18,15 @@ it('groups the Attendance Management sub menus as approved',()=>{
   ['Settings',['HR policy · attendance']],
  ]);
  expect(attendanceGroup('Gate pass')).toBe('Attendance regularization');
- expect(legacyModuleUrl('punch',{...policy,graceMinutes:10})).toMatch(/attendance-module\.html\?view=punch&grace=10&full=7&absent=4&lunch=60&perCut=3$/);
+ expect(legacyModuleUrl('punch',{...policy,graceMinutes:10})).toMatch(/attendance-module\.html\?view=punch&grace=10&full=6.5&absent=4&lunch=60&perCut=3$/);
 });
 
-it('rates trip card / logbook hours with the same policy: 3:59 absent, 4:00 half, 6:59 half, 7:00 full (after 1 hr lunch)',()=>{
+it('rates trip card / logbook hours with the same policy: 3:59 absent, 4:00 half, 6:29 half, 6:30 full (after 1 hr lunch)',()=>{
  const duty=(h:number,m:number)=>logbookDuty(0,(h+1)*hour+m*minute);
  expect(duty(3,59)).toBe('Absent');
  expect(duty(4,0)).toBe('Half duty');
- expect(duty(6,59)).toBe('Half duty');
- expect(duty(7,0)).toBe('Full duty');
+ expect(duty(6,29)).toBe('Half duty');
+ expect(duty(6,30)).toBe('Full duty');
  expect(logbookDuty(0,8*hour,{...policy,lunchMinutes:0,fullDutyHours:8})).toBe('Full duty');
 });
 
@@ -52,7 +52,7 @@ it('shows the policy rules and lets an HR administrator change the numbers',asyn
   return Response.json({policy,version:0,updatedBy:'',updatedAt:null,canEdit:true});
  }));
  render(<AttendancePolicySettings grant={'a'.repeat(43)}/>);
- expect(await screen.findByText(/Under 4 hrs = Absent · 4 hrs to under 7 hrs = Half duty · 7 hrs or more = Full duty/)).toBeTruthy();
+ expect(await screen.findByText(/Under 4 hrs = Absent · 4 hrs to under 6.5 hrs = Half duty · 6.5 hrs or more = Full duty/)).toBeTruthy();
  expect(screen.getByText(/08:15 is on time and 08:16 is late/)).toBeTruthy();
  expect(screen.getByText(/Drivers are not exempt/)).toBeTruthy();
  const save=screen.getByRole('button',{name:'Save policy'});

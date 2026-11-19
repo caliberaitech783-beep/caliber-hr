@@ -9,7 +9,7 @@ const day = (inClock, worked) => ({inMinute: at(inClock), outMinute: at(inClock)
 
 test('defaults are the approved policy numbers', () => {
   assert.deepEqual({...DEFAULT_POLICY, exemptRoles: [...DEFAULT_POLICY.exemptRoles]}, {
-    lunchMinutes: 60, absentBelowHours: 4, fullDutyHours: 7, graceMinutes: 15, lateEarlyPerHalfCut: 3,
+    lunchMinutes: 60, absentBelowHours: 4, fullDutyHours: 6.5, graceMinutes: 15, lateEarlyPerHalfCut: 3,
     gatePassFreeMinutes: 60, exemptRoles: ['CMD', 'Director', 'VP', 'CFO', 'CA']
   });
   assert.deepEqual(validatePolicy({}), validatePolicy(DEFAULT_POLICY));
@@ -22,16 +22,17 @@ test('working hours exclude the 1 hr lunch', () => {
   assert.equal(workedMinutes(at('08:00'), at('17:00'), {...DEFAULT_POLICY, lunchMinutes: 30}), span(8, 30));
 });
 
-test('hours boundaries: 3:59 absent, 4:00 half, 6:59 half, 7:00 full', () => {
+test('hours boundaries: 3:59 absent, 4:00 half, 6:29 half, 6:30 full', () => {
   assert.equal(dutyStatus(span(3, 59)), 'A');
   assert.equal(dutyStatus(span(4, 0)), 'HD');
-  assert.equal(dutyStatus(span(6, 59)), 'HD');
-  assert.equal(dutyStatus(span(7, 0)), 'P');
+  assert.equal(dutyStatus(span(6, 29)), 'HD');
+  assert.equal(dutyStatus(span(6, 30)), 'P');
+  assert.equal(dutyStatus(span(6, 59)), 'P');
   // through the full day calculation, lunch included: 08:00 → 12:59 is 3:59 worked
   assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('12:59')}).status, 'A');
   assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('13:00')}).status, 'HD');
-  assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('15:59')}).status, 'HD');
-  assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('16:00')}).status, 'P');
+  assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('15:29')}).status, 'HD');
+  assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('15:30')}).status, 'P');
 });
 
 test('trip card / logbook staff use logbook hours with the first trip as the In punch', () => {
@@ -127,6 +128,6 @@ test('settings are editable, validated and keep drivers out of the exempt list',
 test('policy page wording follows the settings', () => {
   const rules = Object.fromEntries(policyRules());
   assert.match(rules['Late come'], /08:15 is on time and 08:16 is late/);
-  assert.match(rules['Day status'], /Under 4 hrs = Absent · 4 hrs to under 7 hrs = Half duty · 7 hrs or more = Full duty/);
+  assert.match(rules['Day status'], /Under 4 hrs = Absent · 4 hrs to under 6.5 hrs = Half duty · 6.5 hrs or more = Full duty/);
   assert.match(Object.fromEntries(policyRules({...DEFAULT_POLICY, graceMinutes: 10}))['Late come'], /08:11 is late/);
 });
