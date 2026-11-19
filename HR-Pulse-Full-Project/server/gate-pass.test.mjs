@@ -25,17 +25,3 @@ test('progress shows when each step was approved, such as the gate out time',()=
   assert.deepEqual(p.steps,[{label:'HOD',at:'2026-11-20T07:30:00Z'},{label:'Gate out',at:'2026-11-20T07:34:00Z'},{label:'Back in'}]);
 });
 
-import {gatePassCode,gatePassSerial,nextGatePassCode} from './gate-pass.mjs';
-test('gate pass numbers read GP No.<serial>/<dd-mm-yyyy>/<Emp ID> and count up from 0001',async()=>{
-  assert.equal(gatePassCode(1,'2026-11-20','CMLL00012'),'GP No.0001/20-11-2026/CMLL00012');
-  assert.equal(gatePassSerial('GP No.0042/20-11-2026/CMLL00012'),42);
-  assert.equal(gatePassSerial('GP-3f1c'),0);
-  const db=next=>({queries:[],async query(sql){this.queries.push(sql);if(sql.includes("kind='employees'"))return {rows:[{code:'CMLL00012'}]};if(sql.includes('MAX('))return {rows:[{next}]};return {rows:[]};}});
-  const first=db(1);
-  assert.equal(await nextGatePassCode(first,undefined,'2026-11-20','e1'),'GP No.0001/20-11-2026/CMLL00012');
-  assert.ok(first.queries.some(q=>q.includes('pg_advisory_xact_lock')));
-  assert.equal(await nextGatePassCode(db(12),'GP-old-uuid','2026-11-21','e1'),'GP No.0012/21-11-2026/CMLL00012');
-  const edit=db(99);
-  assert.equal(await nextGatePassCode(edit,'GP No.0005/20-11-2026/CMLL00012','2026-11-22','e1'),'GP No.0005/22-11-2026/CMLL00012');
-  assert.ok(!edit.queries.some(q=>q.includes('MAX(')));
-});

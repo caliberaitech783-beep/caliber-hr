@@ -5,7 +5,7 @@ import {departmentStructure, joiningDesignations} from './joiningDepartments';
 import {EmployeeAssets} from './EmployeeAssets';
 import {assetPrintHtml} from './assetPrint';
 import DictatedReason from './DictatedReason';
-import {RequestCards} from './RequestProgress';
+import {RequestCards,ApprovalCards,approvalActionLabel} from './RequestProgress';
 import RequestFormSections,{requestFormKinds,missingFields,dateProblem} from './RequestFormSections';
 
 import {HolidaySites} from './HolidaySites';
@@ -157,7 +157,7 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
       <button onClick={()=>void load()} disabled={loading}><RefreshCw/>Refresh</button>
     </div>
     <ErrorBox message={error}/>
-    {loading?<p role="status">Loading approvals…</p>:rows.length?(
+    {loading?<p role="status">Loading approvals…</p>:rows.length&&kind==='gatePasses'?<ApprovalCards rows={rows} actor={actor} onReview={row=>{setLocalReviewChanged(false);setSelected(row as Approval);setComments('');setError('');}}/>:rows.length?(
       <div className="table-scroll" role="region" aria-label={completed?'Completed employee forms':'Approval requests'} tabIndex={0}>
         <table className={completed?'approval-table completed-approval-table':'approval-table'}>
           <thead><tr>
@@ -200,7 +200,7 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
         <p>{canDecide?'Review the employee details, then approve this stage or reject with a reason.':selected.kind==='employees'&&localReviewChanged?'Local changes are saved only on this browser. Reset to the submitted form before making an approval decision.':`Awaiting approval from ${stepsFor(selected)[selected.stage]?.approvers.join(' / ')||'the assigned approver'}. Only the assigned approver can approve this stage.`}</p>
         {canDecide&&selected.telegram_flow&&selected.stage===1&&<label>Charge handed over to (required for approval)<select value={chargeEmployeeId} onChange={e=>setChargeEmployeeId(e.target.value)}><option value="">Select employee</option>{chargeEmployees.map(e=><option key={e.id} value={e.id}>{e.code} · {e.name}</option>)}</select></label>}
         {canDecide&&<label className="comments-label">Comments (required for rejection)<textarea maxLength={2000} value={comments} onChange={e=>setComments(e.target.value)}/></label>}
-        <div className="form-actions">{canDecide&&<button disabled={busy||!comments.trim()} onClick={()=>void decide('REJECTED')}>Reject</button>}<button className="primary" disabled={busy||!canDecide} onClick={()=>void decide('APPROVED')}>{busy?'Saving…':selected?.kind==='gatePasses'&&selected.stage===1?'Record gate out':selected?.kind==='gatePasses'&&selected.stage===2?'Record back in':'Approve'}</button></div>
+        <div className="form-actions">{canDecide&&<button disabled={busy||!comments.trim()} onClick={()=>void decide('REJECTED')}>Reject</button>}<button className="primary" disabled={busy||!canDecide} onClick={()=>void decide('APPROVED')}>{busy?'Saving…':approvalActionLabel(selected)}</button></div>
       </div>}
     </section></div>}
     {letter&&<EmployeeLetter employee={letter.employee} kind={letter.kind} serial={letter.serial} close={()=>setLetter(null)}/>}
