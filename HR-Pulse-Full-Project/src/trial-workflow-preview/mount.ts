@@ -20,7 +20,7 @@ export type PrepareJoining = (rows: Trial[]) => Promise<(() => void) | void>;
 const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
 const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',ohr:'approve',rhr:'approve',director:'approve'};
 /* Tabs each role may open: Site HR → Aadhaar + Part 1; Driver Trainer → Part 2; approvers → Approvals; everyone → All candidates. */
-const roleTabs: Record<Role,Tab[]> = {hr:['aadhaar','hr','overview'],trainer:['trainer','overview'],pm:['approve','overview'],ohr:['approve','overview'],rhr:['approve','overview'],director:['approve','overview']};
+const roleTabs: Record<Role,Tab[]> = {hr:['aadhaar','hr','overview'],trainer:['trainer'],pm:['approve','overview'],ohr:['approve','overview'],rhr:['approve','overview'],director:['approve','overview']};
 const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',trainer:'',remarks:''});
 const digits = (value: string) => value.replace(/\D/g,'');
 const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -132,8 +132,11 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     return name;
   }
   function showTab(next: Tab) {
+    if(!roleTabs[role].includes(next))next=roleTab[role];
     tab = next;
-    $('#pipe').hidden = next==='aadhaar';
+    $('#pipe').hidden = role==='trainer'||next==='aadhaar';
+    $('#tabs').hidden=role==='trainer';
+    $('.preview-label').hidden=role==='trainer';
     $$<HTMLButtonElement>('#tabs button').forEach(button=>{
       const active = button.dataset.tab===next;
       button.classList.toggle('on',active);
@@ -981,6 +984,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     }
   };
   $('#pipe').onclick=event=>{
+    if(role==='trainer')return;
     const button=(event.target as Element).closest<HTMLButtonElement>('[data-stage]');
     if(!button?.dataset.stage) return;
     const stage=button.dataset.stage;
