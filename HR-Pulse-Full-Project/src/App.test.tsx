@@ -16,7 +16,7 @@ it('opens the full trial workflow directly from the Trial Form menu',async()=>{
  const profile={name:'HR user',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
  window.location.hash='Employee%20Master';
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
- vi.stubGlobal('fetch',async()=>Response.json({profile,modules:{}}));
+ vi.stubGlobal('fetch',async(url:string)=>Response.json(url.endsWith('/trial-trainer')?{roles:['hr']}: {profile,modules:{}}));
  const {container}=render(<App/>);
  fireEvent.click((await screen.findAllByRole('button',{name:'OB / COAL'}))[0]);
  fireEvent.click(await screen.findByRole('button',{name:/^Trial Form$/}));
@@ -50,7 +50,7 @@ it('finds candidates saved under the original sign-in and current HR account key
  const currentProfile={...profile,name:'Configured HR user',actor:'testuser'};
  window.location.hash='Employee%20Master';
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
- vi.stubGlobal('fetch',async(url:string)=>Response.json({profile:url.endsWith('/config')?currentProfile:profile,modules:{}}));
+ vi.stubGlobal('fetch',async(url:string)=>Response.json(url.endsWith('/trial-trainer')?{roles:['hr']}:{profile:url.endsWith('/config')?currentProfile:profile,modules:{}}));
  vi.spyOn(joiningDrafts,'listJoiningDrafts').mockResolvedValue([]);
  const saveDraft=vi.spyOn(joiningDrafts,'saveJoiningDraft').mockResolvedValue(undefined);
  const writeStorage=Storage.prototype.setItem;
@@ -80,6 +80,7 @@ it('finds candidates saved under the original sign-in and current HR account key
  fireEvent.click(await screen.findByRole('button',{name:'Trial Form'}));
  await screen.findByRole('button',{name:'Upload A/D'},{timeout:5000});
  const preview=container.querySelector('[aria-label="Trial workflow local preview"]')!.shadowRoot!;
+ await waitFor(()=>expect(preview.querySelector('#v-aadhaar')).not.toHaveAttribute('hidden'));
  fireEvent.click(preview.querySelector('[data-tab="overview"]')!);
  expect(preview.querySelector('#ovList')).toHaveTextContent(trial.name);
  expect(preview.querySelector('#ovList')).toHaveTextContent(failed.name);

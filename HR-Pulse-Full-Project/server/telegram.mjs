@@ -4,6 +4,7 @@ import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
 import {grantedMenus} from './modules.mjs';
 import {assignedSites} from './scope.mjs';
 import {trialReviewStage} from './trial-review.mjs';
+import {trialAccess,requireTrialRole,canReadTrial,trialSite} from './trial-access.mjs';
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const username=value=>String(value||'').trim().toLowerCase();
@@ -239,6 +240,10 @@ async function applyTrialStage(pool,db,{rows,reviewer,decision,target,batchId,xl
  const recipients=[...new Set(nextRecipients.map(recipientActor))];
  const messages=[];
  for(const r of rows){const old=(await db.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1 FOR UPDATE",[r.formNo])).rows[0];
+  if(old?.data?.site){
+   if(trialSite(old.data.site)?.code!==trialSite(target.site)?.code)fail('The trial form belongs to another site.',403);
+   await requireTrialRole(db,{actor,permissions:{}},reviewer,old.data);
+  }
   if(!old||old.data?.fields?.Result!=='PASS'||trialReviewStage(old.data.history,old.data.resultAt)!==reviewer)fail('Complete the previous trial approval stage before this review.',409);
   r.history=[...(old.data.history||[]),{role:reviewer,action:decision.approved?'Approved':'Rejected',by:decision.by,at:decision.at,note:decision.note}];
   const data={...(old?.data||{}),formNo:r.formNo,site:r.site||old?.data?.site,company:r.company||old?.data?.company,department:r.department||old?.data?.department,batchId:batchId||old?.data?.batchId||'',fields:{...(old?.data?.fields||{}),...r.fields},attachments:keepTrialDocuments(old?.data?.attachments,r.attachments?.length?r.attachments:old?.data?.attachments||[]),history:r.history,docs:r.docs||old?.data?.docs||{},trialBy:r.trialBy||old?.data?.trialBy||r.fields['Examiner name']||'',stage:stage==='reject'?'REJECTED':stage==='final'?'CLEARED':'APPROVAL',pendingRole:stage==='reject'||stage==='final'?'':stage,status:stageStatus,lastDecision:{reviewer,...decision},savedBy:actor,savedAt:new Date().toISOString()};
@@ -265,6 +270,11 @@ export function createTelegram(pool){
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const result=await fn(db);await db.query('COMMIT');return result;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  return {
  async telegramApi(profile,route,method,input){
+  const actionRole={'trial-part1':'hr','trial-result':'trainer','trial-batch-result':'trainer','trial-forms':'trainer','trial-approval':String(input?.reviewer||'')}[route];
+  if(method==='POST'&&actionRole){
+   if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
+   await requireTrialRole(pool,profile,actionRole,input);
+  }
   if(!grantedMenus(profile).size)fail('HR access required',403);
   if(route==='account'&&method==='GET')return {connected:!!(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor=$1',[profile.actor])).rowCount,botUsername:process.env.TELEGRAM_BOT_USERNAME||'',configured:!!process.env.TELEGRAM_BOT_TOKEN};
   if(route==='connect'&&method==='POST'){
@@ -371,11 +381,9 @@ export function createTelegram(pool){
   if(route==='trial-trainer'&&method==='POST'){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const target={site:String(input.site||'').slice(0,80),region:String(input.region||'').slice(0,80),company:String(input.company||'').slice(0,120),group:String(input.group||'').slice(0,80)};
-   const trainer=await trialTrainerFor(pool,target),actor=norm(profile.actor),roles=assignedSites(profile)===null?['hr','trainer','pm','ohr','rhr','director']:[];
-   for(const [role,stage] of [['hr','siteHr'],['trainer','part1'],['pm','result'],['ohr','ohr'],['rhr','rhr'],['director','director']]){
-    if((await hierarchyRecipients(pool,stage,target)).some(recipient=>recipient.actor===actor))roles.push(role);
-   }
-   return {...trainer,roles:[...new Set(roles)]};
+   const access=await trialAccess(pool,profile,target);
+   const trainer=access.roles.length||access.overview?await trialTrainerFor(pool,target):{actor:'',name:'',site:target.site};
+   return {...trainer,...access};
   }
   if(route==='trial-scope'&&method==='GET'){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
@@ -431,6 +439,7 @@ export function createTelegram(pool){
     files=[{name:`Trial_${batchId}.pdf`,mime:'application/pdf',data:pdf,caption:`Batch sheet – ${batchId}`}];}
    else message=trialSubmittedMessage(records[0]);
    await tx(async db=>{for(const r of records){const old=(await db.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1",[r.formNo])).rows[0];
+     if(old?.data?.site&&trialSite(old.data.site)?.code!==trialSite(site)?.code)fail('The trial form belongs to another site.',403);
      if(old&&['PASS','FAIL'].includes(old.data?.fields?.Result))fail(`${r.formNo} already has a result – start a new form number`,409);
      const name=r.fields['Name of candidate'];let id;
      if(old){id=old.id;await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[name,r,profile.actor,id]);}
@@ -445,12 +454,15 @@ export function createTelegram(pool){
    const scope=assignedSites(profile);
    const rows=(await pool.query(`SELECT code,data,updated_at FROM hr_records t WHERE kind='trialForms' AND status='ACTIVE' AND code<>'SETTINGS' AND data->>'stage'='PART1' AND COALESCE(data->'fields'->>'Result','') NOT IN ('PASS','FAIL')
     AND ($1::text[] IS NULL OR lower(t.data->>'site')=ANY($1) OR EXISTS(SELECT 1 FROM hr_records s WHERE s.kind='sites' AND (lower(s.code)=ANY($1) OR lower(s.name)=ANY($1) OR s.id::text=ANY($1)) AND (lower(s.name)=lower(t.data->>'site') OR lower(s.code)=lower(t.data->>'site')))) ORDER BY updated_at DESC LIMIT 300`,[scope])).rows;
-   return {pending:rows.map(r=>{const {attachments,...rest}=r.data;return {...rest,formNo:r.code,attachmentCount:(attachments||[]).length,updatedAt:r.updated_at};})};
+   const pending=[];
+   for(const r of rows){const access=await trialAccess(pool,profile,r.data);if(!canReadTrial(access,r.data))continue;const {attachments,...rest}=r.data;pending.push({...rest,formNo:r.code,attachmentCount:(attachments||[]).length,updatedAt:r.updated_at});}
+   return {pending};
   }
   if(route==='trial-form'&&method==='POST'){   /* one saved trial form with its attachments (Part 2 opens it) */
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const formNo=String(input.formNo||'').trim().slice(0,40),scope=assignedSites(profile);const row=(await pool.query(`SELECT data FROM hr_records t WHERE kind='trialForms' AND status='ACTIVE' AND code=$1
     AND ($2::text[] IS NULL OR lower(t.data->>'site')=ANY($2) OR EXISTS(SELECT 1 FROM hr_records s WHERE s.kind='sites' AND (lower(s.code)=ANY($2) OR lower(s.name)=ANY($2) OR s.id::text=ANY($2)) AND (lower(s.name)=lower(t.data->>'site') OR lower(s.code)=lower(t.data->>'site'))))`,[formNo,scope])).rows[0];if(!row)fail('Trial form not found',404);
+   if(!canReadTrial(await trialAccess(pool,profile,row.data),row.data))fail('This trial is not assigned to you.',403);
    return {data:row.data};
   }
   /* ---- Approval stages: PM → Office HR → Regional HR → Directors; final → joining approved to all ---- */
@@ -470,21 +482,24 @@ export function createTelegram(pool){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const template=trialHierarchySite({site:String(input.site||''),region:String(input.region||''),group:String(input.group||'')});
    if(!template)return {rows:[]};
+   const access=await trialAccess(pool,profile,{site:template.code});
+   if(!access.overview&&!access.roles.length)return {rows:[]};
    const scope=assignedSites(profile);
-   const rows=(await pool.query(`SELECT id,data FROM hr_records t WHERE kind='trialForms' AND status='ACTIVE'
-    AND data->'fields'->>'Result'='PASS' AND lower(data->>'site')=ANY($1)
+   const rows=(await pool.query(`SELECT id,data FROM hr_records t WHERE kind='trialForms' AND status IN ('ACTIVE','REJECTED')
+    AND lower(data->>'site')=ANY($1)
     AND ($2::text[] IS NULL OR lower(t.data->>'site')=ANY($2) OR EXISTS(SELECT 1 FROM hr_records s WHERE s.kind='sites'
       AND (lower(s.code)=ANY($2) OR lower(s.name)=ANY($2) OR s.id::text=ANY($2))
       AND (lower(s.name)=lower(t.data->>'site') OR lower(s.code)=lower(t.data->>'site'))))
     ORDER BY updated_at DESC LIMIT 300`,[[template.code,template.name,...(trialSiteAliases[template.code]||[])].map(norm),scope])).rows;
-   return {rows:rows.map(({id,data})=>{const {attachments,...record}=data;return {...record,id};})};
+   return {rows:rows.filter(({data})=>canReadTrial(access,data)).map(({id,data})=>{const {attachments,...record}=data;return {...record,id};})};
   }
   /* ---- Browser sync: decisions taken on Telegram since the browser last looked ---- */
   if(route==='trial-sync'&&method==='POST'){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const formNos=(Array.isArray(input.formNos)?input.formNos:[]).slice(0,500).map(f=>String(f).slice(0,40));if(!formNos.length)return {rows:[]};
    const rows=(await pool.query("SELECT code,data FROM hr_records WHERE kind='trialForms' AND code = ANY($1)",[formNos])).rows;
-   return {rows:rows.map(r=>({formNo:r.code,history:(r.data.history||[]).filter(h=>h&&h.role&&h.at),stage:r.data.stage||'',pendingRole:r.data.pendingRole||'',status:r.data.status||''}))};
+   const visible=[];for(const r of rows)if(canReadTrial(await trialAccess(pool,profile,r.data),r.data))visible.push(r);
+   return {rows:visible.map(r=>({formNo:r.code,history:(r.data.history||[]).filter(h=>h&&h.role&&h.at),stage:r.data.stage||'',pendingRole:r.data.pendingRole||'',status:r.data.status||''}))};
   }
   /* ---- Part 2 single result (driver trainer) → PM, with the candidate's attachments ---- */
   if(route==='trial-result'&&method==='POST'){
@@ -492,6 +507,7 @@ export function createTelegram(pool){
    const formNo=String(input.formNo||'').trim().slice(0,40);if(!formNo)fail('Form number is required');
    const fields=cleanFields(input.fields);if(!['PASS','FAIL'].includes(fields.Result))fail('Result must be PASS or FAIL');if(!fields['Name of candidate']?.trim())fail('Candidate name is required');
    const prev=(await pool.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1",[formNo])).rows[0];
+   if(prev?.data?.site&&trialSite(prev.data.site)?.code!==trialSite(input.site)?.code)fail('The trial form belongs to another site.',403);
    const attachments=cleanAttachments(input.attachments);
    requireTrialUploads(attachments);
    const record={...(prev?.data||{}),formNo,heading:String(input.heading||'').slice(0,120),site:String(input.site||'').slice(0,80),company:String(input.company||'').slice(0,120),department:String(input.department||'').slice(0,80),batchId:String(input.batchId||prev?.data?.batchId||'').slice(0,40),fields:{...(prev?.data?.fields||{}),...fields},attachments:keepTrialDocuments(prev?.data?.attachments,attachments.length?attachments:prev?.data?.attachments||[]),stage:'RESULT',status:'Sent to PM for approval',trialBy:String(input.trialBy||fields['Examiner name']||profile.name||profile.actor).slice(0,80),resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
@@ -522,6 +538,7 @@ export function createTelegram(pool){
    await tx(async db=>{const stored=(await db.query("SELECT id,code,data FROM hr_records WHERE kind='trialForms' AND status='ACTIVE' AND data->>'batchId'=$1 FOR UPDATE",[batchId])).rows;
     const rows=[...stored];for(const [formNo,g] of given)if(!stored.some(r=>r.code===formNo))rows.push({id:null,code:formNo,data:{formNo,heading,site,company,department,batchId,fields:g.fields,attachments:g.attachments,stage:'PART1',status:'Sent to driver trainer'}});
     if(!rows.length)fail('Batch not found',404);
+    if(rows.some(row=>row.data?.site&&trialSite(row.data.site)?.code!==trialSite(site)?.code))fail('The trial batch belongs to another site.',403);
     for(const row of rows){const res=results.find(r=>r.formNo===row.code);if(!res)fail(`Missing result for ${row.code}`);const g=given.get(row.code);const data={...row.data,fields:{...row.data.fields,...(g?.fields||{}),Result:res.result,'If FAIL – reason':res.result==='FAIL'?res.reason:'', 'Examiner remarks':res.remarks,'Examiner name':trialBy},attachments:keepTrialDocuments(row.data.attachments,g?.attachments?.length?g.attachments:row.data.attachments||[]),stage:'RESULT',pendingRole:res.result==='PASS'?'pm':'',history:[],status:'Sent to PM for approval',trialBy,resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
      if(row.id)await db.query('UPDATE hr_records SET data=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[data,profile.actor,row.id]);
      else row.id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[row.code,data.fields['Name of candidate']||row.code,data,profile.actor])).rows[0].id;
@@ -548,6 +565,7 @@ export function createTelegram(pool){
    const name=String(f['Name of candidate']||'').trim();if(!name)fail('Candidate name is required.');
    const result=f['Result']==='PASS'?'PASS':f['Result']==='FAIL'?'FAIL':'';if(!result)fail('Select the trial Result (PASS / FAIL) before saving.');
    const prev=(await pool.query("SELECT data FROM hr_records WHERE kind='trialForms' AND code=$1",[formNo])).rows[0]?.data||{};
+   if(prev.site&&trialSite(prev.site)?.code!==trialSite(input.site)?.code)fail('The trial form belongs to another site.',403);
    const record={...prev,formNo,heading:String(input.heading||'').slice(0,120),site:String(input.site||'').slice(0,80),company:String(input.company||'').slice(0,120),department:String(input.department||'').slice(0,80),fields:cleanFields(f),stage:'RESULT',status:'Sent to PM for approval',trialBy:String(input.trialBy||f['Examiner name']||profile.name||profile.actor).slice(0,80),resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
    const message=trialResultMessage(record,profile.name||profile.actor);
    const recipients=(await trialRecipientsFor(pool,'result',{site:record.site,region:input.region,company:record.company,group:input.group})).map(recipientActor);

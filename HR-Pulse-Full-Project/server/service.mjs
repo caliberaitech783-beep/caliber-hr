@@ -10,6 +10,7 @@ import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
 import {createEmployeeMasterRegister} from './employee-master-register.mjs';
 import {validateTrialJoining} from './trial-joining.mjs';
+import {requireTrialRole} from './trial-access.mjs';
 import {missingJoiningField, requiredEmployeeDetail} from './joining-required.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
@@ -276,6 +277,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
             const missing=missingJoiningField(officeData);
             if(missing)throw problem('Row '+(count+1)+': '+missing.replace(/\s*\*$/,'')+' is required');
           }
+          if(trialClearance)await requireTrialRole(db,profile,'hr',trialClearance);
           if (trialClearance) {
             await locationAccess(db,profile,'employees',input);
             await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['trial-joining:'+trialClearance.id]);

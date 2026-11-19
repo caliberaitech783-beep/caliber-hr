@@ -10,7 +10,7 @@ import type {TrialChecklistDocuments} from '../trialHandoff';
 
 export type Delivery = {message: string; recipients: number; connected: string[]; bot?: string; configured?: boolean; issues?: string[]};
 export type TrialScope = {company: string; site: string; region: string; group: string; department: string};
-export type TrialTrainer = {actor:string;name:string;site:string;reason?:string;roles?:string[]};
+export type TrialTrainer = {actor:string;name:string;site:string;reason?:string;roles?:string[];overview?:boolean};
 const target = ({site, region, group, company}: TrialScope) => ({site, region, group, company});
 type Attachment = {name: string; mime: string; data: string; kind?:'photo'|'trialResult'|'drivingVideo'|'aadhaar'|'drivingLicence'};
 const dlClassDetails = (row: Trial) => (row.dlClasses||[]).map(item=>[

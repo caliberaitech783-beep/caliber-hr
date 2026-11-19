@@ -2,6 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {trialReviewStage} from './trial-review.mjs';
+import {trialAccess,requireTrialRole,trialRoleLabels} from './trial-access.mjs';
+const assignedHierarchy=(actor='hr')=>({code:'NCL-JAYANT',data:{group:'NCL',steps:Object.values(trialRoleLabels).map(label=>({label,approvers:[actor]}))}});
+test('admin access is read-only and each assigned user receives only their hierarchy role',async()=>{
+ const db={query:async()=>({rows:[{code:'NCL-DUDE',data:{group:'NCL',steps:Object.entries(trialRoleLabels).map(([role,label])=>({label,approvers:[role==='hr'?'ankittiwari':role]}))}}]})};
+ const target={site:'Dudhichua OB East'};
+ assert.deepEqual(await trialAccess(db,{actor:'admin',permissions:{hrDesktopAccess:['Master Configuration']}},target),{roles:[],overview:true});
+ assert.deepEqual(await trialAccess(db,{actor:'unassigned',permissions:{hrDesktopAccess:['Employee Master']}},target),{roles:[],overview:false});
+ for(const role of Object.keys(trialRoleLabels)){
+  const profile={actor:role==='hr'?'ankittiwari':role,permissions:{site:'NCL-DUDE'}};
+  assert.deepEqual(await trialAccess(db,profile,target),{roles:[role],overview:false});
+  await requireTrialRole(db,profile,role,target);
+  await assert.rejects(requireTrialRole(db,{...profile,permissions:{site:'NCL-JAYANT'}},role,target),{status:403});
+ }
+ for(const [route,reviewer] of [['trial-part1',''],['trial-result',''],['trial-batch-result',''],['trial-forms',''],['trial-approval','pm']]){
+  await assert.rejects(createTelegram(db).telegramApi({actor:'admin',permissions:{hrDesktopAccess:['Employee Master']}},route,'POST',{...target,reviewer}),{status:403});
+ }
+ const admin={actor:'admin',permissions:{hrDesktopAccess:['Employee Master','Master Configuration']}};
+ const access=await createTelegram(db).telegramApi(admin,'trial-trainer','POST',target);
+ assert.deepEqual(access.roles,[]);assert.equal(access.overview,true);
+ const disabled={query:async()=>({rows:[]})};
+ await assert.rejects(requireTrialRole(disabled,{actor:'ankittiwari',permissions:{}},'hr',target),{status:403});
+});
 test('trial reviews cannot skip PM, Office HR, Regional HR or Director',()=>{
  const roles=['pm','ohr','rhr','director'];
  const approvals=roles.map(role=>({role,action:'Approved',at:'2026-11-19T12:00:00Z'}));
@@ -9,8 +31,18 @@ test('trial reviews cannot skip PM, Office HR, Regional HR or Director',()=>{
  assert.equal(trialReviewStage(approvals.filter(h=>h.role!=='ohr')),'ohr');
  assert.equal(trialReviewStage(approvals,'2026-11-19T13:00:00Z'),'pm');
 });
+test('only the assigned current-stage user sees a review queue; admin sees a read-only overview',async()=>{
+ const records=[{id:'pm',data:{site:'Jayant OB East',pendingRole:'pm',stage:'RESULT'}},{id:'office',data:{site:'Jayant OB East',pendingRole:'ohr',stage:'APPROVAL'}},{id:'trainer',data:{site:'Jayant OB East',stage:'PART1'}}];
+ const pool={query:async sql=>sql.includes("kind='joiningHierarchies'")?{rows:[{code:'NCL-JAYANT',data:{group:'NCL',steps:[{label:'Project Manager',approvers:['pm']}]}}]}:{rows:records}};
+ const service=createTelegram(pool),target={site:'Jayant OB East',region:'NCL'};
+ const assigned={actor:'pm',permissions:{site:'NCL-JAYANT',hrDesktopAccess:['Employee Master']}};
+ assert.deepEqual((await service.telegramApi(assigned,'trial-review-queue','POST',target)).rows.map(row=>row.id),['pm']);
+ assert.deepEqual((await service.telegramApi({...assigned,actor:'unassigned'},'trial-review-queue','POST',target)).rows,[]);
+ const admin={actor:'admin',permissions:{hrDesktopAccess:['Employee Master','Master Configuration']}};
+ assert.deepEqual((await service.telegramApi(admin,'trial-review-queue','POST',target)).rows.map(row=>row.id),['pm','office','trainer']);
+});
 test('the approval endpoint rejects Director review while PM is still pending',async()=>{
- const db={release(){},query:async sql=>sql.includes('SELECT id,data')?{rows:[{id:'trial',data:{fields:{Result:'PASS'},history:[]}}]}:{rows:[]}};
+ const db={release(){},query:async sql=>sql.includes("kind='joiningHierarchies'")?{rows:[assignedHierarchy('admin')]}:sql.includes('SELECT id,data')?{rows:[{id:'trial',data:{fields:{Result:'PASS'},history:[]}}]}:{rows:[]}};
  const service=createTelegram({query:db.query,connect:async()=>db});
  await assert.rejects(service.telegramApi({actor:'admin',permissions:{hrDesktopAccess:['Employee Master']}},'trial-approval','POST',{
   reviewer:'director',approved:true,site:'Jayant OB East',region:'NCL',rows:[{formNo:'TF/2026-27/0001',fields:{Result:'PASS'},history:[{role:'director',action:'Approved'}]}],
@@ -18,7 +50,7 @@ test('the approval endpoint rejects Director review while PM is still pending',a
 });
 test('shared review queue is site-scoped and omits uploaded file payloads',async()=>{
  let query,args;
- const pool={query:async(sql,values)=>{query=sql;args=values;return {rows:[{id:'trial-id',data:{formNo:'TF/1',history:[],fields:{Result:'PASS'},attachments:[{data:'private-file'}]}}]};}};
+ const pool={query:async(sql,values)=>{if(sql.includes("kind='joiningHierarchies'"))return {rows:[assignedHierarchy('pm')]};query=sql;args=values;return {rows:[{id:'trial-id',data:{formNo:'TF/1',history:[],fields:{Result:'PASS'},pendingRole:'pm',attachments:[{data:'private-file'}]}}]};}};
  const service=createTelegram(pool),profile={actor:'pm',permissions:{hrDesktopAccess:['Employee Master'],site:'NCL-JAYANT'}};
  const out=await service.telegramApi(profile,'trial-review-queue','POST',{site:'Jayant OB East',region:'NCL'});
  assert.deepEqual(args,[['ncl-jayant','jayant ob east'],['ncl-jayant']]);
@@ -122,15 +154,15 @@ test('trial Aadhaar history returns only site-scoped result metadata from both t
 
 test('already-passed Aadhaar cannot create a trial, overwrite it, or queue Telegram',async()=>{
  for(const result of ['PASS','FAIL']){
-  const sql=[];const db={query:async(query)=>{sql.push(query);if(query.includes("code='SETTINGS'"))return {rows:[]};if(query.includes("data->'fields'->>'Result'='PASS'"))return {rows:[{id:'passed'}]};return {rows:[]};},release(){}};
+  const sql=[];const db={query:async(query)=>{sql.push(query);if(query.includes("kind='joiningHierarchies'"))return {rows:[assignedHierarchy()]};if(query.includes("code='SETTINGS'"))return {rows:[]};if(query.includes("data->'fields'->>'Result'='PASS'"))return {rows:[{id:'passed'}]};return {rows:[]};},release(){}};
   const pool={query:db.query,connect:async()=>db};
-  await assert.rejects(createTelegram(pool).telegramApi({actor:'hr',permissions:{hrDesktopAccess:['Employee Master']}},'trial-forms','POST',{formNo:'TF/new',fields:{'Name of candidate':'Candidate','Aadhaar no.':'123456789012',Result:result}}),e=>e.status===409&&/already passed/.test(e.message));
+  await assert.rejects(createTelegram(pool).telegramApi({actor:'hr',permissions:{hrDesktopAccess:['Employee Master']}},'trial-forms','POST',{site:'Jayant OB East',formNo:'TF/new',fields:{'Name of candidate':'Candidate','Aadhaar no.':'123456789012',Result:result}}),e=>e.status===409&&/already passed/.test(e.message));
   assert.ok(sql.some(query=>query.includes('pg_advisory_xact_lock')));assert.ok(sql.includes('ROLLBACK'));assert.ok(!sql.some(query=>/INSERT INTO|UPDATE hr_records|hr_telegram_outbox/.test(query)));
  }
 });
 test('a candidate without a previous PASS can save a re-trial',async()=>{
- const sql=[];const db={query:async(query)=>{sql.push(query);if(query.startsWith('INSERT INTO hr_records'))return {rows:[{id:'new'}]};return {rows:[]};},release(){}};
- const out=await createTelegram({query:db.query,connect:async()=>db}).telegramApi({actor:'hr',permissions:{hrDesktopAccess:['Employee Master']}},'trial-forms','POST',{formNo:'TF/retrial',fields:{'Name of candidate':'Candidate','Aadhaar no.':'123456789012',Result:'FAIL'}});
+ const sql=[];const db={query:async(query)=>{sql.push(query);if(query.includes("kind='joiningHierarchies'"))return {rows:[assignedHierarchy()]};if(query.startsWith('INSERT INTO hr_records'))return {rows:[{id:'new'}]};return {rows:[]};},release(){}};
+ const out=await createTelegram({query:db.query,connect:async()=>db}).telegramApi({actor:'hr',permissions:{hrDesktopAccess:['Employee Master']}},'trial-forms','POST',{site:'Jayant OB East',formNo:'TF/retrial',fields:{'Name of candidate':'Candidate','Aadhaar no.':'123456789012',Result:'FAIL'}});
  assert.equal(out.saved,true);assert.ok(sql.includes('COMMIT'));assert.ok(sql.some(query=>query.startsWith('INSERT INTO hr_records')));
 });
 

@@ -13,7 +13,7 @@ vi.mock('./optimizeDrivingVideo',()=>({optimizeDrivingVideo:vi.fn(async(file:Fil
 vi.mock('./telegramSend',async()=>({...await vi.importActual<typeof import('./telegramSend')>('./telegramSend'),fetchReviewQueue:vi.fn(async()=>[])}));
 
 const scope = {company:'CMLL',site:'Jayant OB East',region:'NCL',group:'OB / COAL',name:'Sample Signer',owner:'sample',department:'Driver'};
-const hierarchyTrainer={actor:'sajadali',name:'Sajad Ali',site:'Jayant OB East'};
+const hierarchyTrainer={roles:['hr','trainer','pm','ohr','rhr','director'],actor:'sajadali',name:'Sajad Ali',site:'Jayant OB East'};
 let dispose: (()=>void)|undefined;
 function setup(overrides: Partial<typeof scope> = {},onCleared?: PrepareJoining) {
   dispose?.();
@@ -40,6 +40,36 @@ afterEach(()=>{
 });
 
 describe('Trial workflow preview',()=>{
+  it.each([
+    {roles:[],overview:true,option:'observer',panel:'overview'},
+    {roles:['hr'],overview:false,option:'hr',panel:'aadhaar'},
+    {roles:['trainer'],overview:false,option:'trainer',panel:'trainer'},
+    {roles:['pm'],overview:false,option:'pm',panel:'approve'},
+    {roles:['ohr'],overview:false,option:'ohr',panel:'approve'},
+    {roles:['rhr'],overview:false,option:'rhr',panel:'approve'},
+    {roles:['director'],overview:false,option:'director',panel:'approve'},
+  ])('shows only assigned roles: $option',async({roles,overview,option,panel})=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    vi.spyOn(window,'fetch').mockResolvedValue(Response.json({...hierarchyTrainer,roles,overview}));
+    const {el,root}=setup();
+    await waitFor(()=>expect(el<HTMLSelectElement>('#role').value).toBe(option));
+    expect(Array.from(el<HTMLSelectElement>('#role').options,item=>item.value)).toEqual([option]);
+    expect(el('#v-'+panel).hidden).toBe(false);
+    if(overview){
+      expect(el('#sSubmit')).toBeDisabled();expect(el('#trSubmit')).toBeDisabled();
+      fireEvent.change(el('#role'),{target:{value:'hr'}});
+      expect(el('#v-overview').hidden).toBe(false);
+      expect(root.querySelector('[data-open-joining]')).toBeNull();
+    }
+  });
+  it('hides the workflow when no role is assigned or access lookup fails',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    vi.spyOn(window,'fetch').mockResolvedValue(Response.json({roles:[],overview:false}));
+    const {el,getByRole}=setup();
+    await waitFor(()=>expect(el('#toast')).toHaveTextContent('not assigned'));
+    for(const panel of ['aadhaar','hr','trainer','approve','overview'])expect(el('#v-'+panel).hidden).toBe(true);
+    expect(getByRole('button',{name:'Upload A/D'})).toBeDisabled();
+  });
   it.each(['pm','ohr','rhr','director'])('shows only Approvals for %s and blocks candidate navigation',role=>{
     const {root,el,change,click}=setup();
     change('#role',role);
@@ -90,9 +120,10 @@ describe('Trial workflow preview',()=>{
   it('reloads a trainer saved in another tab without losing the candidate draft',async()=>{
     sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
     const request=vi.spyOn(window,'fetch').mockImplementation(async url=>Response.json(
-      String(url).endsWith('/trial-trainer')?{actor:'',name:'',site:scope.site}:{}
+      String(url).endsWith('/trial-trainer')?{roles:hierarchyTrainer.roles,actor:'',name:'',site:scope.site}:{}
     ));
     const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     click('[data-tab="hr"]');
     input('#f_name','Hierarchy Candidate');
     input('#f_mobile','9876543210');
@@ -142,6 +173,7 @@ describe('Trial workflow preview',()=>{
     sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
     const request=vi.spyOn(window,'fetch').mockResolvedValue(Response.json(hierarchyTrainer));
     const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     click('[data-tab="hr"]');
     input('#f_name','Hierarchy Candidate');
     input('#f_mobile','9876543210');
@@ -172,6 +204,7 @@ describe('Trial workflow preview',()=>{
         {code:'LMV',issuedBy:'MH29',dateOfIssue:'2020-02-03',vehicleCategory:'NT',badgeNumber:'',badgeIssuedDate:'',badgeIssuedBy:''},
       ],issueDate:'2020-01-02',validUpto:['2027-01-02','2030-01-02']}}));
     const {root,el,click,input,getByLabelText,getByRole,change} = setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     click('[data-tab="hr"]');
     input('#f_name','Verified Name');
     click('[data-tab="aadhaar"]');
@@ -250,6 +283,7 @@ describe('Trial workflow preview',()=>{
       .mockResolvedValueOnce(Response.json({details:{uid,name:'Sample Candidate',relationName:'',dob:'',address:'',gender:''}}))
       .mockResolvedValueOnce(Response.json({matches:[match]}));
     const {el,click,getByLabelText}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     const file=new File(['%PDF-1.7'],'sample-aadhaar.pdf',{type:'application/pdf'});
     fireEvent.change(getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[file]}});
     await waitFor(()=>expect(el('#aadhaarHistory')).toBeVisible());
@@ -284,6 +318,7 @@ describe('Trial workflow preview',()=>{
       .mockResolvedValueOnce(Response.json({details:{uid,name:'Sample Candidate',relationName:'',dob:'',address:'',gender:''}}))
       .mockResolvedValueOnce(Response.json({matches:[{result:'FAIL',site:'Jayant OB East',equipment:'Dozer',trialDate:'2026-11-01'}]}));
     const {el,getByLabelText}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     const file=new File(['%PDF-1.7'],'sample-aadhaar.pdf',{type:'application/pdf'});
     fireEvent.change(getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[file]}});
     await waitFor(()=>expect(el('#aadhaarHistory')).toBeVisible());
@@ -312,6 +347,7 @@ describe('Trial workflow preview',()=>{
       .mockResolvedValueOnce(Response.json({details:{...details,name:'New Candidate',uid:'234500000001'}}))
       .mockResolvedValueOnce(Response.json({matches:[{result:'FAIL',site:'Sasti OB',equipment:'Dozer',failureReason:'Unsafe handling'}]}));
     const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     click('[data-tab="hr"]');
     click('[data-m="bulk"]');
     fireEvent.change(el('#bExcelFile'),{target:{files:[excel]}});

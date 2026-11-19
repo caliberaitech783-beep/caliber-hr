@@ -3,7 +3,7 @@ import {DOCS,normalizeTrialApproval,type History,type Trial} from './records';
 export type ReviewRecord={id:string;formNo:string;site:string;fields:Record<string,string>;history?:History[];resultAt?:string;savedAt?:string;batchId?:string;stage?:string;pendingRole?:string;trialBy?:string;docs?:Record<string,string>};
 export function reviewTrial(record:ReviewRecord):Trial|null{
  const f=record.fields||{};
- if(f.Result!=='PASS')return null;
+ const result=f.Result==='PASS'?'PASS':f.Result==='FAIL'?'FAIL':'';
  const at=record.resultAt||record.savedAt||'';
  const post=f['If PASS – recommended for']==='Operator'?'Operator':'Driver';
  const machine=f.Machine||f['Vehicle / equipment for trial']||'';
@@ -14,7 +14,7 @@ export function reviewTrial(record:ReviewRecord):Trial|null{
   post,vehicles:['Other'],otherVehicle:machine,dl:f['Driving licence no.']||'',dlValid:f['DL valid up to dates']||'',
   experience:f['Total experience (years)']||'',employer:f['Previous employer']||'',referredBy:f['Referred by']||'',trialDate:f['Trial date & time']||'',
   docs:Object.fromEntries(DOCS.map(([key])=>[key,{seen:record.docs?.[key]||'',remarks:''}])) as Trial['docs'],
-  stage:'pm',result:'PASS',history:record.history||[],
-  outcome:{at,result:'PASS',post,machine,trainer:f['Trial conducted by']||f['Examiner name']||record.trialBy||'',reason:'',remarks:f['Examiner remarks']||''},
+  stage:record.stage==='PART1'?'trainer':record.stage==='REJECTED'?'rejected':result==='FAIL'?'done':'pm',result,history:record.history||[],
+  outcome:result?{at,result,post,machine,trainer:f['Trial conducted by']||f['Examiner name']||record.trialBy||'',reason:f['If FAIL – reason']||'',remarks:f['Examiner remarks']||''}:undefined,
  });
 }

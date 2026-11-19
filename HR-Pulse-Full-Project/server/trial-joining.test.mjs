@@ -4,7 +4,7 @@ import {createService} from './service.mjs';
 
 const profile={actor:'hr',permissions:{hrDesktopAccess:['Employee Master']}};
 const id='00000000-0000-4000-8000-000000000001';
-const trial={id,formNo:'TF/2026-27/0001',stage:'done',result:'PASS',post:'Driver',aadhaar:'234500000000',
+const trial={id,site:'Jayant OB East',formNo:'TF/2026-27/0001',stage:'done',result:'PASS',post:'Driver',aadhaar:'234500000000',
  history:['pm','ohr','rhr','director'].map(role=>({role,action:'Approved'}))};
 const employee={code:'EMP-1',name:'Sample Candidate',joiningDate:'2026-11-12',category:'Permanent',companyId:id,
  __officeData:{
@@ -30,6 +30,7 @@ test('only a completed trial in the matching post can use direct employee save',
 test('a passed trial creates an active employee once without creating an approval',async()=>{
  let linked, active=false, employees=0;
  const db={release(){},async query(sql,params){
+  if(sql.includes("kind='joiningHierarchies'"))return {rows:[{code:'NCL-JAYANT',data:{group:'NCL',steps:[{label:'HR Manager',approvers:['hr']}]}}]};
   if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql)||sql.includes('pg_advisory_xact_lock')||sql.includes('INSERT INTO hr_audit')) return {rows:[]};
   if (sql.includes("WHERE t.kind='trialJoinings'")) return {rows:linked?[linked]:[]};
   if (sql.startsWith('SELECT * FROM hr_records')) return {rows:[{id,kind:'companies',data:{}}],rowCount:1};

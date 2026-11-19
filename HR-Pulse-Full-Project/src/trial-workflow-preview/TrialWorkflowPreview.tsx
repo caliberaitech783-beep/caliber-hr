@@ -33,20 +33,20 @@ export default function TrialWorkflowPreview({owner,legacyOwner,name,site,region
       setDisabled,
       documents:()=>checklistDocuments.current,
     },onCleared?async rows=>cleared.current?.(rows,checklistDocuments.current):undefined);
-    setDisabled(false);
+    setDisabled(Boolean(savedSession()?.grant));
     setWorkflow(mounted);
     let active=true;
     const refreshTrainer=()=>{
       if(!savedSession()?.grant)return;
       void fetchTrialTrainer({site,region,group,company,department})
-        .then(trainer=>{if(active)mounted.setTrainer(trainer.name||signerName,trainer.reason);})
-        .catch(error=>{if(active)mounted.setTrainer(signerName,error instanceof Error?error.message:'Could not load the Driver Trainer hierarchy.');});
+        .then(trainer=>{if(active){mounted.setTrainer(trainer.name,trainer.reason);mounted.setRoles(trainer.roles,trainer.overview);}})
+        .catch(error=>{if(active){mounted.setTrainer('',error instanceof Error?error.message:'Could not load the Driver Trainer hierarchy.');mounted.setRoles([]);}});
     };
     window.addEventListener('focus',refreshTrainer);
     if(savedSession()?.grant){
       void fetchTrialTrainer({site,region,group,company,department})
-        .then(trainer=>{if(active){mounted.setTrainer(trainer.name||signerName,trainer.reason);mounted.setRoles(trainer.roles);}})
-        .catch(error=>{if(active)mounted.setTrainer(signerName,error instanceof Error?error.message:'Could not load the Driver Trainer hierarchy.');});
+        .then(trainer=>{if(active){mounted.setTrainer(trainer.name,trainer.reason);mounted.setRoles(trainer.roles,trainer.overview);}})
+        .catch(error=>{if(active){mounted.setTrainer('',error instanceof Error?error.message:'Could not load the Driver Trainer hierarchy.');mounted.setRoles([]);}});
     } else mounted.setTrainer(signerName);
     return ()=>{active=false;window.removeEventListener('focus',refreshTrainer);mounted.dispose();};
   },[owner,legacyOwner,signerName,site,region,group,company,department]);

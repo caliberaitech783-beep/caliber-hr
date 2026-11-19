@@ -1,4 +1,4 @@
-export const ROLES = {hr: 'Site HR', trainer: 'Driver Trainer', pm: 'PM', ohr: 'Office HR', rhr: 'Regional HR', director: 'Director'} as const;
+export const ROLES = {hr: 'Site HR', trainer: 'Driver Trainer', pm: 'PM', ohr: 'Office HR', rhr: 'Regional HR', director: 'Director',observer:'Read-only overview'} as const;
 export type Role = keyof typeof ROLES;
 export const NEXT = {pm: 'ohr', ohr: 'rhr', rhr: 'director', director: 'done'} as const;
 export type Approver = keyof typeof NEXT;
