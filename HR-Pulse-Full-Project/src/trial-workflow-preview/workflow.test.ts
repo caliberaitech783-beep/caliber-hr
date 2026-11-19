@@ -132,8 +132,11 @@ describe('Trial workflow preview',()=>{
   });
   it('requires the Aadhaar and driving licence dates of birth to match',()=>{
     expect(sameDocumentBirthDate('2000-01-02','2000-01-02')).toBe(true);
+    expect(sameDocumentBirthDate('02-01-2000','2000-01-02')).toBe(true);
+    expect(sameDocumentBirthDate('02/01/2000','02.01.2000')).toBe(true);
     expect(sameDocumentBirthDate('2000-01-02','2001-03-04')).toBe(false);
     expect(sameDocumentBirthDate('','2000-01-02')).toBe(false);
+    expect(sameDocumentBirthDate('unreadable','2000-01-02')).toBe(false);
   });
   it('copies and freezes Trial conducted by from the Part 1 Trial Form',async()=>{
     sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));

@@ -26,7 +26,7 @@ const digits = (value: string) => value.replace(/\D/g,'');
 const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
 const check = (seen = '', remarks = '') => ({seen,remarks});
 const empty = (title: string, message: string, action = '') => `<div class="empty"><b>${esc(title)}</b><span>${esc(message)}</span>${action}</div>`;
-export const sameDocumentBirthDate=(aadhaarDob:string,licenceDob:string)=>Boolean(aadhaarDob&&aadhaarDob===licenceDob);
+export const sameDocumentBirthDate=(aadhaarDob:string,licenceDob:string)=>{const aadhaar=licenceDate(aadhaarDob),licence=licenceDate(licenceDob);return Boolean(aadhaar&&aadhaar===licence);};
 
 export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   reset: () => void;
@@ -297,6 +297,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     control.title='Filled from the driving licence – cannot be edited';
   }
   function fillDrivingLicenceDetails(details:DrivingLicenceDetails){
+    if(!licenceDate(aadhaarBirthDate)||!licenceDate(details.dob)){drivingLicenceReady=false;updateSingleActions();throw new Error('Could not read the date of birth from Aadhaar or driving licence. Upload a clearer image and retry.');}
     if(!sameDocumentBirthDate(aadhaarBirthDate,details.dob)){drivingLicenceReady=false;updateSingleActions();throw new Error('Aadhaar and driving licence dates of birth do not match. Upload documents belonging to the same person.');}
     const licenceNumber=$<HTMLInputElement>('#f_dl'),issueDate=$<HTMLInputElement>('#f_dlissue');
     licenceNumber.readOnly=false;issueDate.readOnly=false;
