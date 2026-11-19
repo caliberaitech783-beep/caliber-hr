@@ -240,3 +240,23 @@ it('returns to sign-in when the HR API rejects a saved session',async()=>{
  await screen.findByRole('button',{name:'Sign in'});
  await waitFor(()=>expect(sessionStorage.getItem('hrPulseSession')).toBeNull());
 });
+
+it('places both settings sections around reports and opens their module chips',async()=>{
+ const profile={name:'HR admin',actor:'admin',permissions:{application:'HR',hrDesktopAccess:['Master Configuration','Reports & MIS','Audit Logs']}};
+ const register={title:'Audit register',menu:'Compliance & Statutory',fields:[],canWrite:true};
+ const modules={complianceAuditRegister:register};
+ window.location.hash=encodeURIComponent('Administration & Settings');
+ sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
+ vi.stubGlobal('fetch',async(input:RequestInfo|URL)=>new Response(JSON.stringify(String(input).includes('/config')?{profile,modules}:{rows:[],total:0,pageSize:50})));
+ render(<App/>);
+ const chips=await screen.findByRole('group',{name:'Administration & Settings modules'});
+ expect(within(chips).getAllByRole('button')).toHaveLength(11);
+ fireEvent.click(within(chips).getByRole('button',{name:'Access permission'}));
+ expect(await screen.findByRole('heading',{name:'Access permission'})).toBeVisible();
+ const sidebar=within(screen.getByRole('navigation'));
+ const names=sidebar.getAllByRole('button').map(button=>button.title).filter(Boolean);
+ expect(names.slice(-4)).toEqual(['Compliance & Statutory','Reports & MIS','Audit Logs','Administration & Settings']);
+ fireEvent.click(sidebar.getByRole('button',{name:'Compliance & Statutory'}));
+ expect(await screen.findByRole('button',{name:'Audit register'})).toHaveAttribute('aria-pressed','true');
+ window.location.hash='';
+});

@@ -5,7 +5,22 @@ const ref = (key, label, reference, required = false) => ({ key, label, type: 'r
 const date = (key, label, required = false) => ({ key, label, type: 'date', required });
 const select = (key, label, options, required = false) => ({ key, label, type: 'select', options, required });
 const module = (title, menu, fields) => ({ title, menu, fields });
+const compliance = (title, nameLabel, fields) => module(title, 'Compliance & Statutory', [
+  text('code','Register reference',true), text('name',nameLabel,true), ref('siteId','Site','sites',true),
+  ...fields, text('remarks','Remarks')
+]);
+const registers = {
+  pfEsicCompliance: compliance('PF/ESIC compliance','Establishment', [select('scheme','Scheme',['PF','ESIC'],true),text('period','Contribution period',true),text('receipt','Challan reference'),date('filedOn','Filing date')]),
+  labourLawCompliance: compliance('Labour law compliance','Applicable law', [text('obligation','Obligation',true),date('reviewDate','Review date',true),text('finding','Finding')]),
+  factoryMineRecords: compliance('Factory/Mine labour records','Factory or mine', [text('register','Register name',true),date('recordDate','Record date',true)]),
+  contractorLabourRecords: compliance('Contractor labour records','Contractor name', [text('licence','Licence reference'),date('recordDate','Record date',true),{key:'workers',label:'Worker count',type:'number',min:0}]),
+  medicalFitnessRecords: compliance('Medical and fitness record','Employee reference', [date('examDate','Examination date',true),select('fitness','Fitness status',['Fit','Fit with restrictions','Unfit','Pending'],true),date('reviewDate','Next review')]),
+  complianceDueDates: compliance('Compliance due date','Obligation', [date('dueDate','Due date',true),text('owner','Responsible person',true),date('completedOn','Completion date')]),
+  complianceAuditRegister: compliance('Audit register','Audit title', [date('auditDate','Audit date',true),text('auditor','Auditor',true),text('action','Corrective action')])
+};
+export const complianceKinds = Object.keys(registers);
 export const modules = {
+  ...registers,
   calendarEvents: module('Calendar events','Calendar',[text('code','Event reference',true),text('name','Event title',true),date('date','Date',true),select('eventType','Type',['Birthday','Work anniversary','Meeting','Event','Training','Holiday'],true),ref('siteId','Location','sites',true),text('details','Details')]),
   assetCategories: module('Category Master','Asset Management',[text('code','Tag Prefix',true),text('name','Category',true),text('group','Group'),text('extraDetails','Extra details to capture'),{key:'activeAssets',label:'Assets (active)',type:'number',min:0}]),
   assetEmployees: module('Employee Master','Asset Management',[text('code','Record reference',true),ref('employeeId','Emp Code','employees',true),text('name','Employee Name',true),text('department','Department'),text('designation','Designation'),ref('siteId','Location','sites',true),text('email','Work Email'),text('employmentStatus','Employment Status'),date('lastWorkingDay','Last Working Day'),{key:'assetsHeld',label:'Assets Held',type:'number',min:0},text('remarks','Remarks')]),
@@ -35,7 +50,7 @@ modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
 modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared','Gazetted','Gazetted (General)','Paid (PH)']));
 modules.approvalRules.fields.find(f=>f.key==='target').options.push('leaveEncashments');
-export const menus = ['Calendar','Asset Management','Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management',...managementMenus,'Shift Management','Holiday & Leave','Reports & MIS','Administration','Audit Logs'];
+export const menus = ['Calendar','Asset Management','Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management',...managementMenus,'Shift Management','Holiday & Leave','Compliance & Statutory','Reports & MIS','Administration','Administration & Settings','Audit Logs'];
 export function grantedMenus(profile) { return new Set([...(profile.permissions?.hrDesktopAccess || []),...(profile.permissions?.hrMobileAccess || [])].filter(x => menus.includes(x))); }
 export function canRead(profile, kind) {
   const granted = grantedMenus(profile);
