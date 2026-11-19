@@ -1,0 +1,21 @@
+.request-progress{min-width:260px}
+.request-progress-summary{display:inline-block;font-size:11px;font-weight:700;border-radius:10px;padding:3px 9px;margin-bottom:8px;background:#edf0f4;color:#586477;white-space:nowrap}
+.request-progress-summary.tone-pending,.request-progress-summary.tone-draft{background:#f0e8fa;color:#522e90}
+.request-progress-summary.tone-approved,.request-progress-summary.tone-active{background:#e7f6ee;color:#187446}
+.request-progress-summary.tone-rejected{background:#fdebed;color:#ae364b}
+.request-progress ol{display:flex;list-style:none;margin:0;padding:0}
+.request-progress li{flex:1;min-width:52px;position:relative;text-align:center;font-size:10px;color:#8a7d95;line-height:1.3}
+.request-progress li+li:before{content:"";position:absolute;top:10px;right:50%;width:100%;height:3px;background:#e4ddea;z-index:0}
+.request-progress li.rp-done:before,.request-progress li.rp-current:before{background:#1d9e75}
+.request-progress li.rp-rejected:before{background:#e24b4a}
+.rp-dot{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;width:22px;height:22px;margin:0 auto 4px;border-radius:50%;background:#fff;border:2px solid #d8cfe0;color:#8a7d95;font-size:11px;font-weight:700}
+.rp-dot svg{width:13px;height:13px}
+.rp-done .rp-dot{background:#1d9e75;border-color:#1d9e75;color:#fff}
+.rp-current .rp-dot{border-color:#522e90;color:#522e90;box-shadow:0 0 0 3px #e9def6}
+.rp-current{color:#522e90!important;font-weight:700}
+.rp-rejected .rp-dot{background:#e24b4a;border-color:#e24b4a;color:#fff}
+.rp-rejected{color:#ae364b!important}
+.rp-label{display:block;overflow-wrap:anywhere}
+.leave-form-tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.leave-form-tabs .leave-tab-gap{width:22px}
+.leave-form-tabs .leave-tabs-note{flex:1;min-width:240px;margin:0}
