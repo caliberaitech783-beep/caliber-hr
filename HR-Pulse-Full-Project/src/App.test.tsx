@@ -243,9 +243,11 @@ it('returns to sign-in when the HR API rejects a saved session',async()=>{
 });
 
 it('places both settings sections around reports and opens their module chips',async()=>{
- const profile={name:'HR admin',actor:'admin',permissions:{application:'HR',hrDesktopAccess:['Master Configuration','Reports & MIS','Audit Logs']}};
+ const profile={name:'HR admin',actor:'admin',permissions:{application:'HR',hrDesktopAccess:['Master Configuration','Reports & MIS','Audit Logs','Others']}};
  const register={title:'Audit register',menu:'Compliance & Statutory',fields:[],canWrite:true};
- const modules={complianceAuditRegister:register};
+ const other = (category:string,title:string) => ({...register,menu:'Others',category,title});
+ const modules={complianceAuditRegister:register,contractorManpower:other('Contractor Management','Contractor Wise Manpower'),
+   laptopAllocations:other('Asset Allocations','Laptop'),ppeAllocations:other('Asset Allocations','PPE')};
  window.location.hash=encodeURIComponent('Administration & Settings');
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
  vi.stubGlobal('fetch',async(input:RequestInfo|URL)=>new Response(JSON.stringify(String(input).includes('/config')?{profile,modules}:{rows:[],total:0,pageSize:50})));
@@ -256,8 +258,14 @@ it('places both settings sections around reports and opens their module chips',a
  expect(await screen.findByRole('heading',{name:'Access permission'})).toBeVisible();
  const sidebar=within(screen.getByRole('navigation'));
  const names=sidebar.getAllByRole('button').map(button=>button.title).filter(Boolean);
- expect(names.slice(-4)).toEqual(['Compliance & Statutory','Reports & MIS','Audit Logs','Administration & Settings']);
+ expect(names.slice(-5)).toEqual(['Compliance & Statutory','Reports & MIS','Audit Logs','Administration & Settings','Others']);
  fireEvent.click(sidebar.getByRole('button',{name:'Compliance & Statutory'}));
  expect(await screen.findByRole('button',{name:'Audit register'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(sidebar.getByRole('button',{name:'Others'}));
+ expect(await screen.findByRole('heading',{name:'Contractor Wise Manpower'})).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Asset Allocations'}));
+ expect(screen.getByRole('heading',{name:'Laptop'})).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'PPE'}));
+ expect(screen.getByRole('heading',{name:'PPE'})).toBeVisible();
  window.location.hash='';
 });
