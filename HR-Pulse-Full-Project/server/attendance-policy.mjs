@@ -7,7 +7,7 @@
 export const DEFAULT_POLICY = Object.freeze({
   lunchMinutes: 60,          // working hours exclude this lunch break
   absentBelowHours: 4,       // under this = Absent
-  fullDutyHours: 6.5,        // this or more = Full duty; in between = Half duty
+  fullDutyHours: 7,          // this or more = Full duty; in between = Half duty
   graceMinutes: 15,          // In punch up to this many minutes after shift start is on time
   lateEarlyPerHalfCut: 3,    // every N late comings / early goings in a month = one half duty cut
   gatePassFreeMinutes: 60,   // gate pass time in a day up to this is free

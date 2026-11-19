@@ -459,7 +459,7 @@ app.listen(3000);</script>
    ============================================================ */
 /* Attendance HR policy (Settings › HR policy · attendance). The HR page passes the saved values in the URL. */
 const PQ=new URLSearchParams(location.search),PN=(k,d)=>{const v=Number(PQ.get(k));return PQ.has(k)&&Number.isFinite(v)?v:d};
-const GRACE=PN('grace',15), FULL=8, MIN_P=PN('full',6.5), HALF=PN('absent',4), LUNCH=PN('lunch',60)/60, OT_CAP=50, DEDUP_MIN=5, REG_MAX=3, REG_DAYS=3, LATE_PER_HALF=PN('perCut',3), EG_GRACE=0;
+const GRACE=PN('grace',15), FULL=8, MIN_P=PN('full',7), HALF=PN('absent',4), LUNCH=PN('lunch',60)/60, OT_CAP=50, DEDUP_MIN=5, REG_MAX=3, REG_DAYS=3, LATE_PER_HALF=PN('perCut',3), EG_GRACE=0;
 const FIXED_VIEW=PQ.get('view');
 /* Hours after the lunch break: under HALF = A, under MIN_P = HD (half duty), otherwise P. */
 const dutyCode=h=>{const w=h-LUNCH;return w<HALF?'A':w<MIN_P?'HD':'P'};

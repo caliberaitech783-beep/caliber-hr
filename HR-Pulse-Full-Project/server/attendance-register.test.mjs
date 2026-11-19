@@ -10,7 +10,7 @@ const register = (extra = {}) => buildRegister({from: '2026-11-02', to: '2026-11
 const only = result => result.rows[0].days[0];
 
 test('the server day calculation applies the hours rule with lunch excluded', () => {
-  const cases = [['12:59', 'A'], ['13:00', 'HD'], ['15:29', 'HD'], ['15:30', 'P']];
+  const cases = [['12:59', 'A'], ['13:00', 'HD'], ['15:59', 'HD'], ['16:00', 'P']];
   for (const [out, status] of cases) {
     const day = only(register({punches: punches('2026-11-02', '08:00', out)}));
     assert.equal(day.status, status, `08:00 → ${out}`);
