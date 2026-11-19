@@ -40,6 +40,19 @@ afterEach(()=>{
 });
 
 describe('Trial workflow preview',()=>{
+  it('shows only trial results when working as Driver Trainer',()=>{
+    const {el,change}=setup();
+    change('#role','trainer');
+    expect(el('#v-trainer').hidden).toBe(false);
+    expect(el('#pipe').hidden).toBe(true);
+    expect(el('#tabs').hidden).toBe(true);
+    expect(el('[data-tab="overview"]').hidden).toBe(true);
+    for(const section of ['aadhaar','hr','approve','overview'])expect(el('#v-'+section).hidden).toBe(true);
+    change('#role','pm');
+    expect(el('#tabs').hidden).toBe(false);
+    expect(el('[data-tab="overview"]').hidden).toBe(false);
+    expect(el('#v-approve').hidden).toBe(false);
+  });
   it('requires the referrer and trial conductor',()=>{
     const {el,click}=setup();
     click('[data-tab="hr"]');

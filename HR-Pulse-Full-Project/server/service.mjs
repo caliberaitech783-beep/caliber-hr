@@ -15,7 +15,7 @@ import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
 import { randomUUID } from 'node:crypto';
-import { modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
+import { complianceKinds, modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
 import {createTelegramNotifier} from './telegram-notifications.mjs';
 export function problem(message,status=400) { return Object.assign(new Error(message),{status}); }
@@ -47,7 +47,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     if(kind==='holidays'&&site&&!ids.includes(site))site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND (code=$1 OR name=$1)",[site])).rows.find(r=>ids.includes(r.id))?.id;
     if(kind==='sites')site=id;
     if(['assetEmployees','assetAllocationLog','assetExitClearances','employeeTransfers','outDutyRequests'].includes(kind)||employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
-    if(!Object.hasOwn(managementModules,kind)&&!['calendarEvents','assetEmployees','assetAllocationLog','assetExitClearances','assets','employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers','outDutyRequests'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
+    if(!Object.hasOwn(managementModules,kind)&&![...complianceKinds,'calendarEvents','assetEmployees','assetAllocationLog','assetExitClearances','assets','employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers','outDutyRequests'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
     if(!ids.includes(site))throw problem('This record is outside your assigned Pulse site',403);
   }
   async function references(db,kind,data,id) {
@@ -159,7 +159,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     ...createTransferFlows(pool),
     ...createHolidayDocuments(pool),
     ...createEmployeeMasterRegister(pool),
-    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||['employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests'].includes(kind))}]))}; },
+    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests'].includes(kind))}]))}; },
     async list(profile,kind,params) {
       authorize(profile,kind);
       const page=Math.max(1,Math.min(10000,Number(params.get('page'))||1));

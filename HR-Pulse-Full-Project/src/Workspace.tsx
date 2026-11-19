@@ -6,6 +6,7 @@ import HRCalendar from './HRCalendar';
 import AssetManagement from './AssetManagement';
 import HierarchyMaster from './HierarchyMaster';
 import SalarySchemeMaster from './SalarySchemeMaster';
+import SettingsRegisters from './SettingsRegisters';
 import PayrollProcessing from './PayrollProcessing';
 import TrialForm,{loadSelection,saveSelection,showsTrialForm,type TrialSelection} from './TrialForm';
 import LeaveMaster,{LeaveRequests} from './LeaveMaster';
@@ -20,7 +21,7 @@ import EmployeeLocation from './EmployeeLocation';
 import EmployeeMasterRegister from './EmployeeMasterRegister';
 import type {JoiningDraft} from './joiningDrafts';
 import './modules.css';
-const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Approval Master',ShieldCheck],...managementSections,['Telegram Hierarchy',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Reports & MIS',FileBarChart],['Audit Logs',FileBarChart]] as const;
+const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Approval Master',ShieldCheck],...managementSections,['Telegram Hierarchy',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Compliance & Statutory',ShieldCheck],['Reports & MIS',FileBarChart],['Audit Logs',FileBarChart],['Administration & Settings',Settings]] as const;
 const masterGroups=[{name:'B1 · Company & sites',kinds:['companies','clients','regions','sites']},{name:'B2 · Organization',kinds:['departments','grades','designations']},{name:'B3 · Approval workflows',kinds:['workflows']},{name:'B4 · New employee',kinds:['employees']},{name:'B5 · Staff import',kinds:['employees']},{name:'B6 · Shifts',kinds:['shifts']},{name:'B7 · Holiday & leave',kinds:['holidays','leavePolicies','leaveRequests']},{name:'B8 · Approval matrix',kinds:['approvalRules']}];
 function HeaderClock(){
   const[now,setNow]=useState(()=>new Date());
@@ -53,7 +54,9 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
     setTrialDraft(draft);
     setEmployeeMenu('Employee Management');
   }
-  const access=new Set([...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])]);const permitted=navItems.filter(([name])=>access.has(name)||(name==='Approval Master'&&['Master Configuration','Approval Management','Employee Master'].some(menu=>access.has(menu)))||(name==='Telegram Hierarchy'&&access.size>0)||((['Payroll Management','Asset Management','Calendar'].includes(name)||isManagementSection(name))&&access.has('Employee Master')));
+  const access=new Set([...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])]);const permitted=navItems.filter(([name])=>access.has(name)||
+    (name==='Administration & Settings'&&['Administration','Master Configuration','Audit Logs'].some(menu=>access.has(menu)))||
+    (name==='Compliance & Statutory'&&access.has('Master Configuration'))||(name==='Approval Master'&&['Master Configuration','Approval Management','Employee Master'].some(menu=>access.has(menu)))||(name==='Telegram Hierarchy'&&access.size>0)||((['Payroll Management','Asset Management','Calendar'].includes(name)||isManagementSection(name))&&access.has('Employee Master')));
   async function refreshConfig(){const started=performance.now();try{const value=await api<HRConfig>(session.grant,'config');setConfig(value.modules);setProfile(value.profile);setError('');setNotice(`Data loaded. Time taken: ${((performance.now()-started)/1000).toFixed(1)} sec.`);}catch(err){setError((err as Error).message);}}
   useEffect(()=>{const timer=setInterval(()=>void refreshConfig(),60000);return()=>clearInterval(timer);},[session.grant]);
   useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),5000);return()=>clearTimeout(timer);},[notice]);
@@ -136,6 +139,8 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
     {page==='Holiday & Leave'&&<><p className="help-text">Leave entitlement uses calendar days, including weekends and holidays. Split requests at the calendar-year boundary.</p><div className="module-tabs">{['leaveRequests','holidays','leavePolicies'].filter(k=>config[k]).map(k=><button key={k} className={kind===k?'selected':''} onClick={()=>setKind(k)}>{config[k].title}</button>)}</div></>}
     {(employeePage||['Master Configuration','Holiday & Leave'].includes(page))&&config[activeKind]&&<Records key={page+activeKind+group} grant={session.grant} kind={activeKind} module={config[activeKind]} readOnly={page==='Employee Directory'} allowDelete={page==='Employee Onboarding'||page==='Employee Directory'} importFirst={page==='Master Configuration'&&group===4} notice={setNotice}/>}
     {page==='Approval Management'&&<Approvals grant={session.grant} actor={profile.actor||''} notice={setNotice}/>}
+    {(page==='Administration & Settings'||page==='Compliance & Statutory')&&permitted.some(([name])=>name===page)&&
+      <SettingsRegisters key={page} page={page} grant={session.grant} profile={profile} modules={config} notice={setNotice}/>}
     {page==='Audit Logs'&&<Audit grant={session.grant}/>}
     {page==='Administration'&&<AccessAdministration grant={session.grant} profile={profile} modules={config} notice={setNotice}/>}
     </>}</>}</div>{notice&&(page!=='Master Configuration'||masterMenu==='Holiday & Leave Master')&&<div className="toast" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}><X/></button></div>}</main></div>;
