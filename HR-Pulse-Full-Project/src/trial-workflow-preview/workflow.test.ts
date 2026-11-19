@@ -80,22 +80,23 @@ describe('Trial workflow preview',()=>{
     click('[data-tab="hr"]');
     input('#f_name','Hierarchy Candidate');
     input('#f_mobile','9876543210');
+    input('#f_conducted','Trial Form Trainer');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
     change('#d_medical','Yes');
     fireEvent.submit(el('#single'));
     change('#role','trainer');
-    await waitFor(()=>expect(el('[data-f="trainer"]')).toHaveValue('Sample Signer'));
+    await waitFor(()=>expect(el('[data-f="trainer"]')).toHaveValue('Trial Form Trainer'));
     request.mockImplementation(async()=>Response.json(hierarchyTrainer));
     fireEvent.focus(window);
-    await waitFor(()=>expect(el('[data-f="trainer"]')).toHaveValue('Sajad Ali'));
+    await waitFor(()=>expect(el('[data-f="trainer"]')).toHaveValue('Trial Form Trainer'));
     expect(el('#trList')).toHaveTextContent('Hierarchy Candidate');
     click('[aria-label="Hierarchy Candidate: PASS"]');
     const resultPicker=el('#trResultPicker'),videoPicker=el('#trVideoPicker');
     click('[aria-label="Hierarchy Candidate: Upload trial result"]');
     request.mockImplementation(async()=>Response.json({...hierarchyTrainer,name:'Updated Trainer'}));
     fireEvent.focus(window);
-    await waitFor(()=>expect(el('[data-f="trainer"]')).toHaveValue('Updated Trainer'));
+    await waitFor(()=>expect(el('[data-f="trainer"]')).toHaveValue('Trial Form Trainer'));
     expect(el('#trResultPicker')).toBe(resultPicker);
     expect(resultPicker.isConnected).toBe(true);
     fireEvent.change(resultPicker,{target:{files:[new File(['result'],'result.pdf',{type:'application/pdf'})]}});
@@ -111,26 +112,27 @@ describe('Trial workflow preview',()=>{
     click('#trSubmit');
     await waitFor(()=>expect(el('#bTrainer')).toHaveTextContent('0'));
     const stored=JSON.parse(localStorage.getItem('hrPulse.localTrialWorkflow.v1:'+JSON.stringify([scope.owner,scope.company,scope.site]))!);
-    expect(stored[0].outcome.trainer).toBe('New Trainer');
+    expect(stored[0].outcome.trainer).toBe('Trial Form Trainer');
   });
   it('requires the Aadhaar and driving licence dates of birth to match',()=>{
     expect(sameDocumentBirthDate('2000-01-02','2000-01-02')).toBe(true);
     expect(sameDocumentBirthDate('2000-01-02','2001-03-04')).toBe(false);
     expect(sameDocumentBirthDate('','2000-01-02')).toBe(false);
   });
-  it('fetches and freezes Trial conducted by from the Driver Trainer hierarchy',async()=>{
+  it('copies and freezes Trial conducted by from the Part 1 Trial Form',async()=>{
     sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
     const request=vi.spyOn(window,'fetch').mockResolvedValue(Response.json(hierarchyTrainer));
     const {el,click,input,change}=setup();
     click('[data-tab="hr"]');
     input('#f_name','Hierarchy Candidate');
     input('#f_mobile','9876543210');
+    input('#f_conducted','Trial Form Trainer');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
     change('#d_medical','Yes');
     fireEvent.submit(el('#single'));
     change('#role','trainer');
-    await waitFor(()=>expect(el('[aria-label="Hierarchy Candidate: Trial conducted by"]')).toHaveValue('Sajad Ali'));
+    await waitFor(()=>expect(el('[aria-label="Hierarchy Candidate: Trial conducted by"]')).toHaveValue('Trial Form Trainer'));
     expect(el('[aria-label="Hierarchy Candidate: Trial conducted by"]')).toHaveAttribute('readonly');
     expect(el('[aria-label="Hierarchy Candidate: Trial conducted by"]')).toHaveClass('trainer-frozen');
     expect(request).toHaveBeenCalledWith(expect.stringMatching(/\/telegram\/trial-trainer$/),expect.objectContaining({method:'POST'}));
@@ -347,6 +349,7 @@ describe('Trial workflow preview',()=>{
     click('[data-go="hr"]');
     input('#f_name','Sample Pass');
     input('#f_mobile','9876543210');
+    input('#f_conducted','Trial Form Trainer');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
     fireEvent.submit(el('#single'));
@@ -360,7 +363,7 @@ describe('Trial workflow preview',()=>{
     expect(el('#apList').textContent).toContain('Nothing waiting for Director');
     change('#role','trainer');
     expect(el('[aria-label="Sample Pass: Trial conducted by"]')).toHaveAttribute('readonly');
-    expect(el('[aria-label="Sample Pass: Trial conducted by"]')).toHaveValue('Sample Signer');
+    expect(el('[aria-label="Sample Pass: Trial conducted by"]')).toHaveValue('Trial Form Trainer');
     expect(el('[aria-label="Sample Pass: Trial conducted by"]')).toHaveClass('trainer-frozen');
     expect(el('[aria-label="Sample Pass: Upload trial result"]')).toBeEnabled();
     expect(el('[aria-label="Sample Pass: Upload Driving Video"]')).toBeEnabled();

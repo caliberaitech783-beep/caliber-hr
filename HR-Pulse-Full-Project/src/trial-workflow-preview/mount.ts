@@ -21,7 +21,7 @@ const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
 const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',ohr:'approve',rhr:'approve',director:'approve'};
 /* Tabs each role may open: Site HR → Aadhaar + Part 1; Driver Trainer → Part 2; approvers → Approvals; everyone → All candidates. */
 const roleTabs: Record<Role,Tab[]> = {hr:['aadhaar','hr','overview'],trainer:['trainer'],pm:['approve','overview'],ohr:['approve','overview'],rhr:['approve','overview'],director:['approve','overview']};
-const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',trainer:'',remarks:''});
+const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',trainer:row.trialConductedBy||'',remarks:''});
 const digits = (value: string) => value.replace(/\D/g,'');
 const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
 const check = (seen = '', remarks = '') => ({seen,remarks});
@@ -161,7 +161,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   const approvals = () => canApprove(role) ? sorted(records.filter(row=>row.stage===role)) : [];
   const draftFor = (row: Trial) => {
     let draft = drafts.get(row.id);
-    if (!draft) {draft = {...defaultOutcome(row),trainer:trainerName}; drafts.set(row.id,draft);}
+    if (!draft) {draft = defaultOutcome(row); drafts.set(row.id,draft);}
     return draft;
   };
   function renderTrainer() {
@@ -612,15 +612,12 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       try{
         const trainer=await fetchTrialTrainer(scope);
         if(effects.signal.aborted)return;
-        setTrainer(trainer.name);
-        if(!trainerName)return toast(trainer.reason||'Assign a Driver Trainer in the active site hierarchy before submitting.');
         if(trainer.roles&&!trainer.roles.includes('trainer'))return toast('Your Pulse ID is no longer assigned as Driver Trainer for this site.');
       }catch(error){
         if(!effects.signal.aborted)toast(error instanceof Error?error.message:'Could not load the Driver Trainer hierarchy. Try again.');
         return;
       }finally{submittingResults=false;}
     }
-    if(!trainerName)return toast('Assign a Driver Trainer in the active site hierarchy before submitting.');
     const ids=new Set(rows.map(row=>row.id)), at=new Date().toISOString(), changed: Trial[]=[];
     const files = new Map(rows.flatMap(row=>{
       const file = draftFiles.get(row.id);
@@ -1074,8 +1071,6 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   }
   function setTrainer(name:string,reason=''){
     trainerName=name.trim();
-    for(const draft of drafts.values())draft.trainer=trainerName;
-    if(tab==='trainer')renderTrainer();
     if(!trainerName&&reason)toast(reason);
   }
   function setRoles(assigned?:string[]){
