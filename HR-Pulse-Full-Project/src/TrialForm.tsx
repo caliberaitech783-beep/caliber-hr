@@ -3,7 +3,7 @@ import FormInput from './BirthDateInput';
 import {ageText} from './age';
 import {lazy,Suspense,useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {Camera,Printer,Save,Send,X} from 'lucide-react';
-import {api,savedSession} from './api';
+import {api,savedSession,type Profile} from './api';
 import {AadhaarUpload} from './EmployeeLocation';
 import './trial-form.css';
 import {prepareTrialJoining,saveTrialHandoff,type TrialChecklistDocuments,type TrialHandoff} from './trialHandoff';
@@ -33,7 +33,7 @@ const scopeKey=(value:unknown)=>String(value||'').trim().toLowerCase().replace(/
 export function pulseTrialSites(siteScope:unknown,adminLevel:unknown){
  const values=(Array.isArray(siteScope)?siteScope:[siteScope]).flatMap(value=>typeof value==='string'?value.split('|'):[]).map(value=>value.trim()).filter(Boolean);
  if(!values.length)return /site|location/i.test(String(adminLevel||''))?[]:null;
- if(values.some(value=>['*','all','allsites','alllocations'].includes(scopeKey(value))))return null;
+ if(values.some(value=>value==='*'||['all','allsites','alllocations'].includes(scopeKey(value))))return null;
  const assigned=new Set(values.map(scopeKey));
  return Object.entries(trialSitesByRegion).flatMap(([region,sites])=>sites.filter(site=>{
   const keys=[site,trialSiteCodes[site],site.replace(/\s+(OB|OC)(\s+(East|West))?$/i,'')].map(scopeKey);
@@ -58,13 +58,14 @@ const Chk=({name,options}:{name:string;options:string[]})=><span className="tf-c
 const Radio=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="radio" name={name} value={o}/> {o}</label>)}</span>;
 const YesNo=({name}:{name:string})=><select name={name} defaultValue=""><option value="">Select</option><option>Yes</option><option>No</option></select>;
 type TrialFormProps = {
+ profile?: Profile;
  selection: TrialSelection;
  onPassed?: (draft: JoiningDraft) => void;
  owner?: string;
  legacyOwner?: string;
 };
-export default function TrialForm({selection,onPassed,owner: draftOwner,legacyOwner}: TrialFormProps) {
- const session=savedSession(),profile=session?.profile;
+export default function TrialForm({selection,onPassed,owner: draftOwner,legacyOwner,profile:configuredProfile}: TrialFormProps) {
+ const session=savedSession(),profile=configuredProfile||session?.profile;
  const owner=draftOwner??(profile?.actor||profile?.username||profile?.email||'local');
  const [scope,setScope]=useState(selection);
  const [resolvedSites,setResolvedSites]=useState<{region:string;site:string}[]|null|undefined>();
