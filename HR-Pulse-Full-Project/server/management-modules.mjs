@@ -1,7 +1,7 @@
 const recruitment = 'Recruitment Management';
 const training = 'Training and Development';
 const performance = 'Performance Management';
-export const managementMenus = [recruitment, training, performance];
+export const managementMenus = [recruitment, training, performance, 'Others'];
 
 const text = (key, label, required = true) => ({ key, label, type: 'text', required });
 const date = (key, label) => ({ key, label, type: 'date', required: true });
@@ -19,6 +19,10 @@ function record(menu, title, nameLabel, fields) {
     text('code', 'Record reference'), text('name', nameLabel), ref('siteId', 'Site / location', 'sites'),
     ...fields, text('remarks', 'Notes', false),
   ] };
+}
+
+function other(category, title, nameLabel, fields) {
+  return {...record('Others', title, nameLabel, fields), category};
 }
 
 export const managementModules = {
@@ -68,4 +72,20 @@ export const managementModules = {
     employee, ...period, reviewer, rating, text('summary','Annual review summary')]),
   promotionRecommendations: record(performance, 'Promotion Recommendations', 'Proposed designation', [
     employee, text('recommendedBy','Recommended by'), date('date','Recommendation date'), text('reason','Supporting rationale')]),
+  contractorManpower: other('Contractor Management', 'Contractor Wise Manpower', 'Contractor name', [
+    date('date', 'Attendance date'), {key: 'headcount', label: 'Manpower count', type: 'number', required: true, min: 0}]),
+  visitorEntries: other('Visitor Management', 'Visitor Entry & Tracking', 'Visitor name', [
+    date('date', 'Visit date'), text('host', 'Person visited'), text('purpose', 'Purpose of visit')]),
+  welfareCanteen: other('Employee Welfare', 'Canteen', 'Canteen service', [date('date', 'Service date')]),
+  welfareAccommodation: other('Employee Welfare', 'Accommodation', 'Accommodation details', [employee]),
+  welfareFacilities: other('Employee Welfare', 'Other Facilities', 'Facility name', []),
+  medicalFitness: other('Medical Management', 'Medical Examination & Fitness', 'Examination', [employee, date('date', 'Examination date')]),
+  disciplinaryNotices: other('Disciplinary Management', 'Warning Letters & Show-Cause Notices', 'Subject', [employee, date('date', 'Issue date')]),
+  employeeComplaints: other('Grievance Management', 'Employee Complaints', 'Complaint subject', [employee, date('date', 'Received on')]),
+  laptopAllocations: other('Asset Allocations', 'Laptop', 'Laptop identifier', [employee, date('date', 'Allocation date')]),
+  mobileAllocations: other('Asset Allocations', 'Mobile', 'Mobile identifier', [employee, date('date', 'Allocation date')]),
+  uniformAllocations: other('Asset Allocations', 'Uniform', 'Uniform description', [employee, date('date', 'Allocation date')]),
+  ppeAllocations: other('Asset Allocations', 'PPE', 'Protective equipment', [employee, date('date', 'Allocation date')]),
+  employeeResignations: other('Exit Management', 'Resignation', 'Resignation subject', [employee, date('date', 'Submitted on')]),
+  employeeClearances: other('Exit Management', 'Clearance', 'Clearance item', [employee, date('date', 'Clearance date')]),
 };

@@ -113,7 +113,7 @@ export function validate(kind, input) {
     for (const key of ['halfDayHours','fullDayHours','overtimeAfterHours']) if (data[key] !== '' && data[key] > 24) fail('Day and overtime thresholds cannot exceed 24 hours');
     if (data.halfDayHours !== '' && data.fullDayHours !== '' && data.halfDayHours > data.fullDayHours) fail('Half-day threshold cannot exceed full-day hours');
   }
-  if(kind==='manpowerRequisitions' && !Number.isInteger(data.headcount))throw Object.assign(new Error('Headcount must be a whole number'),{status:400});
+  if(['manpowerRequisitions','contractorManpower'].includes(kind) && !Number.isInteger(data.headcount))throw Object.assign(new Error('Headcount must be a whole number'),{status:400});
   if(kind==='offerLetters' && data.issuedOn>data.joiningDate)throw Object.assign(new Error('Joining date must be on or after the offer date'),{status:400});
   validateLeave(kind,data);
   return data;
