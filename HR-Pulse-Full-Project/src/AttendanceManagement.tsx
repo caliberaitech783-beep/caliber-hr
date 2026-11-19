@@ -5,13 +5,33 @@ import {api,csv,download,type Lookup,type Module} from './api';
 import PunctualitySummary from './PunctualitySummary';
 import ShiftMaster from './ShiftMaster';
 import MisAttendance from './MisAttendance';
+import AttendanceRegister from './AttendanceRegister';
+import AttendancePolicySettings,{usePolicy} from './AttendancePolicy';
+import HRCalendar from './HRCalendar';
+import {LeaveRequests} from './LeaveMaster';
+import type {AttendancePolicy} from '../server/attendance-policy.mjs';
 import './attendance.css';
+
+/* Attendance Management main menu: three groups of sub menus plus the policy
+   settings. Each item opens the existing screen where one exists. */
+export const ATTENDANCE_MENU=[
+ {group:'Attendance fetch',items:['Biometric integration','Trip card and logbook']},
+ {group:'Attendance regularization',items:['Late come / early going','OD (on duty)','Miss punch','Gate pass','Overtime','Weekly off and holiday']},
+ {group:'Shift management',items:['Shift roster','Monthly attendance register','Weekly and daily attendance register','Site-wise attendance']},
+ {group:'Settings',items:['HR policy · attendance']},
+] as const;
+export type AttendanceView=typeof ATTENDANCE_MENU[number]['items'][number];
+export const attendanceViews:string[]=ATTENDANCE_MENU.flatMap(g=>[...g.items]);
+export const attendanceGroup=(view:string)=>ATTENDANCE_MENU.find(g=>(g.items as readonly string[]).includes(view))?.group||'';
+/** The legacy sheet-upload module opened on one view, rating days with the saved policy. */
+export const legacyModuleUrl=(view:string,policy?:AttendancePolicy)=>hrAsset('attendance-module.html')+'?'+new URLSearchParams({view,...(policy?{grace:String(policy.graceMinutes),full:String(policy.fullDutyHours),absent:String(policy.absentBelowHours),lunch:String(policy.lunchMinutes),perCut:String(policy.lateEarlyPerHalfCut)}:{})});
 
 /* Punches come from the site fingerprint/face machines. Azure cannot reach a
    machine on a site network, so "Fetch attendance" raises a request that the
    bridge PC at the site picks up; this page then waits for it to finish.
-   The existing attendance module (public/attendance-module.html) stays as its
-   own tab; "Machine punches" shows what the machines actually recorded. */
+   "Machine punches" shows what the machines actually recorded; the legacy
+   sheet-upload module (public/attendance-module.html) still handles ESSL
+   Excel exports and the biometric vs trip card comparison. */
 export type Punch={id:string;deviceSerial:string;deviceName:string;siteName:string;biometricId:string;date:string;time:string;verify:string;punchType:string;employeeId:string;employeeCode:string;employeeName:string;machineName:string};
 export type FetchRequest={id:string;state:'PENDING'|'RUNNING'|'DONE'|'FAILED';punchesReceived:number;newPunches:number;error:string;requestedAt:string;completedAt:string|null};
 type Device={online:boolean;lastContact:string|null;serial:string;name:string;siteId:string|null;siteName:string;lastSeen:string|null};
@@ -37,16 +57,47 @@ export const employeeLabel=(punch:Pick<Punch,'employeeCode'|'employeeName'|'mach
 const POLL_MS=2000,MAX_POLLS=60;
 const wait=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 
-export default function AttendanceManagement({grant,shiftModule}:{grant:string;shiftModule?:Module}){
+type AttendanceProps={grant:string;view?:string;onNavigate?:(view:AttendanceView)=>void;shiftModule?:Module;config?:Record<string,Module>;actor?:string;canApprove?:boolean;notice?:(message:string)=>void};
+
+export default function AttendanceManagement({grant,view='Biometric integration',onNavigate,shiftModule,config={},actor='',canApprove=false,notice=()=>{}}:AttendanceProps){
+ const [policyState]=usePolicy(grant);
+ const policy=policyState?.policy;
+ const [shiftView,setShiftView]=useState<'duties'|'settings'>('duties');
+ const current=(attendanceViews.includes(view)?view:'Biometric integration') as AttendanceView;
+ return <section className="attendance-module attendance" aria-label="Attendance Management">
+  <div className="attendance-head">
+   <div><h1>Attendance Management</h1><p className="attendance-crumb">{attendanceGroup(current)} › {current}</p></div>
+  </div>
+  {current==='Biometric integration'&&<BiometricIntegration grant={grant} policy={policy} onNavigate={onNavigate}/>}
+  {current==='Trip card and logbook'&&<MisAttendance grant={grant} policy={policy}/>}
+  {current==='Late come / early going'&&<PunctualitySummary grant={grant} initialMonth={indiaToday().slice(0,7)}/>}
+  {current==='OD (on duty)'&&<LeaveRequests grant={grant} focus="od" odModule={config.outDutyRequests} actor={actor} canApprove={canApprove} notice={notice}/>}
+  {current==='Miss punch'&&<AttendanceRegister grant={grant} mode="miss"/>}
+  {current==='Gate pass'&&<><LeaveRequests grant={grant} focus="gate" gateModule={config.gatePasses} actor={actor} canApprove={canApprove} notice={notice}/><AttendanceRegister grant={grant} mode="gate"/></>}
+  {current==='Overtime'&&<MisAttendance grant={grant} overtimeOnly policy={policy}/>}
+  {current==='Weekly off and holiday'&&<><p className="help-text">Weekly off: offices take Sunday off; sites run all 7 days on shift rotation. Holidays come from the holiday list of each site below and show as H in the attendance register.</p><HRCalendar grant={grant} config={config}/></>}
+  {current==='Shift roster'&&<>
+   {shiftModule&&<div className="module-tabs" aria-label="Shift views">
+    <button aria-pressed={shiftView==='duties'} className={shiftView==='duties'?'selected':''} onClick={()=>setShiftView('duties')}>Shift attendance</button>
+    <button aria-pressed={shiftView==='settings'} className={shiftView==='settings'?'selected':''} onClick={()=>setShiftView('settings')}>Shift settings</button>
+   </div>}
+   {shiftView==='settings'&&shiftModule?<ShiftMaster grant={grant} module={shiftModule}/>:<MisAttendance grant={grant} shiftManagement policy={policy}/>}
+  </>}
+  {current==='Monthly attendance register'&&<AttendanceRegister grant={grant} mode="month"/>}
+  {current==='Weekly and daily attendance register'&&<AttendanceRegister grant={grant} mode="week-day"/>}
+  {current==='Site-wise attendance'&&<AttendanceRegister grant={grant} mode="site"/>}
+  {current==='HR policy · attendance'&&<AttendancePolicySettings grant={grant}/>}
+ </section>;
+}
+
+function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:AttendancePolicy;onNavigate?:(view:AttendanceView)=>void}){
  const today=indiaToday();
  const [from,setFrom]=useState(today),[to,setTo]=useState(today);
  const [status,setStatus]=useState<Status|null>(null),[punches,setPunches]=useState<PunchList|null>(null),[unlinked,setUnlinked]=useState<Unlinked[]>([]);
  const [lookups,setLookups]=useState<Lookup[]>([]),[choice,setChoice]=useState<Record<string,string>>({});
  const [loading,setLoading]=useState(true),[fetching,setFetching]=useState(false),[busy,setBusy]=useState(false);
  const [error,setError]=useState(''),[message,setMessage]=useState('');
- const [tab,setTab]=useState<'module'|'punches'|'mis'|'machines'|'late'|'shifts'>('module');
- const [shiftView,setShiftView]=useState<'duties'|'settings'>('duties');
- const [reportMonth,setReportMonth]=useState(today.slice(0,7));
+ const [tab,setTab]=useState<'punches'|'machines'|'sheet'|'recon'>('punches');
  const [selected,setSelected]=useState('');
  const [adding,setAdding]=useState(false);
  const [site,setSite]=useState('');
@@ -54,16 +105,16 @@ export default function AttendanceManagement({grant,shiftModule}:{grant:string;s
  const attendanceFrame=useRef<HTMLIFrameElement>(null);
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useEffect(()=>{
-  const openMis=(event:MessageEvent)=>{
+  const openView=(event:MessageEvent)=>{
    if(event.origin===(inPulseII?'null':window.location.origin)&&event.source===attendanceFrame.current?.contentWindow){
-    if(event.data==='open-hr-mis-attendance')setTab('mis');
-    if(event.data==='open-hr-shift-attendance')setTab('shifts');
-    if(event.data?.view==='hr-punctuality'&&/^\d{4}-(0[1-9]|1[0-2])$/.test(event.data.month)){setReportMonth(event.data.month);setTab('late');}
+    if(event.data==='open-hr-mis-attendance')onNavigate?.('Trip card and logbook');
+    if(event.data==='open-hr-shift-attendance')onNavigate?.('Shift roster');
+    if(event.data?.view==='hr-punctuality')onNavigate?.('Late come / early going');
    }
   };
-  window.addEventListener('message',openMis);
-  return()=>window.removeEventListener('message',openMis);
- },[]);
+  window.addEventListener('message',openView);
+  return()=>window.removeEventListener('message',openView);
+ },[onNavigate]);
 
  const load=useCallback(async(showPunches:boolean,serial=selected)=>{
   setLoading(true);setError('');
@@ -124,9 +175,9 @@ export default function AttendanceManagement({grant,shiftModule}:{grant:string;s
  const rows=punches?.rows||[];
  const bridge=!status?'':!status.configured?'Bridge not set up':status.bridgeOnline?'Bridge PC online':status.bridgeLastSeen?`Bridge PC offline · last seen ${new Date(status.bridgeLastSeen).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}`:'Bridge PC has not connected yet';
 
- return <section className="attendance-module attendance" aria-label="Attendance Management">
+ return <>
   <div className="attendance-head">
-   <h1>Attendance Management</h1>
+   <p className="help-text">Punches from the ESSL fingerprint / face machines, collected by the bridge PC at each site. Link each machine ID to an employee once; the attendance register then rates their days with the HR policy.</p>
    <div className="attendance-actions">
     {status&&<span className={'attendance-bridge '+(status.bridgeOnline?'online':'offline')} role="status">{bridge}</span>}
     <button className="primary" disabled={fetching||loading||!status?.configured} onClick={()=>void fetchAttendance()}><RefreshCw className={fetching?'spin':''}/>{fetching?'Fetching…':'Fetch attendance'}</button>
@@ -135,24 +186,13 @@ export default function AttendanceManagement({grant,shiftModule}:{grant:string;s
   {error&&<p className="error" role="alert">{error}</p>}
   {message&&!error&&<p className="attendance-success" role="status">{message}</p>}
   {status&&!status.configured&&<p className="help-text">The bridge key has not been added to the HR API settings yet, so attendance cannot be fetched.</p>}
-  <div className="module-tabs" aria-label="Attendance views">
-   <button className={tab==='module'?'selected':''} aria-pressed={tab==='module'} onClick={()=>setTab('module')}>Attendance module</button>
-   <button className={tab==='late'?'selected':''} aria-pressed={tab==='late'} onClick={()=>setTab('late')}>Late Come / Early Going</button>
-   <button className={tab==='shifts'?'selected':''} aria-pressed={tab==='shifts'} onClick={()=>setTab('shifts')}>Shift Management</button>
+  <div className="module-tabs" aria-label="Biometric views">
    <button className={tab==='punches'?'selected':''} aria-pressed={tab==='punches'} onClick={()=>setTab('punches')}>Machine punches</button>
-   <button className={tab==='mis'?'selected':''} aria-pressed={tab==='mis'} onClick={()=>setTab('mis')}>Trip Cards &amp; Logbook</button>
    <button className={tab==='machines'?'selected':''} aria-pressed={tab==='machines'} onClick={()=>setTab('machines')}>Biometric machines</button>
+   <button className={tab==='sheet'?'selected':''} aria-pressed={tab==='sheet'} onClick={()=>setTab('sheet')}>ESSL punch log (Excel)</button>
+   <button className={tab==='recon'?'selected':''} aria-pressed={tab==='recon'} onClick={()=>setTab('recon')}>Biometric vs trip card</button>
   </div>
-  {tab==='late'&&<PunctualitySummary grant={grant} initialMonth={reportMonth}/>}
-  {tab==='shifts'&&<>
-   {shiftModule&&<div className="module-tabs" aria-label="Shift views">
-    <button aria-pressed={shiftView==='duties'} className={shiftView==='duties'?'selected':''} onClick={()=>setShiftView('duties')}>Shift attendance</button>
-    <button aria-pressed={shiftView==='settings'} className={shiftView==='settings'?'selected':''} onClick={()=>setShiftView('settings')}>Shift settings</button>
-   </div>}
-   {shiftView==='settings'&&shiftModule?<ShiftMaster grant={grant} module={shiftModule}/>:<MisAttendance grant={grant} shiftManagement/>}
-  </>}
-  <iframe style={tab==='module'?undefined:{display:'none'}} ref={attendanceFrame} src={hrAsset("attendance-module.html")} sandbox={inPulseII ? "allow-scripts allow-downloads" : undefined} title="Attendance Management module"/>
-  {tab==='mis'&&<MisAttendance grant={grant}/>}
+  {(tab==='sheet'||tab==='recon')&&<iframe key={tab} ref={attendanceFrame} src={legacyModuleUrl(tab==='sheet'?'punch':'recon',policy)} sandbox={inPulseII ? "allow-scripts allow-downloads" : undefined} title={tab==='sheet'?'ESSL punch log upload':'Biometric vs trip card comparison'}/>}
   {tab==='punches'&&<>
 
   <div className="data-card">
@@ -222,5 +262,5 @@ export default function AttendanceManagement({grant,shiftModule}:{grant:string;s
    </table></div>
    {status.canManageDevices&&<p className="help-text">Assign each machine to its site so site HR users can see its punches.</p>}
   </div>}
- </section>;
+ </>;
 }

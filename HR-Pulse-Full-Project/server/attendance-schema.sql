@@ -77,3 +77,14 @@ CREATE TABLE IF NOT EXISTS hr_mis_attendance_corrections(
  updated_at timestamptz NOT NULL DEFAULT now(),
  version integer NOT NULL DEFAULT 1 CHECK(version>0)
 );
+
+-- Attendance HR policy settings (one row). Missing values use the defaults in
+-- attendance-policy.mjs: 1 hr lunch, under 4 hrs absent, 7 hrs full duty,
+-- 15 min grace, 3 late/early marks per half duty cut, 1 hr free gate pass.
+CREATE TABLE IF NOT EXISTS hr_attendance_policy(
+ id boolean PRIMARY KEY DEFAULT true CHECK(id),
+ settings jsonb NOT NULL,
+ updated_by text NOT NULL,
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ version integer NOT NULL DEFAULT 1 CHECK(version>0)
+);
