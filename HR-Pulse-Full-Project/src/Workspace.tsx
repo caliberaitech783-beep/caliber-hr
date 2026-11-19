@@ -37,7 +37,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
   const[dashboardTab,setDashboardTab]=useState<DashboardTab>('HR Dashboard');
   const[masterMenu,setMasterMenu]=useState('Shift Master');
   const[expandedMenu,setExpandedMenu]=useState(()=>decodeURIComponent(window.location.hash.slice(1))||'Employee Master');
-  const[employeeMenu,setEmployeeMenuState]=useState(()=>{try{return localStorage.getItem('hrPulse.employeeMenu')||'Employee Management';}catch{return 'Employee Management';}});
+  const[employeeMenu,setEmployeeMenuState]=useState(()=>{try{const saved=localStorage.getItem('hrPulse.employeeMenu');return saved==='Leave/OD Management'?'Leave / OD / Gatepass':saved||'Employee Management';}catch{return 'Employee Management';}});
   const setEmployeeMenu=(menu:string)=>{if(menu==='Corporate / HO'||menu==='OB / COAL'){const nextGroup=menu as 'Corporate / HO'|'OB / COAL';setEmployeeGroup(nextGroup);setSelection(current=>{const next={...current,employeeGroup:nextGroup,...(nextGroup==='Corporate / HO'?{site:'',region:''}:{})};saveSelection(next);return next;});return;}setEmployeeMenuState(menu);try{localStorage.setItem('hrPulse.employeeMenu',menu);}catch{/* ignore */}};
   const[transferTab,setTransferTab]=useState('requests');
   const[selection,setSelection]=useState<TrialSelection>(loadSelection),trialVisible=showsTrialForm(selection);
@@ -68,7 +68,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
   const activeKind=employeePage?'employees':kind;
   const groups=masterGroups[group].kinds.filter(k=>config[k]);
   const initials=profile.name?.split(' ').map(x=>x[0]).slice(0,2).join('')||'HR';
-  const childrenFor=(name:string)=>name==='Dashboard'?[...dashboardTabs]:name==='Employee Master'?['Corporate / HO','OB / COAL',...(trialVisible?['Trial Form']:[]),'Employee Management','Leave/OD Management','Employee Transfer','Attendance Management']:name==='Payroll Management'?['Salary Scheme','Payroll Processing','Loan and Advances','Expense Claims']:name==='Master Configuration'?['Employee Master']:[];
+  const childrenFor=(name:string)=>name==='Dashboard'?[...dashboardTabs]:name==='Employee Master'?['Corporate / HO','OB / COAL',...(trialVisible?['Trial Form']:[]),'Employee Management','Leave / OD / Gatepass','Employee Transfer','Attendance Management']:name==='Payroll Management'?['Salary Scheme','Payroll Processing','Loan and Advances','Expense Claims']:name==='Master Configuration'?['Employee Master']:[];
   const query=navQuery.trim().toLowerCase(),visibleMenus=permitted.filter(([name])=>!query||name.toLowerCase().includes(query)||childrenFor(name).some(item=>item.toLowerCase().includes(query)));
   const currentArea=page==='Employee Master'?employeeMenu:page||'Dashboard';
   return <div className={'app '+(collapsed?'collapsed ':'')+(autoHide?'auto-hide ':'')+(dayMode?'':'night-mode')}>
@@ -111,7 +111,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
         :masterMenu==='Employee Master'&&access.has('Master Configuration')&&access.has('Employee Master')
           ?<EmployeeMasterRegister grant={session.grant}/>
           :null}
-    </section>} {page==='Employee Master'&&<>{employeeMenu==='Leave/OD Management'&&<LeaveRequests grant={session.grant} module={config.leaveRequests} odModule={config.outDutyRequests} gateModule={config.gatePasses} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>} {employeeMenu==='Employee Transfer'&&<section className="transfer-management" aria-labelledby="employee-transfer-title">
+    </section>} {page==='Employee Master'&&<>{employeeMenu==='Leave / OD / Gatepass'&&<LeaveRequests grant={session.grant} module={config.leaveRequests} odModule={config.outDutyRequests} gateModule={config.gatePasses} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>} {employeeMenu==='Employee Transfer'&&<section className="transfer-management" aria-labelledby="employee-transfer-title">
       <div className="page-title"><div>
         <h1 id="employee-transfer-title">Employee Transfer</h1>
         <p>Enter the employee's current and destination details, save the draft, then submit it for approval.</p>

@@ -127,7 +127,7 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  expect(document.querySelector('.day-scene')).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Notifications'}));
  expect(await screen.findByText('No new notifications.')).toBeTruthy();
- expect(within(sidebar).getByRole('button',{name:'Leave/OD Management'})).toBeTruthy();
+ expect(within(sidebar).getByRole('button',{name:'Leave / OD / Gatepass'})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Attendance Management'}));
  expect(screen.getByRole('heading',{name:'Attendance Management'})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Employee Management'}));
