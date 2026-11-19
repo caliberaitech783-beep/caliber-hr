@@ -8,6 +8,7 @@ import {createHash,randomUUID,timingSafeEqual} from 'node:crypto';
 import {assignedSites,siteIds} from './scope.mjs';
 import {grantedMenus,canWrite} from './modules.mjs';
 import {createMisAttendance} from './mis-attendance.mjs';
+import {loadRegister,readPolicy,savePolicy} from './attendance-register.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const uuid=value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value||'');
@@ -51,8 +52,9 @@ export function validateUpload(input){
  return {serial,name:String(input.device?.name||'').replace(/[\u0000-\u001f]/g,'').trim().slice(0,80),punches:clean,users:people,requestId,final:input.final===true,error};
 }
 
+const indiaDay=()=>new Date(Date.now()+5.5*3600_000).toISOString().slice(0,10);
 export function validateRange(params){
- const today=new Date(Date.now()+5.5*3600_000).toISOString().slice(0,10); // India date
+ const today=indiaDay(); // India date
  const from=params.get('from')||today,to=params.get('to')||from;
  if(!validDay(from)||!validDay(to))fail('Dates must be in YYYY-MM-DD format');
  if(to<from)fail('The end date must be on or after the start date');
@@ -137,43 +139,22 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
     devices:devices.map(d=>({serial:d.serial,name:d.name,siteId:d.site_id,siteName:d.site_name||'',lastContact:d.last_contact,online:Boolean(d.online),lastSeen:d.last_seen})),lastFetch:view(last)||null,
     canLink:canWrite(profile,'employees'),canManageDevices:assignedSites(profile)===null&&canWrite(profile,'employees')};
   }
-  if(route==='punctuality'&&method==='GET'){
+  if(route==='policy'&&method==='GET')return {...await readPolicy(pool),canEdit:assignedSites(profile)===null&&canWrite(profile,'employees')};
+  if(route==='policy'&&method==='POST'){
+   if(assignedSites(profile)!==null||!canWrite(profile,'employees'))fail('Only an HR administrator without a site restriction can change the attendance policy',403);
+   return tx(db=>savePolicy(db,profile.actor,input||{}));
+  }
+  if(route==='register'&&method==='GET'){
    const {from,to}=validateRange(params);
-   // Pair each directional punch with the nearest scheduled IN or OUT. Shifting
-   // the OUT anchor back by one day keeps overnight duties on their start date.
-   const {rows}=await pool.query(`
-    WITH punches AS (
-     SELECT e.id,e.code,e.name,site.name AS site,site.data->>'siteType' AS site_type,
-      sh.name AS shift,(sh.data->>'startTime')::time AS starts,(sh.data->>'endTime')::time AS ends,
-      coalesce(nullif(sh.data->>'graceMinutes','')::numeric,15) AS grace,
-      p.punched_at,p.punch_type AS direction
-     FROM hr_attendance_punches p
-     JOIN hr_attendance_devices d ON d.serial=p.device_serial
-     JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
-     JOIN hr_records e ON e.id=l.employee_id AND e.kind='employees'
-     JOIN hr_records sh ON sh.id::text=e.data->>'shiftId' AND sh.kind='shifts'
-     JOIN hr_records site ON site.id::text=e.data->>'siteId' AND site.kind='sites'
-     WHERE p.punched_at >= $1::date - 1 AND p.punched_at < $2::date + 3
-      AND p.punch_type IN ('0','1') AND sh.data->>'siteId'=site.id::text
-      AND ($3::text[] IS NULL OR (d.site_id::text=ANY($3) AND site.id::text=ANY($3)))
-    ), anchored AS (
-     SELECT *, (punched_at - (CASE WHEN direction='0' THEN starts ELSE ends END - time '00:00')
-       + interval '12 hours')::date - CASE WHEN direction='1' AND ends<starts THEN 1 ELSE 0 END AS duty
-     FROM punches WHERE starts<>ends
-    ), days AS (
-     SELECT id,code,name,site,shift,duty,starts,ends,grace,site_type,
-      min(punched_at) FILTER (WHERE direction='0') AS first_in,
-      max(punched_at) FILTER (WHERE direction='1') AS last_out
-     FROM anchored WHERE duty BETWEEN $1::date AND $2::date
-     GROUP BY id,code,name,site,shift,duty,starts,ends,grace,site_type
-    )
-    SELECT id,code,name,site,shift,to_char(duty,'YYYY-MM-DD') AS date,
-     first_in > duty+starts+grace*interval '1 minute' AS late,
-     site_type='Office' AND last_out < duty+ends+(CASE WHEN ends<starts THEN interval '1 day' ELSE interval '0' END)-interval '15 minutes' AS early
-    FROM days WHERE (first_in IS NULL OR last_out IS NULL OR last_out>=first_in)
-     AND duty+ends+(CASE WHEN ends<starts THEN interval '1 day' ELSE interval '0' END)<=timezone('Asia/Kolkata',now())
-    ORDER BY name,code,duty`,[from,to,sites]);
-   return {from,to,rows};
+   return loadRegister(pool,sites,from,to,indiaDay());
+  }
+  if(route==='punctuality'&&method==='GET'){
+   // Late come / early going come from the same day calculation as the register.
+   const {from,to}=validateRange(params);
+   const register=await loadRegister(pool,sites,from,to,indiaDay());
+   const rows=register.rows.flatMap(e=>e.days.filter(d=>d.late||d.early).map(d=>({id:e.id,code:e.code,name:e.name,site:e.site,shift:e.shift,date:d.date,late:d.late,early:d.early,in:d.in,out:d.out})));
+   const summary=register.rows.filter(e=>e.summary.lateEarly>0).map(e=>({id:e.id,code:e.code,name:e.name,site:e.site,shift:e.shift,late:e.summary.late,early:e.summary.early,halfDutyCuts:e.summary.halfDutyCuts}));
+   return {from,to,policy:register.policy,rows,summary};
   }
   if(route==='punches'&&method==='GET'){
    const {from,to}=validateRange(params);

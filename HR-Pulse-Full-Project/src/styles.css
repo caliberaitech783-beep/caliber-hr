@@ -117,3 +117,4 @@ nav button .chev{flex-shrink:0;transition:transform .2s}nav button .chev.expande
 .trial-document-uploads{position:relative}.trial-document-menu{position:absolute;right:0;top:4px;z-index:12}.trial-document-options{width:285px}.trial-document-options button{padding:11px 10px}
 
 .address-fields{grid-column:1/-1;display:grid;gap:8px}.same-address-option{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}.same-address-option input{width:16px;height:16px;accent-color:#6d18d6}
+.master-subnav.attendance-subnav{display:grid;grid-template-columns:1fr;gap:3px}.master-subnav.attendance-subnav button{justify-content:flex-start;font-size:12px;min-height:32px;height:auto;padding:7px 12px;text-align:left}.subnav-group{display:block;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;opacity:.72;padding:9px 12px 2px}

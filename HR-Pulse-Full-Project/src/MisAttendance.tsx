@@ -2,7 +2,13 @@ import {Fragment, useEffect, useState} from 'react';
 import {Pencil, RefreshCw} from 'lucide-react';
 import {api} from './api';
 import {mapMisAttendance, type AttendanceRow, type CorrectionStatus} from './misAttendanceModel';
+import {DEFAULT_POLICY, dutyStatus, workedMinutes, type AttendancePolicy} from '../server/attendance-policy.mjs';
 import './mis-attendance.css';
+
+const DUTY: Record<string, string> = {A: 'Absent', HD: 'Half duty', P: 'Full duty'};
+/** Trip card / logbook hours rated with the attendance policy (lunch excluded). */
+export const logbookDuty = (startMs: number, endMs: number, policy: AttendancePolicy = DEFAULT_POLICY) =>
+  DUTY[dutyStatus(workedMinutes(0, Math.round((endMs - startMs) / 60_000), policy), policy)];
 
 const startOfRecords = '2026-11-01';
 const dateInIndia = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
@@ -12,7 +18,7 @@ const columns = ['Date', 'Employee', 'Type', 'Equipment / vehicle', 'Time', 'Out
 const refreshMs = 30_000;
 const pageSize = 100;
 
-export default function MisAttendance({grant, shiftManagement=false}: {grant: string; shiftManagement?: boolean}) {
+export default function MisAttendance({grant, shiftManagement=false, overtimeOnly=false, policy=DEFAULT_POLICY}: {grant: string; shiftManagement?: boolean; overtimeOnly?: boolean; policy?: AttendancePolicy}) {
   const today = dateInIndia();
   const latest = today < startOfRecords ? startOfRecords : today;
   const [date, setDate] = useState(latest);
@@ -101,7 +107,7 @@ export default function MisAttendance({grant, shiftManagement=false}: {grant: st
   const needle = search.trim().toLowerCase();
   const shifts = [...new Set(all.filter(row => !activeSite || row.site === activeSite).map(row => row.shift))].sort();
   const activeShift = shiftManagement && shifts.includes(shift) ? shift : '';
-  const filtered = all.filter(row => (!activeSite || row.site === activeSite) && (!activeShift || row.shift === activeShift) &&
+  const filtered = all.filter(row => (!overtimeOnly || row.otHours !== null) && (!activeSite || row.site === activeSite) && (!activeShift || row.shift === activeShift) &&
     (!needle || [row.employeeName, row.employeeId, row.caliberCode].some(text => text?.toLowerCase().includes(needle))));
   const pending = filtered.filter(row => !row.verified).length;
   const rows = pendingOnly ? filtered.filter(row => !row.verified) : filtered;
@@ -114,8 +120,9 @@ export default function MisAttendance({grant, shiftManagement=false}: {grant: st
     <section className="data-card trip-attendance-card" aria-labelledby="trip-card-heading">
       <div className="trip-attendance-header">
         <div>
-          <h2 id="trip-card-heading">{shiftManagement ? 'Shift Management' : 'Trip cards & driver logbooks'}</h2>
-          <p>Closed MIS batches verify attendance. Two verified back-to-back 8-hour shifts give 8 hours of OT.</p>
+          <h2 id="trip-card-heading">{shiftManagement ? 'Shift roster' : overtimeOnly ? 'Overtime' : 'Trip cards & driver logbooks'}</h2>
+          <p>Closed MIS batches verify attendance. Two verified back-to-back 8-hour shifts give 8 hours of OT.{!shiftManagement && !overtimeOnly &&
+            ` Logbook hours follow the attendance policy: less a ${policy.lunchMinutes} min lunch, under ${policy.absentBelowHours} h is absent, ${policy.fullDutyHours} h or more is full duty, otherwise half duty. The first trip / logbook start counts as the In punch.`}</p>
         </div>
         <button type="button" className="trip-attendance-refresh" disabled={loading || !valid} onClick={() => setRefresh(n => n + 1)}>
           <RefreshCw size={16} aria-hidden="true"/> {loading && valid ? 'Syncing…' : 'Refresh MIS'}
@@ -157,7 +164,7 @@ export default function MisAttendance({grant, shiftManagement=false}: {grant: st
                 {row.window && <small>{row.correction?.start ? 'HR corrected' : 'Scheduled'}{row.window.start.slice(0, 10) !== row.window.end.slice(0, 10) && ' · next day end'}</small>}
               </td>
               <td>{row.output || '—'}{row.note && <small>{row.note}</small>}</td>
-              <td>{row.window ? `${(row.window.endMs - row.window.startMs) / 3_600_000} h` : '—'}</td>
+              <td>{row.window ? <>{`${(row.window.endMs - row.window.startMs) / 3_600_000} h`}{row.status !== 'Absent' && <small>{logbookDuty(row.window.startMs, row.window.endMs, policy)}</small>}</> : '—'}</td>
               <td><span className={`trip-attendance-tag ${row.status === 'Absent' ? 'trip-absent' : row.verified ? 'trip-present' : 'trip-pending'}`}>{row.status}</span></td>
               <td>{row.verification}{row.correction && <small>{row.correction.reason} · {row.correction.updatedBy}</small>}</td>
               <td className="trip-attendance-ot" title={row.otNote || undefined}>{row.otHours === null ? '—' : `${row.otHours} h`}{row.otNote && <small>{row.otNote}</small>}</td>

@@ -457,7 +457,12 @@ app.listen(3000);</script>
 /* ============================================================
    CONFIG (Shift Master / Holiday Master / Company & Site Master)
    ============================================================ */
-const GRACE=15, FULL=8, MIN_P=6, HALF=4, OT_CAP=50, DEDUP_MIN=5, REG_MAX=3, REG_DAYS=3, LATE_PER_HALF=3, EG_GRACE=15;
+/* Attendance HR policy (Settings › HR policy · attendance). The HR page passes the saved values in the URL. */
+const PQ=new URLSearchParams(location.search),PN=(k,d)=>{const v=Number(PQ.get(k));return PQ.has(k)&&Number.isFinite(v)?v:d};
+const GRACE=PN('grace',15), FULL=8, MIN_P=PN('full',7), HALF=PN('absent',4), LUNCH=PN('lunch',60)/60, OT_CAP=50, DEDUP_MIN=5, REG_MAX=3, REG_DAYS=3, LATE_PER_HALF=PN('perCut',3), EG_GRACE=0;
+const FIXED_VIEW=PQ.get('view');
+/* Hours after the lunch break: under HALF = A, under MIN_P = HD (half duty), otherwise P. */
+const dutyCode=h=>{const w=h-LUNCH;return w<HALF?'A':w<MIN_P?'HD':'P'};
 const SHIFT_NEXT={A:'B',B:'C',C:'A'};
 const SHIFTS={
   A:{id:'A',name:'Shift A 05:00–13:00',start:300,end:780,otAfter:8},
@@ -678,10 +683,10 @@ function evalDay(e,y,m,d){
   res.inT=inT;res.outT=outT;const hrs=(outT-inT)/60;res.hours=hrs;
   if(e.src==='ESSL'){
     if(inT>sh.start+GRACE){res.late=true;T.push(['A-07',`IN ${fmtTxt(inT)} after ${fmtTxt(sh.start)} + ${GRACE} min grace → Late`]);}
-    if(!isSite&&outT<sh.end-EG_GRACE){res.early=true;T.push(['X-07',`OUT before ${fmtTxt(sh.end)} − ${EG_GRACE} min → Early going`,1]);}
+    if(outT<sh.end-EG_GRACE){res.early=true;T.push(['X-07',`OUT before ${fmtTxt(sh.end)} → Early going (no grace)`,1]);}
   }
-  const base=hrs>=MIN_P?'P':'A';
-  T.push(['A-09',`Worked ${h1(hrs)} h → ${base} (minimum ${MIN_P} h for P · no half day)`]);
+  const base=dutyCode(hrs);
+  T.push(['A-09',`Worked ${h1(hrs)} h less ${h1(LUNCH)} h lunch → ${base} (under ${HALF} h = A · under ${MIN_P} h = HD · ${MIN_P} h or more = P)`]);
   if(raw.off&&base!=='A'){
     if(isSite){res.code='PH';res.ph=2;T.push(['A-15','Worked on holiday → PH = holiday pay + worked day (1 + 1)']);}
     else{res.code='P';res.compOff=1;T.push(['X-08',`Worked on ${raw.hol?'holiday':'weekly off'} → P + 1 C-OFF credited to leave balance (use within 60 days)`,1]);}
@@ -702,7 +707,7 @@ function monthStats(e,y,m){
     if(r.ot)s.ot+=r.ot;
     if(r.compOff){s.comp+=r.compOff;s.offWorked++}if(r.hours!=null&&r.hours>=HALF){s.hrs+=r.hours;s.hdays++}}
   const mgmt=e.desig==='CMD'||e.desig==='Director';
-  s.lateDed=mgmt?0:Math.floor(s.late/LATE_PER_HALF)*0.5;
+  s.lateDed=mgmt?0:Math.floor((s.late+s.early)/LATE_PER_HALF)*0.5;
   s.paid=s.P+s.phPay+s.H+s.WO+s.L+s['C-OFF']+s.OD-s.lateDed;
   s.lop=Math.max(0,s.days-(s.paid-(s.phPay-s.PH)));
   return s;
@@ -945,7 +950,7 @@ function renderTabs(){
   $('tabs').innerHTML=TABS.filter(([k])=>['late','shifts'].includes(k)?window.parent!==window&&R().tabs.includes('dash'):R().tabs.includes(k)).map(([k,t])=>{let n='';if(k==='exc'&&c.mp)n=c.mp;if(k==='trip'&&c.pv)n=c.pv;if(k==='ot'&&c.ot&&mode()!=='office')n=c.ot;if(k==='appr'){const p=REQS.filter(q=>q.status==='pending'&&inScopeReq(q)).length;if(p)n=p}
     return`<button class="${S.tab===k?'on':''}" onclick="setTab('${k}')">${t}${n?`<span class="n">${n}</span>`:''}</button>`}).join('');
 }
-function render(){if(!R().tabs.includes(S.tab))S.tab=R().tabs[0];renderScope();renderPolicy();renderTabs();VIEWS[S.tab]();tgBadge();}
+function render(){if(FIXED_VIEW&&VIEWS[FIXED_VIEW])S.tab=FIXED_VIEW;else if(!R().tabs.includes(S.tab))S.tab=R().tabs[0];renderScope();if(FIXED_VIEW){$('tabs').hidden=true;$('policy').hidden=true;}else{renderPolicy();renderTabs();}VIEWS[S.tab]();tgBadge();}
 function setScope(k,v){S[k]=v;if(k==='type'||k==='company'||k==='region')S.loc='ALL';if(k==='type'||k==='company')S.region='ALL';S.day=null;render()}
 function setTab(k){
   if(k==='late'||k==='shifts'){
@@ -1150,7 +1155,7 @@ function plDay(e,d){const s=e[4].substr((d-1)*9,9);const st=s[0];let i=plT(s.sub
   let h=null,night=false;if(i!=null&&o!=null){h=(o-i)/60;if(h<0){h+=24;night=true}}
   const sh=plShift(i);const late=PL_START[sh]!=null&&i-PL_START[sh]>GRACE&&i-PL_START[sh]<180;
   const dbl=h!=null&&h>=15;const single=(i==null)!==(o==null);const none=i==null&&o==null;
-  let sys=none?'NV':single?'MP':(h>=MIN_P?'P':'A');const v=PL.ver[e[0]+'|'+d];if(v)sys=v.code;
+  let sys=none?'NV':single?'MP':dutyCode(h);const v=PL.ver[e[0]+'|'+d];if(v)sys=v.code;
   const mism=(st==='P'&&(none||single))||(st==='A'&&!none);
   return{st,i,o,h,night,sh,late,dbl,single,none,sys,v,mism,same}}
 function plTrip(id,d){if(!RC.data||RC.data.month!==PL.data.month)return null;if(!PL._t){PL._t={};RC.data.emps.forEach(x=>{if(x[5])PL._t[x[0]]=x})}const t=PL._t[id];return t?t[5][d-1]:null}
