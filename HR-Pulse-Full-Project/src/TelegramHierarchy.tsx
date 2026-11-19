@@ -1,8 +1,8 @@
 import {useEffect,useState} from 'react';
 import {api} from './api';
 import {departmentStructure} from './joiningDepartments';
-type Flow={type?:'office'|'site';hods?:Record<string,string>;hrManager?:string;pm?:string;siteHr:string;regionalHr:string;directors:string[];enabled:boolean;od?:OdFlow};
-type OdFlow={type?:'office'|'site';hods?:Record<string,string>;hrManager?:string;regionalHr:string;enabled:boolean};
+type Flow={type?:'office'|'site';hods?:Record<string,string>;hrManager?:string;pm?:string;gateSecurity?:string;siteHr:string;regionalHr:string;directors:string[];enabled:boolean;od?:OdFlow};
+type OdFlow={type?:'office'|'site';hods?:Record<string,string>;hrManager?:string;regionalHr:string;gateSecurity?:string;enabled:boolean};
 const OFFICE_CODES=['CMLL-CO','CMLL-HO','KSR'];
 type Site={id:string;name:string;code:string;data?:Flow;version?:number};
 type Data={sites:Site[];departments?:string[];accounts:{actor:string}[];employees:{id:string;code:string;name:string;actor?:string}[];deliveries:{id:number;actor:string;state:string;last_error?:string}[]};
@@ -11,7 +11,7 @@ export default function TelegramHierarchy({grant,leaveOnly=false,accountOnly=fal
  const[data,setData]=useState<Data|null>(null),[account,setAccount]=useState<{connected:boolean;configured:boolean;botUsername:string}|null>(null),[site,setSite]=useState(''),[flow,setFlow]=useState<Flow>({siteHr:'',regionalHr:'',directors:[],enabled:false}),[newDept,setNewDept]=useState(''),[error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[url,setUrl]=useState(''),[employee,setEmployee]=useState(''),[employeeActor,setEmployeeActor]=useState(''),[adminMessage,setAdminMessage]=useState('');
  async function load(){setAccount(await api(grant,'telegram/account'));if(accountOnly)return;try{const result=await api<Data>(grant,'telegram/hierarchies');setData(result);setAdminMessage('');}catch(e){setAdminMessage((e as Error).message);}}
  useEffect(()=>{void load().catch(e=>setError(e.message));},[grant,accountOnly]);
- function select(id:string){setSite(id);const found=data?.sites.find(s=>s.id===id);const code=found?.code||'',defaultType=OFFICE_CODES.includes(code)?'office':'site';if(od){const o=found?.data?.od;setFlow({siteHr:'',directors:[],regionalHr:o?.regionalHr||'',hrManager:o?.hrManager||'',enabled:o?.enabled||false,type:o?.type||defaultType,hods:o?.hods||{}});}else setFlow({...(found?.data||{siteHr:'',regionalHr:'',directors:[],enabled:false}),type:found?.data?.type||defaultType,hods:found?.data?.hods||{}});setMessage('');}
+ function select(id:string){setSite(id);const found=data?.sites.find(s=>s.id===id);const code=found?.code||'',defaultType=OFFICE_CODES.includes(code)?'office':'site';if(od){const o=found?.data?.od;setFlow({siteHr:'',directors:[],regionalHr:o?.regionalHr||'',hrManager:o?.hrManager||'',gateSecurity:o?.gateSecurity||'',enabled:o?.enabled||false,type:o?.type||defaultType,hods:o?.hods||{}});}else setFlow({...(found?.data||{siteHr:'',regionalHr:'',directors:[],enabled:false}),type:found?.data?.type||defaultType,hods:found?.data?.hods||{}});setMessage('');}
  async function action(fn:()=>Promise<void>){setBusy(true);setError('');setMessage('');try{await fn();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
  const office=flow.type==='office',legacyRole=['CMLL-CO','CMLL-HO'].includes(data?.sites.find(x=>x.id===site)?.code||'')?'HOD':'Site HR';
  const hods=flow.hods||{},setHod=(dept:string,user:string)=>setFlow({...flow,hods:{...hods,[dept]:user}}),departments=[...new Set([...(data?.departments||[]),...Object.keys(departmentStructure),...Object.keys(hods)])].sort((a,b)=>a.localeCompare(b));
@@ -26,6 +26,7 @@ export default function TelegramHierarchy({grant,leaveOnly=false,accountOnly=fal
    {!office&&<label>{od?'HR Manager — initiates OD requests (one Pulse username)':'HR Manager — initiates leave requests (one Pulse username)'}<input required value={flow.hrManager||''} onChange={e=>setFlow({...flow,hrManager:e.target.value})}/></label>}
    {!office&&!od&&<label>PM Sir — comma-separated Pulse usernames<input required value={flow.pm||''} onChange={e=>setFlow({...flow,pm:e.target.value})}/></label>}
    <label>Regional HR — comma-separated Pulse usernames{od?' (final – any one)':''}<input required value={flow.regionalHr} onChange={e=>setFlow({...flow,regionalHr:e.target.value})}/></label>
+   {od&&<label>Gate security — records gate pass out and return times (comma-separated Pulse usernames; blank = Regional HR)<input value={flow.gateSecurity||''} onChange={e=>setFlow({...flow,gateSecurity:e.target.value})}/></label>}
    {!od&&<label>Directors — comma-separated Pulse usernames{office?' (any one)':' (final – any one)'}<input required value={flow.directors.join(',')} onChange={e=>setFlow({...flow,directors:e.target.value.split(',')})}/></label>}
    <label>{od?'Enable this OD route':'Enable this leave route'}<select value={String(flow.enabled)} onChange={e=>setFlow({...flow,enabled:e.target.value==='true'})}><option value="false">No — route not active yet</option><option value="true">Yes</option></select></label></div>
   <h3>HOD (concerned) by department</h3><div className="table-scroll"><table><thead><tr><th>Department</th><th>HOD — Pulse username</th><th></th></tr></thead><tbody>

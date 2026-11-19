@@ -7,7 +7,7 @@ describe('request approval progress',()=>{
   it('marks finished steps done and the waiting step current',()=>{
     const v=progressView('PENDING',{state:'PENDING',stage:1,steps});
     expect(v.steps.map(s=>s.state)).toEqual(['done','done','current','todo','todo']);
-    expect(v.summary).toBe('Waiting: Project Manager · 2 of 4');
+    expect(v.summary).toBe('Pending · step 3 of 5');
   });
   it('shows where a request was rejected',()=>{
     const v=progressView('REJECTED',{state:'REJECTED',stage:2,steps});
@@ -24,7 +24,7 @@ describe('request approval progress',()=>{
   });
   it('renders the summary and step labels',()=>{
     render(<RequestProgress status="PENDING" progress={{state:'PENDING',stage:0,steps:[{label:'HOD'},{label:'Regional HR'}]}}/>);
-    expect(screen.getByText('Waiting: HOD · 1 of 2')).toBeTruthy();
+    expect(screen.getByText('Pending · step 2 of 3')).toBeTruthy();
     expect(screen.getByText('Regional HR')).toBeTruthy();
   });
 });

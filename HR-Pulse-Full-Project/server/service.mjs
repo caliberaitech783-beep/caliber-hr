@@ -16,6 +16,7 @@ import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
 import {attachProgress,stepLabel} from './request-progress.mjs';
+import {gatePassWorkflow} from './gate-pass.mjs';
 import { randomUUID } from 'node:crypto';
 import { complianceKinds, modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
@@ -48,8 +49,8 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     let site=data.siteId;
     if(kind==='holidays'&&site&&!ids.includes(site))site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND (code=$1 OR name=$1)",[site])).rows.find(r=>ids.includes(r.id))?.id;
     if(kind==='sites')site=id;
-    if(['assetEmployees','assetAllocationLog','assetExitClearances','employeeTransfers','outDutyRequests'].includes(kind)||employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
-    if(!Object.hasOwn(managementModules,kind)&&![...complianceKinds,'calendarEvents','assetEmployees','assetAllocationLog','assetExitClearances','assets','employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers','outDutyRequests'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
+    if(['assetEmployees','assetAllocationLog','assetExitClearances','employeeTransfers','outDutyRequests','gatePasses'].includes(kind)||employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
+    if(!Object.hasOwn(managementModules,kind)&&![...complianceKinds,'calendarEvents','assetEmployees','assetAllocationLog','assetExitClearances','assets','employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers','outDutyRequests','gatePasses'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
     if(!ids.includes(site))throw problem('This record is outside your assigned Pulse site',403);
   }
   async function references(db,kind,data,id) {
@@ -93,17 +94,18 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       existing=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
       if(!existing)throw problem('Record not found',404);
       if(existing.version!==Number(input.version))throw problem('This record changed. Reload it before saving.',409);
-      if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)&&['APPROVED','CANCELLED','INACTIVE'].includes(existing.status))throw problem('Finalized requests cannot be edited',409);
+      if(['leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind)&&['APPROVED','CANCELLED','INACTIVE'].includes(existing.status))throw problem('Finalized requests cannot be edited',409);
       if(kind==='leaveAllocations'&&existing.data.__importDraft!=='true'&&['employeeId','leaveTypeId','periodId'].some(key=>existing.data[key]!==input[key]))throw problem('Allocation employee, type and period cannot be changed. Create another allocation instead.',409);
       if(existing.status==='PENDING')throw problem('A record awaiting approval cannot be edited',409);
       if(!(existing.data.__importDraft==='true'&&existing.created_by===profile.actor))await locationAccess(db,profile,kind,existing.data,id);
     }
     if(existing?.data.__importDraft==='true')input=await resolveImportReferences(db,kind,input);
     if(kind==='outDutyRequests')input={...input,code:existing?.code||'OD-'+randomUUID()};
+    if(kind==='gatePasses')input={...input,code:existing?.code||'GP-'+randomUUID()};
     data=validate(kind,input);
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);
-    const status=['employeeTransfers','outDutyRequests'].includes(kind)?'DRAFT':kind==='holidays'?'PENDING':['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)?'DRAFT':'ACTIVE';
+    const status=['employeeTransfers','outDutyRequests','gatePasses'].includes(kind)?'DRAFT':kind==='holidays'?'PENDING':['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)?'DRAFT':'ACTIVE';
     let result;
     if(id) result=await db.query('UPDATE hr_records SET code=$1,name=$2,data=$3,status=$4,version=version+1,updated_by=$5,updated_at=now() WHERE id=$6 RETURNING *',[data.code,data.name,data,status,profile.actor,id]);
     else result=await db.query('INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *',[randomUUID(),kind,data.code,data.name,data,status,profile.actor]);
@@ -125,11 +127,11 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         await references(db,kind,record.data,id);
         let companyId=record.data.companyId,siteId=record.data.siteId;
         let employeeDepartment='';
-        if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;if(employee?.data.departmentId)employeeDepartment=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='departments'",[String(employee.data.departmentId)])).rows[0]?.name||'';}
-        const telegramFlow=kind==='leaveRequests'?await telegramLeaveFlow(db,siteId):null,odFlow=kind==='outDutyRequests'?await odSiteFlow(db,siteId):null,siteFlow=telegramFlow||odFlow;
+        if(['leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;if(employee?.data.departmentId)employeeDepartment=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='departments'",[String(employee.data.departmentId)])).rows[0]?.name||'';}
+        const telegramFlow=kind==='leaveRequests'?await telegramLeaveFlow(db,siteId):null,odFlow=['outDutyRequests','gatePasses'].includes(kind)?await odSiteFlow(db,siteId):null,siteFlow=telegramFlow||odFlow;
         /* Site flow: only the site HR Manager raises leave / OD requests (on the employee's behalf). */
-        if(siteFlow?.type==='site'&&siteFlow.hods&&siteFlow.hrManager&&siteFlow.hrManager!==profile.actor){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'this site';throw problem(`${kind==='outDutyRequests'?'OD':'Leave'} requests at ${siteName} are raised by the site HR Manager (${siteFlow.hrManager}). Please contact them to submit this request.`,403);}
-        const hierarchy=telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment)}}:kind==='outDutyRequests'?odApprovalWorkflow(odFlow,employeeDepartment):kind==='employeeTransfers'?await transferWorkflow(db,record.data.fromSiteId):['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId,{driverOperator:kind!=='employees'||await (async()=>{const d=record.data||{};const names=[];for(const [k,kindName] of [['departmentId','departments'],['designationId','designations']])if(d[k])names.push((await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind=$2",[String(d[k]),kindName])).rows[0]?.name||'');const f=d.fields||d.officeData||{};names.push(f['Department'],f['Designation'],f['Employee Category'],d.department,d.designation,d.category);return isDriverOperator(names.filter(Boolean).join(' '));})()}):null;
+        if(siteFlow?.type==='site'&&siteFlow.hods&&siteFlow.hrManager&&siteFlow.hrManager!==profile.actor){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'this site';throw problem(`${kind==='outDutyRequests'?'OD':kind==='gatePasses'?'Gate pass':'Leave'} requests at ${siteName} are raised by the site HR Manager (${siteFlow.hrManager}). Please contact them to submit this request.`,403);}
+        const hierarchy=telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment)}}:kind==='outDutyRequests'?odApprovalWorkflow(odFlow,employeeDepartment):kind==='gatePasses'?gatePassWorkflow(odFlow,employeeDepartment):kind==='employeeTransfers'?await transferWorkflow(db,record.data.fromSiteId):['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId,{driverOperator:kind!=='employees'||await (async()=>{const d=record.data||{};const names=[];for(const [k,kindName] of [['departmentId','departments'],['designationId','designations']])if(d[k])names.push((await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind=$2",[String(d[k]),kindName])).rows[0]?.name||'');const f=d.fields||d.officeData||{};names.push(f['Department'],f['Designation'],f['Employee Category'],d.department,d.designation,d.category);return isDriverOperator(names.filter(Boolean).join(' '));})()}):null;
         const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
         const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
         if(!hierarchy&&kind==='employeeTransfers')throw problem('Enable transfer routing and set the approvers in Approval Master › Employee Transfer before submitting',409);
@@ -161,7 +163,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     ...createTransferFlows(pool),
     ...createHolidayDocuments(pool),
     ...createEmployeeMasterRegister(pool),
-    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests'].includes(kind))}]))}; },
+    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests','gatePasses'].includes(kind))}]))}; },
     async list(profile,kind,params) {
       authorize(profile,kind);
       const page=Math.max(1,Math.min(10000,Number(params.get('page'))||1));
@@ -183,7 +185,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     /* Read-only: the employee details a leave / OD form fills in, and the approval route it would take. Nothing is saved. */
     async requestPreview(profile,params) {
       const kind=params.get('kind')||'',employeeId=params.get('employeeId')||'';
-      if(!['leaveRequests','outDutyRequests'].includes(kind)||!uuid(employeeId))throw problem('Invalid request preview');
+      if(!['leaveRequests','outDutyRequests','gatePasses'].includes(kind)||!uuid(employeeId))throw problem('Invalid request preview');
       authorize(profile,kind);
       const employee=(await pool.query("SELECT r.id,r.name,r.data FROM hr_records r WHERE r.id=$1 AND r.kind='employees' AND "+scopeSql('r','$2','$3'),[employeeId,await siteIds(pool,profile),profile.actor])).rows[0];
       if(!employee)throw problem('Employee not found',404);
@@ -194,16 +196,16 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       let route=null,routeNote='';
       try{
         const flow=kind==='leaveRequests'?await telegramLeaveFlow(pool,siteId):await odSiteFlow(pool,siteId);
-        const steps=flow&&kind==='leaveRequests'?telegramSteps(flow,department):kind==='outDutyRequests'?odApprovalWorkflow(flow,department).data.steps:(await employeeHierarchy(pool,siteId))?.data?.steps;
+        const steps=kind==='gatePasses'?gatePassWorkflow(flow,department).data.steps:flow&&kind==='leaveRequests'?telegramSteps(flow,department):kind==='outDutyRequests'?odApprovalWorkflow(flow,department).data.steps:(await employeeHierarchy(pool,siteId))?.data?.steps;
         if(steps?.length)route=steps.map(s=>stepLabel(s.label));else routeNote='The approval matrix sets the route when you submit.';
       }catch(e){routeNote=e.message||'The approval route is not configured for this employee yet.';}
-      return {employee:{name:employee.name,companyId:d.companyId||'',siteId,department,designation},route,routeNote};
+      return {employee:{name:employee.name,companyId:d.companyId||'',siteId,department,designation},route,routeNote,missing:[d.companyId?'':'Company',siteId?'':'Site'].filter(Boolean)};
     },
     async lookups(profile) {
       if(!grantedMenus(profile).size)throw problem('No HR permissions assigned',403);
       const kinds=[...new Set(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).flatMap(([,config])=>config.fields.filter(x=>x.type==='reference').map(x=>x.reference)))];
       if(grantedMenus(profile).has('Approval Management')&&!kinds.includes('employees'))kinds.push('employees');
-      if(canRead(profile,'outDutyRequests'))for(const kind of ['departments','designations','sites'])if(!kinds.includes(kind))kinds.push(kind);
+      if(canRead(profile,'outDutyRequests')||canRead(profile,'gatePasses'))for(const kind of ['departments','designations','sites'])if(!kinds.includes(kind))kinds.push(kind);
       const result=await pool.query("SELECT r.id,r.kind,r.code,r.name,CASE WHEN r.kind='designations' THEN r.data->>'departmentId' END AS department_id FROM hr_records r WHERE r.kind=ANY($1) AND r.status IN ('ACTIVE','APPROVED') AND "+scopeSql('r','$2')+" ORDER BY r.name LIMIT 10000",[kinds,await siteIds(pool,profile)]);
       return result.rows;
     },
@@ -248,7 +250,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       });
     },
     async cancel(profile,kind,id,version){
-      authorize(profile,kind,true);if(!['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)||!uuid(id))throw problem('Invalid cancellation');
+      authorize(profile,kind,true);if(!['leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind)||!uuid(id))throw problem('Invalid cancellation');
        return transaction(async(db,afterCommit)=>{
         await db.query("SELECT id FROM hr_approvals WHERE record_id=$1 AND state='PENDING' FOR UPDATE",[id]);
         const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
@@ -267,7 +269,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       return transaction(db=>importWithDrafts(db,profile,kind,records,input=>save(db,profile,kind,input)));
     },
     async deactivate(profile,kind,id,version) {
-      authorize(profile,kind,true);if(['leaveRequests','leaveEncashments','outDutyRequests'].includes(kind))throw problem('Use Cancel for requests',409);if(!uuid(id))throw problem('Invalid record ID');
+      authorize(profile,kind,true);if(['leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind))throw problem('Use Cancel for requests',409);if(!uuid(id))throw problem('Invalid record ID');
       return transaction(async(db,afterCommit)=>{
         const current=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
         if(!current)throw problem('Record not found',404);
@@ -343,7 +345,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         return {imported:count,submitted,status:trialClearance?'ACTIVE':submitted===count?'PENDING':'DRAFT'};
       });
     },
-    async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction((db,afterCommit)=>submitRecord(db,profile,kind,id,version,afterCommit));},
+    async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction((db,afterCommit)=>submitRecord(db,profile,kind,id,version,afterCommit));},
     async approvals(profile) {
       if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
       return (await pool.query("SELECT a.*,r.kind,a.record_snapshot->>'code' AS code,a.record_snapshot->>'name' AS name,a.record_snapshot->'data' AS data,(a.record_snapshot ? 'telegramFlow') AS telegram_flow,COALESCE(a.record_snapshot->'data'->'officeData'->>'Designation *',a.record_snapshot->'data'->>'designationTitle',(SELECT d.name FROM hr_records d WHERE d.kind='designations' AND d.id::text=a.record_snapshot->'data'->>'designationId')) AS designation FROM hr_approvals a JOIN hr_records r ON r.id=a.record_id WHERE (a.approvers ? $1 OR a.requested_by=$1) AND "+scopeSql('r','$2')+" ORDER BY a.created_at DESC LIMIT 200",[profile.actor,await siteIds(pool,profile)])).rows;

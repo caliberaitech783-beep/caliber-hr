@@ -3,11 +3,11 @@
 .request-progress-summary.tone-pending,.request-progress-summary.tone-draft{background:#f0e8fa;color:#522e90}
 .request-progress-summary.tone-approved,.request-progress-summary.tone-active{background:#e7f6ee;color:#187446}
 .request-progress-summary.tone-rejected{background:#fdebed;color:#ae364b}
-.request-progress ol{display:flex;list-style:none;margin:0;padding:0}
-.request-progress li{flex:1;min-width:52px;position:relative;text-align:center;font-size:10px;color:#8a7d95;line-height:1.3}
-.request-progress li+li:before{content:"";position:absolute;top:10px;right:50%;width:100%;height:3px;background:#e4ddea;z-index:0}
-.request-progress li.rp-done:before,.request-progress li.rp-current:before{background:#1d9e75}
-.request-progress li.rp-rejected:before{background:#e24b4a}
+.rp-steps{display:flex;list-style:none;margin:0;padding:0}
+.rp-steps li{flex:1;min-width:52px;position:relative;text-align:center;font-size:10px;color:#8a7d95;line-height:1.3}
+.rp-steps li+li:before{content:"";position:absolute;top:10px;right:50%;width:100%;height:3px;background:#e4ddea;z-index:0}
+.rp-steps li.rp-done:before,.rp-steps li.rp-current:before{background:#1d9e75}
+.rp-steps li.rp-rejected:before{background:#e24b4a}
 .rp-dot{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;width:22px;height:22px;margin:0 auto 4px;border-radius:50%;background:#fff;border:2px solid #d8cfe0;color:#8a7d95;font-size:11px;font-weight:700}
 .rp-dot svg{width:13px;height:13px}
 .rp-done .rp-dot{background:#1d9e75;border-color:#1d9e75;color:#fff}
@@ -40,3 +40,15 @@
 .request-route li+li:before{content:"→ ";color:#8a7d95}
 .request-route em{font-style:normal;color:#8a7d95}
 .rfs-summary{text-align:right;margin-top:14px}
+.rp-time{display:block;font-size:10px;color:#1d7a5c;margin-top:2px}
+.request-cards{display:grid;gap:12px}
+.request-card{border:1px solid #e4ddea;border-radius:12px;padding:14px 16px;background:#fff}
+.request-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.request-card-top p{margin:0;font-size:14px;color:#687385}
+.request-card-top b{color:#30223e}
+.request-card .request-progress-summary{margin:0}
+.request-card .rp-steps li{font-size:12px}
+.request-card-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:10px;min-width:0}
+.request-card-actions button{margin:0!important}
+.request-legend{font-size:12px;color:#8a7d95;margin:2px 0 0}
+.rfs-note{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:#fff6e5;color:#8a5a0b;font-size:12px}

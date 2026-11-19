@@ -1,5 +1,6 @@
 import {managementModules, managementMenus} from './management-modules.mjs';
 import {leaveModules,requestFields,policyFields,prepareLeave,validateLeave} from './leave.mjs';
+import {gatePassTypes,validateGatePass} from './gate-pass.mjs';
 const text = (key, label, required = false) => ({ key, label, type: 'text', required });
 const ref = (key, label, reference, required = false) => ({ key, label, type: 'reference', reference, required });
 const date = (key, label, required = false) => ({ key, label, type: 'date', required });
@@ -27,6 +28,7 @@ export const modules = {
   assetAllocationLog: module('Allocation Log','Asset Management',[text('code','Log reference',true),date('date','Date',true),ref('assetId','Asset Tag','assets',true),text('name','Asset Name',true),text('action','Action',true),ref('employeeId','Emp Code','employees',true),text('employeeName','Employee Name',true),ref('fromEmployeeId','From Emp Code (transfer)','employees'),text('condition','Condition'),text('vendorMethod','Vendor / Method'),text('remarks','Remarks')]),
   assetExitClearances: module('Exit Clearance','Asset Management',[text('code','Clearance reference',true),ref('employeeId','Emp Code','employees',true),text('name','Employee Name',true),text('department','Department'),text('employmentStatus','Employment Status'),date('lastWorkingDay','Last Working Day'),{key:'assetsHeld',label:'Assets Held',type:'number',min:0},text('valueHeld','Value Held (₹)'),text('assetTagsHeld','Asset Tags Held'),text('clearance','Clearance')]),
   assets: module('Assets','Asset Management',[text('code','Asset code',true),text('name','Asset name',true),ref('siteId','Locations','sites',true),text('department','Departments'),text('vendor','Vendors'),text('condition','Conditions'),text('assetStatus','Asset Status'),text('employeeStatus','Employee Status'),text('movementAction','Movement Action'),text('assetGroup','Asset Group'),text('depreciationMethod','Dep. Method'),text('disposalMethod','Disposal Method')]),
+  gatePasses: module('Gate Pass','Employee Master',[text('code','Gate pass number',true),ref('employeeId','Employee ID','employees',true),text('name','Employee name',true),text('department','Department'),ref('siteId','Location','sites'),date('passDate','Date',true),select('passType','Pass type',gatePassTypes,true),{key:'outTime',label:'Out time',type:'time',required:true},{key:'returnTime',label:'Expected return',type:'time',required:true},text('purpose','Purpose / reason',true)]),
   outDutyRequests: module('Out Duty Form','Employee Master',[text('code','OD reference',true),text('name','Employee name',true),ref('employeeId','Employee ID','employees',true),text('designation','Designation',true),text('department','Department',true),ref('siteId','Site / Location','sites',true),date('outDutyDate','From date',true),date('toDate','To date',true),text('purpose','Purpose of out duty',true),text('visitLocation','Location / Place to visit',true),text('authorityName','Authority name'),text('authoritySignature','Reporting to'),text('employeeSignature','Employee signature (typed name)'),date('signatureDate','Signature date')]),
   employeeTransfers: module('Employee transfers','Employee Master',[text('code','Transfer reference',true),text('name','Transfer title',true),ref('employeeId','Employee','employees',true),date('transferDate','Transfer date',true),ref('fromSiteId','From location','sites',true),ref('toSiteId','To location','sites',true),text('fromDesignation','From designation',true),text('toDesignation','To designation',true),text('fromManager','From reporting manager',true),text('toManager','To reporting manager',true)]),
   companies: module('Companies', 'Master Configuration', [text('code','Company code',true),text('name','Company name',true),text('address','Registered address'),text('email','Company email')]),
@@ -45,7 +47,7 @@ export const modules = {
   approvalRules: module('Approval matrix','Master Configuration',[text('code','Rule code',true),text('name','Rule name',true),select('target','Module',['employees','leaveRequests'],true),ref('workflowId','Workflow','workflows',true),ref('companyId','Company (blank = all)','companies'),ref('siteId','Site (blank = all)','sites')]),
 };
 Object.assign(modules,leaveModules,managementModules);
-modules.outDutyRequests.autoCode=true;
+modules.outDutyRequests.autoCode=true;modules.gatePasses.autoCode=true;
 modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
 modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared','Gazetted','Gazetted (General)','Paid (PH)']));
@@ -98,6 +100,7 @@ export function validate(kind, input) {
     if (field.key === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw Object.assign(new Error('Email is invalid'),{status:400});
     data[field.key] = field.type === 'number' ? Number(value) : value;
   }
+  if (kind==='gatePasses') validateGatePass(data);
   if (kind==='outDutyRequests' && data.outDutyDate > data.toDate) throw Object.assign(new Error('To date must be on or after from date'),{status:400});
   if (data.fromDate && data.toDate && data.fromDate > data.toDate) throw Object.assign(new Error('End date must be on or after start date'),{status:400});
   if (data.dateOfBirth && data.dateOfBirth >= new Date().toISOString().slice(0,10)) throw Object.assign(new Error('Date of birth must be in the past'),{status:400});
