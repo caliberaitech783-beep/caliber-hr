@@ -15,6 +15,7 @@ import {missingJoiningField, requiredEmployeeDetail} from './joining-required.mj
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
+import {attachProgress} from './request-progress.mjs';
 import { randomUUID } from 'node:crypto';
 import { complianceKinds, modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
@@ -174,6 +175,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       if(params.get('toDate')){values.push(params.get('toDate'));filter+=" AND COALESCE(r.data->>'fromDate',r.data->>'date') <= $"+values.length;}
       const count=await pool.query(`SELECT count(*) FROM hr_records r WHERE ${filter}`,values);
       const result=await pool.query(`SELECT r.* FROM hr_records r WHERE ${filter} ORDER BY r.updated_at DESC,r.id LIMIT 50 OFFSET $${values.length+1}`,[...values,(page-1)*50]);
+      await attachProgress(pool,kind,result.rows);
       if(kind==='leaveAllocations')for(const row of result.rows)if(row.data.__importDraft!=='true')row.data={...row.data,...await balance(pool,row.data.employeeId,row.data.leaveTypeId,row.data.periodId)};
       const siteOptions=kind==='holidays'?(await pool.query("SELECT DISTINCT r.data->>'siteId' AS value FROM hr_records r WHERE r.kind='holidays' AND COALESCE(r.data->>'siteId','')<>'' AND "+scopeSql('r','$1','$2')+" ORDER BY value",[await siteIds(pool,profile),profile.actor])).rows.map(r=>r.value):undefined;
       return {rows:result.rows,total:Number(count.rows[0].count),page,pageSize:50,siteOptions};
