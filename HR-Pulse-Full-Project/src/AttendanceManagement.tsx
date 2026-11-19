@@ -97,7 +97,7 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
  const [lookups,setLookups]=useState<Lookup[]>([]),[choice,setChoice]=useState<Record<string,string>>({});
  const [loading,setLoading]=useState(true),[fetching,setFetching]=useState(false),[busy,setBusy]=useState(false);
  const [error,setError]=useState(''),[message,setMessage]=useState('');
- const [tab,setTab]=useState<'punches'|'machines'|'sheet'|'recon'>('punches');
+ const [tab,setTab]=useState<'punches'|'machines'|'sheet'|'tripPunch'|'recon'>('punches');
  const [selected,setSelected]=useState('');
  const [adding,setAdding]=useState(false);
  const [site,setSite]=useState('');
@@ -190,9 +190,10 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
    <button className={tab==='punches'?'selected':''} aria-pressed={tab==='punches'} onClick={()=>setTab('punches')}>Machine punches</button>
    <button className={tab==='machines'?'selected':''} aria-pressed={tab==='machines'} onClick={()=>setTab('machines')}>Biometric machines</button>
    <button className={tab==='sheet'?'selected':''} aria-pressed={tab==='sheet'} onClick={()=>setTab('sheet')}>ESSL punch log (Excel)</button>
+   <button className={tab==='tripPunch'?'selected':''} aria-pressed={tab==='tripPunch'} onClick={()=>setTab('tripPunch')}>Trip card punch</button>
    <button className={tab==='recon'?'selected':''} aria-pressed={tab==='recon'} onClick={()=>setTab('recon')}>Biometric vs trip card</button>
   </div>
-  {(tab==='sheet'||tab==='recon')&&<iframe key={tab} ref={attendanceFrame} src={legacyModuleUrl(tab==='sheet'?'punch':'recon',policy)} sandbox={inPulseII ? "allow-scripts allow-downloads" : undefined} title={tab==='sheet'?'ESSL punch log upload':'Biometric vs trip card comparison'}/>}
+  {(tab==='sheet'||tab==='tripPunch'||tab==='recon')&&<iframe key={tab} ref={attendanceFrame} src={legacyModuleUrl(tab==='sheet'?'punch':tab==='tripPunch'?'tpunch':'recon',policy)} sandbox={inPulseII ? "allow-scripts allow-downloads" : undefined} title={tab==='sheet'?'ESSL punch log upload':tab==='tripPunch'?'Trip card punch':'Biometric vs trip card comparison'}/>}
   {tab==='punches'&&<>
 
   <div className="data-card">
