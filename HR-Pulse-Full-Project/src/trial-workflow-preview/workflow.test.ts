@@ -40,6 +40,22 @@ afterEach(()=>{
 });
 
 describe('Trial workflow preview',()=>{
+  it.each(['pm','ohr','rhr','director'])('shows only Approvals for %s and blocks candidate navigation',role=>{
+    const {root,el,change,click}=setup();
+    change('#role',role);
+    expect(Array.from(root.querySelectorAll<HTMLButtonElement>('#tabs button')).filter(button=>!button.hidden).map(button=>button.dataset.tab)).toEqual(['approve']);
+    expect(el('#v-approve')).not.toHaveAttribute('hidden');
+    expect(el('#pipe')).toHaveAttribute('hidden');
+    click('[data-tab="overview"]');
+    click('#pipe [data-stage="done"]');
+    expect(el('#v-overview')).toHaveAttribute('hidden');
+    expect(el('#v-approve')).not.toHaveAttribute('hidden');
+    change('#role','hr');
+    expect(el('[data-tab="overview"]')).not.toHaveAttribute('hidden');
+    change('#role','trainer');
+    expect(el('[data-tab="overview"]')).toHaveAttribute('hidden');
+  });
+
   it('shows only trial results when working as Driver Trainer',()=>{
     const {el,change}=setup();
     change('#role','trainer');
@@ -50,7 +66,7 @@ describe('Trial workflow preview',()=>{
     for(const section of ['aadhaar','hr','approve','overview'])expect(el('#v-'+section).hidden).toBe(true);
     change('#role','pm');
     expect(el('#tabs').hidden).toBe(false);
-    expect(el('[data-tab="overview"]').hidden).toBe(false);
+    expect(el('[data-tab="overview"]').hidden).toBe(true);
     expect(el('#v-approve').hidden).toBe(false);
   });
   it('requires the referrer and trial conductor',()=>{
@@ -404,6 +420,7 @@ describe('Trial workflow preview',()=>{
     expect(el('#tgClose2')).toHaveTextContent('Open Step 2');
     click('#tgClose2');
     await waitFor(()=>expect(openJoining).toHaveBeenCalledOnce());
+    change('#role','hr');
     click('[data-stage="done"]');
     expect(el('#ovTitle')).toHaveTextContent('Completed (1)');
     expect(el('#ovList').textContent).toContain('Cleared to join');
@@ -471,6 +488,7 @@ describe('Trial workflow preview',()=>{
     expect(el('#toast').textContent).toContain('explain the rejection');
     input('#apNote','Review again after re-training');
     click('#apReject');
+    change('#role','hr');
     click('[data-tab="overview"]');
     expect(el('#ovList').textContent).toContain('Rejected');
     click('#ovList [data-open]');
