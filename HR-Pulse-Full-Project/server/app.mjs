@@ -83,6 +83,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       else if(deletion&&req.method==='POST')result=deletion[2]==='preview'?await service.deletePreview(profile,deletion[1]):await service.deleteRecords(profile,deletion[1],await body(req));
       else if(path==='/api/hierarchies'&&req.method==='POST')result=await service.saveHierarchy(profile,await body(req));
       else if(path==='/api/transfer-flows'&&req.method==='POST')result=await service.saveTransferFlow(profile,await body(req));
+      else if(path==='/api/request-preview'&&req.method==='GET')result=await service.requestPreview(profile,url.searchParams);
       else if(simple[path]&&req.method==='GET')result=await service[simple[path]](profile);
       else if(record){
         const [,kind,id,action]=record;

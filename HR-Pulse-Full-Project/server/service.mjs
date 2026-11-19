@@ -15,7 +15,7 @@ import {missingJoiningField, requiredEmployeeDetail} from './joining-required.mj
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
-import {attachProgress} from './request-progress.mjs';
+import {attachProgress,stepLabel} from './request-progress.mjs';
 import { randomUUID } from 'node:crypto';
 import { complianceKinds, modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
@@ -179,6 +179,25 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       if(kind==='leaveAllocations')for(const row of result.rows)if(row.data.__importDraft!=='true')row.data={...row.data,...await balance(pool,row.data.employeeId,row.data.leaveTypeId,row.data.periodId)};
       const siteOptions=kind==='holidays'?(await pool.query("SELECT DISTINCT r.data->>'siteId' AS value FROM hr_records r WHERE r.kind='holidays' AND COALESCE(r.data->>'siteId','')<>'' AND "+scopeSql('r','$1','$2')+" ORDER BY value",[await siteIds(pool,profile),profile.actor])).rows.map(r=>r.value):undefined;
       return {rows:result.rows,total:Number(count.rows[0].count),page,pageSize:50,siteOptions};
+    },
+    /* Read-only: the employee details a leave / OD form fills in, and the approval route it would take. Nothing is saved. */
+    async requestPreview(profile,params) {
+      const kind=params.get('kind')||'',employeeId=params.get('employeeId')||'';
+      if(!['leaveRequests','outDutyRequests'].includes(kind)||!uuid(employeeId))throw problem('Invalid request preview');
+      authorize(profile,kind);
+      const employee=(await pool.query("SELECT r.id,r.name,r.data FROM hr_records r WHERE r.id=$1 AND r.kind='employees' AND "+scopeSql('r','$2','$3'),[employeeId,await siteIds(pool,profile),profile.actor])).rows[0];
+      if(!employee)throw problem('Employee not found',404);
+      const name=async(id,kindName)=>id?(await pool.query('SELECT name FROM hr_records WHERE id::text=$1 AND kind=$2',[String(id),kindName])).rows[0]?.name||'':'';
+      const d=employee.data||{},f=d.officeData||d.fields||{},siteId=d.siteId||'';
+      const department=await name(d.departmentId,'departments')||String(f['Department']||d.department||'');
+      const designation=await name(d.designationId,'designations')||String(f['Designation']||d.designation||'');
+      let route=null,routeNote='';
+      try{
+        const flow=kind==='leaveRequests'?await telegramLeaveFlow(pool,siteId):await odSiteFlow(pool,siteId);
+        const steps=flow&&kind==='leaveRequests'?telegramSteps(flow,department):kind==='outDutyRequests'?odApprovalWorkflow(flow,department).data.steps:(await employeeHierarchy(pool,siteId))?.data?.steps;
+        if(steps?.length)route=steps.map(s=>stepLabel(s.label));else routeNote='The approval matrix sets the route when you submit.';
+      }catch(e){routeNote=e.message||'The approval route is not configured for this employee yet.';}
+      return {employee:{name:employee.name,companyId:d.companyId||'',siteId,department,designation},route,routeNote};
     },
     async lookups(profile) {
       if(!grantedMenus(profile).size)throw problem('No HR permissions assigned',403);
