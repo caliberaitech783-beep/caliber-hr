@@ -34,7 +34,8 @@ export function validateOdHierarchy(input){
  if(!Object.keys(hods).length)fail('Enter the HOD (concerned) Pulse username for at least one department.');
  if(!regionalUsers.length||regionalUsers.length>20||!regionalUsers.every(valid))fail('Enter 1–20 valid comma-separated Pulse usernames for Regional HR.');
  const hrManager=String(input.hrManager||'').trim().toLowerCase();if(type==='site'&&!valid(hrManager))fail('Enter the site HR Manager Pulse username (who raises OD requests).');
- return {type,hods,hrManager:type==='site'?hrManager:'',regionalHr:regionalUsers.join(','),enabled:input.enabled===true};
+ const gateUsers=String(input.gateSecurity||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);if(gateUsers.length>20||!gateUsers.every(valid))fail('Enter up to 20 valid comma-separated Pulse usernames for gate security.');
+ return {type,hods,hrManager:type==='site'?hrManager:'',regionalHr:regionalUsers.join(','),gateSecurity:gateUsers.join(','),enabled:input.enabled===true};
 }
 /* The site's OD flow when enabled (independent of the leave route being enabled). */
 export async function odSiteFlow(db,siteId){if(!siteId)return null;const row=(await db.query('SELECT h.data,s.code FROM hr_telegram_hierarchies h JOIN hr_records s ON s.id=h.site_id WHERE site_id=$1',[siteId])).rows[0];return row?.data?.od?.enabled?{...row.data.od,siteCode:row.code}:null;}
