@@ -19,3 +19,24 @@
 .leave-form-tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .leave-form-tabs .leave-tab-gap{width:22px}
 .leave-form-tabs .leave-tabs-note{flex:1;min-width:240px;margin:0}
+.request-form-progress{margin:4px 0 6px}
+.rfp-text{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px;color:#687385}
+.rfp-text span:first-child{color:#522e90;font-weight:700}
+.rfp-bar{height:7px;background:#eee8f2;border-radius:4px;margin-top:6px;overflow:hidden}
+.rfp-bar div{height:7px;background:#522e90;border-radius:4px;transition:width .25s}
+.rfp-bar div.full{background:#1d9e75}
+.request-form-section{border-top:1px solid #eee8f2;margin-top:16px;padding-top:12px}
+.request-form-section h3{display:flex;align-items:center;gap:9px;margin:0;font-size:15px;color:#30223e}
+.request-form-section .record-form{margin-top:12px}
+.rfs-num{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:2px solid #d8cfe0;color:#8a7d95;font-size:12px;box-sizing:border-box}
+.rfs-num svg{width:14px;height:14px}
+.rfs-num.ok{background:#1d9e75;border-color:#1d9e75;color:#fff}
+.rfs-num.now{border-color:#522e90;color:#522e90}
+.rfs-missing input,.rfs-missing select,.rfs-missing textarea{border-color:#e24b4a!important;background:#fff8f8}
+.rfs-error{display:block;color:#ae364b;font-size:12px;margin-top:4px}
+.request-route{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:#687385}
+.request-route ol{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0}
+.request-route li{background:#f0e8fa;color:#522e90;border-radius:8px;padding:4px 10px;font-weight:600}
+.request-route li+li:before{content:"→ ";color:#8a7d95}
+.request-route em{font-style:normal;color:#8a7d95}
+.rfs-summary{text-align:right;margin-top:14px}
