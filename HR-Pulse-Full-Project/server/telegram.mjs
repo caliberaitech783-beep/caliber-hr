@@ -4,6 +4,7 @@ import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
 import {grantedMenus} from './modules.mjs';
 import {assignedSites} from './scope.mjs';
 import {trialReviewStage} from './trial-review.mjs';
+import {withTrialRouting} from './trial-routing.mjs';
 import {trialAccess,requireTrialRole,canReadTrial,trialSite} from './trial-access.mjs';
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -104,7 +105,7 @@ export async function hierarchyRecipients(db,stage,target){
  const recipients=[];
  for(const template of site?[site]:hierarchyTemplates){
   const saved=rows.find(row=>row.code===template.code);
-  const data=withOfficeHr(withDriverTrainer(currentHierarchy(saved?.data)));
+  const data=withTrialRouting(withOfficeHr(withDriverTrainer(currentHierarchy(saved?.data))));
   const seen=new Set();
   for(const step of data?.steps||[]){
    if(!labels.includes(step.label))continue;

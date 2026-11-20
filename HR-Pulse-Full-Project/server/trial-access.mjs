@@ -1,5 +1,6 @@
 import {hierarchyTemplates,currentHierarchy,withDriverTrainer,withOfficeHr} from './joining-hierarchy.mjs';
 import {assignedSites} from './scope.mjs';
+import {withTrialRouting} from './trial-routing.mjs';
 import {grantedMenus} from './modules.mjs';
 const norm=value=>String(value||'').trim().toLowerCase();
 const aliases={
@@ -21,7 +22,7 @@ export async function trialAccess(db,profile,target){
  }
  const rows=(await db.query("SELECT code,data FROM hr_records WHERE kind='joiningHierarchies' AND status='ACTIVE'")).rows;
  const saved=rows.find(row=>row.code===template.code);
- const data=withOfficeHr(withDriverTrainer(currentHierarchy(saved?.data)));
+ const data=withTrialRouting(withOfficeHr(withDriverTrainer(currentHierarchy(saved?.data))));
  const actor=norm(profile.actor);
  const roles=actor?Object.entries(trialRoleLabels).filter(([,label])=>data?.steps?.some(step=>step.label===label&&step.approvers?.some(user=>norm(user)===actor))).map(([role])=>role):[];
  return {roles,overview};

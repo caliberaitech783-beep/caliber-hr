@@ -16,6 +16,7 @@
   </header>
 
   <p class="preview-label">Records stay in this browser. Trial approval notifications follow Approval Master › Hierarchy › Driver &amp; Operator for this group and site.</p>
+  <ol class="route" id="route" aria-label="Approval route for this site"></ol>
   <nav class="pipe" id="pipe" aria-label="Workflow stages" hidden></nav>
 
   <div class="tabs" role="group" aria-label="Trial workflow" id="tabs">
@@ -168,6 +169,15 @@
     <h2 id="aadhaarHistoryTitle">Previous trial found</h2>
     <div id="aadhaarHistoryResults"></div>
     <div class="actions"><button type="button" class="btn" id="aadhaarHistoryClose">Close</button></div>
+  </div>
+</div>
+<div class="modal" id="pendingPop" role="dialog" aria-modal="true" aria-labelledby="pendingTitle" hidden>
+  <div class="box pending-box">
+    <span class="pending-bell" aria-hidden="true">🔔</span>
+    <h2 id="pendingTitle">Waiting for your approval</h2>
+    <ul id="pendingList"></ul>
+    <p class="note">Approve or reject here, or tap Approve / Decline in the Vehicle Trial Result bot on Telegram. Once you approve, the form moves up to the next step.</p>
+    <div class="actions"><button type="button" class="btn" id="pendingLater">Later</button><button type="button" class="btn pri" id="pendingOpen">Review now</button></div>
   </div>
 </div>
 <div class="tgpop" id="tgpop" role="dialog" aria-label="Telegram preview" hidden></div>
