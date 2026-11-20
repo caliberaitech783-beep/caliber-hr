@@ -46,7 +46,7 @@ export default function App(){
     sharedRequest.current.request.then(next=>{
       if(!active)return;
       if(next){setError('');setSession(next);}
-      else setError('Sign in with your Pulse account to open HR.');
+      else setError('');
     }).catch(e=>{if(active)setError(e instanceof Error?e.message:'Unable to open HR.');})
       .finally(()=>{if(active)setOpeningShared(false);});
     return()=>{active=false;};
@@ -91,7 +91,7 @@ export default function App(){
 
   if(inPulseII&&!session?.grant){
     if(openingShared)return <main className="loading-screen" role="status">Opening HR in Pulse-II…</main>;
-    return <><main className="loading-screen"><div><h1>HR · Caliber Pulse-II</h1>{error&&<p role="alert">{error}</p>}<a href="/">Back to MIS</a></div></main><HrLogin embedded preload={loadWorkspace} onLogin={next=>{pending.current=undefined;setError('');setSession(next);}}/></>;
+    return <HrLogin embedded notice={error} preload={loadWorkspace} onLogin={next=>{pending.current=undefined;setError('');setSession(next);}}/>;
   }
   if(!session?.grant)return <HrLogin embedded={embedded} preload={loadWorkspace} onLogin={next=>{pending.current=undefined;setError('');setSession(next);}}/>;
   const opening=<div className="loading-screen" role="status">Opening your HR workspace…</div>;
