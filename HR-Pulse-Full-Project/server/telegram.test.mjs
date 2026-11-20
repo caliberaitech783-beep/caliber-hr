@@ -19,6 +19,9 @@ test('admin access is read-only and each assigned user receives only their hiera
   await assert.rejects(createTelegram(db).telegramApi({actor:'admin',permissions:{hrDesktopAccess:['Employee Master']}},route,'POST',{...target,reviewer}),{status:403});
  }
  const admin={actor:'admin',permissions:{hrDesktopAccess:['Employee Master','Master Configuration']}};
+ const beforeSelection=await createTelegram({query:async()=>assert.fail('No site query before site selection')}).telegramApi(admin,'trial-trainer','POST',{site:''});
+ assert.deepEqual(beforeSelection.roles,[]);assert.equal(beforeSelection.overview,true);
+ await assert.rejects(requireTrialRole(db,admin,'hr',{site:''}),{status:403});
  const access=await createTelegram(db).telegramApi(admin,'trial-trainer','POST',target);
  assert.deepEqual(access.roles,[]);assert.equal(access.overview,true);
  const disabled={query:async()=>({rows:[]})};

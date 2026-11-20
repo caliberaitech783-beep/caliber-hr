@@ -383,7 +383,7 @@ export function createTelegram(pool){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const target={site:String(input.site||'').slice(0,80),region:String(input.region||'').slice(0,80),company:String(input.company||'').slice(0,120),group:String(input.group||'').slice(0,80)};
    const access=await trialAccess(pool,profile,target);
-   const trainer=access.roles.length||access.overview?await trialTrainerFor(pool,target):{actor:'',name:'',site:target.site};
+   const trainer=trialSite(target.site)&&(access.roles.length||access.overview)?await trialTrainerFor(pool,target):{actor:'',name:'',site:target.site};
    return {...trainer,...access};
   }
   if(route==='trial-scope'&&method==='GET'){

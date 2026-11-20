@@ -11,7 +11,7 @@ export const trialRoleLabels={hr:'HR Manager',trainer:'Driver Trainer',pm:'Proje
 export function trialSite(site){return hierarchyTemplates.find(t=>[t.code,t.name,...(aliases[t.code]||[])].some(value=>norm(value)===norm(site)));}
 export async function trialAccess(db,profile,target){
  const scope=assignedSites(profile),overview=scope===null&&(grantedMenus(profile).has('Master Configuration')||/\badmin(?:istrator)?\b|super/i.test(String(profile.permissions?.adminLevel||profile.assignedRole||''))),template=trialSite(target?.site);
- if(!template)return {roles:[],overview:false};
+ if(!template)return {roles:[],overview};
  if(scope!==null){
   const keys=[template.code,template.name,...(aliases[template.code]||[])].map(norm);
   if(!scope.some(value=>keys.includes(value))){

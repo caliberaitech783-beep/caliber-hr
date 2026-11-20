@@ -157,12 +157,19 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if (tab==='approve') renderApprovals();
   }
   function renderOverview() {
+    if(role==='observer'&&!site){
+      $('#ovTitle').textContent='Trial forms · Read-only overview';
+      $('#ovList').innerHTML=empty('Select a region and site to view trial records','Administrators can view candidate details, trial results and approval progress. Submission and approval remain restricted to assigned hierarchy users.');
+      $('#search').hidden=true;$('#tgPassList').hidden=true;$('#pipe').hidden=true;
+      return;
+    }
+    $('#search').hidden=false;$('#tgPassList').hidden=role==='observer';
     const query = value('#search').toLowerCase();
     const rows = sorted(records).filter(row=>(!stageFilter||row.stage===stageFilter)
       && [row.name,row.formNo,row.mobile,row.referredBy,equipment(row)].join(' ').toLowerCase().includes(query));
     $('#ovTitle').textContent = (STAGES.find(([stage])=>stage===stageFilter)?.[2] || 'All candidates') + ` (${rows.length})`;
     $('#ovList').innerHTML = !records.length
-      ? empty('No trial forms yet','Site HR starts here: add one candidate, or a whole trial batch at once.','<button type="button" class="btn pri" data-go="hr">Add candidates</button>')
+      ? role==='observer'?empty('No trial forms for this site','Trial records will appear here after the assigned HR Manager submits them.'):empty('No trial forms yet','Site HR starts here: add one candidate, or a whole trial batch at once.','<button type="button" class="btn pri" data-go="hr">Add candidates</button>')
       : !rows.length ? empty('No matches','Clear the search or select the stage again to show everyone.') : overviewTable(rows,canJoin());
   }
   const waiting = () => sorted(records.filter(row=>row.stage==='trainer')).reverse();

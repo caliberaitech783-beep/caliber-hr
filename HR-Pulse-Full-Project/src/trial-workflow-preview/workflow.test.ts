@@ -40,6 +40,16 @@ afterEach(()=>{
 });
 
 describe('Trial workflow preview',()=>{
+  it('shows the admin trial overview before selecting a site without enabling actions',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    vi.spyOn(window,'fetch').mockResolvedValue(Response.json({roles:[],overview:true,name:''}));
+    const {el}=setup({site:'',region:''});
+    await waitFor(()=>expect(el('#v-overview').hidden).toBe(false));
+    expect(el('#role')).toHaveValue('observer');
+    expect(el('#ovList')).toHaveTextContent('Select a region and site to view trial records');
+    expect(el('#ovList').querySelector('[data-go="hr"]')).toBeNull();
+    expect(el('#sSubmit')).toBeDisabled();expect(el('#trSubmit')).toBeDisabled();
+  });
   it.each([
     {roles:[],overview:true,option:'observer',panel:'overview'},
     {roles:['hr'],overview:false,option:'hr',panel:'aadhaar'},
