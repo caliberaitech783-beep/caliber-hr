@@ -3,7 +3,7 @@ import {act,fireEvent,render,waitFor} from '@testing-library/react';
 import {createElement} from 'react';
 import {utils,write} from 'xlsx';
 import TrialWorkflowPreview from './TrialWorkflowPreview';
-import {sameDocumentBirthDate,type PrepareJoining} from './mount';
+import {sameDocumentAadhaarNumber,sameDocumentBirthDate,type PrepareJoining} from './mount';
 import * as trialResultFiles from './trialResultFiles';
 import * as telegramSend from './telegramSend';
 import {reviewTrial} from './reviewQueue';
@@ -251,6 +251,11 @@ describe('Trial workflow preview',()=>{
     expect(sameDocumentBirthDate('2000-01-02','2001-03-04')).toBe(false);
     expect(sameDocumentBirthDate('','2000-01-02')).toBe(false);
     expect(sameDocumentBirthDate('unreadable','2000-01-02')).toBe(false);
+  });
+  it('compares Aadhaar numbers after removing printed spaces and separators',()=>{
+    expect(sameDocumentAadhaarNumber('808138856642','8081 3885 6642')).toBe(true);
+    expect(sameDocumentAadhaarNumber('8081-3885-6642','808138856642')).toBe(true);
+    expect(sameDocumentAadhaarNumber('808138856642','808138856643')).toBe(false);
   });
   it('copies and freezes Trial conducted by from the Part 1 Trial Form',async()=>{
     sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));

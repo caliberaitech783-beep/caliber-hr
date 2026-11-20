@@ -28,6 +28,7 @@ const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompar
 const check = (seen = '', remarks = '') => ({seen,remarks});
 const empty = (title: string, message: string, action = '') => `<div class="empty"><b>${esc(title)}</b><span>${esc(message)}</span>${action}</div>`;
 export const sameDocumentBirthDate=(aadhaarDob:string,licenceDob:string)=>{const aadhaar=licenceDate(aadhaarDob),licence=licenceDate(licenceDob);return Boolean(aadhaar&&aadhaar===licence);};
+export const sameDocumentAadhaarNumber=(entered:string,scanned:string)=>{const current=digits(entered),card=digits(scanned);return !card||current.length!==12||current===card;};
 
 export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   reset: () => void;
@@ -375,6 +376,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     $<HTMLButtonElement>('#aadhaarContinue').disabled = aadhaarScanPending || aadhaarHistoryPending || drivingLicenceBusy || !drivingLicenceReady;
   }
   function setAadhaarBusy(busy: boolean) {
+    if(busy){aadhaarBirthDate='';drivingLicenceReady=false;}
     aadhaarScanPending = busy;
     updateSingleActions();
   }
@@ -421,13 +423,14 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   function fillAadhaarDetails(details: AadhaarDetails) {
     if (!aadhaarScanPending || effects.signal.aborted) return '';
     const enteredNumber = digits(value('#f_aadhaar'));
-    if (details.uid && enteredNumber.length === 12 && enteredNumber !== details.uid) {
+    const scannedNumber=digits(details.uid);
+    if (!sameDocumentAadhaarNumber(enteredNumber,scannedNumber)) {
       return 'This card has a different Aadhaar number. Check the card and retry.';
     }
     aadhaarBirthDate=details.dob;
     const fields = [
       ['#f_name', details.name], ['#f_father', details.relationName], ['#f_dob', details.dob],
-      ['#f_aadhaar', details.uid], ['#f_address', details.address],
+      ['#f_aadhaar', scannedNumber], ['#f_address', details.address],
     ] as const;
     let filled = 0;
     for (const [selector, detail] of fields) {
@@ -437,7 +440,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       control.value = detail;
       if (control.value) { filled++; lockScanned(control); }
     }
-    if(/^\d{12}$/.test(details.uid)&&digits(value('#f_aadhaar'))===details.uid)void checkAadhaarHistory(details.uid);
+    if(/^\d{12}$/.test(scannedNumber)&&digits(value('#f_aadhaar'))===scannedNumber)void checkAadhaarHistory(scannedNumber);
     return filled
       ? 'Aadhaar details filled and locked – they come from the card and cannot be edited.'
       : 'The scan added no new details. Review the form or enter the missing details manually.';
