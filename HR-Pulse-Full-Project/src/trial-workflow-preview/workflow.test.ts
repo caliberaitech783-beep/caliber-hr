@@ -576,9 +576,12 @@ describe('OTP approval and several Driver Trainers (owner, 20 Nov 2026)',()=>{
     const {el,click,input,change}=setup();
     await waitFor(()=>expect(el('#apList')).toHaveTextContent('Otp Candidate'));
     change('#role','pm');
+    await waitFor(()=>expect(el('#apTitle')).toHaveTextContent('PM approval queue'));
+    await waitFor(()=>expect(el('#apRoleWarn')).toHaveTextContent('You approve by OTP'));
     click('#apAll');
-    expect(el('#apApprove')).toBeDisabled();
-    expect(el('#apRoleWarn')).toHaveTextContent('You approve by OTP');
+    await waitFor(()=>expect(el('#apApprove')).toBeDisabled());
+    click('#apApprove');
+    expect(request.mock.calls.some(([url])=>String(url).endsWith('/trial-approval'))).toBe(false);
     change('#role','ohr');
     expect(el('#apList .otp-panel')).toHaveTextContent('Otp Candidate');
     click('[data-otp-request]');
