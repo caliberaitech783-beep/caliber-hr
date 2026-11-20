@@ -74,7 +74,7 @@ it('opens a completed operator trial at step two and saves it on the sixth step 
    fireEvent.change(control,{target:{files:[new File(['sample'],'sample.jpg',{type:'image/jpeg'})]}});
    continue;
   }
-  const value=name==='Monthly Gross Salary'?'30000':name==='Employee Code'?'EMP-TEST':name==='PAN No.'?'ABCDE1234F':name==='Aadhaar No.'?'234500000000':control instanceof HTMLInputElement&&control.type==='date'?'2026-11-12':control instanceof HTMLInputElement&&control.type==='email'?'sample@example.test':control instanceof HTMLInputElement&&control.type==='tel'?'9876543211':'Sample';
+  const value=name==='Monthly Gross Salary'?'30000':name==='Employee Code'?'EMP-TEST':name==='PAN No.'?'ABCDE1234F':name==='Aadhaar No.'||name.startsWith('Aadhaar Number')?'234500000000':control instanceof HTMLInputElement&&control.type==='date'?'2026-11-12':control instanceof HTMLInputElement&&control.type==='email'?'sample@example.test':control instanceof HTMLInputElement&&control.type==='tel'?'9876543211':'Sample';
   fireEvent.change(control,{target:{value}});
  }
  // The selected recommendation changed from Driver to Operator, so choose its posting.
