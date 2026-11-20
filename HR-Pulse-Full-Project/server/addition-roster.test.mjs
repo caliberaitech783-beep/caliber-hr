@@ -86,3 +86,10 @@ test('Copy link to forward: one person on a route gets a new link; the queued li
   assert.ok(writes.some(([sql])=>sql.includes("'ADDITION_BOT_FORWARD_LINK'")));
  }finally{for(const k of ['TELEGRAM_NAGPUR_BOT_TOKEN','TELEGRAM_NAGPUR_BOT_USERNAME'])if(env[k]===undefined)delete process.env[k];else process.env[k]=env[k];}
 });
+
+test('office HR Executives default to Mayuri Umate (Nagpur) and Monika Wadhai (Chandrapur) when none is saved',()=>{
+ const roster=additionRoster([]);
+ assert.deepEqual(roster.find(p=>p.actor==='mayuriumate')?.roles,['Office HR · Nagpur Office']);
+ assert.deepEqual(roster.find(p=>p.actor==='monikawadhai')?.roles,['Office HR · Chandrapur HO']);
+ assert.ok(!actors(additionRoster([{code:'CMLL-HO',status:'ACTIVE',data:{steps:[{label:'HR Executive',approvers:['otherhr']}]}}])).includes('monikawadhai'),'a saved HR Executive replaces the default');
+});
