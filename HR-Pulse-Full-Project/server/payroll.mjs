@@ -36,8 +36,8 @@ export function calculatePayroll(structure,inputs,month) {
 
 const scoped="kind='employees' AND ($1::text[] IS NULL OR data->>'siteId'=ANY($1))";
 export async function payroll(db,profile,method,params,input) {
-  const menus=[...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])];
-  if(!menus.some(x=>['Payroll Management','Employee Master'].includes(x))) throw fail('Payroll access required.',403);
+  const menus=profile.permissions.hrDesktopAccess||[];
+  if(!menus.includes('Payroll Management')) throw fail('Payroll Management is not assigned to your account.',403);
   const scope=await siteIds(db,profile);
   const employeeId=params.get('employee'), month=params.get('month');
   if(method==='GET'&&!employeeId) {

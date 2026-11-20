@@ -24,6 +24,18 @@ test('Administration can configure employee workflows without receiving unrelate
  assert.equal(canWrite(profile(['Administration']),'approvalRules'),true);
  assert.equal(canRead(profile(['Administration']),'companies'),false);
 });
+test('each desktop privilege is enforced independently',()=>{
+ const employee=profile(['Employee Master']);
+ assert.equal(canRead(employee,'calendarEvents'),false);
+ assert.equal(canRead(employee,'assets'),false);
+ assert.equal(canRead(employee,'jobPostings'),false);
+ assert.equal(canRead(profile(['Calendar']),'calendarEvents'),true);
+ assert.equal(canRead(profile(['Asset Management']),'assets'),true);
+ assert.equal(canRead(profile(['Recruitment Management']),'jobPostings'),true);
+ const mobileOnly={actor:'mobile-only',permissions:{application:'HR',hrMobileAccess:['Calendar','Asset Management']}};
+ assert.equal(canRead(mobileOnly,'calendarEvents'),false);
+ assert.equal(canRead(mobileOnly,'assets'),false);
+});
 test('validates real dates, whitelists fields and normalizes approver identities',()=>{
  assert.throws(()=>validate('holidays',{code:'H',name:'Holiday',date:'2026-02-30'}));
  assert.throws(()=>validate('leaveRequests',{code:'L',name:'Leave',employeeId:'x',policyId:'y',fromDate:'2026-12-02',toDate:'2026-12-01'}));

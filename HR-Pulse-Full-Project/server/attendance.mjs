@@ -77,7 +77,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
  const misAttendance=createMisAttendance(pool);
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
- const permit=profile=>{if(!grantedMenus(profile).has('Employee Master'))fail('Attendance Management is not assigned to your account',403);};
+ const permit=profile=>{if(!grantedMenus(profile).has('Attendance Management'))fail('Attendance Management is not assigned to your account',403);};
  const view=row=>row&&{id:row.id,state:row.state,punchesReceived:row.punches_received,newPunches:row.new_punches,error:row.error||'',requestedBy:row.requested_by,requestedAt:row.requested_at,completedAt:row.completed_at};
  const expire=db=>db.query(`UPDATE hr_attendance_fetch_requests SET state='FAILED',error=$1,completed_at=now() WHERE state IN ('PENDING','RUNNING') AND requested_at<now()-${STALE}`,[NO_BRIDGE]);
 

@@ -101,7 +101,7 @@ it('finds candidates saved under the original sign-in and current HR account key
 });
 
 it('shows employee and payroll submenus inside the sidebar',async()=>{
- const profile={name:'HR user',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
+ const profile={name:'HR user',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Employee Master','Attendance Management','Payroll Management','Asset Management','Calendar','Leave / OD / Gatepass']}};
  window.location.hash='Employee%20Master';
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
  vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({profile,modules:{}})));
@@ -154,6 +154,18 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  window.location.hash='';
 });
 
+it('shows only explicitly assigned desktop privileges',async()=>{
+ const profile={name:'Limited HR user',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Dashboard','Employee Master','Employee Directory','Reports & MIS','Administration & Settings'],hrMobileAccess:['Calendar','Asset Management','Approval Master']}};
+ window.location.hash='Employee%20Master';
+ sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
+ vi.stubGlobal('fetch',async()=>Response.json({profile,modules:{}}));
+ render(<App/>);
+ const sidebar=await screen.findByRole('complementary');
+ for(const name of ['Dashboard','Employee Master','Employee Directory','Reports & MIS','Administration & Settings'])expect(within(sidebar).getByRole('button',{name})).toBeTruthy();
+ for(const name of ['Attendance Management','Payroll Management','Asset Management','Calendar','Approval Master','Telegram Hierarchy','Recruitment Management'])expect(within(sidebar).queryByRole('button',{name})).toBeNull();
+ window.location.hash='';
+});
+
 it.each([true,false])('loads only the HR employee register when the configuration tab is permitted (%s)',async(hasEmployeeAccess)=>{
  const profile={name:'HR administrator',actor:'test',permissions:{application:'HR',hrDesktopAccess:hasEmployeeAccess?['Master Configuration','Employee Master']:['Master Configuration']}};
  window.location.hash='Master%20Configuration';
@@ -195,7 +207,7 @@ it.each([true,false])('loads only the HR employee register when the configuratio
 });
 
  it('opens the existing hierarchy setup screens from Approval Master',async()=>{
-  const profile={name:'HR administrator',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Master Configuration']}};
+  const profile={name:'HR administrator',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Approval Master']}};
   window.location.hash='Approval%20Master';
   sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
   const fetchMock=vi.fn(async(url:string)=>new Response(JSON.stringify(url.endsWith('validate')?{profile}:url.endsWith('config')?{profile,modules:{}}:url.endsWith('telegram/account')?{configured:false,connected:false}:url.endsWith('telegram/hierarchies')?{sites:[],accounts:[],employees:[],deliveries:[]}:url.endsWith('hierarchies')?{rows:[],canWrite:true}:{})));
@@ -250,7 +262,7 @@ it('returns to sign-in when the HR API rejects a saved session',async()=>{
 });
 
 it('places both settings sections around reports and opens their module chips',async()=>{
- const profile={name:'HR admin',actor:'admin',permissions:{application:'HR',hrDesktopAccess:['Master Configuration','Reports & MIS','Audit Logs','Others']}};
+ const profile={name:'HR admin',actor:'admin',permissions:{application:'HR',hrDesktopAccess:['Master Configuration','Compliance & Statutory','Reports & MIS','Audit Logs','Administration & Settings','Others']}};
  const register={title:'Audit register',menu:'Compliance & Statutory',fields:[],canWrite:true};
  const other = (category:string,title:string) => ({...register,menu:'Others',category,title});
  const modules={complianceAuditRegister:register,contractorManpower:other('Contractor Management','Contractor Wise Manpower'),

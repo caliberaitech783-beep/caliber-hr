@@ -10,7 +10,7 @@ type Props = HRConfig & {page:string; grant:string; notice:(message:string)=>voi
 
 export default function SettingsRegisters({page,grant,profile,modules,notice}:Props){
   const [choice,setChoice]=useState('');
-  const access=new Set([...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])]);
+  const access=new Set(profile.permissions.hrDesktopAccess||[]);
   const compliance=page==='Compliance & Statutory';
   const chips: [string,string,boolean][] = compliance
     ? Object.entries(modules).filter(([,module])=>module.menu===page).map(([kind,module])=>[kind,module.title,true])
@@ -20,7 +20,7 @@ export default function SettingsRegisters({page,grant,profile,modules,notice}:Pr
       ['departments','Department master',!!modules.departments],
       ['designations','Designation master',!!modules.designations],
       ['policy','Shift & leave policy',!!(modules.shifts||modules.leavePolicies)],
-      ['approvals','Approval hierarchy',['Employee Master','Master Configuration','Approval Management'].some(menu=>access.has(menu))],
+      ['approvals','Approval hierarchy',access.has('Approval Master')],
       ['roles','User & role management',true],
       ['access','Access permission',true],
       ['audit','Audit trail',access.has('Audit Logs')],

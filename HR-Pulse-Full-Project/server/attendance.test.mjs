@@ -7,7 +7,7 @@ import {createAttendance,keyMatches,validateUpload,validateRange,validateDevice,
 const KEY='k'.repeat(40);
 const device={serial:'JNP2260900233'};
 const punch={biometricId:'12',punchedAt:'2026-11-12 09:01:05',verify:'1',punchType:'0'};
-const hr={actor:'hr',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
+const hr={actor:'hr',permissions:{application:'HR',hrDesktopAccess:['Attendance Management']}};
 
 test('bridge key must be long and match exactly',()=>{
  assert.equal(keyMatches(KEY,KEY),true);
@@ -50,11 +50,12 @@ test('bridge routes fail closed without a configured key and never touch the dat
  await assert.rejects(createAttendance(pool,{bridgeKey:KEY}).attendanceBridge(undefined,'punches','POST',{device,punches:[punch]}),e=>e.status===401);
 });
 
-test('attendance pages need the Employee Master menu',async()=>{
+test('attendance pages need the exact Attendance Management menu',async()=>{
  const pool={query(){throw new Error('must not query');},connect(){throw new Error('must not connect');}};
  const service=createAttendance(pool,{bridgeKey:KEY});
  await assert.rejects(service.attendanceApi({actor:'x',permissions:{application:'HR',hrDesktopAccess:['Calendar']}},'punches','GET',{},new URLSearchParams()),e=>e.status===403);
  await assert.rejects(service.attendanceApi({actor:'x',permissions:{application:'HR'}},'fetch','POST',{},new URLSearchParams()),e=>e.status===403);
+ await assert.rejects(service.attendanceApi({actor:'x',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}},'punches','GET',{},new URLSearchParams()),e=>e.status===403);
 });
 
 test('API routes bridge calls by key and user calls by Pulse sign-in',async()=>{
@@ -95,7 +96,7 @@ function fakePool(handler){
  const query=async(sql,params)=>{calls.push([sql,params]);return handler(sql,params)||{rows:[],rowCount:0};};
  return {calls,query,connect:async()=>({query,release(){}})};
 }
-const admin={actor:'hr',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
+const admin={actor:'hr',permissions:{application:'HR',hrDesktopAccess:['Attendance Management','Employee Master']}};
 
 test('machine status lists every site with location, contact and today\'s logs',async()=>{
  const pool=fakePool(sql=>{
@@ -122,6 +123,6 @@ test('adding and editing a machine saves its location; site HR users cannot',asy
  await service.attendanceApi(admin,'devices','POST',{serial:'JNP1',siteId:SITE,name:'K90'});
  const update=pool.calls.find(([q])=>q.includes('UPDATE hr_attendance_devices'));
  assert.match(update[0],/location=coalesce\(\$4,location\)/);assert.equal(update[1][3],null);
- const siteHr={actor:'site',permissions:{application:'HR',hrDesktopAccess:['Employee Master'],site:'Amlohri'}};
+ const siteHr={actor:'site',permissions:{application:'HR',hrDesktopAccess:['Attendance Management','Employee Master'],site:'Amlohri'}};
  await assert.rejects(service.attendanceApi(siteHr,'devices/register','POST',{serial:'JNP2',siteId:SITE}),e=>e.status===403);
 });

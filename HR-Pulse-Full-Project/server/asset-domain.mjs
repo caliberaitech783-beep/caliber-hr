@@ -4,7 +4,6 @@ export function role(profile){
  const menus=grantedMenus(profile);const explicit=profile.permissions?.assetRole||profile.assignedRole||profile.role;
  if(['Admin','HR','Manager','Employee'].includes(explicit))return explicit;
  if(menus.has('Administration'))return 'Admin';
- if(menus.has('Employee Master')||menus.has('Master Configuration'))return 'HR';
  if(menus.has('Asset Management'))return 'Manager';
  return 'Employee';
 }

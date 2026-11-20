@@ -14,6 +14,6 @@ export default function SiteHRWorkspace({profile,session,logout}:{profile:Profil
  return <main className="site-hr-workspace" style={{padding:20}}>
   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}><strong>{profile.name}</strong><button onClick={logout}>Sign out</button></div>
   <TrialForm selection={selection} profile={profile} owner={owner} legacyOwner={legacyOwner}/>
-  {[...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])].includes('Approval Management')&&<AdditionApprovalPopup grant={session.grant} actor={profile.actor||''}/>}
+  {(profile.permissions.hrDesktopAccess||[]).includes('Approval Management')&&<AdditionApprovalPopup grant={session.grant} actor={profile.actor||''}/>}
  </main>;
 }

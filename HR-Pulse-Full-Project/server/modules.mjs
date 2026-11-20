@@ -52,25 +52,26 @@ modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
 modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared','Gazetted','Gazetted (General)','Paid (PH)']));
 modules.approvalRules.fields.find(f=>f.key==='target').options.push('leaveEncashments');
-export const menus = ['Calendar','Asset Management','Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management',...managementMenus,'Shift Management','Holiday & Leave','Compliance & Statutory','Reports & MIS','Administration','Administration & Settings','Audit Logs'];
-export function grantedMenus(profile) { return new Set([...(profile.permissions?.hrDesktopAccess || []),...(profile.permissions?.hrMobileAccess || [])].filter(x => menus.includes(x))); }
+export const menus = ['Calendar','Asset Management','Attendance Management','Payroll Management','Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management','Approval Master','Telegram Hierarchy',...managementMenus,'Shift Management','Holiday & Leave','Compliance & Statutory','Reports & MIS','Administration','Administration & Settings','Audit Logs'];
+// This is the desktop HR API. Mobile selections must not silently expand desktop access.
+export function grantedMenus(profile) { return new Set((profile.permissions?.hrDesktopAccess || []).filter(x => menus.includes(x))); }
 export function canRead(profile, kind) {
   const granted = grantedMenus(profile);
-  if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu)||granted.has('Employee Master');
-  if(kind==='calendarEvents')return ['Calendar','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
-  if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
+  if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu);
+  if(kind==='calendarEvents')return granted.has('Calendar');
+  if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return granted.has('Asset Management');
   if (kind === 'employees') return ['Employee Master','Employee Onboarding','Employee Directory','Reports & MIS'].some(x=>granted.has(x));
   if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;
-  return modules[kind] && (granted.has(modules[kind].menu) || granted.has('Master Configuration'));
+  return modules[kind] && granted.has(modules[kind].menu);
 }
 export function canWrite(profile, kind) {
   const granted = grantedMenus(profile);
-  if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu)||granted.has('Employee Master');
-  if(kind==='calendarEvents')return ['Calendar','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
-  if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
+  if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu);
+  if(kind==='calendarEvents')return granted.has('Calendar');
+  if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return granted.has('Asset Management');
   if (kind === 'employees') return granted.has('Employee Master') || granted.has('Employee Onboarding');
   if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;
-  return modules[kind] && (granted.has(modules[kind].menu) || granted.has('Master Configuration'));
+  return modules[kind] && granted.has(modules[kind].menu);
 }
 export function validate(kind, input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Object.assign(new Error('A record object is required'),{status:400});

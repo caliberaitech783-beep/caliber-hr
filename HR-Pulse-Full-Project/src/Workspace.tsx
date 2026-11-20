@@ -63,9 +63,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
     setTrialDraft(draft);
     setEmployeeMenu('Employee Management');
   }
-  const access=new Set([...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])]);const permitted=navItems.filter(([name])=>access.has(name)||
-    (name==='Administration & Settings'&&['Administration','Master Configuration','Audit Logs'].some(menu=>access.has(menu)))||
-    (name==='Compliance & Statutory'&&access.has('Master Configuration'))||(name==='Approval Master'&&['Master Configuration','Approval Management','Employee Master'].some(menu=>access.has(menu)))||(name==='Telegram Hierarchy'&&access.size>0)||((['Attendance Management','Payroll Management','Asset Management','Calendar'].includes(name)||isManagementSection(name))&&access.has('Employee Master')));
+  const access=new Set(profile.permissions.hrDesktopAccess||[]);const permitted=navItems.filter(([name])=>access.has(name));
   async function refreshConfig(){const started=performance.now();try{const value=await api<HRConfig>(session.grant,'config');setConfig(value.modules);setProfile(value.profile);setError('');setNotice(`Data loaded. Time taken: ${((performance.now()-started)/1000).toFixed(1)} sec.`);}catch(err){setError((err as Error).message);}}
   useEffect(()=>{const timer=setInterval(()=>void refreshConfig(),60000);return()=>clearInterval(timer);},[session.grant]);
   useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),5000);return()=>clearTimeout(timer);},[notice]);
