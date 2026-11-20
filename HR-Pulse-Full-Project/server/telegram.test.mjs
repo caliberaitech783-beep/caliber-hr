@@ -68,6 +68,13 @@ test('the approval endpoint rejects Director review while PM is still pending',a
   reviewer:'director',approved:true,site:'Jayant OB East',region:'NCL',rows:[{formNo:'TF/2026-27/0001',fields:{Result:'PASS'},history:[{role:'director',action:'Approved'}]}],
  }),{status:409});
 });
+test('web approval keeps the authenticated Pulse PM role and site assignment',async()=>{
+ const stored={id:'trial',data:{site:'Dudhichua OB East',fields:{Result:'PASS','Name of candidate':'Candidate'},history:[],attachments:[]}};
+ const db={release(){},async query(sql){if(sql.includes("SELECT id,data FROM hr_records WHERE kind='trialForms'"))return {rows:[stored]};return {rows:[],rowCount:1};}};
+ const profile={actor:'sanskarmanoHare'.toLowerCase(),name:'Sanskar Manohare',permissions:{hrDesktopAccess:['Employee Master'],hrAccountStatus:'Active',hrTrialAssignments:[{role:'PM',allSites:false,sites:[{code:'NCL-DUDE',name:'Dudhichua East OC'}]}]}};
+ const out=await createTelegram({query:db.query,connect:async()=>db}).telegramApi(profile,'trial-approval','POST',{reviewer:'pm',approved:true,site:'Dudhichua OB East',region:'NCL',rows:[{formNo:'TF/2026-27/0010',fields:{Result:'PASS'}}]});
+ assert.equal(out.saved,true);assert.equal(out.stage,'ohr');
+});
 test('shared review queue is site-scoped and omits uploaded file payloads',async()=>{
  let query,args;
  const pool={query:async(sql,values)=>{if(sql.includes("kind='joiningHierarchies'"))return {rows:[assignedHierarchy('pm')]};query=sql;args=values;return {rows:[{id:'trial-id',data:{formNo:'TF/1',history:[],fields:{Result:'PASS'},pendingRole:'pm',attachments:[{data:'private-file'}]}}]};}};
