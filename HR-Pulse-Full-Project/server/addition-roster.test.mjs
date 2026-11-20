@@ -51,3 +51,22 @@ test('Send connect links: skips the connected, sends through a bot they use, ret
   assert.ok(writes.some(([sql])=>sql.includes("'SEND_ADDITION_BOT_LINKS'")));
  }finally{for(const k of ['TELEGRAM_NAGPUR_BOT_TOKEN','TELEGRAM_NAGPUR_BOT_USERNAME','TELEGRAM_NAGPUR_RECIPIENTS'])if(env[k]===undefined)delete process.env[k];else process.env[k]=env[k];}
 });
+
+test('Link delivery: delivered, waiting with reason, failed, and a link handed out to forward',async()=>{
+ const query=async sql=>{
+  if(sql.includes("kind='joiningHierarchies'"))return {rows:[site('NCL-DUDE')]};
+  if(sql.startsWith('SELECT actor,leave_connected'))return {rows:[]};
+  if(sql.includes("event_key LIKE 'nagpur-invite:%'"))return {rows:[
+   {actor:'vinodpinjarkar',bot:'leave',state:'SENT',last_error:null,sent_at:'2026-11-20T08:00:00Z',created_at:'2026-11-20T07:59:00Z'},
+   {actor:'mohitchadda',bot:'leave',state:'PENDING',last_error:'Recipient must open @LeaveRequestt_Bot and tap Start',sent_at:null,created_at:'2026-11-20T07:59:00Z'},
+   {actor:'manishchadda',bot:'joining',state:'FAILED',last_error:'Delivery failed; recipient may have blocked the bot',sent_at:null,created_at:'2026-11-20T07:59:00Z'}]};
+  if(sql.includes('FROM hr_telegram_link_tokens'))return {rows:[{actor:'ncl-dude-1',expires_at:'2099-01-01T00:00:00Z'},{actor:'ncl-dude-2',expires_at:'2000-01-01T00:00:00Z'},{actor:'vinodpinjarkar',expires_at:'2099-01-01T00:00:00Z'}]};
+  return {rows:[]};};
+ const out=await createTelegram({query,connect:async()=>({query,release(){}})}).telegramApi({actor:'admin',permissions:{hrDesktopAccess:['Approval Management']}},'addition-links','GET',{});
+ const d=a=>out.people.find(p=>p.actor===a).delivery;
+ assert.deepEqual({state:d('vinodpinjarkar').state,bot:d('vinodpinjarkar').bot},{state:'DELIVERED',bot:'leave'},'a sent message wins over the open link');
+ assert.equal(d('mohitchadda').state,'WAITING');assert.match(d('mohitchadda').error,/tap Start/);
+ assert.equal(d('manishchadda').state,'FAILED');
+ assert.equal(d('ncl-dude-1').state,'FORWARD');assert.equal(d('ncl-dude-2').state,'EXPIRED');
+ assert.equal(d('rahulchadda'),null);
+});
