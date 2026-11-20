@@ -17,7 +17,7 @@ export const hierarchyTemplates=[
  wclSite('WCL-GAURI','Gauri Pauni OB'),
  wclSite('WCL-MAJRI','Majri OB'),
  wclSite('WCL-LALPETH','Hindustan Lalpeth OC'),
- {code:'CMLL-HO',name:'Chandrapur HO',group:'Chandrapur HO',steps:[step(1,'HR Executive','To be confirmed'),step(1,'HR Manager','To be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]},
+ {code:'CMLL-HO',name:'Chandrapur HO',group:'Chandrapur HO',steps:[step(1,'HR Executive','To be confirmed'),step(1,'HR Manager','Virat Singh'),step(2,'Final approval — any one','CMD / Director / VP')]},
  {code:'CMLL-CO',name:'Nagpur Office',group:corporateOffice,steps:[step(1,'HR Executive','Mayuri Umate'),step(1,'HR Manager','Vinod Pinjarkar'),step(2,'Final approval — any one','Mohit Chadda / Manish Chadda / Rahul Chadda / Honey Sir — CMD / Director / VP')]}
 ];
 export const currentHierarchy=data=>data?.code==='NCL-JAYANT'&&data.steps?.[0]?.label==='HR Executive'?{...data,steps:data.steps.slice(1)}:data?.code==='CMLL-CO'&&data.steps?.some(s=>s.label==='HOD')?{...data,steps:data.steps.filter(s=>s.label!=='HOD')}:data;

@@ -1,14 +1,14 @@
 /* Office staff joining route (HO Chandrapur and Regional Office Nagpur), set by the owner on 20 Nov 2026:
    office HR initiates → that office's HR Manager → Directors (any one, final) → employee becomes Active.
    - Nagpur office (CMLL-CO): Nagpur HR initiates, the Nagpur HR Manager approves.
-   - Chandrapur HO (CMLL-HO): Chandrapur HR initiates, the Chandrapur HR Manager approves.
+   - Chandrapur HO (CMLL-HO): Chandrapur HR initiates, the Chandrapur HR Manager (Virat Singh) approves.
    Who is office HR and who is HR Manager comes from Approval Master › Hierarchy for that office
    ("HR Executive" = the office HR who may initiate, "HR Manager" = the approver). The Directors are fixed,
    the same three as for site staff. Every step is sent on the Nagpur Employee Addition bot with
    Approve / Reject buttons (employee-addition-bot.mjs). */
 export const OFFICE_SITES={
  'CMLL-CO':{office:'Nagpur Office',defaultHrManager:['vinodpinjarkar']},
- 'CMLL-HO':{office:'Chandrapur HO',defaultHrManager:[]},
+ 'CMLL-HO':{office:'Chandrapur HO',defaultHrManager:['viratsingh']},   /* Virat Singh (employee 18114), owner 20 Nov 2026 */
 };
 export const OFFICE_DIRECTORS=['mohitchadda','manishchadda','rahulchadda'];
 export const officeHrManagerLabel=office=>`HR Manager — ${office}`;
