@@ -30,7 +30,7 @@ it.each([0,2])('exports the visible allocation columns with %i records',async co
   expect(rows[1].Name).toBe('Allocation 2');
   expect(rows[0]['Last updated']).toBe(new Date('2026-11-20T10:00:00Z').toLocaleString('en-IN'));
  }
- fireEvent.click(screen.getByRole('button',{name:'Import CSV'}));
+ fireEvent.click(screen.getByRole('button',{name:'Import CSV / Excel'}));
  fireEvent.click(screen.getByRole('button',{name:'Download template'}));
  expect(vi.mocked(download).mock.calls[1][1]).toBe('\uFEFF'+fields.map(field=>'"'+field.key+'"').join(','));
 });
