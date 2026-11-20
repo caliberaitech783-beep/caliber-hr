@@ -28,8 +28,8 @@ export function officeStaffSteps(code,data,requester){
  if(officeHr.length&&!officeHr.includes(actor)&&!hrManager.includes(actor))fail(`Office staff joining forms for ${site.office} are initiated by ${site.office} HR (${officeHr.join(', ')}).`,403);
  const directors=users([...OFFICE_DIRECTORS,...approversOf(data,OFFICE_DIRECTORS_LABEL)]);
  const steps=[
-  {stage:1,label:officeHrManagerLabel(site.office),approvers:hrManager.filter(a=>a!==actor)},
-  {stage:2,label:OFFICE_DIRECTORS_LABEL,approvers:directors.filter(a=>a!==actor)},
+  {stage:1,label:officeHrManagerLabel(site.office),approvers:hrManager.filter(a=>a!==actor),office:site.office},
+  {stage:2,label:OFFICE_DIRECTORS_LABEL,approvers:directors.filter(a=>a!==actor),office:site.office},
  ];
  /* When the HR Manager initiates, their step is the initiation: the form goes straight to the Directors. */
  return steps.filter(step=>step.approvers.length);

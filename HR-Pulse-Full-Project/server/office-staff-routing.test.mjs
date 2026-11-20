@@ -48,3 +48,13 @@ test('officeStaffHierarchy applies only to the two offices',async()=>{
  assert.equal(route.code,'CMLL-CO');
  assert.deepEqual(route.data.steps.map(s=>s.approvers[0]),['nmgr','mohitchadda']);
 });
+
+test('a rejected office form goes back to that office HR; site forms still go back to Site HR',async()=>{
+ const {additionDecisionMessage}=await import('./employee-addition-bot.mjs');
+ const record={code:'EMP-1',name:'New Joiner',data:{}};
+ const reject=steps=>additionDecisionMessage({record,siteName:'x',state:'REJECTED',actor:'vinodpinjarkar',comments:'Wrong photo',decidedAt:'now',steps});
+ assert.match(reject(officeStaffSteps('CMLL-CO',null,'nagpurhr')),/goes back to Nagpur Office HR for correction/);
+ assert.match(reject(officeStaffSteps('CMLL-HO',saved([],['chpmanager']),'chphr')),/goes back to Chandrapur HO HR for correction/);
+ assert.match(reject([{stage:1,label:'Project Manager',approvers:['pm']}]),/goes back to Site HR for correction/);
+ assert.match(reject(undefined),/goes back to Site HR/);
+});
