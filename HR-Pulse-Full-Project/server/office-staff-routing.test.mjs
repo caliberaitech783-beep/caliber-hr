@@ -18,7 +18,7 @@ test('Nagpur office: Nagpur HR initiates → Nagpur HR Manager → Directors (fi
 test('Chandrapur HO uses its own HR Manager, Virat Singh when none is saved',()=>{
  const steps=officeStaffSteps('CMLL-HO',saved(['chphr'],['chpmanager']),'chphr');
  assert.deepEqual(steps.map(s=>[s.label,s.approvers]),[['HR Manager — Chandrapur HO',['chpmanager']],['Final approval — any one',OFFICE_DIRECTORS]]);
- assert.deepEqual(officeStaffSteps('CMLL-HO',null,'chphr')[0].approvers,['viratsingh']);
+ assert.deepEqual(officeStaffSteps('CMLL-HO',null,'monikawadhai')[0].approvers,['viratsingh']);
 });
 
 test('Nagpur falls back to Vinod Pinjarkar when no HR Manager is saved',()=>{
@@ -54,7 +54,15 @@ test('a rejected office form goes back to that office HR; site forms still go ba
  const record={code:'EMP-1',name:'New Joiner',data:{}};
  const reject=steps=>additionDecisionMessage({record,siteName:'x',state:'REJECTED',actor:'vinodpinjarkar',comments:'Wrong photo',decidedAt:'now',steps});
  assert.match(reject(officeStaffSteps('CMLL-CO',null,'nagpurhr')),/goes back to Nagpur Office HR for correction/);
- assert.match(reject(officeStaffSteps('CMLL-HO',saved([],['chpmanager']),'chphr')),/goes back to Chandrapur HO HR for correction/);
+ assert.match(reject(officeStaffSteps('CMLL-HO',saved([],['chpmanager']),'monikawadhai')),/goes back to Chandrapur HO HR for correction/);
  assert.match(reject([{stage:1,label:'Project Manager',approvers:['pm']}]),/goes back to Site HR for correction/);
  assert.match(reject(undefined),/goes back to Site HR/);
+});
+
+test('Chandrapur HO: Monika Wadhai initiates by default, others are refused, a saved HR Executive overrides',()=>{
+ assert.deepEqual(officeStaffSteps('CMLL-HO',null,'monikawadhai').map(s=>s.approvers[0]),['viratsingh','mohitchadda']);
+ assert.ok(officeStaffSteps('CMLL-HO',null,'viratsingh'));
+ assert.throws(()=>officeStaffSteps('CMLL-HO',null,'someoneelse'),e=>e.status===403&&/monikawadhai/.test(e.message));
+ assert.ok(officeStaffSteps('CMLL-HO',saved(['otherhr'],[]),'otherhr'));
+ assert.throws(()=>officeStaffSteps('CMLL-HO',saved(['otherhr'],[]),'monikawadhai'),e=>e.status===403);
 });

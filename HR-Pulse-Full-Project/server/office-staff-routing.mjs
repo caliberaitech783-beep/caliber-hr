@@ -8,7 +8,7 @@
    Approve / Reject buttons (employee-addition-bot.mjs). */
 export const OFFICE_SITES={
  'CMLL-CO':{office:'Nagpur Office',defaultHrManager:['vinodpinjarkar']},
- 'CMLL-HO':{office:'Chandrapur HO',defaultHrManager:['viratsingh']},   /* Virat Singh (employee 18114), owner 20 Nov 2026 */
+ 'CMLL-HO':{office:'Chandrapur HO',defaultHrManager:['viratsingh'],defaultOfficeHr:['monikawadhai']},   /* HR Manager Virat Singh (18114), HR Executive Monika Wadhai (CMPL12730), owner 20 Nov 2026 */
 };
 export const OFFICE_DIRECTORS=['mohitchadda','manishchadda','rahulchadda'];
 export const officeHrManagerLabel=office=>`HR Manager — ${office}`;
@@ -21,7 +21,8 @@ export const isOfficeSite=code=>Object.hasOwn(OFFICE_SITES,code||'');
 export function officeStaffSteps(code,data,requester){
  const site=OFFICE_SITES[code];if(!site)return null;
  const actor=String(requester||'').trim().toLowerCase();
- const officeHr=approversOf(data,'HR Executive');
+ const savedOfficeHr=approversOf(data,'HR Executive');
+ const officeHr=savedOfficeHr.length?savedOfficeHr:site.defaultOfficeHr||[];
  const managers=approversOf(data,'HR Manager');
  const hrManager=managers.length?managers:site.defaultHrManager;
  if(!hrManager.length)fail(`Assign the ${site.office} HR Manager in Approval Master › Hierarchy before submitting`);
