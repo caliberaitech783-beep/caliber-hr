@@ -24,6 +24,14 @@ export default function AdditionBotLinks({grant}:{grant:string}){
  async function load(){setError('');try{setData(await api<Roster>(grant,'telegram/addition-links'));setSent(false);}catch(e){setError((e as Error).message);}}
  useEffect(()=>{void load();},[grant]);
  async function send(){setBusy(true);setError('');try{setData(await api<Roster>(grant,'telegram/addition-links','POST',{}));setSent(true);setConfirming(false);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+ const[forward,setForward]=useState<Record<string,{url:string;message:string;copied:boolean}>>({}),[making,setMaking]=useState('');
+ /* Waiting / Failed / Expired: a fresh personal link for this one person, copied with a short note, to send on WhatsApp. */
+ async function forwardLink(p:Person){setMaking(p.actor);setError('');
+  try{const r=await api<{url:string;message:string}>(grant,'telegram/addition-link','POST',{actor:p.actor});
+   let copiedOk=false;try{await navigator.clipboard.writeText(r.message);copiedOk=true;}catch{/* show the link to copy by hand */}
+   setForward(f=>({...f,[p.actor]:{url:r.url,message:r.message,copied:copiedOk}}));}
+  catch(e){setError((e as Error).message);}finally{setMaking('');}}
+ const needsForward=(p:Person)=>!p.connected&&!!p.delivery&&['WAITING','FAILED','EXPIRED','FORWARD'].includes(p.delivery.state);
  async function copy(p:Person){if(!p.url)return;try{await navigator.clipboard.writeText(p.url);setCopied(p.actor);}catch{setError('Copy failed – select the link and copy it by hand.');}}
  const people=data?.people||[],waiting=people.filter(p=>!p.connected),reachable=waiting.filter(p=>p.via);
  return <section className="data-card" aria-label="Employee Addition bot">
@@ -39,6 +47,6 @@ export default function AdditionBotLinks({grant}:{grant:string}){
   {data&&!waiting.length&&<p>Everyone on the routes is connected.</p>}
   {data&&<div className="table-scroll" role="region" aria-label="People on the employee addition routes" tabIndex={0}><table><thead><tr><th scope="col">Pulse login</th><th scope="col">Role</th><th scope="col">Nagpur bot</th><th scope="col">{sent?'Result':'Can reach on'}</th>{!sent&&<th scope="col">Link delivery</th>}</tr></thead>
    <tbody>{people.map(p=><tr key={p.actor}><td>{p.actor}</td><td>{p.roles.join('; ')}</td><td>{p.connected?'✅ Connected':'Not yet'}</td>
-    <td>{sent?<>{p.status}{p.url&&<> <input readOnly aria-label={`Connect link for ${p.actor}`} value={p.url} onFocus={e=>e.currentTarget.select()} style={{width:'14em'}}/> <button onClick={()=>void copy(p)}>{copied===p.actor?'Copied':'Copy link'}</button></>}</>:p.connected?'—':botName(p.via)||'No HR bot'}</td>{!sent&&<td>{deliveryText(p.delivery,botName)}</td>}</tr>)}</tbody></table></div>}
+    <td>{sent?<>{p.status}{p.url&&<> <input readOnly aria-label={`Connect link for ${p.actor}`} value={p.url} onFocus={e=>e.currentTarget.select()} style={{width:'14em'}}/> <button onClick={()=>void copy(p)}>{copied===p.actor?'Copied':'Copy link'}</button></>}</>:p.connected?'—':botName(p.via)||'No HR bot'}</td>{!sent&&<td>{deliveryText(p.delivery,botName)}{needsForward(p)&&<div className="addition-forward">{forward[p.actor]?<><input readOnly aria-label={`Forward link for ${p.actor}`} value={forward[p.actor].url} onFocus={e=>e.currentTarget.select()} style={{width:'14em'}}/> <span role="status">{forward[p.actor].copied?'Copied with a note – paste it on WhatsApp':'Select the link and copy it'}</span></>:<button disabled={making===p.actor} onClick={()=>void forwardLink(p)}>{making===p.actor?'Making link…':'Copy link to forward'}</button>}</div>}</td>}</tr>)}</tbody></table></div>}
  </section>;
 }
