@@ -110,7 +110,7 @@ test('policy settings: defaults, validation and version check', async () => {
 test('only an unrestricted HR administrator can change the policy', async () => {
   const pool = {async query() { return {rows: []}; }, connect() { throw new Error('must not write'); }};
   const service = createAttendance(pool, {bridgeKey: 'k'.repeat(40)});
-  const siteHr = {actor: 'site', permissions: {application: 'HR', site: 'Nagpur', hrDesktopAccess: ['Employee Master']}};
+  const siteHr = {actor: 'site', permissions: {application: 'HR', site: 'Nagpur', hrDesktopAccess: ['Attendance Management']}};
   await assert.rejects(service.attendanceApi(siteHr, 'policy', 'POST', {version: 0, policy: DEFAULT_POLICY}, new URLSearchParams()), e => e.status === 403);
   const view = await service.attendanceApi(siteHr, 'policy', 'GET', {}, new URLSearchParams());
   assert.equal(view.policy.graceMinutes, 15);
