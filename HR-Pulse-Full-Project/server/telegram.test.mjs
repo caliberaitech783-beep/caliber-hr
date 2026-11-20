@@ -34,6 +34,17 @@ test('trial reviews cannot skip PM, Office HR, Regional HR or Director',()=>{
  assert.equal(trialReviewStage(approvals.filter(h=>h.role!=='ohr')),'ohr');
  assert.equal(trialReviewStage(approvals,'2026-11-19T13:00:00Z'),'pm');
 });
+test('Pulse User Master Trial role-site assignments drive workflow authority',async()=>{
+ const db={query:async()=>assert.fail('Pulse assignments must not depend on the legacy hierarchy')};
+ const assignment=(role,site='WCL-SASTI')=>({role,allSites:false,sites:[{code:site,name:'Sasti OC',region:'WCL'}]});
+ for(const [role,workflowRole] of Object.entries({PM:'pm','HR Manager':'hr','Driver Trainer':'trainer','Office HR':'ohr','Regional HR':'rhr',Director:'director'})){
+  const profile={actor:'pulse-user',permissions:{hrAccountStatus:'Active',hrTrialAssignments:[assignment(role)],hrDesktopAccess:['Employee Master']}};
+  assert.deepEqual(await trialAccess(db,profile,{site:'Sasti OB'}),{roles:[workflowRole],overview:false});
+  assert.deepEqual(await trialAccess(db,profile,{site:'Jayant OB East'}),{roles:[],overview:false});
+ }
+ assert.deepEqual(await trialAccess(db,{actor:'admin',permissions:{hrAccountStatus:'Active',hrTrialAssignments:[{role:'Trial Admin',allSites:true,sites:[]}]}},{site:'Jayant OB East'}),{roles:[],overview:true});
+ assert.deepEqual(await trialAccess(db,{actor:'inactive',permissions:{hrAccountStatus:'Inactive',hrTrialAssignments:[assignment('PM')]}},{site:'Sasti OB'}),{roles:[],overview:false});
+});
 test('only the assigned current-stage user sees a review queue; admin sees a read-only overview',async()=>{
  const records=[{id:'pm',data:{site:'Jayant OB East',pendingRole:'pm',stage:'RESULT'}},{id:'office',data:{site:'Jayant OB East',pendingRole:'ohr',stage:'APPROVAL'}},{id:'trainer',data:{site:'Jayant OB East',stage:'PART1'}}];
  const pool={query:async sql=>sql.includes("kind='joiningHierarchies'")?{rows:[{code:'NCL-JAYANT',data:{group:'NCL',steps:[{label:'Project Manager',approvers:['pm']}]}}]}:{rows:records}};

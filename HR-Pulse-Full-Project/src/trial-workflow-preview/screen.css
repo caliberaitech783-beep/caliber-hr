@@ -184,3 +184,21 @@ button:disabled{opacity:.5;cursor:not-allowed}
 /* Fields filled from the Aadhaar scan are locked */
 .row input[data-aadhaar-locked]{background:#f3f4f6;color:#374151;border-bottom-style:solid;cursor:not-allowed}
 .row input[data-driving-licence-locked]{background:#d1d5db;color:#1f2937;border-bottom-style:solid;cursor:not-allowed}
+
+/* Approval route (owner, 20 Nov 2026) and the "waiting for your approval" popup */
+.route{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch}
+.route li{display:grid;gap:1px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12px;min-width:0;position:relative}
+.route li:not(:last-child)::after{content:'→';position:absolute;right:-11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:11px}
+.route li{margin-right:6px}
+.route b{font-size:12px}
+.route span{color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.route .n{justify-self:start;font-size:10px;font-weight:700;border-radius:999px;padding:0 6px;background:#fef3c7;color:#92400e}
+.route li.me{border-color:#7c3aed;box-shadow:0 0 0 1px #7c3aed}
+.route li.end{background:#ecfdf5;border-color:#a7f3d0}
+.pending-box{width:min(440px,100%)!important;text-align:center;justify-items:center;margin-top:12vh}
+.pending-bell{font-size:34px}
+.pending-box h2{margin:0}
+.pending-box ul{list-style:none;margin:0;padding:0;display:grid;gap:6px;width:100%}
+.pending-box li{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px}
+.pending-box li b{color:#7c3aed}
+.pending-box .actions{justify-content:center}
