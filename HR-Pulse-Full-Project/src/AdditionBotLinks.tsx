@@ -4,8 +4,19 @@ import {api} from './api';
 /* Approval Master › Employee Addition bot (owner, 20 Nov 2026): everyone on the employee addition routes, whether they
    have connected @NagpurEmployeeAdditionBot, and one button that sends each unconnected person their personal connect
    link through an HR bot they already use. People on no HR bot get a link to forward (WhatsApp, for example). */
-type Person={actor:string;roles:string[];connected:boolean;via:string;status?:string;url?:string};
+type Delivery={state:'DELIVERED'|'WAITING'|'FAILED'|'FORWARD'|'EXPIRED';bot:string;at:string;error:string}|null;
+type Person={actor:string;roles:string[];connected:boolean;via:string;status?:string;url?:string;delivery?:Delivery};
 type Roster={people:Person[];botUsername:string;configured?:boolean};
+const when=(at:string)=>at?new Intl.DateTimeFormat('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}).format(new Date(at)):'';
+/* Link delivery column: what happened to the last connect link (from the Telegram outbox). */
+export function deliveryText(d:Delivery|undefined,botLabel:(via:string)=>string){
+ if(!d)return 'No link sent';
+ if(d.state==='DELIVERED')return `✅ Delivered on ${botLabel(d.bot)} · ${when(d.at)}`;
+ if(d.state==='WAITING')return `⏳ Waiting on ${botLabel(d.bot)}${d.error?` – ${d.error}`:''}`;
+ if(d.state==='FAILED')return `❌ Failed on ${botLabel(d.bot)}${d.error?` – ${d.error}`:''}`;
+ if(d.state==='FORWARD')return `🔗 Link given to forward · valid till ${when(d.at)}`;
+ return '⌛ Forwarded link expired – send again';
+}
 const botName=(via:string)=>via==='leave'?'Leave bot':via==='joining'?'Joining Approval bot':via==='trial'?'Vehicle Trial bot':'';
 
 export default function AdditionBotLinks({grant}:{grant:string}){
@@ -21,13 +32,13 @@ export default function AdditionBotLinks({grant}:{grant:string}){
    <button disabled={busy} onClick={()=>void load()}>Refresh</button></div>
   {error&&<p className="error" role="alert">{error}</p>}
   {data&&!sent&&<p role="status"><b>{people.length-waiting.length}</b> of {people.length} connected · <b>{reachable.length}</b> can be sent a link on Telegram · <b>{waiting.length-reachable.length}</b> are on no HR bot (you get their link to forward).</p>}
-  {sent&&<p role="status">Links sent. Telegram delivers them within a minute; people on no HR bot are listed with a link to forward.</p>}
+  {sent&&<p role="status">Links sent. Telegram delivers them within a minute; people on no HR bot are listed with a link to forward. Press Refresh to see the Link delivery column.</p>}
   {data&&!sent&&waiting.length>0&&(confirming
    ?<p className="addition-confirm">Send a connect link to {waiting.length} {waiting.length===1?'person':'people'} ({reachable.length} on Telegram, {waiting.length-reachable.length} to forward)? <button className="primary" disabled={busy} onClick={()=>void send()}>{busy?'Sending…':'Yes, send'}</button> <button disabled={busy} onClick={()=>setConfirming(false)}>Cancel</button></p>
    :<button className="primary" disabled={busy||data.configured===false} onClick={()=>setConfirming(true)}>Send connect links ({waiting.length})</button>)}
   {data&&!waiting.length&&<p>Everyone on the routes is connected.</p>}
-  {data&&<div className="table-scroll" role="region" aria-label="People on the employee addition routes" tabIndex={0}><table><thead><tr><th scope="col">Pulse login</th><th scope="col">Role</th><th scope="col">Nagpur bot</th><th scope="col">{sent?'Result':'Can reach on'}</th></tr></thead>
+  {data&&<div className="table-scroll" role="region" aria-label="People on the employee addition routes" tabIndex={0}><table><thead><tr><th scope="col">Pulse login</th><th scope="col">Role</th><th scope="col">Nagpur bot</th><th scope="col">{sent?'Result':'Can reach on'}</th>{!sent&&<th scope="col">Link delivery</th>}</tr></thead>
    <tbody>{people.map(p=><tr key={p.actor}><td>{p.actor}</td><td>{p.roles.join('; ')}</td><td>{p.connected?'✅ Connected':'Not yet'}</td>
-    <td>{sent?<>{p.status}{p.url&&<> <input readOnly aria-label={`Connect link for ${p.actor}`} value={p.url} onFocus={e=>e.currentTarget.select()} style={{width:'14em'}}/> <button onClick={()=>void copy(p)}>{copied===p.actor?'Copied':'Copy link'}</button></>}</>:p.connected?'—':botName(p.via)||'No HR bot'}</td></tr>)}</tbody></table></div>}
+    <td>{sent?<>{p.status}{p.url&&<> <input readOnly aria-label={`Connect link for ${p.actor}`} value={p.url} onFocus={e=>e.currentTarget.select()} style={{width:'14em'}}/> <button onClick={()=>void copy(p)}>{copied===p.actor?'Copied':'Copy link'}</button></>}</>:p.connected?'—':botName(p.via)||'No HR bot'}</td>{!sent&&<td>{deliveryText(p.delivery,botName)}</td>}</tr>)}</tbody></table></div>}
  </section>;
 }

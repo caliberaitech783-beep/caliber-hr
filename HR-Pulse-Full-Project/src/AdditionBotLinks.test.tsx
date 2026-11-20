@@ -16,3 +16,17 @@ it('shows who is connected, asks once, then lists the results with links to forw
  expect(await screen.findByText('sent on HR Pulse leave bot')).toBeTruthy();
  expect((screen.getByLabelText('Connect link for pm1') as HTMLInputElement).value).toBe('https://t.me/NagpurEmployeeAdditionBot?start=abc');
 });
+
+it('Link delivery column says what happened to each link',async()=>{
+ const {deliveryText}=await import('./AdditionBotLinks');
+ const name=(v:string)=>v==='leave'?'Leave bot':v;
+ expect(deliveryText({state:'DELIVERED',bot:'leave',at:'2026-11-20T08:00:00Z',error:''},name)).toMatch(/^✅ Delivered on Leave bot · 20 Nov/);
+ expect(deliveryText({state:'WAITING',bot:'leave',at:'',error:'Recipient has not connected Telegram'},name)).toBe('⏳ Waiting on Leave bot – Recipient has not connected Telegram');
+ expect(deliveryText({state:'FAILED',bot:'leave',at:'',error:'blocked'},name)).toBe('❌ Failed on Leave bot – blocked');
+ expect(deliveryText({state:'FORWARD',bot:'',at:'2026-11-27T08:00:00Z',error:''},name)).toMatch(/^🔗 Link given to forward · valid till 27 Nov/);
+ expect(deliveryText(null,name)).toBe('No link sent');
+ vi.mocked(api).mockResolvedValue({botUsername:'b',configured:true,people:[{actor:'vinodpinjarkar',roles:['Regional HR'],connected:false,via:'leave',delivery:{state:'FAILED',bot:'leave',at:'',error:'blocked'}}]});
+ render(<AdditionBotLinks grant="g"/>);
+ expect(await screen.findByText('❌ Failed on Leave bot – blocked')).toBeTruthy();
+ expect(screen.getByRole('columnheader',{name:'Link delivery'})).toBeTruthy();
+});
