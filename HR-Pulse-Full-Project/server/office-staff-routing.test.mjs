@@ -15,10 +15,10 @@ test('Nagpur office: Nagpur HR initiates → Nagpur HR Manager → Directors (fi
  a.stage=1;for(const director of OFFICE_DIRECTORS)assert.equal(nextApproval(a,director,'APPROVED').state,'APPROVED');
 });
 
-test('Chandrapur HO uses its own HR Manager and must have one assigned',()=>{
+test('Chandrapur HO uses its own HR Manager, Virat Singh when none is saved',()=>{
  const steps=officeStaffSteps('CMLL-HO',saved(['chphr'],['chpmanager']),'chphr');
  assert.deepEqual(steps.map(s=>[s.label,s.approvers]),[['HR Manager — Chandrapur HO',['chpmanager']],['Final approval — any one',OFFICE_DIRECTORS]]);
- assert.throws(()=>officeStaffSteps('CMLL-HO',null,'chphr'),e=>e.status===409&&/Chandrapur HO HR Manager/.test(e.message));
+ assert.deepEqual(officeStaffSteps('CMLL-HO',null,'chphr')[0].approvers,['viratsingh']);
 });
 
 test('Nagpur falls back to Vinod Pinjarkar when no HR Manager is saved',()=>{
