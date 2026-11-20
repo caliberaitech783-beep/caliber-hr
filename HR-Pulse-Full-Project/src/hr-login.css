@@ -163,8 +163,3 @@
   align-items: start;
   background: transparent;
 }
-
-.hr-login .hr-login-form .error { margin: 0 0 18px; padding: 12px 15px; border: 1px solid #f2c8d1; border-radius: 8px; background: #fff0f1; color: #a82d46; font-size: 13px; line-height: 1.5; }
-.hr-login[data-theme="night"] .hr-login-form .error { border-color: #7a3448; background: #3a1d27; color: #ffc2cf; }
-.hr-login .hr-login-back { display: block; margin-top: 18px; text-align: center; color: var(--login-accent); font-weight: 600; text-decoration: none; }
-.hr-login .hr-login-back:hover, .hr-login .hr-login-back:focus-visible { text-decoration: underline; }

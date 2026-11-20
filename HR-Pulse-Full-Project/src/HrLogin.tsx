@@ -14,7 +14,7 @@ const standalonePortals = [
 
 const portals = inPulseII ? standalonePortals.filter(portal => portal.name === 'MIS') : standalonePortals;
 
-export default function HrLogin({onLogin, preload, embedded, notice}: {onLogin: (session: Session) => void; preload: () => Promise<unknown>; embedded: boolean; notice?: string}) {
+export default function HrLogin({onLogin, preload, embedded}: {onLogin: (session: Session) => void; preload: () => Promise<unknown>; embedded: boolean}) {
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -66,7 +66,6 @@ export default function HrLogin({onLogin, preload, embedded, notice}: {onLogin: 
         <h2 id="hr-sign-in-heading">HR sign in</h2>
         <p className="muted">Use your existing Caliber Pulse username and password.</p>
         <div className="hr-login-access"><ShieldCheck aria-hidden="true"/>Your administrator assigns HR access.</div>
-        {notice && !error && <p role="alert" className="error">{notice}</p>}
         <label htmlFor="username">Pulse username</label>
         <div className="input-wrap"><User aria-hidden="true"/><input id="username" name="username" required autoComplete="username" autoCapitalize="none" spellCheck={false}/></div>
         <div className="label-row"><label htmlFor="password">Password</label></div>
@@ -78,7 +77,6 @@ export default function HrLogin({onLogin, preload, embedded, notice}: {onLogin: 
         <label className="remember"><input type="checkbox" name="remember"/>Remember me</label>
         {error && <p role="alert" className="error">{error}</p>}
         <button className="sign-in" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<ArrowRight aria-hidden="true"/></button>
-        {inPulseII && <a className="hr-login-back" href="/">Back to MIS</a>}
       </form>
     </main>
   </div>;
