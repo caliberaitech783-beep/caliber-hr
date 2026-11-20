@@ -1,4 +1,3 @@
-import {inPulseII} from './hr-paths';
 import {lazy,Suspense,useEffect,useRef,useState} from 'react';
 import {api,pulse,clearSession,savedSession,type Session,type HRConfig} from './api';
 import HrLogin from './HrLogin';
@@ -10,54 +9,19 @@ const Workspace=lazy(loadWorkspace);
 const pulseOrigin = 'https://pulse.cmll.in';
 const embedded = window.parent !== window && new URLSearchParams(window.location.search).get('embedded') === 'pulse';
 
-async function openSharedHr():Promise<Session|null>{
-  const stored=localStorage.getItem('nerveCenterSession')||sessionStorage.getItem('nerveCenterSession')||'null';
-  let token:string|undefined;
-  try{token=JSON.parse(stored)?.token;}catch{return null;}
-  if(!token)return null;
-  const headers:Record<string,string>={Authorization:'Bearer '+token};
-  const context=/^browser-session\.([A-Za-z0-9_-]{16})$/.exec(token)?.[1];
-  const csrfPrefix='__Host-mis_csrf'+(context?'_'+context:'')+'=';
-  const csrf=document.cookie.split(';').map(cookie=>cookie.trim()).find(cookie=>cookie.startsWith(csrfPrefix));
-  if(csrf)headers['X-CSRF-Token']=csrf.slice(csrfPrefix.length);
-  const response=await fetch('/api/hr-workspace/session',{method:'POST',headers,cache:'no-store',signal:AbortSignal.timeout(20000)});
-  if(response.status===401)return null;
-  const data=await response.json();
-  if(!response.ok)throw Error(data.error||'HR sign-in is temporarily unavailable.');
-  if(!/^[A-Za-z0-9_-]{43}$/.test(data.grant)||data.profile?.permissions?.application!=='HR')throw Error('Pulse did not authorize HR access.');
-  return data;
-}
-
 export default function App(){
-  const[session,setSession]=useState(()=>inPulseII?null:savedSession());
+  const[session,setSession]=useState(savedSession);
   const[config,setConfig]=useState<HRConfig>();
   const[error,setError]=useState('');
   const[attempt,setAttempt]=useState(0);
   const pending=useRef<{grant:string;attempt:number;request:Promise<HRConfig>}|undefined>(undefined);
-
-  const [openingShared,setOpeningShared]=useState(inPulseII);
-  const sharedRequest=useRef<{attempt:number;request:Promise<Session|null>}|undefined>(undefined);
-
-  useEffect(()=>{
-    if(!inPulseII||session)return;
-    let active=true;
-    setOpeningShared(true);
-    if(sharedRequest.current?.attempt!==attempt)sharedRequest.current={attempt,request:openSharedHr()};
-    sharedRequest.current.request.then(next=>{
-      if(!active)return;
-      if(next){setError('');setSession(next);}
-      else setError('');
-    }).catch(e=>{if(active)setError(e instanceof Error?e.message:'Unable to open HR.');})
-      .finally(()=>{if(active)setOpeningShared(false);});
-    return()=>{active=false;};
-  },[session,attempt]);
 
   useEffect(() => {
     if (embedded) window.parent.postMessage({type: 'caliber-hr:workspace', open: Boolean(session?.grant)}, pulseOrigin);
   }, [session?.grant]);
 
   useEffect(()=>{
-    const expired=()=>{setConfig(undefined);setSession(null);if(inPulseII)setAttempt(value=>value+1);};
+    const expired=()=>{setConfig(undefined);setSession(null);};
     window.addEventListener('hr-session-expired',expired);
     return()=>window.removeEventListener('hr-session-expired',expired);
   },[]);
@@ -85,14 +49,9 @@ export default function App(){
     setSession(null);
     setConfig(undefined);
     setError('');
-    if(inPulseII){window.location.assign('/');return;}
     if(grant)void pulse('logout',{grant}).catch(()=>{});
   }
 
-  if(inPulseII&&!session?.grant){
-    if(openingShared)return <main className="loading-screen" role="status">Opening HR in Pulse-II…</main>;
-    return <HrLogin embedded notice={error} preload={loadWorkspace} onLogin={next=>{pending.current=undefined;setError('');setSession(next);}}/>;
-  }
   if(!session?.grant)return <HrLogin embedded={embedded} preload={loadWorkspace} onLogin={next=>{pending.current=undefined;setError('');setSession(next);}}/>;
   const opening=<div className="loading-screen" role="status">Opening your HR workspace…</div>;
   if(error)return <div className="loading-screen"><p role="alert">{error}</p><button onClick={()=>{setError('');setAttempt(value=>value+1);}}>Retry connection</button> <button onClick={logout}>Sign out</button></div>;

@@ -1,4 +1,3 @@
-import {inPulseII} from './hr-paths';
 import Dashboard,{dashboardTabs,type DashboardTab} from './Dashboard';
 import ManagementModules, {managementSections, isManagementSection} from './ManagementModules';
 import ApprovalMaster from './ApprovalMaster';
@@ -92,7 +91,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
      <label className="sidebar-search"><Search/><input ref={navSearch} value={navQuery} onChange={event=>setNavQuery(event.target.value)} placeholder="Smart search…" aria-label="Smart search navigation"/><kbd>Ctrl K</kbd></label>
     </div>
     <nav>{visibleMenus.map(([name,Icon])=>{const children=childrenFor(name),selected=name==='Dashboard'?dashboardTab:name==='Employee Master'?employeeMenu:name==='Attendance Management'?attendanceMenu:name==='Master Configuration'?masterMenu:payrollMenu,showChildren=children.length>0&&(expandedMenu===name||Boolean(query));return <div className="nav-entry" key={name}><button className={page===name?'active':''} title={name} aria-expanded={children.length?showChildren:undefined} aria-controls={children.length?`submenu-${name.replaceAll(' ','-')}`:undefined} onClick={()=>{if(children.length){setExpandedMenu(expandedMenu===name?'':name);setCollapsed(false);}navigate(name);}}><Icon/><span>{name}</span>{children.length>0&&<ChevronDown className={'chev '+(showChildren?'expanded':'')}/>}</button>{showChildren&&<div id={`submenu-${name.replaceAll(' ','-')}`} className={"master-subnav "+(name==="Attendance Management"?"attendance-subnav":"employee-subnav")} aria-label={`${name} submenus`}>{children.filter(item=>!query||item.toLowerCase().includes(query)||name.toLowerCase().includes(query)).map((item,index,shown)=><Fragment key={item}>{name==='Attendance Management'&&attendanceGroup(item)!==attendanceGroup(shown[index-1]||'')&&<span className="subnav-group" role="presentation">{attendanceGroup(item)}</span>}<button className={page===name&&selected===item?'selected':''} aria-pressed={page===name&&selected===item} onClick={()=>{if(name==='Dashboard')setDashboardTab(item as DashboardTab);else if(name==='Employee Master')setEmployeeMenu(item);else if(name==='Attendance Management')setAttendanceMenu(item);else if(name==='Master Configuration')setMasterMenu(item);else setPayrollMenu(item);setNavQuery('');navigate(name);}}>{item}</button></Fragment>)}</div>}</div>;})}{query&&!visibleMenus.length&&<p className="sidebar-no-results">No matching menu</p>}</nav>
-    <div className="side-user"><div className="avatar">{initials}</div><div><strong>{profile.name}</strong><small>{profile.assignedRole}</small></div><button aria-label={inPulseII?"Back to MIS":"Sign out"} onClick={logout}><LogOut/></button></div>
+    <div className="side-user"><div className="avatar">{initials}</div><div><strong>{profile.name}</strong><small>{profile.assignedRole}</small></div><button aria-label="Sign out" onClick={logout}><LogOut/></button></div>
    </aside>
    <main className="main">
     <header className="workspace-header">
@@ -100,7 +99,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
       <button className="header-menu" aria-label={collapsed?'Show menu':'Hide menu'} onClick={()=>setCollapsed(!collapsed)}><Menu/><span>{collapsed?'Show menu':'Hide menu'}</span></button>
       <button className="header-back" aria-label="Go back" onClick={()=>window.history.back()}><ArrowLeft/></button>
       <div className="header-breadcrumbs"><span>Operations</span><ChevronDown/><strong>{currentArea}</strong></div>
-      <button className="header-signout" aria-label={inPulseII?"Back to MIS":"Sign out"} onClick={logout}><LogOut/><span>{inPulseII?"Back to MIS":"Sign out"}</span></button>
+      <button className="header-signout" aria-label="Sign out" onClick={logout}><LogOut/><span>Sign out</span></button>
      </div>
      <HeaderClock/>
      <div className="header-utilities">
