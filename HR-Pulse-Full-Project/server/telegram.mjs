@@ -7,7 +7,7 @@ import {trialReviewStage} from './trial-review.mjs';
 import {nagpurRecipients} from './employee-addition-bot.mjs';
 import {additionRoster,connectInviteMessage} from './addition-roster.mjs';
 import {withTrialRouting} from './trial-routing.mjs';
-import {trialAccess,requireTrialRole,canReadTrial,trialSite} from './trial-access.mjs';
+import {trialAccess,requireTrialRole,canReadTrial,trialSite,assignedTrialSites} from './trial-access.mjs';
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const username=value=>String(value||'').trim().toLowerCase();
@@ -446,6 +446,8 @@ export function createTelegram(pool){
   if(route==='trial-scope'&&method==='GET'){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const scope=assignedSites(profile),templates=hierarchyTemplates.filter(item=>['NCL','WCL'].includes(item.group));
+   const trialAssignments=assignedTrialSites(profile);
+   if(trialAssignments!==undefined){const sites=(trialAssignments===null?templates:trialAssignments.filter(item=>['NCL','WCL'].includes(item.group)));return {admin:trialAssignments===null,sites:sites.map(item=>({region:item.group,site:item.name,code:item.code}))};}
    if(scope===null)return {admin:true,sites:templates.map(item=>({region:item.group,site:item.name,code:item.code}))};
    if(!scope.length)return {admin:false,sites:[]};
    const rows=(await pool.query("SELECT id::text,code,name FROM hr_records WHERE kind='sites' AND status='ACTIVE' AND (id::text=ANY($1) OR lower(code)=ANY($1) OR lower(name)=ANY($1))",[scope])).rows;

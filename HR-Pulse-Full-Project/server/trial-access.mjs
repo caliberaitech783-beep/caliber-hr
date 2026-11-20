@@ -12,6 +12,14 @@ const aliases={
 };
 export const trialRoleLabels={hr:'HR Manager',trainer:'Driver Trainer',pm:'Project Manager',ohr:'Office HR — either one',rhr:'HR Manager — either one',director:'Final approval — any one'};
 export function trialSite(site){return hierarchyTemplates.find(t=>[t.code,t.name,...(aliases[t.code]||[])].some(value=>norm(value)===norm(site)));}
+export function assignedTrialSites(profile){
+ const assignments=profile.permissions?.hrTrialAssignments;
+ if(!Array.isArray(assignments))return undefined;
+ if(profile.permissions?.hrAccountStatus&&profile.permissions.hrAccountStatus!=='Active')return [];
+ if(assignments.some(assignment=>assignment?.allSites===true))return null;
+ const codes=new Set(assignments.flatMap(assignment=>Array.isArray(assignment?.sites)?assignment.sites:[]).map(site=>trialSite(site?.code)||trialSite(site?.name)).filter(Boolean).map(site=>site.code));
+ return hierarchyTemplates.filter(site=>codes.has(site.code));
+}
 export async function trialAccess(db,profile,target){
  const assignments=profile.permissions?.hrTrialAssignments;
  const template=trialSite(target?.site);

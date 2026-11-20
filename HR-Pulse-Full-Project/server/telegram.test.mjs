@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {trialReviewStage} from './trial-review.mjs';
-import {trialAccess,requireTrialRole,trialRoleLabels} from './trial-access.mjs';
+import {trialAccess,requireTrialRole,trialRoleLabels,assignedTrialSites} from './trial-access.mjs';
 const assignedHierarchy=(actor='hr')=>({code:'NCL-JAYANT',data:{group:'NCL',steps:Object.values(trialRoleLabels).map(label=>({label,approvers:[actor]}))}});
 test('admin access is read-only and each assigned user receives only their hierarchy role',async()=>{
  const db={query:async()=>({rows:[{code:'NCL-DUDE',data:{group:'NCL',steps:Object.entries(trialRoleLabels).map(([role,label])=>({label,approvers:[role==='hr'?'ankittiwari':role]}))}}]})};
@@ -44,6 +44,12 @@ test('Pulse User Master Trial role-site assignments drive workflow authority',as
  }
  assert.deepEqual(await trialAccess(db,{actor:'admin',permissions:{hrAccountStatus:'Active',hrTrialAssignments:[{role:'Trial Admin',allSites:true,sites:[]}]}},{site:'Jayant OB East'}),{roles:[],overview:true});
  assert.deepEqual(await trialAccess(db,{actor:'inactive',permissions:{hrAccountStatus:'Inactive',hrTrialAssignments:[assignment('PM')]}},{site:'Sasti OB'}),{roles:[],overview:false});
+});
+test('Pulse Trial assignments freeze a user to only their assigned sites',()=>{
+ const profile={permissions:{hrAccountStatus:'Active',site:'All Sites',hrTrialAssignments:[{role:'HR Manager',allSites:false,sites:[{code:'WCL-DHOPTALA',name:'Dhoptala OB'}]}]}};
+ assert.deepEqual(assignedTrialSites(profile).map(site=>site.code),['WCL-DHOPTALA']);
+ assert.equal(assignedTrialSites({permissions:{hrAccountStatus:'Active',hrTrialAssignments:[{role:'Trial Admin',allSites:true,sites:[]}]}}),null);
+ assert.deepEqual(assignedTrialSites({...profile,permissions:{...profile.permissions,hrAccountStatus:'Inactive'}}),[]);
 });
 test('only the assigned current-stage user sees a review queue; admin sees a read-only overview',async()=>{
  const records=[{id:'pm',data:{site:'Jayant OB East',pendingRole:'pm',stage:'RESULT'}},{id:'office',data:{site:'Jayant OB East',pendingRole:'ohr',stage:'APPROVAL'}},{id:'trainer',data:{site:'Jayant OB East',stage:'PART1'}}];
