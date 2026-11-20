@@ -14,16 +14,15 @@ it('Telegram Hierarchy page keeps the original Site HR → Regional HR route',as
  await waitFor(()=>expect(api).toHaveBeenCalledWith('test','telegram/hierarchies','POST',expect.objectContaining({siteId:'site',regionalHr:'newhr',version:1})));
 });
 
-it('Approval Master leave editor saves the Office / Site flow',async()=>{
+it('Approval Master leave editor saves the one leave route: HOD → Directors (OTP) → Regional HR',async()=>{
  const data={sites:[{id:'site',name:'Jayant OB',code:'NCL-JAYANT',version:1,data:{siteHr:'amitsingh',regionalHr:'vinodpinjarkar',directors:['manishchadda'],enabled:true}}],accounts:[],employees:[],deliveries:[],departments:['Operations']};
  vi.mocked(api).mockImplementation(async(_grant,path)=>path==='telegram/account'?{connected:false,configured:true,botUsername:'LeaveRequestt_Bot'}:path==='telegram/hierarchies'?data:{saved:true});
  render(<TelegramHierarchy grant="test" leaveOnly/>);
  await screen.findByText('Jayant OB');fireEvent.change(screen.getByLabelText('Site / office'),{target:{value:'site'}});
- fireEvent.change(screen.getByLabelText('HR Manager — initiates leave requests (one Pulse username)'),{target:{value:'amitsingh'}});
- fireEvent.change(screen.getByLabelText('PM Sir — comma-separated Pulse usernames'),{target:{value:'gulnawaz'}});
+ expect(screen.getByRole('list',{name:'Leave approval route'}).textContent).toBe('Employee raises leaveHOD (concerned)Directors – OTPRegional HR – final');
+ expect(screen.queryByLabelText('HR Manager — initiates leave requests (one Pulse username)')).toBeNull();
+ expect(screen.queryByLabelText('PM Sir — comma-separated Pulse usernames')).toBeNull();
  fireEvent.change(screen.getByLabelText('HOD for Operations'),{target:{value:'ops.hod'}});
  fireEvent.click(screen.getByRole('button',{name:'Save leave flow'}));
- await waitFor(()=>expect(api).toHaveBeenCalledWith('test','telegram/hierarchies','POST',expect.objectContaining({siteId:'site',type:'site',hrManager:'amitsingh',pm:'gulnawaz',hods:{Operations:'ops.hod'},version:1})));
- fireEvent.click(screen.getByRole('button',{name:/1\. Office flow/}));
- expect(screen.queryByLabelText('PM Sir — comma-separated Pulse usernames')).toBeNull();
+ await waitFor(()=>expect(api).toHaveBeenCalledWith('test','telegram/hierarchies','POST',expect.objectContaining({siteId:'site',hods:{Operations:'ops.hod'},regionalHr:'vinodpinjarkar',version:1})));
 });
