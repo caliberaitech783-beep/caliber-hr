@@ -4,10 +4,10 @@ import {savedSession} from '../api';
 import {readGeminiAadhaar, type AadhaarDetails,type DrivingLicenceDetails} from '../geminiOcr';
 import {applyBulkAadhaar, blankBulkRow, bulkColumns, bulkConfirmations, downloadBulkWorkbook, hasBulkCandidate, readBulkWorkbook} from './bulkCandidates';
 import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime, isClearedForJoining, licenceDate, localDateTime,
-  NEXT, nextNumber, normalizeTrialApproval, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type DrivingLicenceClass, type Outcome, type Role, type Trial} from './records';
-import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
+  isOtpRole, NEXT, nextNumber, normalizeTrialApproval, post, resultMessage, ROLES, STAGES, VEHICLES, voteResult, type Candidate, type DrivingLicenceClass, type Outcome, type Role, type Trial} from './records';
+import {approvalTable, detailView, esc, otpPanel, overviewTable, trainerForms, type OtpGroup} from './views';
 import {getTrialResultFile, removeTrialResultFiles, saveTrialResultFiles} from './trialResultFiles';
-import {deliveryStatus, fetchReviewQueue, fetchTrialTrainer, sendApproval, sendPart1, sendResults, type Delivery, type TrialScope} from './telegramSend';
+import {deliveryStatus, fetchReviewQueue, fetchTrialTrainer, requestOtp, sendApproval, sendPart1, sendResults, verifyOtp, type Delivery, type TrialScope} from './telegramSend';
 import {siteDisplayName} from '../siteNames';
 import {findPreviousTrial} from './previousTrial';
 import type {TrialMatch} from '../TrialAadhaarHistory';
@@ -56,6 +56,11 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   const effects = new AbortController();
   let tab: Tab = 'aadhaar', role: Role = 'hr', stageFilter = '', records: Trial[] = [], bulk = Array.from({length:3},blankBulkRow);
   let trainerName = savedSession()?.grant ? '' : scope.name;
+  /* Every Driver Trainer of the site; with two or more, Part 2 asks each for Yes / No. */
+  let trainers: {actor: string; name: string}[] = [];
+  const otpState = new Map<string,{expires: string; busy: boolean}>();
+  /* OTP approval needs the server; the browser-only preview (not signed in) keeps direct approval. */
+  const otpApproval = () => Boolean(savedSession()?.grant);
   let photo = '', photoLoading = false, photoVersion = 0, photoUrl = '', detailId = '', toastTimer: ReturnType<typeof setTimeout>;
   let aadhaarScanPending = false,aadhaarBirthDate='',drivingLicenceBusy=false,drivingLicenceReady=false;
   let aadhaarHistoryPending=false, aadhaarLookupVersion=0, checkedAadhaar='';
@@ -175,9 +180,21 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   }
   const waiting = () => sorted(records.filter(row=>row.stage==='trainer')).reverse();
   const approvals = () => canApprove(role) ? sorted(records.filter(row=>row.stage===role)) : [];
+  const otpRows = () => records.filter(row=>row.result==='PASS'&&(row.stage==='pm'||row.stage==='director'));
+  function otpGroups(): OtpGroup[] {
+    if (role!=='ohr'||!canAct('ohr')||!otpApproval()) return [];
+    const groups = new Map<string,OtpGroup>();
+    for (const row of sorted(otpRows())) {
+      const reviewer = row.stage as 'pm'|'director', key = reviewer+':'+(row.batch||row.formNo);
+      const group = groups.get(key) || {key,reviewer,rows:[],...(otpState.get(key)||{expires:'',busy:false})};
+      group.rows.push(row);groups.set(key,group);
+    }
+    return [...groups.values()];
+  }
   const draftFor = (row: Trial) => {
     let draft = drafts.get(row.id);
     if (!draft) {draft = defaultOutcome(row); drafts.set(row.id,draft);}
+    if (trainers.length>1 && !draft.votes) draft.votes = trainers.map(t=>({...t,vote:''}));
     return draft;
   };
   function renderTrainer() {
@@ -202,16 +219,21 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       all.indeterminate = count>0&&count<rows.length;
     }
     for (const selector of ['#apApprove','#apReject']) $<HTMLButtonElement>(selector).disabled = !selected.size;
+    if (isOtpRole(role)&&otpApproval()) $<HTMLButtonElement>('#apApprove').disabled = true;
   }
   function renderApprovals() {
     const allowed = canApprove(role)&&canAct(role), rows = approvals();
     $('#apTitle').textContent = allowed ? `${ROLES[role]} approval queue` : 'Approvals';
-    $('#apRoleWarn').hidden = allowed;
-    $('#apRoleWarn').textContent = 'Approvals go PM → Office HR → Regional HR → Directors. Switch “Working as” to one of them to approve.';
+    const byOtp = allowed&&isOtpRole(role)&&otpApproval();
+    $('#apRoleWarn').hidden = allowed&&!byOtp;
+    $('#apRoleWarn').textContent = byOtp
+      ? 'You approve by OTP: when Office HR requests it, the OTP comes on the CALIBER Trial Status bot – tell it to Office HR. You can still reject here.'
+      : 'Approvals go PM → Office HR → Regional HR → Directors. Switch “Working as” to one of them to approve.';
     $<HTMLInputElement>('#apNote').disabled = !allowed;
     for (const id of selected) if (!rows.some(row=>row.id===id)) selected.delete(id);
-    $('#apList').innerHTML = !allowed ? '' : !rows.length
-      ? empty(`Nothing waiting for ${ROLES[role]}`,'Forms arrive here once the previous step signs off.') : approvalTable(rows,selected);
+    const otp = otpPanel(otpGroups());
+    $('#apList').innerHTML = !allowed ? '' : otp + (!rows.length
+      ? empty(`Nothing waiting for ${ROLES[role]}`,'Forms arrive here once the previous step signs off.') : approvalTable(rows,selected));
     syncSelection(rows);
   }
   /* Approval route for this site with the forms waiting at each step; the user's own step is outlined. */
@@ -225,7 +247,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   }
   /* Popup for the signed-in user: forms waiting at their own step (Driver Trainer, PM, Office HR, Regional HR, Directors). */
   let pendingShown = '', pendingRole: Role | '' = '';
-  const pendingAt = (step: Role) => step==='trainer' ? waiting().length : canApprove(step) ? records.filter(row=>row.stage===step).length : 0;
+  const pendingAt = (step: Role) => step==='trainer' ? waiting().length : step==='ohr' ? records.filter(row=>row.stage==='ohr').length+otpRows().length : canApprove(step) ? records.filter(row=>row.stage===step).length : 0;
   function showPending(force = false) {
     if (effects.signal.aborted) return;
     const mine = (allowedRoles ?? [role]).filter(item=>item!=='observer'&&canAct(item));
@@ -255,7 +277,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       const active=stageFilter===stage, number=stage==='trainer'?'Step 1':stage==='done'?'✓':'✕';
       return `<button type="button" data-stage="${stage}" class="${active?'on':''}" aria-pressed="${active}"><span class="step">${number}</span><span class="n">${records.filter(row=>row.stage===stage).length}</span><span class="l">${label}</span></button>`;
     }).join('');
-    for (const [selector,count] of [['#bTrainer',waiting().length],['#bApprove',approvals().length]] as const) {
+    for (const [selector,count] of [['#bTrainer',waiting().length],['#bApprove',approvals().length+otpGroups().reduce((sum,g)=>sum+g.rows.length,0)]] as const) {
       $(selector).textContent = String(count);
       $(selector).hidden = !count;
     }
@@ -682,6 +704,8 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if (!name) return;
     const rows=waiting().filter(row=>drafts.get(row.id)?.result);
     if (!rows.length) return toast('Set PASS or FAIL for at least one candidate.');
+    const partial=waiting().find(row=>{const votes=drafts.get(row.id)?.votes;return votes&&votes.some(v=>v.vote)&&votes.some(v=>!v.vote);});
+    if (partial) return toast(`Tick Yes or No for every Driver Trainer for ${partial.name}.`);
     const invalid=rows.find(row=>drafts.get(row.id)?.result==='FAIL'&&!drafts.get(row.id)?.reason.trim());
     if (invalid) return toast(`Enter the fail reason for ${invalid.name}.`);
     const missingResult=rows.find(row=>!draftFiles.has(row.id));
@@ -773,6 +797,19 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       button.closest<HTMLElement>('[data-id]')?.dataset.id===id)?.focus();
   }
   $('#trList').onclick=event=>{
+    const voteBox=(event.target as Element).closest<HTMLInputElement>('[data-vote]');
+    if (voteBox) {
+      if (role!=='trainer'||submittingResults) return;
+      const row=waiting().find(item=>item.id===voteBox.closest<HTMLElement>('[data-id]')?.dataset.id);
+      const draft=row&&draftFor(row), vote=draft?.votes?.find(item=>item.actor===voteBox.dataset.vote);
+      if (!row||!draft?.votes||!vote) return;
+      const choice=voteBox.dataset.v==='NO'?'NO':'YES';
+      vote.vote=voteBox.checked?choice:'';
+      draft.result=voteResult(draft.votes);
+      renderTrainer();
+      $$<HTMLInputElement>('#trList [data-vote]').find(item=>item.dataset.vote===vote.actor&&item.dataset.v===choice&&item.closest<HTMLElement>('[data-id]')?.dataset.id===row.id)?.focus();
+      return;
+    }
     const button=(event.target as Element).closest<HTMLButtonElement>('[data-res],[data-choose-result-file],[data-remove-result-file],[data-choose-driving-video],[data-remove-driving-video]');
     if (!button || role!=='trainer' || submittingResults) return;
     const card=button.closest<HTMLElement>('[data-id]');
@@ -868,6 +905,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if(submittingApproval)return false;
     const reviewer=role;
     if (!canApprove(reviewer)||!canAct(reviewer)) return false;
+    if (approved&&isOtpRole(reviewer)&&otpApproval()) {toast(`${ROLES[reviewer]} approves by OTP: tell the OTP to Office HR when they request it.`);return false;}
     const name=signer();
     if (!name) return false;
     if (!ids.length) {toast('Select at least one form.');return false;}
@@ -902,6 +940,47 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if(delivery)notifySent(!approved?'Site HR, Driver Trainer and PM':reviewer==='director'?'everyone on the site hierarchy (cleared to join)':ROLES[NEXT[reviewer] as Role]||'the next step',delivery);
     return true;
   }
+  /* Office HR requests the PM's / Directors' OTP and enters it (owner, 20 Nov 2026). */
+  $('#apList').addEventListener('click',async event=>{
+    const button=(event.target as Element).closest<HTMLButtonElement>('[data-otp-request],[data-otp-verify]');
+    const line=button?.closest<HTMLElement>('[data-otp]');
+    const group=otpGroups().find(item=>item.key===line?.dataset.otp);
+    if (!button||!line||!group) return;
+    if (!savedSession()?.grant) {toast('Sign in to use OTP approval.');return;}
+    const formNos=group.rows.map(row=>row.formNo), who=group.reviewer==='pm'?'PM':'Directors';
+    const state=otpState.get(group.key)||{expires:'',busy:false};
+    if (button.hasAttribute('data-otp-request')) {
+      otpState.set(group.key,{...state,busy:true});renderApprovals();
+      try {
+        const out=await requestOtp(group.reviewer,formNos,scope);
+        otpState.set(group.key,{expires:out.expires,busy:false});
+        toast(out.telegram.connected.length?`OTP sent to ${who} on Telegram. Ask them for it.`:`OTP saved. ${deliveryStatus(out.telegram)}`);
+      } catch (error) {
+        otpState.set(group.key,{...state,busy:false});
+        toast(error instanceof Error?error.message:'Could not send the OTP. Try again.');
+      }
+      if (effects.signal.aborted) return;
+      renderApprovals();
+      frame.querySelector<HTMLInputElement>(`[data-otp="${CSS.escape(group.key)}"] [data-otp-code]`)?.focus();
+      return;
+    }
+    const code=(line.querySelector<HTMLInputElement>('[data-otp-code]')?.value||'').replace(/\D/g,'');
+    if (code.length!==6) {toast(`Enter the 6-digit OTP from the ${who}.`);return;}
+    button.disabled=true;
+    try {
+      const out=await verifyOtp(group.reviewer,formNos,code,scope);
+      if (effects.signal.aborted) return;
+      const ids=new Set(group.rows.map(row=>row.id));
+      commit(latest=>latest.map(row=>ids.has(row.id)&&row.stage===group.reviewer
+        ? {...row,stage:NEXT[group.reviewer],history:[...row.history,{role:group.reviewer,action:'Approved',by:out.by,at:out.at,note:'Approved by OTP'}]} as Trial : row));
+      otpState.delete(group.key);
+      renderApprovals();
+      notifySent(group.reviewer==='pm'?'Office HR':'everyone on the site hierarchy (cleared to join)',out.telegram);
+    } catch (error) {
+      button.disabled=false;
+      toast(error instanceof Error?error.message:'Could not check the OTP. Try again.');
+    }
+  },{signal:effects.signal});
   $('#apList').onchange=event=>{
     const input=event.target as HTMLInputElement;
     if (input.id==='apAll'){
@@ -923,7 +1002,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if (!row) return;
     detailId=id;
     modalFocus=source;
-    $('#modalBox').innerHTML=detailView(row,role,canJoin());
+    $('#modalBox').innerHTML=detailView(row,role,canJoin(),otpApproval());
     $('#modal').hidden=false;
     $('#mClose').focus();
   }
@@ -1164,6 +1243,14 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if (photoUrl) URL.revokeObjectURL(photoUrl);
     root.replaceChildren();
   }
+  function setTrainers(list:{actor:string;name:string}[]=[]){
+    trainers=list.filter(item=>item.actor);
+    for (const draft of drafts.values()) {
+      if (trainers.length>1) {if(!draft.votes)draft.votes=trainers.map(t=>({...t,vote:''}));}
+      else if (draft.votes) {delete draft.votes;draft.result='';}
+    }
+    renderTrainer();
+  }
   function setTrainer(name:string,reason=''){
     trainerName=String(name||'').trim();
     if(!trainerName&&reason)toast(reason);
@@ -1188,5 +1275,5 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if(role==='hr'&&previousRole!=='hr')void syncFromServer();
     showPending();
   }
-  return {dispose, fillAadhaarDetails, setAadhaarBusy,setDrivingLicenceBusy,setDrivingLicenceReady,fillDrivingLicenceDetails,setTrainer,setRoles};
+  return {dispose, fillAadhaarDetails, setAadhaarBusy,setDrivingLicenceBusy,setDrivingLicenceReady,fillDrivingLicenceDetails,setTrainer,setTrainers,setRoles};
 }

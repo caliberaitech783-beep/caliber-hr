@@ -202,3 +202,13 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .pending-box li{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px}
 .pending-box li b{color:#7c3aed}
 .pending-box .actions{justify-content:center}
+/* Office HR OTP approvals and per-trainer Yes / No (owner, 20 Nov 2026) */
+.otp-panel{border:1px solid #c4b5fd;border-radius:10px;padding:10px 12px;margin-bottom:12px;background:var(--surface)}
+.otp-panel h3{margin:0 0 4px;font-size:14px}
+.otp-entry{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
+.otp-entry input{width:8.5em;padding:6px 8px;border:1px solid var(--line-strong);border-radius:6px;letter-spacing:2px}
+.vote-table{max-width:520px}
+.vote-table input{width:18px;height:18px}
+.vote-result{margin:6px 0 0}
+.otp-panel{max-width:100%;box-sizing:border-box;overflow-x:auto}
+.otp-panel td{white-space:normal}

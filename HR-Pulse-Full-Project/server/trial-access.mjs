@@ -51,4 +51,5 @@ export async function requireTrialRole(db,profile,role,target){
  return access;
 }
 export const trialStageOf=data=>data?.stage==='PART1'?'trainer':data?.pendingRole||'';
-export const canReadTrial=(access,data)=>access.overview||access.roles.includes('hr')||access.roles.includes(trialStageOf(data))||data?.stage==='CLEARED'&&access.roles.length>0;
+/* Office HR also sees forms waiting for the PM's or Directors' OTP, because Office HR enters it. */
+export const canReadTrial=(access,data)=>access.overview||access.roles.includes('hr')||access.roles.includes(trialStageOf(data))||access.roles.includes('ohr')&&['pm','director'].includes(trialStageOf(data))||data?.stage==='CLEARED'&&access.roles.length>0;

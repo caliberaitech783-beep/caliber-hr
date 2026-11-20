@@ -4,13 +4,13 @@
    Recipients are set in the Trial Form › Telegram recipients tables (Approval Management permission). */
 import {api, savedSession} from '../api';
 import {utils as xlsxUtils, write as xlsxWrite} from 'xlsx';
-import {equipment, type Trial} from './records';
+import {equipment, votesText, type Trial} from './records';
 import {reviewTrial,type ReviewRecord} from './reviewQueue';
 import type {TrialChecklistDocuments} from '../trialHandoff';
 
 export type Delivery = {message: string; recipients: number; connected: string[]; bot?: string; configured?: boolean; issues?: string[]};
 export type TrialScope = {company: string; site: string; region: string; group: string; department: string};
-export type TrialTrainer = {actor:string;name:string;site:string;reason?:string;roles?:string[];overview?:boolean};
+export type TrialTrainer = {actor:string;name:string;site:string;reason?:string;roles?:string[];overview?:boolean;trainers?:{actor:string;name:string}[]};
 const target = ({site, region, group, company}: TrialScope) => ({site, region, group, company});
 type Attachment = {name: string; mime: string; data: string; kind?:'photo'|'trialResult'|'drivingVideo'|'aadhaar'|'drivingLicence'};
 const dlClassDetails = (row: Trial) => (row.dlClasses||[]).map(item=>[
@@ -27,7 +27,8 @@ const fields = (row: Trial): Record<string,string> => ({
   'Total experience (years)': row.experience, 'Previous employer': row.employer,
   'Trial date & time': row.trialDate, 'Referred by': row.referredBy, 'Trial Conducted by':row.trialConductedBy||'',
   ...(row.outcome ? {'Result': row.outcome.result, 'If PASS – recommended for': row.outcome.result==='PASS' ? row.outcome.post : '', 'Machine': row.outcome.machine,
-    'If FAIL – reason': row.outcome.reason, 'Examiner name': row.outcome.trainer, 'Trial conducted by': row.outcome.trainer, 'Examiner remarks': row.outcome.remarks} : {}),
+    'If FAIL – reason': row.outcome.reason, 'Examiner name': row.outcome.trainer, 'Trial conducted by': row.outcome.trainer, 'Examiner remarks': row.outcome.remarks,
+    ...(row.outcome.votes?.length ? {'Trainer votes': votesText(row.outcome.votes)} : {})} : {}),
 });
 const dataUrl = (name: string, url: string, kind?:Attachment['kind']): Attachment | null => {
   const m = String(url||'').match(/^data:([^;,]+)[^,]*,(.*)$/);
@@ -52,9 +53,9 @@ export async function fetchReviewQueue(scope:TrialScope):Promise<Trial[]>{
 
 /* Human-readable delivery line for the popup. */
 export function deliveryStatus(d: Delivery, names: (key: string) => string = key => key) {
-  if (d.configured===false) return 'Vehicle Trial Result bot is not configured on the server (TELEGRAM_TRIAL_BOT_TOKEN).';
+  if (d.configured===false) return 'Trial Status bot is not configured on the server (TELEGRAM_TRIAL_STATUS_BOT_TOKEN).';
   if (!d.recipients) return 'No Telegram recipient is set for this step – assign the approver in Approval Master.';
-  const base = d.connected.length ? `Sent to ${d.connected.map(names).join(', ')} via @${d.bot||'the trial bot'}.` : 'Queued – the recipients have not opened the trial bot yet (they must tap Start).';
+  const base = d.connected.length ? `Sent to ${d.connected.map(names).join(', ')} via @${d.bot||'the trial bot'}.` : 'Queued – the next person has not connected the Trial Status bot yet (Approval Master › Trial Status bot).';
   return d.issues?.length ? base+' '+d.issues.join(' · ') : base;
 }
 
@@ -124,6 +125,16 @@ export async function sendApproval(changed: Trial[], reviewer: 'pm'|'ohr'|'rhr'|
     reviewer, approved, note, by, at, rows, xlsx, ...target(scope), department: scope.department, batchId: changed.length > 1 ? changed[0].batch : changed[0].batch || '',
   });
   return out.telegram;
+}
+
+/* PM and Directors approve by OTP: Office HR requests it (sent on the Trial Status bot) and enters it here. */
+export type OtpRequest = {expires: string; sentTo: string[]; telegram: Delivery};
+export type OtpApproval = {approved: boolean; at: string; by: string; stage: string; rows: {formNo: string; history: Trial['history']}[]; telegram: Delivery};
+export async function requestOtp(reviewer: 'pm'|'director', formNos: string[], scope: TrialScope): Promise<OtpRequest> {
+  return api<OtpRequest>(grantOrThrow(), 'telegram/trial-otp', 'POST', {reviewer, formNos, ...target(scope)});
+}
+export async function verifyOtp(reviewer: 'pm'|'director', formNos: string[], otp: string, scope: TrialScope): Promise<OtpApproval> {
+  return api<OtpApproval>(grantOrThrow(), 'telegram/trial-otp-verify', 'POST', {reviewer, formNos, otp, ...target(scope)});
 }
 
 /* Decisions taken on Telegram (Approve / Decline buttons) for the given forms. */
