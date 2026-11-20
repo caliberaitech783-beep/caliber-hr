@@ -20,8 +20,8 @@ type Scope = TrialScope & {owner: string; legacyOwner?: string; name: string;des
 export type PrepareJoining = (rows: Trial[]) => Promise<(() => void) | void>;
 const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
 const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',ohr:'approve',rhr:'approve',director:'approve',observer:'overview'};
-/* Tabs each role may open: Site HR → Aadhaar + Part 1; Driver Trainer → Part 2; approvers → Approvals. Directors retain a read-only completed view after final clearance. */
-const roleTabs: Record<Role,Tab[]> = {hr:['aadhaar','hr','overview'],trainer:['trainer'],pm:['approve'],ohr:['approve'],rhr:['approve'],director:['approve','overview'],observer:['overview']};
+/* Every assigned workflow role retains a read-only completed view after final clearance; only Site HR can open joining Step 2. */
+const roleTabs: Record<Role,Tab[]> = {hr:['aadhaar','hr','overview'],trainer:['trainer','overview'],pm:['approve','overview'],ohr:['approve','overview'],rhr:['approve','overview'],director:['approve','overview'],observer:['overview']};
 const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',trainer:row.trialConductedBy||'',remarks:''});
 const digits = (value: string) => value.replace(/\D/g,'');
 const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -139,7 +139,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if(!roleTabs[role].includes(next))next=roleTab[role];
     tab = next;
     $('#pipe').hidden = !roleTabs[role].includes('overview')||next==='aadhaar';
-    $('#tabs').hidden=role==='trainer';
+    $('#tabs').hidden=false;
     $('.preview-label').hidden=role==='trainer';
     $$<HTMLButtonElement>('#tabs button').forEach(button=>{
       const active = button.dataset.tab===next;

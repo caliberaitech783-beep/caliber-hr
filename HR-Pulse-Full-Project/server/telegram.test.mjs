@@ -61,12 +61,14 @@ test('only the assigned current-stage user sees a review queue; admin sees a rea
  const admin={actor:'admin',permissions:{hrDesktopAccess:['Employee Master','Master Configuration']}};
  assert.deepEqual((await service.telegramApi(admin,'trial-review-queue','POST',target)).rows.map(row=>row.id),['pm','office','trainer']);
 });
-test('Director retains read-only access to a cleared trial and its approval history',async()=>{
+test('every assigned workflow role retains read-only access to a cleared trial and its approval history',async()=>{
  const cleared={id:'cleared',data:{site:'Dudhichua OB East',stage:'CLEARED',pendingRole:'',history:[{role:'pm',action:'Approved',by:'Sanskar'},{role:'ohr',action:'Approved',by:'Office HR'},{role:'rhr',action:'Approved',by:'Regional HR'},{role:'director',action:'Approved',by:'Director'}]}};
  const pool={query:async()=>({rows:[cleared]})};
- const profile={actor:'director',permissions:{hrDesktopAccess:['Employee Master'],hrAccountStatus:'Active',hrTrialAssignments:[{role:'Director',allSites:false,sites:[{code:'NCL-DUDE',name:'Dudhichua East OC'}]}]}};
- const out=await createTelegram(pool).telegramApi(profile,'trial-review-queue','POST',{site:'Dudhichua OB East',region:'NCL'});
- assert.deepEqual(out.rows.map(row=>row.id),['cleared']);assert.equal(out.rows[0].history.length,4);
+ for(const role of ['Driver Trainer','PM','Office HR','Regional HR','Director']){
+  const profile={actor:role.toLowerCase().replace(/\s/g,''),permissions:{hrDesktopAccess:['Employee Master'],hrAccountStatus:'Active',hrTrialAssignments:[{role,allSites:false,sites:[{code:'NCL-DUDE',name:'Dudhichua East OC'}]}]}};
+  const out=await createTelegram(pool).telegramApi(profile,'trial-review-queue','POST',{site:'Dudhichua OB East',region:'NCL'});
+  assert.deepEqual(out.rows.map(row=>row.id),['cleared'],role);assert.equal(out.rows[0].history.length,4);
+ }
 });
 test('the approval endpoint rejects Director review while PM is still pending',async()=>{
  const db={release(){},query:async sql=>sql.includes("kind='joiningHierarchies'")?{rows:[assignedHierarchy('admin')]}:sql.includes('SELECT id,data')?{rows:[{id:'trial',data:{fields:{Result:'PASS'},history:[]}}]}:{rows:[]}};

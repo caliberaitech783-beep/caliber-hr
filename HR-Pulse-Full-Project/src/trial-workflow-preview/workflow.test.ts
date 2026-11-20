@@ -93,41 +93,31 @@ describe('Trial workflow preview',()=>{
     for(const panel of ['aadhaar','hr','trainer','approve','overview'])expect(el('#v-'+panel).hidden).toBe(true);
     expect(getByRole('button',{name:'Upload A/D'})).toBeDisabled();
   });
-  it.each(['pm','ohr','rhr'])('shows only Approvals for %s and blocks candidate navigation',role=>{
+  it.each(['pm','ohr','rhr','director'])('gives %s Approvals plus a read-only completed-candidate view',role=>{
     const {root,el,change,click}=setup();
     change('#role',role);
-    expect(Array.from(root.querySelectorAll<HTMLButtonElement>('#tabs button')).filter(button=>!button.hidden).map(button=>button.dataset.tab)).toEqual(['approve']);
-    expect(el('#v-approve')).not.toHaveAttribute('hidden');
-    expect(el('#pipe')).toHaveAttribute('hidden');
-    click('[data-tab="overview"]');
-    click('#pipe [data-stage="done"]');
-    expect(el('#v-overview')).toHaveAttribute('hidden');
-    expect(el('#v-approve')).not.toHaveAttribute('hidden');
-    change('#role','hr');
-    expect(el('[data-tab="overview"]')).not.toHaveAttribute('hidden');
-    change('#role','trainer');
-    expect(el('[data-tab="overview"]')).toHaveAttribute('hidden');
-  });
-  it('gives Directors a read-only completed-candidate view with approval details',()=>{
-    const {root,el,change,click}=setup();
-    change('#role','director');
     expect(Array.from(root.querySelectorAll<HTMLButtonElement>('#tabs button')).filter(button=>!button.hidden).map(button=>button.dataset.tab)).toEqual(['approve','overview']);
+    expect(el('#v-approve')).not.toHaveAttribute('hidden');
     click('[data-tab="overview"]');
     expect(el('#v-overview')).not.toHaveAttribute('hidden');
     expect(el('#pipe')).not.toHaveAttribute('hidden');
+    change('#role','hr');
+    expect(el('[data-tab="overview"]')).not.toHaveAttribute('hidden');
+    change('#role','trainer');
+    expect(el('[data-tab="overview"]')).not.toHaveAttribute('hidden');
   });
 
   it('shows only trial results when working as Driver Trainer',()=>{
     const {el,change}=setup();
     change('#role','trainer');
     expect(el('#v-trainer').hidden).toBe(false);
-    expect(el('#pipe').hidden).toBe(true);
-    expect(el('#tabs').hidden).toBe(true);
-    expect(el('[data-tab="overview"]').hidden).toBe(true);
+    expect(el('#pipe').hidden).toBe(false);
+    expect(el('#tabs').hidden).toBe(false);
+    expect(el('[data-tab="overview"]').hidden).toBe(false);
     for(const section of ['aadhaar','hr','approve','overview'])expect(el('#v-'+section).hidden).toBe(true);
     change('#role','pm');
     expect(el('#tabs').hidden).toBe(false);
-    expect(el('[data-tab="overview"]').hidden).toBe(true);
+    expect(el('[data-tab="overview"]').hidden).toBe(false);
     expect(el('#v-approve').hidden).toBe(false);
   });
   it('requires the referrer and trial conductor',()=>{
