@@ -34,6 +34,8 @@ export type History = {role: Role; action: string; by: string; at: string; note?
 export type Trial = Candidate & {
   id: string; formNo: string; batch: string; site: string; createdAt: string;
   stage: Stage; result: Result; history: History[]; outcome?: Outcome & {at: string};
+  /** Part 1 reached the server, so the Driver Trainer and the admin overview can see it. */
+  sent?: boolean;
 };
 export type Outcome = {
   result: Result; post: Post; machine: string; reason: string; trainer: string; remarks: string;
