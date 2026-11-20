@@ -58,14 +58,15 @@ export function deliveryStatus(d: Delivery, names: (key: string) => string = key
   return d.issues?.length ? base+' '+d.issues.join(' · ') : base;
 }
 
-export async function sendPart1(created: Trial[], scope: TrialScope, documents:TrialChecklistDocuments={}): Promise<Delivery> {
+export async function sendPart1(created: Trial[], scope: TrialScope, documents:TrialChecklistDocuments={}): Promise<Delivery & {formNos: string[]}> {
   const grant = grantOrThrow();
   const documentAttachments=await Promise.all([fileAttachment(documents.aadhaar,'aadhaar'),fileAttachment(documents.drivingLicence,'drivingLicence')]);
-  const out = await api<{batchId: string; telegram: Delivery}>(grant, 'telegram/trial-part1', 'POST', {
+  const out = await api<{batchId: string; formNos?: string[]; telegram: Delivery}>(grant, 'telegram/trial-part1', 'POST', {
     heading: scope.site, ...target(scope), department: scope.department, trialBy: 'driver trainer', batchId: created[0]?.batch || '',
-    candidates: created.map(row => ({formNo: row.formNo, fields: fields(row), attachments: [dataUrl('photo', row.photo,'photo'),...documentAttachments].filter(Boolean)})),
+    candidates: created.map(row => ({formNo: row.formNo, clientId: row.id, fields: fields(row), attachments: [dataUrl('photo', row.photo,'photo'),...documentAttachments].filter(Boolean)})),
   });
-  return out.telegram;
+  // The server gives a form the next free number when another site already holds the browser's number.
+  return {...out.telegram, formNos: created.map((row,index)=>out.formNos?.[index] || row.formNo)};
 }
 
 export async function sendResults(changed: Trial[], resultFiles: Map<string, File | undefined>, drivingVideos: Map<string, File | undefined>, trialBy: string, scope: TrialScope): Promise<Delivery> {

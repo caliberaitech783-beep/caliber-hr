@@ -40,6 +40,19 @@ afterEach(()=>{
 });
 
 describe('Trial workflow preview',()=>{
+  it('sends a Part 1 form that never reached the server again and takes the number the server kept',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    const key='hrPulse.localTrialWorkflow.v1:'+JSON.stringify([scope.owner,scope.company,scope.site]);
+    const unsent={id:'local-1',formNo:'TF/2026-27/0001',stage:'trainer',result:'',site:scope.site,name:'Vishal Suresh Jadhao',father:'',dob:'',mobile:'1234567894',aadhaar:'',address:'',dl:'',dlValid:'',referredBy:'',employer:'',batch:'',createdAt:'2026-11-20T06:13:00Z',trialDate:'2026-11-20T11:43',photo:'',post:'Driver',experience:'',vehicles:['Water Tanker'],otherVehicle:'',docs:{dl:{seen:'Yes',remarks:''},hemm:{seen:'',remarks:''},aadhaar:{seen:'',remarks:''},medical:{seen:'Yes',remarks:''},exp:{seen:'',remarks:''}},history:[{role:'hr',by:'Ankit',at:'2026-11-20T06:13:00Z',action:'Submitted Part 1'}]};
+    localStorage.setItem(key,JSON.stringify([unsent]));
+    const request=vi.spyOn(window,'fetch').mockImplementation(async url=>Response.json(
+      String(url).endsWith('/trial-part1')?{batchId:'',formNos:['TF/2026-27/0009'],telegram:{message:'',recipients:1,connected:[]}}:{...hierarchyTrainer,roles:['hr']}));
+    setup();
+    await waitFor(()=>expect(JSON.parse(localStorage.getItem(key)||'[]')[0]).toMatchObject({formNo:'TF/2026-27/0009',sent:true}));
+    const part1=request.mock.calls.filter(([url])=>String(url).endsWith('/trial-part1'));
+    expect(part1).toHaveLength(1);
+    expect(JSON.parse(String(part1[0][1]?.body)).candidates[0]).toMatchObject({formNo:'TF/2026-27/0001',clientId:'local-1'});
+  });
   it('shows the admin trial overview before selecting a site without enabling actions',async()=>{
     sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
     vi.spyOn(window,'fetch').mockResolvedValue(Response.json({roles:[],overview:true,name:''}));

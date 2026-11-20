@@ -132,6 +132,23 @@ const fmtDate=v=>{if(!v)return '';const d=new Date(v);if(Number.isNaN(d.valueOf(
 const vehicleOf=f=>[f['Vehicle / equipment for trial'],f['Other equipment']].filter(Boolean).join(', ').replace(/Dumper\/Tipper/,'Dumper / Tipper');
 const dash=v=>String(v??'').trim()||'–';
 /* Part 1 – "Trial Form Submitted" (single candidate) */
+/* The same Part 1 form sent again (a retry) keeps its number; a different form already holding that number does not. */
+export function sameTrialSubmission(saved,next){
+ if(!saved)return false;
+ if(saved.site&&trialSite(saved.site)?.code!==trialSite(next.site)?.code)return false;
+ if(['PASS','FAIL'].includes(saved.fields?.Result)||saved.stage&&saved.stage!=='PART1')return false;
+ if(saved.clientId&&next.clientId)return saved.clientId===next.clientId;
+ const key=f=>String(f?.['Name of candidate']||'').trim().toLowerCase()+'|'+String(f?.['Mobile no.']||'').replace(/\D/g,'');
+ return key(saved.fields)===key(next.fields);
+}
+/* Next unused number in the same series, e.g. TF/2026-27/0001 → TF/2026-27/0007 when 0006 is the highest saved. */
+export async function nextFreeTrialNumber(db,formNo){
+ const match=String(formNo).match(/^(.*\/)(\d+)$/),prefix=match?match[1]:String(formNo)+'/',width=Math.max(4,match?.[2].length||0);
+ const like=prefix.replace(/[\\%_]/g,c=>'\\'+c)+'%';
+ const codes=(await db.query("SELECT code FROM hr_records WHERE kind IN ('trialForms','trialWorkflow') AND code LIKE $1",[like])).rows.map(row=>String(row.code));
+ const last=Math.max(0,...codes.map(code=>code.slice(prefix.length)).filter(rest=>/^\d+$/.test(rest)).map(Number));
+ return prefix+String(last+1).padStart(width,'0');
+}
 export function trialSubmittedMessage(record){const f=record.fields||{};return ['🚛 VEHICLE TRIAL RESULT','','Trial Form Submitted',`Name: ${dash(f['Name of candidate'])}`,`Post: ${dash(f['Post applied for']||record.department)}`,`Vehicle: ${dash(vehicleOf(f))}`,`Experience: ${dash(f['Total experience (years)'])}`,`Referred by: ${dash(f['Referred by'])}`,`Trial date: ${dash(fmtDate(f['Trial date & time']))}`,`Form No: ${record.formNo}`,`Trial by: ${dash(record.trialBy||'driver trainer')}`,'Status: Sent to driver trainer',`Site: ${dash(record.site||record.heading)}`].join('\n');}
 /* Part 1 – batch */
 export function trialBatchSubmittedMessage(batch,records){const first=records[0]?.fields||{};const lines=['🚛 VEHICLE TRIAL RESULT','',`Trial Forms Submitted – Batch ${batch.batchId} (${records.length} candidate${records.length===1?'':'s'})`,`Trial date: ${dash(fmtDate(batch.trialDate||first['Trial date & time']))} · Site: ${dash(batch.site)} · Trial by: ${dash(batch.trialBy||'driver trainer')}`,'Status: Sent to driver trainer',''];
@@ -429,23 +446,26 @@ export function createTelegram(pool){
    const site=String(input.site||'').slice(0,80),company=String(input.company||'').slice(0,120),department=String(input.department||'').slice(0,80),heading=String(input.heading||'').slice(0,120),trialBy=String(input.trialBy||'').slice(0,80);
    const batchId=items.length>1?(String(input.batchId||'').trim().slice(0,40)||newBatchId()):'';
    const records=items.map(c=>{const fields=cleanFields(c.fields),formNo=String(c.formNo||'').trim().slice(0,40);if(!formNo)fail('Form number is required');const name=String(fields['Name of candidate']||'').trim();if(!name)fail('Candidate name is required for every row');
-    return {formNo,heading,site,company,department,fields,stage:'PART1',status:'Sent to driver trainer',batchId,trialBy,attachments:cleanAttachments(c.attachments),part1By:profile.actor,part1At:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};});
+    return {formNo,clientId:String(c.clientId||'').slice(0,64),heading,site,company,department,fields,stage:'PART1',status:'Sent to driver trainer',batchId,trialBy,attachments:cleanAttachments(c.attachments),part1By:profile.actor,part1At:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};});
    const target={site,region:String(input.region||'').slice(0,80),company,group:String(input.group||'').slice(0,80)};
    const recipients=(await trialRecipientsFor(pool,'part1',target)).map(recipientActor);
    let message,files=[];
+   await tx(async db=>{
+    /* Each browser numbers its own forms, so two sites or two HR browsers can pick the same number.
+       A resend of the same form keeps its number; any other form gets the next free number in the series. */
+    await db.query("SELECT pg_advisory_xact_lock(hashtext('hrPulse.trialFormNumber'))");
+    for(const r of records){let old=(await db.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1",[r.formNo])).rows[0];
+     if(old&&!sameTrialSubmission(old.data,r)){r.formNo=await nextFreeTrialNumber(db,r.formNo);old=undefined;}
+     const name=r.fields['Name of candidate'];let id;
+     if(old){id=old.id;await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[name,r,profile.actor,id]);}
+     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[r.formNo,name,r,profile.actor])).rows[0].id;
+     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SUBMIT_TRIAL_PART1','trialForms',$2,$3)",[profile.actor,id,{formNo:r.formNo,batchId}]);}
    if(batchId){const batch={batchId,site,trialBy,trialDate:records[0].fields['Trial date & time']};message=trialBatchSubmittedMessage(batch,records);
     const pdf=buildPdf({title:`Vehicle trial – Batch ${batchId}`,subtitle:[`Site: ${site||heading||'-'} · Trial date: ${fmtDate(batch.trialDate)||'-'} · Trial by: ${trialBy||'driver trainer'} · Submitted by: ${profile.name||profile.actor}`,company||''].filter(Boolean),
      columns:[{label:'#',width:20},{label:'Form No',width:85},{label:'Name',width:150},{label:'Post',width:65},{label:'Vehicle',width:95},{label:'Exp (yrs)',width:45},{label:'Referred by',width:85},{label:'Aadhaar',width:80},{label:'PASS / FAIL',width:60},{label:'Remarks',width:120}],
      rows:records.map((r,i)=>[i+1,r.formNo,r.fields['Name of candidate'],r.fields['Post applied for']||department,vehicleOf(r.fields),r.fields['Total experience (years)'],r.fields['Referred by'],r.fields['Aadhaar no.'],'','']),footer:'Generated by HR Pulse'});
     files=[{name:`Trial_${batchId}.pdf`,mime:'application/pdf',data:pdf,caption:`Batch sheet – ${batchId}`}];}
    else message=trialSubmittedMessage(records[0]);
-   await tx(async db=>{for(const r of records){const old=(await db.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1",[r.formNo])).rows[0];
-     if(old?.data?.site&&trialSite(old.data.site)?.code!==trialSite(site)?.code)fail('The trial form belongs to another site.',403);
-     if(old&&['PASS','FAIL'].includes(old.data?.fields?.Result))fail(`${r.formNo} already has a result – start a new form number`,409);
-     const name=r.fields['Name of candidate'];let id;
-     if(old){id=old.id;await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[name,r,profile.actor,id]);}
-     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[r.formNo,name,r,profile.actor])).rows[0].id;
-     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SUBMIT_TRIAL_PART1','trialForms',$2,$3)",[profile.actor,id,{formNo:r.formNo,batchId}]);}
     if(recipients.length)await queueTelegram(db,`trial-part1:${batchId||records[0].formNo}:${Date.now()}`,recipients,message,'trial',null,files);});
    return {saved:true,batchId,formNos:records.map(r=>r.formNo),telegram:{...(await recipientIssues(pool,recipients)),message}};
   }

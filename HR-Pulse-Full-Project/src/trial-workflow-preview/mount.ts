@@ -248,9 +248,38 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     })) return false;
     toast(batch ? `Batch ${created[0].batch}: ${created.length} candidates sent to Driver Trainer.` : `${created[0].formNo} sent to Driver Trainer.`);
     if (savedSession()?.grant) void sendPart1(created,scope,aadhaar.documents?.())
-      .then(d=>{if(!effects.signal.aborted) showTelegram([d.message],batch?`Batch ${created[0].batch} – sent to driver trainer (PDF sheet attached)`:'Trial Form Submitted – sent to driver trainer',undefined,deliveryStatus(d));})
-      .catch(error=>{if(!effects.signal.aborted) toast('Telegram: '+(error instanceof Error?error.message:'could not send'));});
+      .then(d=>{if(effects.signal.aborted)return;markSent(created,d.formNos);showTelegram([d.message],batch?`Batch ${created[0].batch} – sent to driver trainer (PDF sheet attached)`:'Trial Form Submitted – sent to driver trainer',undefined,deliveryStatus(d));})
+      .catch(error=>{if(!effects.signal.aborted) toast('Not sent to Driver Trainer yet: '+(error instanceof Error?error.message:'could not send')+' It is sent again automatically.');});
     return true;
+  }
+  /* Part 1 forms are only visible to the Driver Trainer and the admin overview once the server has them.
+     Record that, and take the number the server kept (it changes when another site already uses the number). */
+  function markSent(rows: Trial[], formNos: string[]) {
+    const numbers=new Map(rows.map((row,index)=>[row.id,formNos[index]||row.formNo]));
+    const renamed=rows.filter(row=>numbers.get(row.id)!==row.formNo);
+    commit(latest=>latest.map(row=>numbers.has(row.id)?{...row,formNo:numbers.get(row.id)!,sent:true}:row));
+    if(renamed.length)toast(renamed.map(row=>`${row.formNo} is now ${numbers.get(row.id)}`).join(' · ')+' (number already used).');
+  }
+  let resending=false;
+  /* Site HR: send again any Part 1 form that never reached the server (for example rejected for a number clash). */
+  async function resendUnsent(queue: Trial[]) {
+    if(resending||role!=='hr'||!canAct('hr'))return;
+    const unsent=records.filter(row=>row.stage==='trainer'&&!row.result&&!row.sent&&row.history[0]?.role==='hr');
+    if(!unsent.length)return;
+    const onServer=unsent.filter(row=>queue.some(remote=>remote.formNo===row.formNo&&remote.name===row.name&&remote.mobile===row.mobile));
+    if(onServer.length)markSent(onServer,onServer.map(row=>row.formNo));
+    const groups=new Map<string,Trial[]>();
+    for(const row of unsent.filter(row=>!onServer.includes(row)))groups.set(row.batch||row.id,[...(groups.get(row.batch||row.id)||[]),row]);
+    resending=true;
+    try{
+      for(const rows of groups.values()){
+        const delivery=await sendPart1(rows,scope);
+        if(effects.signal.aborted)return;
+        markSent(rows,delivery.formNos);
+        toast(`${delivery.formNos.join(', ')} sent to Driver Trainer.`);
+      }
+    }catch{/* Tried again on the next sync. */}
+    finally{resending=false;}
   }
   function resetSingle() {
     ++photoVersion;
@@ -1061,6 +1090,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
         }
         return merged;
       });
+      await resendUnsent(queue);
     }catch{/* Existing browser records remain available if the queue cannot be fetched. */}
   }
   void syncFromServer();
@@ -1113,6 +1143,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     const previousRole=role;
     role=allowed.includes(role)?role:overview?'observer':allowed[0];select.value=role;roleLocked=allowed.length===1;select.disabled=roleLocked;
     aadhaar.setDisabled(role!=='hr'||!canAct('hr'));if(previousRole!==role||!roleTabs[role].includes(tab))tab=roleTab[role];selected.clear();renderTrainer();renderApprovals();refresh();
+    if(role==='hr'&&previousRole!=='hr')void syncFromServer();
   }
   return {dispose, fillAadhaarDetails, setAadhaarBusy,setDrivingLicenceBusy,setDrivingLicenceReady,fillDrivingLicenceDetails,setTrainer,setRoles};
 }
