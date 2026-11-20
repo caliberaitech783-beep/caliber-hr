@@ -1021,16 +1021,23 @@ async function sendTelegram(chat,text,bot='leave',markup=null,files=[]){
   const response=await fetch(`https://api.telegram.org/bot${token}/sendDocument`,{method:'POST',body:form,signal:AbortSignal.timeout(60000)});
   const result=await response.json();if(!result.ok)throw telegramError(result);}
 }
+/* Each 5-second sweep looks at up to DELIVERY_SCAN due messages and sends at most DELIVERY_SENDS of them.
+   Messages for people who have not linked a bot are only pushed back 5 minutes (no network call), so a long list of
+   them can no longer hold up a message that can be delivered, such as the PM's trial OTP (20 Nov 2026). */
+const DELIVERY_SCAN=100,DELIVERY_SENDS=5;
 export async function deliverTelegram(pool,send=sendTelegram){
  if(!Object.keys(botSettings).some(bot=>botToken(bot)))return;
  const db=await pool.connect();try{
   await db.query('BEGIN');
   const connectedColumn=mainBotConnectionColumn();
-  const jobs=(await db.query(`SELECT o.*,a.${connectedColumn} AS mt_hr_enabled,CASE WHEN ($1 AND a.${connectedColumn} AND (o.bot IN ('leave','trial','joining','mt') OR ($2 AND o.bot='nagpur'))) OR (o.bot='trial' AND a.trial_connected) OR (o.bot='trial-status' AND a.trial_status_connected) OR (o.bot='joining' AND a.joining_connected) OR (o.bot='leave' AND a.leave_connected) OR (o.bot='nagpur' AND a.nagpur_connected) THEN a.chat_id END AS chat_id FROM hr_telegram_outbox o LEFT JOIN hr_telegram_accounts a ON a.actor=o.actor WHERE o.state='PENDING' AND o.next_attempt<=now() ORDER BY o.id LIMIT 1 FOR UPDATE OF o SKIP LOCKED`,[mtEnabled(),cmllHrEnabled()])).rows;
+  const jobs=(await db.query(`SELECT o.*,a.${connectedColumn} AS mt_hr_enabled,CASE WHEN ($1 AND a.${connectedColumn} AND (o.bot IN ('leave','trial','joining','mt') OR ($2 AND o.bot='nagpur'))) OR (o.bot='trial' AND a.trial_connected) OR (o.bot='trial-status' AND a.trial_status_connected) OR (o.bot='joining' AND a.joining_connected) OR (o.bot='leave' AND a.leave_connected) OR (o.bot='nagpur' AND a.nagpur_connected) THEN a.chat_id END AS chat_id FROM hr_telegram_outbox o LEFT JOIN hr_telegram_accounts a ON a.actor=o.actor WHERE o.state='PENDING' AND o.next_attempt<=now() ORDER BY o.id LIMIT ${DELIVERY_SCAN} FOR UPDATE OF o SKIP LOCKED`,[mtEnabled(),cmllHrEnabled()])).rows;
+  let sends=0;
   for(const job of jobs){
    if(!job.chat_id&&job.bot==='nagpur')job.chat_id=nagpurRecipients()[job.actor]||null;
    const bot=job.bot==='trial-status'?'trial-status':(job.bot!=='nagpur'||cmllHrEnabled())&&job.mt_hr_enabled&&mtEnabled()?'mt':job.bot||'leave';
    if(!job.chat_id||(cmllHrEnabled()&&bot!=='mt'&&!botToken(bot))){await db.query("UPDATE hr_telegram_outbox SET next_attempt=now()+interval '5 minutes',last_error='Recipient has not connected Telegram' WHERE id=$1",[job.id]);continue;}
+   if(sends>=DELIVERY_SENDS)continue;   /* stays due: the next sweep sends it */
+   sends++;
    try{const files=job.files?.length?(await db.query('SELECT name,mime,data,caption FROM hr_telegram_files WHERE id = ANY($1) ORDER BY id',[job.files])).rows:[];await send(job.chat_id,job.message,bot,job.markup||(bot==='mt'?mtMenu():null),files);await db.query("UPDATE hr_telegram_outbox SET state='SENT',sent_at=now(),last_error=NULL WHERE id=$1",[job.id]);}
    catch(error){const reason=error?.code==='NO_BOT'?`${botLabel(bot)} is not configured on the server`:error?.code==='BAD_TOKEN'?`${botSettings[bot]||botSettings.leave}_BOT_TOKEN is wrong – Telegram rejected it`:error?.code==='NOT_STARTED'?`Recipient must open @${botUsername(bot)||bot+' bot'} and tap Start`:`Delivery failed${error?.description?': '+error.description:'; recipient may have blocked the bot'}`;
     await db.query("UPDATE hr_telegram_outbox SET attempts=attempts+1,state=CASE WHEN attempts>=9 THEN 'FAILED' ELSE 'PENDING' END,next_attempt=now()+interval '5 minutes',last_error=$2 WHERE id=$1",[job.id,reason]);}

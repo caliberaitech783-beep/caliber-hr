@@ -121,7 +121,7 @@ export function detailView(row: Trial, role: Role, canOpenJoining = false, otpAp
 }
 
 /* Office HR: forms waiting for the PM's or Directors' OTP, one OTP per batch. */
-export type OtpGroup = {key: string; reviewer: 'pm'|'director'; rows: Trial[]; expires: string; busy: boolean};
+export type OtpGroup = {key: string; reviewer: 'pm'|'director'; rows: Trial[]; expires: string; busy: boolean; note?: string};
 export function otpPanel(groups: OtpGroup[]) {
   if (!groups.length) return '';
   const who = (g: OtpGroup) => g.reviewer==='pm' ? 'PM' : 'Directors';
@@ -133,6 +133,6 @@ export function otpPanel(groups: OtpGroup[]) {
         ? `<span class="otp-entry"><input data-otp-code inputmode="numeric" maxlength="6" autocomplete="one-time-code" aria-label="OTP from ${who(g)} for ${esc(g.rows.map(r=>r.name).join(', '))}" placeholder="6-digit OTP">
            <button type="button" class="btn ok sm" data-otp-verify ${g.busy?'disabled':''}>Verify</button>
            <button type="button" class="btn sm" data-otp-request ${g.busy?'disabled':''}>Resend OTP</button>
-           <span class="muted small">Sent to ${who(g)} · valid till ${esc(indiaTime(new Date(g.expires)))}</span></span>`
+           ${g.note?`<span class="small otp-warn" role="status">Not delivered yet – ${esc(g.note)} Valid till ${esc(indiaTime(new Date(g.expires)))}.</span>`:`<span class="muted small">Sent to ${who(g)} · valid till ${esc(indiaTime(new Date(g.expires)))}</span>`}</span>`
         : `<button type="button" class="btn pri sm" data-otp-request ${g.busy?'disabled':''}>${g.busy?'Sending…':'Request OTP from '+who(g)}</button>`}</td></tr>`).join(''))}</div>`;
 }

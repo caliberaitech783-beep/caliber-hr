@@ -58,7 +58,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   let trainerName = savedSession()?.grant ? '' : scope.name;
   /* Every Driver Trainer of the site; with two or more, Part 2 asks each for Yes / No. */
   let trainers: {actor: string; name: string}[] = [];
-  const otpState = new Map<string,{expires: string; busy: boolean}>();
+  const otpState = new Map<string,{expires: string; busy: boolean; note?: string}>();
   /* OTP approval needs the server; the browser-only preview (not signed in) keeps direct approval. */
   const otpApproval = () => Boolean(savedSession()?.grant);
   let photo = '', photoLoading = false, photoVersion = 0, photoUrl = '', detailId = '', toastTimer: ReturnType<typeof setTimeout>;
@@ -953,7 +953,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       otpState.set(group.key,{...state,busy:true});renderApprovals();
       try {
         const out=await requestOtp(group.reviewer,formNos,scope);
-        otpState.set(group.key,{expires:out.expires,busy:false});
+        otpState.set(group.key,{expires:out.expires,busy:false,note:out.telegram.connected.length?'':deliveryStatus(out.telegram)});
         toast(out.telegram.connected.length?`OTP sent to ${who} on Telegram. Ask them for it.`:`OTP saved. ${deliveryStatus(out.telegram)}`);
       } catch (error) {
         otpState.set(group.key,{...state,busy:false});

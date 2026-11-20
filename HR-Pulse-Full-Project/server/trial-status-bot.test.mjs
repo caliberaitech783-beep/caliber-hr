@@ -122,3 +122,23 @@ test('a PASS goes to the PM and tells Office HR to request the PM OTP; a FAIL do
   assert.deepEqual(outbox.map(o=>o.actor),['gulnawaz'],'a failed candidate needs no PM OTP');
  });
 });
+
+/* 20 Nov 2026: the PM's OTP was stuck behind messages for people who never linked a bot. */
+test('a deliverable OTP is sent in the same sweep even behind many unlinked recipients',async()=>{
+ await withEnv(trialStatusEnv,async()=>{
+  const queue=[...Array.from({length:80},(_,i)=>({id:i+1,bot:'leave',actor:'nobody'+i,chat_id:null,message:'old'})),{id:81,bot:'trial-status',actor:'gulnawaz',chat_id:'55',message:'OTP: 123456'}];
+  let sql='';const db={release(){},async query(s){if(s.startsWith('SELECT o.')){sql=s;return {rows:queue};}return {rows:[]};}};
+  const sent=[];await deliverTelegram({connect:async()=>db},async(chat,text,bot)=>{sent.push([chat,text,bot]);});
+  assert.match(sql,/LIMIT 100 /);
+  assert.deepEqual(sent,[['55','OTP: 123456','trial-status']]);
+ });
+});
+test('one sweep sends at most five messages; the rest stay due',async()=>{
+ await withEnv(trialStatusEnv,async()=>{
+  const queue=Array.from({length:8},(_,i)=>({id:i+1,bot:'trial-status',actor:'p'+i,chat_id:String(i),message:'m'}));
+  const writes=[];const db={release(){},async query(s,v){if(s.startsWith('SELECT o.'))return {rows:queue};writes.push([s,v]);return {rows:[]};}};
+  let sent=0;await deliverTelegram({connect:async()=>db},async()=>{sent++;});
+  assert.equal(sent,5);
+  assert.equal(writes.filter(([s])=>s.includes("state='SENT'")).length,5);
+ });
+});
