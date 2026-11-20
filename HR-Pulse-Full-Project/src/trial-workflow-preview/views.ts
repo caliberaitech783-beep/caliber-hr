@@ -1,4 +1,4 @@
-import {date, dateTime, DOCS, equipment, indiaDay, isClearedForJoining, ROLES, status, type Outcome, type Role, type Trial} from './records';
+import {date, dateTime, DOCS, equipment, indiaDay, indiaTime, isClearedForJoining, isOtpRole, ROLES, status, votesText, type Outcome, type Role, type Trial} from './records';
 
 const escapes: Record<string,string> = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 export const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g,char=>escapes[char]);
@@ -14,6 +14,17 @@ export function overviewTable(records: Trial[], canOpenJoining = false) {
     <tr><td class="mono">${esc(row.formNo)}</td><td>${candidateLink(row)}<div class="muted small">${esc(row.mobile)}</div></td>
     <td>${esc(row.post)}</td><td>${esc(equipment(row))}</td><td>${esc(row.experience)}${row.experience?' yrs':''}</td>
     <td>${esc(row.referredBy)}</td><td>${esc(dateTime(row.trialDate))}</td><td>${resultPill(row)}</td><td>${stagePill(row)}${canOpenJoining&&isClearedForJoining(row)?` <button type="button" class="btn pri sm" data-join-trial="${esc(row.id)}" aria-label="Open Step 2 for ${esc(row.name)}">Open Step 2</button>`:''}</td></tr>`).join(''));
+}
+/* Two or more Driver Trainers: a Yes / No tick for every trainer; PASS only when all say Yes (owner, 20 Nov 2026). */
+function voteTable(draft: Outcome | undefined, prefix: string, disabled: string) {
+  const votes = draft?.votes;
+  if (!votes || votes.length < 2) return '';
+  const cells = (actor: string, name: string, vote: string) => (['YES','NO'] as const).map(choice=>
+    `<td style="text-align:center"><input type="checkbox" data-vote="${esc(actor)}" data-v="${choice}" aria-label="${prefix}${choice==='YES'?'Yes':'No'} from ${esc(name)}" ${vote===choice?'checked':''} ${disabled}></td>`).join('');
+  const summary = draft.result==='PASS' ? '✅ PASS – every trainer said Yes' : draft.result==='FAIL' ? `❌ FAIL – No from ${esc(votes.filter(v=>v.vote==='NO').map(v=>v.name).join(', '))}` : `Tick Yes or No for every trainer (${votes.filter(v=>!v.vote).length} left)`;
+  return `<table class="t vote-table" aria-label="${prefix}Trainer votes"><thead><tr><th scope="col">#</th><th scope="col">Driver Trainer</th><th scope="col" style="text-align:center">✅ Yes</th><th scope="col" style="text-align:center">❌ No</th></tr></thead>
+    <tbody>${votes.map((v,i)=>`<tr><td>${i+1}</td><td>${esc(v.name)}</td>${cells(v.actor,v.name,v.vote)}</tr>`).join('')}</tbody></table>
+    <p class="small vote-result" role="status"><b>Result: ${summary}</b></p>`;
 }
 function resultFields(id: string, name: string, draft?: Outcome, allowed = false, file?: File, video?: File, optimizingVideo = false) {
   const prefix = name ? esc(name) + ': ' : '';
@@ -38,7 +49,7 @@ function resultFields(id: string, name: string, draft?: Outcome, allowed = false
       <span class="note">Required · Result: PDF, JPG or PNG · Video automatically optimized to 480p, 15 FPS (AV1 → VP9 → H.264)</span>
       ${file ? `<span class="trial-result-filename" role="status">${esc(file.name)}</span><button type="button" class="btn sm" data-remove-result-file ${disabled}>Remove file</button>` : ''}
       ${video ? `<span class="trial-result-filename" role="status">${esc(video.name)}</span><button type="button" class="btn sm" data-remove-driving-video ${disabled}>Remove video</button>` : ''}`)}
-    ${row('Result', `<div class="pf">${resultButtons}</div>`)}
+    ${row('Result', voteTable(draft, prefix, disabled) || `<div class="pf">${resultButtons}</div>`)}
     ${row('If PASS – recommended for', `
       <div class="recommended-post" role="group" aria-label="${prefix}Recommended post">${posts}</div>
       <label class="trainer-machine">Machine <input type="text" data-f="machine" aria-label="${prefix}Machine" value="${esc(draft?.machine)}" ${passDisabled}></label>`)}
@@ -76,7 +87,7 @@ export function approvalTable(records: Trial[], selected: Set<string>) {
       <td>${esc(dateTime(row.trialDate))}</td><td class="small">${last?esc(ROLES[last.role])+': '+esc(last.by):''}<div class="muted">${esc(dateTime(last?.at||''))}</div></td></tr>`;
   }).join(''));
 }
-export function detailView(row: Trial, role: Role, canOpenJoining = false) {
+export function detailView(row: Trial, role: Role, canOpenJoining = false, otpApproval = false) {
   const item = (label: string,value: string) => `<div class="row"><div class="k">${label}</div><div class="v">${value||'<span class="muted">–</span>'}</div></div>`;
   const section = (data: [string,string][])=>data.map(([label,value])=>item(label,esc(value))).join('');
   const out=row.outcome;
@@ -102,9 +113,26 @@ export function detailView(row: Trial, role: Role, canOpenJoining = false) {
     <div class="secbar">Part 2 – Trial result <em>Driver Trainer</em></div>
     <div class="rows" style="border:1px solid var(--line-strong)">${item('Result',resultPill(row))}${section([
       ['If PASS – recommended for',out && row.result==='PASS'?[out.post,out.machine].filter(Boolean).join(' – '):''],['If FAIL – reason',out?.reason||''],
-      ['Trial conducted by',out?.trainer||''],['Examiner remarks',out?.remarks||''],
+      ['Trial conducted by',out?.trainer||''],...(out?.votes?.length?[['Trainer votes',votesText(out.votes)] as [string,string]]:[]),['Examiner remarks',out?.remarks||''],
     ])}${out?.attachment ? item('Trial result file', `<button type="button" class="link trial-result-filename" data-download-result>Download ${esc(out.attachment.name)}</button>`) : ''}${out?.videoAttachment ? item('Driving video', `<button type="button" class="link trial-result-filename" data-download-driving-video>Download ${esc(out.videoAttachment.name)}</button>`) : ''}</div>
     <div class="secbar">Approvals</div><div class="sigs">${signs}</div>
     ${row.history.filter(h=>h.note).map(h=>`<p class="note"><b>${esc(ROLES[h.role])} (${esc(h.by)}):</b> ${esc(h.note)}</p>`).join('')}
-    ${row.stage===role && ['pm','ohr','rhr','director'].includes(role) ? `<div class="actions"><input id="mNote" aria-label="Decision note" placeholder="Note (required to reject)"><button type="button" class="btn no" data-decide="reject">Reject</button><button type="button" class="btn ok" data-decide="approve">Approve as ${ROLES[role]}</button></div>`:''}`;
+    ${row.stage===role && ['pm','ohr','rhr','director'].includes(role) ? `<div class="actions"><input id="mNote" aria-label="Decision note" placeholder="Note (required to reject)"><button type="button" class="btn no" data-decide="reject">Reject</button>${isOtpRole(role)&&otpApproval?'<span class="note">You approve by OTP: when Office HR requests it, tell them the OTP from the CALIBER Trial Status bot.</span>':`<button type="button" class="btn ok" data-decide="approve">Approve as ${ROLES[role]}</button>`}</div>`:''}`;
+}
+
+/* Office HR: forms waiting for the PM's or Directors' OTP, one OTP per batch. */
+export type OtpGroup = {key: string; reviewer: 'pm'|'director'; rows: Trial[]; expires: string; busy: boolean};
+export function otpPanel(groups: OtpGroup[]) {
+  if (!groups.length) return '';
+  const who = (g: OtpGroup) => g.reviewer==='pm' ? 'PM' : 'Directors';
+  return `<div class="otp-panel"><h3>OTP approvals – PM and Directors</h3>
+    <p class="note">Press Request OTP: the OTP goes on the CALIBER Trial Status bot to the PM (or to all three Directors). Ask them for it, type it here and press Verify. Valid 15 minutes, single use.</p>
+    ${table(['Approval of','Candidates','OTP'],groups.map(g=>`<tr data-otp="${esc(g.key)}"><td><b>${g.reviewer==='pm'?'PM':'Directors (final)'}</b></td>
+      <td>${g.rows.map(r=>`${candidateLink(r)} <span class="mono muted small">${esc(r.formNo)}</span>`).join('<br>')}</td>
+      <td>${g.expires
+        ? `<span class="otp-entry"><input data-otp-code inputmode="numeric" maxlength="6" autocomplete="one-time-code" aria-label="OTP from ${who(g)} for ${esc(g.rows.map(r=>r.name).join(', '))}" placeholder="6-digit OTP">
+           <button type="button" class="btn ok sm" data-otp-verify ${g.busy?'disabled':''}>Verify</button>
+           <button type="button" class="btn sm" data-otp-request ${g.busy?'disabled':''}>Resend OTP</button>
+           <span class="muted small">Sent to ${who(g)} · valid till ${esc(indiaTime(new Date(g.expires)))}</span></span>`
+        : `<button type="button" class="btn pri sm" data-otp-request ${g.busy?'disabled':''}>${g.busy?'Sending…':'Request OTP from '+who(g)}</button>`}</td></tr>`).join(''))}</div>`;
 }

@@ -37,8 +37,17 @@ export type Trial = Candidate & {
   /** Part 1 reached the server, so the Driver Trainer and the admin overview can see it. */
   sent?: boolean;
 };
+/** One line per Driver Trainer when the site has two or more (owner, 20 Nov 2026). */
+export type TrainerVote = {actor: string; name: string; vote: 'YES' | 'NO' | ''};
+/** PASS only when every trainer says Yes; one No makes it FAIL; empty until all have ticked. */
+export const voteResult = (votes: TrainerVote[]): Result => votes.some(v=>!v.vote) ? '' : votes.every(v=>v.vote==='YES') ? 'PASS' : 'FAIL';
+export const votesText = (votes?: TrainerVote[]) => (votes||[]).map(v=>`${v.name}: ${v.vote}`).join('; ');
+/** PM and Directors approve by OTP; Office HR requests it and enters it (owner, 20 Nov 2026). */
+export const OTP_ROLES = ['pm','director'] as const;
+export const isOtpRole = (role: string): role is 'pm'|'director' => (OTP_ROLES as readonly string[]).includes(role);
 export type Outcome = {
   result: Result; post: Post; machine: string; reason: string; trainer: string; remarks: string;
+  votes?: TrainerVote[];
   attachment?: {id: string; name: string};
   videoAttachment?: {id: string; name: string};
 };

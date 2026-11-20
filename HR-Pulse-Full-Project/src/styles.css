@@ -124,3 +124,8 @@ nav button .chev{flex-shrink:0;transition:transform .2s}nav button .chev.expande
 
 .address-fields{grid-column:1/-1;display:grid;gap:8px}.same-address-option{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}.same-address-option input{width:16px;height:16px;accent-color:#6d18d6}
 .master-subnav.attendance-subnav{display:grid;grid-template-columns:1fr;gap:3px}.master-subnav.attendance-subnav button{justify-content:flex-start;font-size:12px;min-height:32px;height:auto;padding:7px 12px;text-align:left}.subnav-group{display:block;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;opacity:.72;padding:9px 12px 2px}
+/* Approval Master › Trial Status bot: the route strip (owner, 20 Nov 2026) */
+.trial-route-strip{list-style:none;margin:12px 0;padding:0;display:flex;flex-wrap:wrap;gap:14px}
+.trial-route-strip li{position:relative;padding:6px 12px;border:1px solid #e4e0f0;border-radius:8px;background:#fff;font-size:13px;font-weight:600}
+.trial-route-strip li:not(:last-child)::after{content:'→';position:absolute;right:-12px;top:50%;transform:translateY(-50%);color:#8a8499;font-weight:400}
+.trial-route-strip li.done{background:#ecfdf5;border-color:#a7f3d0}

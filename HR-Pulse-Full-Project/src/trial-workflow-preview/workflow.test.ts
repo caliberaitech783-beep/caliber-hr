@@ -559,3 +559,62 @@ describe('Trial workflow preview',()=>{
     expect(el('#modalBox').textContent).not.toContain('Cleared to join');
   });
 });
+
+describe('OTP approval and several Driver Trainers (owner, 20 Nov 2026)',()=>{
+  const signedIn=()=>sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+  const passed=()=>reviewTrial({id:'otp-trial',formNo:'TF/2026-27/0042',site:scope.site,resultAt:'2026-11-19T12:00:00Z',
+    fields:{Result:'PASS','Name of candidate':'Otp Candidate','Mobile no.':'9876543210'}})!;
+  it('PM cannot approve directly; Office HR requests the PM OTP, enters it and the form moves to Office HR',async()=>{
+    signedIn();
+    const request=vi.spyOn(window,'fetch').mockImplementation(async url=>{
+      const path=String(url);
+      if(path.endsWith('/trial-otp'))return Response.json({expires:'2026-11-20T12:15:00Z',sentTo:['gulnawaz'],telegram:{message:'',recipients:1,connected:['gulnawaz']}});
+      if(path.endsWith('/trial-otp-verify'))return Response.json({approved:true,at:'2026-11-20T12:05:00Z',by:'PM Sir (OTP entered by Sample Signer)',stage:'ohr',rows:[],telegram:{message:'',recipients:1,connected:['apurvakopulwar']}});
+      return Response.json({...hierarchyTrainer,roles:['pm','ohr']});
+    });
+    vi.mocked(telegramSend.fetchReviewQueue).mockResolvedValueOnce([passed()]);
+    const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#apList')).toHaveTextContent('Otp Candidate'));
+    change('#role','pm');
+    click('#apAll');
+    expect(el('#apApprove')).toBeDisabled();
+    expect(el('#apRoleWarn')).toHaveTextContent('You approve by OTP');
+    change('#role','ohr');
+    expect(el('#apList .otp-panel')).toHaveTextContent('Otp Candidate');
+    click('[data-otp-request]');
+    await waitFor(()=>expect(el('[data-otp-code]')).toBeInTheDocument());
+    const sent=request.mock.calls.find(([url])=>String(url).endsWith('/trial-otp'));
+    expect(JSON.parse(String(sent![1]?.body))).toMatchObject({reviewer:'pm',formNos:['TF/2026-27/0042'],site:scope.site});
+    input('[data-otp-code]','482913');
+    click('[data-otp-verify]');
+    await waitFor(()=>expect(root(el).querySelector('#apList .otp-panel')).toBeNull());
+    expect(el('#apList')).toHaveTextContent('Otp Candidate');
+    const verify=request.mock.calls.find(([url])=>String(url).endsWith('/trial-otp-verify'));
+    expect(JSON.parse(String(verify![1]?.body))).toMatchObject({reviewer:'pm',otp:'482913'});
+  });
+  it('a site with three Driver Trainers ticks Yes / No for each; one No makes it FAIL',async()=>{
+    signedIn();
+    const trainers=[{actor:'t1',name:'Rakesh Singh'},{actor:'t2',name:'Mahesh Patel'},{actor:'t3',name:'Imran Khan'}];
+    vi.spyOn(window,'fetch').mockImplementation(async url=>Response.json(String(url).endsWith('/trial-trainer')?{...hierarchyTrainer,trainers}:{batchId:'',formNos:[],telegram:{message:'',recipients:1,connected:[]}}));
+    const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
+    click('[data-tab="hr"]');
+    input('#f_name','Vote Candidate');
+    input('#f_mobile','9876543210');
+    click('input[name="f_vehicle"][value="Excavator"]');
+    change('#d_dl','Yes');
+    change('#d_medical','Yes');
+    fireEvent.submit(el('#single'));
+    change('#role','trainer');
+    await waitFor(()=>expect(el('[aria-label="Vote Candidate: Trainer votes"]')).toBeInTheDocument());
+    expect(el('#trList').querySelector('[aria-label="Vote Candidate: PASS"]')).toBeNull();
+    click('[aria-label="Vote Candidate: Yes from Rakesh Singh"]');
+    click('[aria-label="Vote Candidate: Yes from Mahesh Patel"]');
+    expect(el('.vote-result')).toHaveTextContent('1 left');
+    click('[aria-label="Vote Candidate: No from Imran Khan"]');
+    expect(el('.vote-result')).toHaveTextContent('FAIL – No from Imran Khan');
+    click('[aria-label="Vote Candidate: Yes from Imran Khan"]');
+    expect(el('.vote-result')).toHaveTextContent('PASS – every trainer said Yes');
+  });
+});
+function root(el:(selector:string)=>HTMLElement){return el('#apList').getRootNode() as ShadowRoot;}
