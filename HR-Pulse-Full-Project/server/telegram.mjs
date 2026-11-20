@@ -73,6 +73,9 @@ export const DEFAULT_TRIAL_RECIPIENTS=[{name:'Apurva Kopulwar',phone:'8087477229
 /* Recipients that are always included even after the list is edited in the app. */
 const ALWAYS_TRIAL_ACTORS=['apurvakopulwar','arjunkeshri','mayuriumate'];
 export const recipientActor=r=>r.actor||('trial:'+r.phone);
+/* Rule (owner, 20 Nov 2026): the user who submits or approves a trial form is never sent that message;
+   it goes only to the next assigned users. */
+export const notSender=actor=>recipient=>String(recipient||'').replace(/^trial:/,'').trim().toLowerCase()!==String(actor||'').trim().toLowerCase();
 /* A recipient's scope is a comma list of site names / codes and groups (region, company, employee group), e.g. "Jayant OB East, NCL".
    Empty or "ALL" = every site. A message for a site goes only to recipients whose scope names that site or one of its groups. */
 const norm=v=>String(v||'').trim().toLowerCase().replace(/\s+/g,' ');
@@ -259,7 +262,7 @@ async function applyTrialStage(pool,db,{rows,reviewer,decision,target,batchId,xl
  const nextRecipients=stage==='reject'?[...await hierarchyRecipients(db,'siteHr',target),...await hierarchyRecipients(db,'part1',target),...await hierarchyRecipients(db,'result',target)]
    :stage==='final'?[...await hierarchyRecipients(db,'all',target),...scopedRecipients(await trialRecipients(db,'result'),target)]
    :await hierarchyRecipients(db,stage,target);
- const recipients=[...new Set(nextRecipients.map(recipientActor))];
+ const recipients=[...new Set(nextRecipients.map(recipientActor))].filter(notSender(actor));
  const messages=[];
  for(const r of rows){const old=(await db.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1 FOR UPDATE",[r.formNo])).rows[0];
   if(old?.data?.site){
@@ -507,7 +510,7 @@ export function createTelegram(pool){
    const records=items.map(c=>{const fields=cleanFields(c.fields),formNo=String(c.formNo||'').trim().slice(0,40);if(!formNo)fail('Form number is required');const name=String(fields['Name of candidate']||'').trim();if(!name)fail('Candidate name is required for every row');
     return {formNo,clientId:String(c.clientId||'').slice(0,64),heading,site,company,department,fields,stage:'PART1',status:'Sent to driver trainer',batchId,trialBy,attachments:cleanAttachments(c.attachments),part1By:profile.actor,part1At:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};});
    const target={site,region:String(input.region||'').slice(0,80),company,group:String(input.group||'').slice(0,80)};
-   const recipients=(await trialRecipientsFor(pool,'part1',target)).map(recipientActor);
+   const recipients=(await trialRecipientsFor(pool,'part1',target)).map(recipientActor).filter(notSender(profile.actor));
    let message,files=[];
    await tx(async db=>{
     /* Each browser numbers its own forms, so two sites or two HR browsers can pick the same number.
@@ -592,7 +595,7 @@ export function createTelegram(pool){
    requireTrialUploads(attachments);
    const record={...(prev?.data||{}),formNo,heading:String(input.heading||'').slice(0,120),site:String(input.site||'').slice(0,80),company:String(input.company||'').slice(0,120),department:String(input.department||'').slice(0,80),batchId:String(input.batchId||prev?.data?.batchId||'').slice(0,40),fields:{...(prev?.data?.fields||{}),...fields},attachments:keepTrialDocuments(prev?.data?.attachments,attachments.length?attachments:prev?.data?.attachments||[]),stage:'RESULT',status:'Sent to PM for approval',trialBy:String(input.trialBy||fields['Examiner name']||profile.name||profile.actor).slice(0,80),resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
    Object.assign(record,{pendingRole:'pm',history:[]});
-   const message=trialResultMessage(record,profile.name||profile.actor),recipients=(await trialRecipientsFor(pool,'result',{site:record.site,region:String(input.region||'').slice(0,80),company:record.company,group:String(input.group||'').slice(0,80)})).map(recipientActor);
+   const message=trialResultMessage(record,profile.name||profile.actor),recipients=(await trialRecipientsFor(pool,'result',{site:record.site,region:String(input.region||'').slice(0,80),company:record.company,group:String(input.group||'').slice(0,80)})).map(recipientActor).filter(notSender(profile.actor));
    await tx(async db=>{let id=prev?.id;
     if(id)await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[record.fields['Name of candidate'],record,profile.actor,id]);
     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[formNo,record.fields['Name of candidate'],record,profile.actor])).rows[0].id;
@@ -610,7 +613,7 @@ export function createTelegram(pool){
    if(!results.length||results.some(r=>!r.result))fail('Mark PASS or FAIL for every candidate');
    const trialBy=String(input.trialBy||profile.name||profile.actor).slice(0,80);
    const xlsx=input.xlsx?String(input.xlsx).replace(/^data:[^,]*,/,'').slice(0,8*1024*1024):'';
-   const recipients=(await trialRecipientsFor(pool,'result',{site:String(input.site||''),region:String(input.region||'').slice(0,80),company:String(input.company||''),group:String(input.group||'').slice(0,80)})).map(recipientActor);
+   const recipients=(await trialRecipientsFor(pool,'result',{site:String(input.site||''),region:String(input.region||'').slice(0,80),company:String(input.company||''),group:String(input.group||'').slice(0,80)})).map(recipientActor).filter(notSender(profile.actor));
    let message;const records=[];
    const site=String(input.site||'').slice(0,80),company=String(input.company||'').slice(0,120),department=String(input.department||'').slice(0,80),heading=String(input.heading||'').slice(0,120);
    const given=new Map((Array.isArray(input.rows)?input.rows:[]).slice(0,100).map(r=>[String(r.formNo||'').slice(0,40),{fields:cleanFields(r.fields),attachments:cleanAttachments(r.attachments)}]));
@@ -648,7 +651,7 @@ export function createTelegram(pool){
    if(prev.site&&trialSite(prev.site)?.code!==trialSite(input.site)?.code)fail('The trial form belongs to another site.',403);
    const record={...prev,formNo,heading:String(input.heading||'').slice(0,120),site:String(input.site||'').slice(0,80),company:String(input.company||'').slice(0,120),department:String(input.department||'').slice(0,80),fields:cleanFields(f),stage:'RESULT',status:'Sent to PM for approval',trialBy:String(input.trialBy||f['Examiner name']||profile.name||profile.actor).slice(0,80),resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
    const message=trialResultMessage(record,profile.name||profile.actor);
-   const recipients=(await trialRecipientsFor(pool,'result',{site:record.site,region:input.region,company:record.company,group:input.group})).map(recipientActor);
+   const recipients=(await trialRecipientsFor(pool,'result',{site:record.site,region:input.region,company:record.company,group:input.group})).map(recipientActor).filter(notSender(profile.actor));
    let id;await tx(async db=>{
     const aadhaar=String(f['Aadhaar no.']||f['Aadhaar No.']||f['Aadhaar No. *']||'').replace(/\D/g,'');
     if(!/^\d{12}$/.test(aadhaar))fail('Enter a 12-digit Aadhaar number');

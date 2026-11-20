@@ -7,7 +7,7 @@ import {candidateProblem, canApprove, date, DOCS, equipment, indiaDay, indiaTime
   NEXT, nextNumber, normalizeTrialApproval, post, resultMessage, ROLES, STAGES, VEHICLES, type Candidate, type DrivingLicenceClass, type Outcome, type Role, type Trial} from './records';
 import {approvalTable, detailView, esc, overviewTable, trainerForms} from './views';
 import {getTrialResultFile, removeTrialResultFiles, saveTrialResultFiles} from './trialResultFiles';
-import {deliveryStatus, fetchReviewQueue, fetchTrialTrainer, sendApproval, sendPart1, sendResults, type TrialScope} from './telegramSend';
+import {deliveryStatus, fetchReviewQueue, fetchTrialTrainer, sendApproval, sendPart1, sendResults, type Delivery, type TrialScope} from './telegramSend';
 import {siteDisplayName} from '../siteNames';
 import {findPreviousTrial} from './previousTrial';
 import type {TrialMatch} from '../TrialAadhaarHistory';
@@ -286,7 +286,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     })) return false;
     toast(batch ? `Batch ${created[0].batch}: ${created.length} candidates sent to Driver Trainer.` : `${created[0].formNo} sent to Driver Trainer.`);
     if (savedSession()?.grant) void sendPart1(created,scope,aadhaar.documents?.())
-      .then(d=>{if(effects.signal.aborted)return;markSent(created,d.formNos);showTelegram([d.message],batch?`Batch ${created[0].batch} – sent to driver trainer (PDF sheet attached)`:'Trial Form Submitted – sent to driver trainer',undefined,deliveryStatus(d));})
+      .then(d=>{if(effects.signal.aborted)return;markSent(created,d.formNos);notifySent('Driver Trainer',d);})
       .catch(error=>{if(!effects.signal.aborted) toast('Not sent to Driver Trainer yet: '+(error instanceof Error?error.message:'could not send')+' It is sent again automatically.');});
     return true;
   }
@@ -766,8 +766,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     }
     const passed=changed.filter(row=>row.result==='PASS');
     toast(`${changed.length} results sent to PM – ${passed.length} pass, ${changed.length-passed.length} fail.`);
-    if(delivery)showTelegram([delivery.message],'Trial result – sent to PM for approval',undefined,deliveryStatus(delivery));
-    else if(passed.length)showTelegram(passed.map(resultMessage),'Trial PASS – sent to PM for approval');
+    if(delivery)notifySent('PM',delivery);
   }
   function focusResultUpload(id: string, selector='[data-choose-result-file]') {
     $$<HTMLButtonElement>('#trList '+selector).find(button=>
@@ -899,13 +898,8 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     $<HTMLInputElement>('#apNote').value='';
     toast(`${changed.length} form(s) ${approved?'approved':'rejected'} by ${ROLES[reviewer]}.`);
     renderApprovals();
-    const passed=changed.filter(row=>row.result==='PASS');
-    const cleared=approved&&reviewer==='director'?passed.filter(isClearedForJoining):[];
-    const prepared=onCleared&&cleared.length?prepareJoining(cleared):undefined;
-    const onClose=prepared?()=>void openJoining(prepared):undefined;
-    const summary=!approved?`Rejected by ${ROLES[reviewer]}`:reviewer==='director'?'Final approval by Directors – cleared to join':`Approved by ${ROLES[reviewer]} – sent to ${ROLES[NEXT[reviewer] as Role]||'next stage'}`;
-    if(delivery)showTelegram(delivery.message.split('\n\n———\n\n'),summary,onClose,deliveryStatus(delivery));
-    else if(approved&&reviewer==='director'&&passed.length) showTelegram(passed.map(resultMessage),'Cleared to join – final approval',onClose);
+    /* The approver gets a short line only; the message goes to the next assigned users. Site HR opens Step 2 from All candidates. */
+    if(delivery)notifySent(!approved?'Site HR, Driver Trainer and PM':reviewer==='director'?'everyone on the site hierarchy (cleared to join)':ROLES[NEXT[reviewer] as Role]||'the next step',delivery);
     return true;
   }
   $('#apList').onchange=event=>{
@@ -990,6 +984,13 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   async function openJoining(prepared: ReturnType<typeof prepareJoining>) {
     const open=await prepared;
     if (!effects.signal.aborted) open?.();
+  }
+  /* Rule (owner, 20 Nov 2026): whoever submits or approves never gets the Telegram message popup.
+     The message goes only to the next assigned users (Telegram + their "Waiting for your approval" popup);
+     the sender sees one short line, or what stopped delivery. showTelegram is only for buttons the user presses on purpose. */
+  function notifySent(next: string, delivery: Delivery) {
+    const sent = delivery.configured!==false && delivery.recipients>0 && delivery.connected.length>0 && !delivery.issues?.length;
+    toast(sent ? `Sent to ${next} on Telegram.` : `Saved and sent to ${next}. ${deliveryStatus(delivery)}`);
   }
   function showTelegram(messages: string[], summary: string, onClose?: ()=>void, status = 'Preview only') {
     const text=messages.join('\n\n———\n\n'), time=indiaTime();
