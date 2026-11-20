@@ -466,9 +466,9 @@ describe('Trial workflow preview',()=>{
     expect(el('#trList')).toHaveTextContent(video.name);
     expect(el('#bTrainer')).toHaveTextContent('1');
     click('#trSubmit');
-    await waitFor(()=>expect(el('#tgpop')).toHaveTextContent('Sent to PM for approval'));
-    expect(el('#tgpop').textContent).not.toContain('CLEARED TO JOIN');
-    click('#tgClose2');
+    await waitFor(()=>expect(el('#toast')).toHaveTextContent('results sent to PM'));
+    // The trainer who submitted never gets the Telegram message popup; it goes to the assigned PM.
+    expect(el('#tgpop').hidden).toBe(true);
     expect(onCleared).not.toHaveBeenCalled();
     for (const role of ['pm','ohr','rhr','director']) {
       change('#role',role);
@@ -476,13 +476,14 @@ describe('Trial workflow preview',()=>{
       click('#apAll');
       click('#apApprove');
     }
-    expect(el('#tgpop').textContent).toContain('CLEARED TO JOIN');
-    expect(onCleared).toHaveBeenCalledWith([expect.objectContaining({stage:'done',result:'PASS',name:'Sample Pass'})],expect.objectContaining({aadhaar:undefined,drivingLicence:undefined}));
-    expect(openJoining).not.toHaveBeenCalled();
-    expect(el('#tgClose2')).toHaveTextContent('Open Step 2');
-    click('#tgClose2');
-    await waitFor(()=>expect(openJoining).toHaveBeenCalledOnce());
+    // No approver gets the popup either; Site HR opens Step 2 from All candidates.
+    expect(el('#tgpop').hidden).toBe(true);
+    expect(onCleared).not.toHaveBeenCalled();
     change('#role','hr');
+    click('[data-tab="overview"]');
+    click('[data-join-trial]');
+    await waitFor(()=>expect(onCleared).toHaveBeenCalledWith([expect.objectContaining({stage:'done',result:'PASS',name:'Sample Pass'})],expect.objectContaining({aadhaar:undefined,drivingLicence:undefined})));
+    await waitFor(()=>expect(openJoining).toHaveBeenCalledOnce());
     click('[data-stage="done"]');
     expect(el('#ovTitle')).toHaveTextContent('Completed (1)');
     expect(el('#ovList').textContent).toContain('Cleared to join');

@@ -42,3 +42,8 @@ test('the browser shows the same route as the server enforces',()=>{
  assert.equal(regionalHrFor('Gauri Pauni OB 2nd')?.employeeId,'CMPL18114');
  assert.deepEqual(trialRoute('Majri OB').map(step=>step.label),['Site HR','Driver Trainer','PM','Office HR','Regional HR','Directors','Active']);
 });
+
+test('the user who submits or approves is not sent their own trial message',async()=>{
+ const {notSender}=await import('./telegram.mjs');
+ assert.deepEqual(['mayuriumate','apurvakopulwar','MayuriUmate','trial:9876543210'].filter(notSender('MAYURIUMATE')),['apurvakopulwar','trial:9876543210']);
+});
