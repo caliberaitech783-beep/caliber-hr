@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { problem } from './service.mjs';
 import {sendMail} from './mail.mjs';
 import {createAadhaarReader} from './aadhaar-ocr.mjs';
+import {workflowChatIds} from './telegram.mjs';
 async function body(req,limit=2_000_000) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw problem('JSON content type required',415);
   let size=0; const chunks=[];
@@ -34,6 +35,10 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       if(path==='/api/telegram/nagpur-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'nagpur'));
       if(path==='/api/telegram/trial-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'trial'));
       if(path==='/api/telegram/mt-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'mt'));
+      if(req.method==='POST'){
+        const workflowBot=workflowChatIds.find(bot=>path===`/api/telegram/${bot}-webhook`);
+        if(workflowBot)return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),workflowBot));
+      }
       const attendanceRoute=path.startsWith('/api/attendance/')?path.slice('/api/attendance/'.length):null;
       // The site bridge PC is not a Pulse user; it authenticates with its own key.
       if(attendanceRoute?.startsWith('bridge/')){

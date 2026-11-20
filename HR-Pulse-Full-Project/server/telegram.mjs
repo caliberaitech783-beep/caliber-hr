@@ -57,7 +57,8 @@ export async function telegramLeaveFlow(db,siteId){const row=(await db.query('SE
 export async function registerBotWebhook(bot,fetchImpl=fetch,logger=console){
  const token=botToken(bot),secret=botSecret(bot),base=process.env.API_PUBLIC_URL||'https://hr-api-cmll-783.azurewebsites.net';
  if(!token||!secret)return {skipped:true};
- try{const response=await fetchImpl(`https://api.telegram.org/bot${token}/setWebhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:`${base}/api/telegram/${bot}-webhook`,secret_token:secret,allowed_updates:['message','callback_query'],drop_pending_updates:bot!=='mt'}),signal:AbortSignal.timeout(10000)});
+ const workflowChat=workflowChatIds.includes(bot);
+ try{const response=await fetchImpl(`https://api.telegram.org/bot${token}/setWebhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:`${base}/api/telegram/${bot}-webhook`,secret_token:secret,allowed_updates:workflowChat?['message']:['message','callback_query'],drop_pending_updates:bot!=='mt'&&!workflowChat}),signal:AbortSignal.timeout(10000)});
   const result=await response.json();logger.log?.(`${botLabel(bot)} webhook: ${result.ok?'registered':'failed – '+result.description}`);return result;}
  catch(error){logger.error?.(`${botLabel(bot)} webhook registration failed`,error instanceof Error?error.message:error);return {ok:false};}
 }
@@ -214,10 +215,17 @@ export async function queueTelegram(db,eventKey,actors,message,bot='leave',marku
 /* Telegram text limit is 4096 chars: long batch messages are split at line breaks. */
 export function splitTelegram(text,max=4000){const parts=[];let cur='';for(const line of String(text).split('\n')){if((cur+'\n'+line).length>max&&cur){parts.push(cur);cur=line;}else cur=cur?cur+'\n'+line:line;}if(cur)parts.push(cur);return parts;}
 /* Bots: 'leave' = leave/approvals bot (TELEGRAM_BOT_TOKEN); 'trial' = Vehicle Trial Result bot (TELEGRAM_TRIAL_BOT_TOKEN). */
-const botSettings={leave:'TELEGRAM',trial:'TELEGRAM_TRIAL',joining:'TELEGRAM_JOINING',mt:'TELEGRAM_MT',nagpur:'TELEGRAM_NAGPUR'};
+const workflowChats={
+ 'trial-status':{title:'Trial Status',workflow:'trial',settings:'TELEGRAM_TRIAL_STATUS'},
+ 'employee-track':{title:'Employee Track',workflow:'employee',settings:'TELEGRAM_EMPLOYEE_TRACK'},
+ 'leave-request':{title:'Leave Request',workflow:'leave',settings:'TELEGRAM_LEAVE_REQUEST'}
+};
+export const workflowChatIds=Object.keys(workflowChats);
+const botSettings={leave:'TELEGRAM',trial:'TELEGRAM_TRIAL',joining:'TELEGRAM_JOINING',mt:'TELEGRAM_MT',nagpur:'TELEGRAM_NAGPUR',
+ ...Object.fromEntries(Object.entries(workflowChats).map(([id,chat])=>[id,chat.settings]))};
 export const botToken=bot=>process.env[`${botSettings[bot]||botSettings.leave}_BOT_TOKEN`];
 export const botUsername=bot=>process.env[`${botSettings[bot]||botSettings.leave}_BOT_USERNAME`]||(bot==='nagpur'?'NagpurEmployeeAdditionBot':'');
-export const botSecret=bot=>process.env[`${botSettings[bot]||botSettings.leave}_WEBHOOK_SECRET`]||(bot==='mt'?undefined:process.env.TELEGRAM_WEBHOOK_SECRET);
+export const botSecret=bot=>process.env[`${botSettings[bot]||botSettings.leave}_WEBHOOK_SECRET`]||(bot==='mt'||workflowChatIds.includes(bot)?undefined:process.env.TELEGRAM_WEBHOOK_SECRET);
 export const botLabel=bot=>({trial:'Vehicle Trial Result bot',joining:'Joining Approval bot',mt:'MT HR',nagpur:'Nagpur Employee Addition bot'})[bot]||'HR Pulse leave bot';
 const mtEnabled=()=>Boolean(botToken('mt')&&botUsername('mt')&&botSecret('mt'));
 const hrmsUrl='https://hrpulse.cmll.in/';
@@ -231,10 +239,10 @@ async function cmllConnectLink(db,actor,minutes=10){
  await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'mt',now()+$3::integer*interval '1 minute')",[hash('cmll:'+token),actor,minutes]);
  return {url:`https://t.me/${botUsername('mt')}?start=${token}`,botUsername:botUsername('mt')};
 }
+const workflowUrl=workflow=>hrmsUrl+'?hrWorkflow='+workflow+'#Employee%20Master';
+const workflowChatReady=bot=>Boolean(botUsername(bot)&&botToken(bot)&&botSecret(bot));
 const mtMenu=()=>({inline_keyboard:cmllHrEnabled()?[
- [{text:'Trial Status',url:hrmsUrl+'?hrWorkflow=trial#Employee%20Master'}],
- [{text:'Employee Track',url:hrmsUrl+'?hrWorkflow=employee#Employee%20Master'}],
- [{text:'Leave Request',url:hrmsUrl+'?hrWorkflow=leave#Employee%20Master'}],
+ ...workflowChatIds.map(bot=>[{text:workflowChats[bot].title,url:workflowChatReady(bot)?`https://t.me/${botUsername(bot)}?start=menu`:workflowUrl(workflowChats[bot].workflow)}]),
  [{text:'Link in HRMS',url:hrmsUrl+'#Telegram%20Hierarchy'}]
 ]:[
  [{text:'Leave & Approvals',url:hrmsUrl+'#Employee%20Master'}],
@@ -773,6 +781,17 @@ export function createTelegram(pool){
  async telegramWebhook(secret,update,bot='leave'){
   if(!webhookSecretValid(secret,botSecret(bot)))fail('Unauthorized webhook',403);
   if(!Number.isSafeInteger(update.update_id))fail('Invalid update');
+  if(workflowChatIds.includes(bot)){
+   const message=update.message;
+   if(message?.chat?.type==='private'&&message.from?.id===message.chat.id&&/^\/(start|help)(?:@\w+)?(?:\s|$)/.test(message.text||'')){
+    const {title,workflow}=workflowChats[bot];
+    await sendTelegram(message.chat.id,`${title} is available in HRMS. Sign in with your Pulse account to use this workflow.`,bot,{inline_keyboard:[
+     [{text:`Open ${title}`,url:workflowUrl(workflow)}],
+     [{text:'CMLL HR menu and notifications',url:'https://t.me/CMLLHRBOT?start=menu'}]
+    ]});
+   }
+   return {ok:true};
+  }
   const mt=bot==='mt';
   const name=cmllHrEnabled()?'CMLL HR':'MT HR';
   const connectedColumn=mainBotConnectionColumn();
@@ -820,7 +839,7 @@ export function createTelegram(pool){
    const msg=update.message;if(msg?.chat?.type!=='private'||!msg.from?.id||String(msg.chat.id)!==String(msg.from.id))return;
    const token=String(msg.text||'').match(/^\/start(?:@\w+)? ([A-Za-z0-9_-]{32})$/)?.[1];
    if(mt&&!token){
-    if(/^\/(start|help)(?:@\w+)?$/.test(String(msg.text||''))){
+    if(/^\/(start|help)(?:@\w+)?(?: menu)?$/.test(String(msg.text||''))){
      const account=(await db.query(`SELECT ${connectedColumn} AS mt_hr_enabled FROM hr_telegram_accounts WHERE telegram_user_id=$1`,[String(msg.from.id)])).rows[0];
      menu={chat:msg.chat.id,text:account?.mt_hr_enabled?`${name} is connected. Choose a workflow below.`:`Welcome to ${name}. For notifications, open Telegram Hierarchy in HRMS and connect your account.`};
     }

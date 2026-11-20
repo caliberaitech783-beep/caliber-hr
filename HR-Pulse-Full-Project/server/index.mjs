@@ -1,4 +1,4 @@
-import {seedTelegram,deliverTelegram,registerTrialWebhook,registerJoiningWebhook,registerNagpurWebhook,registerBotWebhook} from './telegram.mjs';
+import {seedTelegram,deliverTelegram,registerTrialWebhook,registerJoiningWebhook,registerNagpurWebhook,registerBotWebhook,workflowChatIds} from './telegram.mjs';
 import {seedAssets,assetReminders} from './assets.mjs';
 import pg from 'pg';
 import { DefaultAzureCredential } from '@azure/identity';
@@ -39,6 +39,7 @@ void registerTrialWebhook();
 void registerJoiningWebhook();
 void registerNagpurWebhook();
 void registerBotWebhook('mt');
+for(const bot of workflowChatIds)void registerBotWebhook(bot);
 let telegramSending=false;
 const telegramTimer=setInterval(async()=>{if(telegramSending)return;telegramSending=true;try{await deliverTelegram(pool);}catch{console.error('Telegram delivery sweep failed');}finally{telegramSending=false;}},5000);telegramTimer.unref();
 const refreshAssetReminders=()=>assetReminders(pool).catch(()=>console.error('Asset reminder refresh failed'));
