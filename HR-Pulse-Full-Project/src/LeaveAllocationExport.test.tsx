@@ -32,5 +32,5 @@ it.each([0,2])('exports the visible allocation columns with %i records',async co
  }
  fireEvent.click(screen.getByRole('button',{name:'Import CSV / Excel'}));
  fireEvent.click(screen.getByRole('button',{name:'Download template'}));
- expect(vi.mocked(download).mock.calls[1][1]).toBe('\uFEFF'+fields.map(field=>'"'+field.key+'"').join(','));
+ expect(vi.mocked(download).mock.calls[1][1]).toBe('\uFEFF'+headers.map(header=>'"'+header+'"').join(','));
 });
