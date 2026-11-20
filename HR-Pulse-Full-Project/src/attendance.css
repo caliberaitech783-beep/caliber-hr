@@ -52,3 +52,14 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .policy-grid .policy-roles{grid-column:1/-1}
 .policy-grid .policy-roles input{max-width:520px}
 @media (max-width:640px){.attendance-policy .policy-rules li{grid-template-columns:1fr;gap:2px}}
+/* Biometric machines register */
+.biometric-machines .attendance-filters span{padding-bottom:10px}
+.biometric-machines .machine-form{background:#faf7fc;border:1px solid #ece4f3;border-radius:12px;padding:12px 14px}
+.biometric-machines .machine-form input,.biometric-machines .machine-form select{min-width:170px}
+.biometric-machines .machine-serial{font-family:ui-monospace,Consolas,monospace;white-space:nowrap}
+.biometric-machines .machine-status{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;border:1px solid #e4ddea;background:#f6f4f8;color:#5d4f6c;white-space:nowrap}
+.biometric-machines .machine-status.online{background:#edf8f1;border-color:#bfe3cc;color:#1f6b3d}
+.biometric-machines .machine-status.offline{background:#fff6e9;border-color:#f0d6a8;color:#8a5a0a}
+.biometric-machines .machine-last-punch{display:block;color:#7a698b;font-size:12px}
+.biometric-machines .machine-actions{display:flex;gap:8px;flex-wrap:wrap}
+.biometric-machines .machine-actions svg{width:14px;height:14px}

@@ -46,7 +46,7 @@ export function parseAdditionCallback(data){
    (a private chat id is the user's id). */
 export async function additionActor(db,telegramUserId){
  const id=String(telegramUserId||'');if(!id)return '';
- const linked=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 OR chat_id=$1',[id])).rows[0]?.actor;
+ const linked=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE (telegram_user_id=$1 OR chat_id=$1) AND nagpur_connected=true',[id])).rows[0]?.actor;
  if(linked)return linked;
  return Object.entries(nagpurRecipients()).find(([,chat])=>chat===id)?.[0]||'';
 }
