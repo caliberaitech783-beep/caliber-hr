@@ -10,7 +10,7 @@ type Person={actor:string;stage:string;roles:string[];connected:boolean;via:stri
 type Roster={people:Person[];botUsername:string;configured?:boolean};
 export const TRIAL_ROUTE=['Site HR','Driver Trainer','PM','Office HR','Regional HR','Director'];
 const when=(at:string)=>at?new Intl.DateTimeFormat('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}).format(new Date(at)):'';
-const botName=(via:string)=>via==='mt'?'CMLL HR bot':via==='leave'?'Leave bot':via==='joining'?'Joining Approval bot':via==='trial'?'Vehicle Trial bot':'';
+export const botName=(via:string)=>via==='mt'?'CMLL HR bot':via==='leave'?'Leave bot':via==='joining'?'Joining Approval bot':via==='trial'?'Vehicle Trial bot':via==='trial-status'?'Trial Status bot':'';
 export function deliveryText(d:Delivery|undefined){
  if(!d)return 'No link sent';
  if(d.state==='DELIVERED')return `✅ Delivered on ${botName(d.bot)} · ${when(d.at)}`;

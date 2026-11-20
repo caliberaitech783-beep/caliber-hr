@@ -13,3 +13,14 @@ Set by the owner on 20 November 2026: Site HR → Driver Trainer → PM → Offi
 
 - Regional HR is fixed per region: NCL (Jayant, Dudhichua East, Dudhichua West) → Vinod Pinjarkar (CMPL3399); WCL (Sasti, Majri, Dhuptala, Gauri Pauni) → Virat Singh (CMPL18114). Directors (any one): Mohit, Manish, Rahul Chadda.
 - `HR-Pulse-Full-Project/server/trial-routing.mjs` holds it for vehicle trials only; leave and joining approvals keep the saved site hierarchy.
+
+# Leave approval route and the CALIBER Leave Request bot
+
+Set by the owner on 20 November 2026.
+
+- Every site and office uses one leave route: the employee raises their own leave → HOD (concerned) → Directors (approve by OTP) → Regional HR (final approval). There is no PM step, and the site HR Manager no longer raises leave for others (OD and gate passes are unchanged).
+- Directors approve by OTP only: Regional HR presses "Request OTP from Directors" in the approval, any one Director gets the OTP on the Leave Request bot and tells it to Regional HR, who enters it. 15 minutes, single use, five wrong tries. Directors can still reject in HRMS.
+- Nobody approves their own leave: an HOD's own leave skips the HOD step; a Director's leave goes to the other Directors.
+- Leave messages go out on @CMLLLeaveRequestBot (`TELEGRAM_LEAVE_REQUEST_BOT_TOKEN`, `_BOT_USERNAME`, `_WEBHOOK_SECRET`), only to the next step; the employee gets the final result. Before the token is set, the old leave bot route is used.
+- Approval Master › Leave Request bot lists every employee with a Pulse login and every leave approver, and sends each a personal join link (through an HR bot they already use, or copied to forward on WhatsApp).
+- `HR-Pulse-Full-Project/server/leave-request-bot.mjs` holds the route; `server/leave-request-bot.test.mjs` and `src/LeaveRequestFlow.test.tsx` check it.
