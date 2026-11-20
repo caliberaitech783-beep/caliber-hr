@@ -52,6 +52,17 @@ export function validateUpload(input){
  return {serial,name:String(input.device?.name||'').replace(/[\u0000-\u001f]/g,'').trim().slice(0,80),punches:clean,users:people,requestId,final:input.final===true,error};
 }
 
+/** Machine name or location as typed: one line, at most 80 characters. */
+export const cleanText=value=>String(value??'').replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().slice(0,80);
+/** A biometric machine added to a site (register) or changed (site, name, location). */
+export function validateDevice(input,register){
+ const serial=String(input?.serial||'').trim(),siteId=String(input?.siteId||'');
+ if(register&&!siteId)fail('Choose a site');
+ if(!SERIAL.test(serial))fail('Enter a valid machine serial number (letters, numbers, - or _)');
+ if(siteId&&!uuid(siteId))fail('Choose a site');
+ return {serial,siteId,name:cleanText(input?.name),location:input?.location===undefined?null:cleanText(input.location)};
+}
+
 const indiaDay=()=>new Date(Date.now()+5.5*3600_000).toISOString().slice(0,10);
 export function validateRange(params){
  const today=indiaDay(); // India date
@@ -133,10 +144,16 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   const sites=await siteIds(pool,profile); // null = all sites
   if(route==='status'&&method==='GET'){
    const seen=(await pool.query("SELECT last_seen,last_seen>now()-interval '30 seconds' AS online FROM hr_attendance_bridge")).rows[0];
-   const devices=(await pool.query('SELECT d.serial,d.name,d.site_id,s.name AS site_name,d.last_seen,d.last_contact,d.last_contact>now()-interval \'2 minutes\' AS online FROM hr_attendance_devices d LEFT JOIN hr_records s ON s.id=d.site_id WHERE $1::text[] IS NULL OR d.site_id::text=ANY($1) ORDER BY d.serial',[sites])).rows;
+   // Active logs: punches the machine recorded today (India date) and its latest
+   // punch in the last 31 days, both read through the punched_at index.
+   const devices=(await pool.query(`SELECT d.serial,d.name,d.location,d.site_id,s.name AS site_name,d.last_seen,d.last_contact,d.last_contact>now()-interval '2 minutes' AS online,
+    coalesce(a.today,0)::int AS logs_today,to_char(a.last_punch,'YYYY-MM-DD HH24:MI') AS last_punch
+    FROM hr_attendance_devices d LEFT JOIN hr_records s ON s.id=d.site_id
+    LEFT JOIN (SELECT device_serial,count(*) FILTER (WHERE punched_at>=$2::date) AS today,max(punched_at) AS last_punch FROM hr_attendance_punches WHERE punched_at>=$2::date-30 GROUP BY device_serial) a ON a.device_serial=d.serial
+    WHERE $1::text[] IS NULL OR d.site_id::text=ANY($1) ORDER BY s.name NULLS LAST,d.location,d.serial`,[sites,indiaDay()])).rows;
    const last=(await pool.query('SELECT * FROM hr_attendance_fetch_requests ORDER BY requested_at DESC LIMIT 1')).rows[0];
    return {configured:typeof bridgeKey==='string'&&bridgeKey.length>=32,bridgeOnline:Boolean(seen?.online),bridgeLastSeen:seen?.last_seen||null,
-    devices:devices.map(d=>({serial:d.serial,name:d.name,siteId:d.site_id,siteName:d.site_name||'',lastContact:d.last_contact,online:Boolean(d.online),lastSeen:d.last_seen})),lastFetch:view(last)||null,
+    devices:devices.map(d=>({serial:d.serial,name:d.name,location:d.location||'',siteId:d.site_id,siteName:d.site_name||'',lastContact:d.last_contact,online:Boolean(d.online),lastSeen:d.last_seen,logsToday:Number(d.logs_today)||0,lastPunch:d.last_punch||null})),lastFetch:view(last)||null,
     canLink:canWrite(profile,'employees'),canManageDevices:assignedSites(profile)===null&&canWrite(profile,'employees')};
   }
   if(route==='policy'&&method==='GET')return {...await readPolicy(pool),canEdit:assignedSites(profile)===null&&canWrite(profile,'employees')};
@@ -205,21 +222,19 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   }
   if((route==='devices'||route==='devices/register')&&method==='POST'){
    if(assignedSites(profile)!==null||!canWrite(profile,'employees'))fail('Only an HR administrator without site restrictions can assign devices',403);
-   const serial=String(input.serial||''),siteId=String(input.siteId||''),name=String(input.name||'').replace(/[\u0000-\u001f]/g,'').trim().slice(0,80);
    const register=route==='devices/register';
-   if(register&&!siteId)fail('Choose a site');
-   if(!SERIAL.test(serial))fail('Enter a valid machine serial number');
-   if(siteId&&!uuid(siteId))fail('Choose a site');
+   const {serial,siteId,name,location}=validateDevice(input,register);
    return tx(async db=>{
     if(siteId&&!(await db.query("SELECT 1 FROM hr_records WHERE id=$1 AND kind='sites'",[siteId])).rowCount)fail('Site not found',404);
+    // An update that leaves out the location keeps the one already saved.
     const statement=register
-     ? 'INSERT INTO hr_attendance_devices(serial,site_id,name) VALUES($1,$2,$3) ON CONFLICT(serial) DO NOTHING RETURNING serial'
-     : 'UPDATE hr_attendance_devices SET site_id=$2,name=$3 WHERE serial=$1 RETURNING serial';
-    const row=(await db.query(statement,[serial,siteId||null,name])).rows[0];
+     ? "INSERT INTO hr_attendance_devices(serial,site_id,name,location) VALUES($1,$2,$3,coalesce($4,'')) ON CONFLICT(serial) DO NOTHING RETURNING serial,location"
+     : 'UPDATE hr_attendance_devices SET site_id=$2,name=$3,location=coalesce($4,location) WHERE serial=$1 RETURNING serial,location';
+    const row=(await db.query(statement,[serial,siteId||null,name,location])).rows[0];
     if(!row&&register)fail('This serial number is already listed. Use its existing row to assign the site.',409);
     if(!row)fail('Device not found',404);
-    await audit(db,profile.actor,register?'REGISTER_ATTENDANCE_DEVICE':'ASSIGN_ATTENDANCE_DEVICE',{serial,siteId,name});
-    return {serial,siteId,name};
+    await audit(db,profile.actor,register?'REGISTER_ATTENDANCE_DEVICE':'ASSIGN_ATTENDANCE_DEVICE',{serial,siteId,name,location:row.location});
+    return {serial,siteId,name,location:row.location};
    });
   }
   fail('Not found',404);
