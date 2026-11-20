@@ -9,7 +9,7 @@ import {additionRoster,connectInviteMessage} from './addition-roster.mjs';
 import {withTrialRouting} from './trial-routing.mjs';
 import {trialAccess,requireTrialRole,canReadTrial,trialSite,assignedTrialSites} from './trial-access.mjs';
 import {trialStatusRoster,trialStatusInvite,TRIAL_STATUS_CONNECTED,TRIAL_STATUS_WELCOME} from './trial-status-bot.mjs';
-import {leaveSteps,leaveRequestRoster,leaveRequestInvite,leaveOtpNeededMessage,LEAVE_REQUEST_CONNECTED,LEAVE_REQUEST_WELCOME} from './leave-request-bot.mjs';
+import {leaveSteps,leaveRequestRoster,leaveRequestInvite,leaveOtpNeededMessage,LEAVE_REQUEST_CONNECTED,LEAVE_REQUEST_ALREADY,LEAVE_REQUEST_WELCOME} from './leave-request-bot.mjs';
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const username=value=>String(value||'').trim().toLowerCase();
@@ -255,8 +255,10 @@ const trialStatusLink=async(db,actor)=>{const token=randomBytes(24).toString('ba
 /* Leave messages: CALIBER Leave Request bot (@CMLLLeaveRequestBot) once its token and username are set; before that the old leave route. */
 export const leaveRequestReady=()=>Boolean(botToken('leave-request')&&botUsername('leave-request'));
 export const leaveBot=()=>leaveRequestReady()?'leave-request':'leave';
+/* A new link never cancels the person's older ones (owner, 20 Nov 2026): a link copied to WhatsApp and a link sent later both work
+   until one of them is used or 7 days pass. */
 const leaveRequestLink=async(db,actor)=>{const token=randomBytes(24).toString('base64url');
- await db.query("DELETE FROM hr_telegram_link_tokens WHERE (actor=$1 AND bot='leave-request') OR expires_at<now()",[actor]);
+ await db.query("DELETE FROM hr_telegram_link_tokens WHERE expires_at<now()");
  await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'leave-request',now()+interval '7 days')",[hash(token),actor]);
  return `https://t.me/${botUsername('leave-request')}?start=${token}`;};
 const trialSiteNames=()=>hierarchyTemplates.filter(t=>!t.code.startsWith('CMLL-')).map(t=>t.name);
@@ -1044,6 +1046,16 @@ export function createTelegram(pool){
    }
    if(!token){if(['leave','joining','trial','nagpur','trial-status','leave-request'].includes(bot)&&/^\/start/.test(String(msg.text||''))){const known=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(msg.from.id)])).rows[0];if(known){const column=bot==='leave-request'?'leave_request_connected':bot==='trial-status'?'trial_status_connected':bot==='nagpur'?'nagpur_connected':bot==='trial'?'trial_connected':bot==='joining'?'joining_connected':'leave_connected';await db.query(`UPDATE hr_telegram_accounts SET ${column}=true,linked_at=now() WHERE actor=$1`,[known.actor]);await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot=$2 AND state IN ('PENDING','FAILED')",[known.actor,bot]);await queueTelegram(db,`${bot}-start:`+update.update_id,[known.actor],bot==='leave-request'?LEAVE_REQUEST_CONNECTED:bot==='trial-status'?TRIAL_STATUS_CONNECTED:bot==='trial'?'Connected. Vehicle trial results from Caliber HR will appear here.':bot==='joining'?'Connected. Joining approval requests from Caliber HR will appear here.':bot==='nagpur'?'Connected. Employee addition approvals from Caliber HR will appear here with Approve / Reject buttons.':'Your Telegram account is connected to Caliber HR.',bot);}else if(bot==='trial-status')reply={chat:msg.chat.id,text:TRIAL_STATUS_WELCOME,bot};else if(bot==='leave-request')reply={chat:msg.chat.id,text:LEAVE_REQUEST_WELCOME,bot};}return;}
    const link=(await db.query('DELETE FROM hr_telegram_link_tokens WHERE hash=$1 AND expires_at>now() RETURNING actor,bot',[hash(mt?(cmllHrEnabled()?'cmll:':'mt:')+token:token)])).rows[0];
+   if((!link||link.bot!==bot)&&bot==='leave-request'){   /* a used, replaced or old link: a Telegram account HR already knows joins anyway */
+    const known=(await db.query('SELECT actor,leave_request_connected FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(msg.from.id)])).rows[0];
+    if(known?.leave_request_connected){reply={chat:msg.chat.id,text:LEAVE_REQUEST_ALREADY,bot};return;}
+    if(known){
+     await db.query('UPDATE hr_telegram_accounts SET leave_request_connected=true,linked_at=now() WHERE actor=$1',[known.actor]);
+     await db.query("DELETE FROM hr_telegram_link_tokens WHERE actor=$1 AND bot='leave-request'",[known.actor]);
+     await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot=$2 AND state IN ('PENDING','FAILED')",[known.actor,bot]);
+     await queueTelegram(db,'leave-request-start:'+update.update_id,[known.actor],LEAVE_REQUEST_CONNECTED,bot);return;
+    }
+   }
    if(!link||link.bot!==bot){if(bot==='trial-status'||bot==='leave-request')reply={chat:msg.chat.id,text:`This link has expired or was already used. Ask HR for a new ${bot==='leave-request'?'Leave Request':'Trial Status'} link.`,bot};if(mt)menu={chat:msg.chat.id,text:'This link has expired or was already used. Request a new link in HRMS.'};return;}
    const taken=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 OR chat_id=$1',[String(msg.from.id)])).rows[0];
    if(taken&&taken.actor!==link.actor){if(bot==='trial-status'||bot==='leave-request')reply={chat:msg.chat.id,text:'This Telegram account is already linked to another HRMS login.',bot};if(mt)menu={chat:msg.chat.id,text:'This Telegram account is already linked to another HRMS account.'};return;}
@@ -1056,6 +1068,7 @@ export function createTelegram(pool){
    const flags=[bot==='leave',bot==='trial',bot==='joining',bot==='nagpur',bot==='trial-status',bot==='leave-request'];
    await db.query('INSERT INTO hr_telegram_accounts(actor,chat_id,telegram_user_id,leave_connected,trial_connected,joining_connected,nagpur_connected,trial_status_connected,leave_request_connected) VALUES($1,$2,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(actor) DO UPDATE SET chat_id=$2,telegram_user_id=$2,linked_at=now(),leave_request_connected=hr_telegram_accounts.leave_request_connected OR $8,leave_connected=hr_telegram_accounts.leave_connected OR $3,trial_connected=hr_telegram_accounts.trial_connected OR $4,joining_connected=hr_telegram_accounts.joining_connected OR $5,nagpur_connected=hr_telegram_accounts.nagpur_connected OR $6,trial_status_connected=hr_telegram_accounts.trial_status_connected OR $7,mt_hr_enabled=hr_telegram_accounts.telegram_user_id=$2 AND hr_telegram_accounts.mt_hr_enabled,cmll_hr_connected=hr_telegram_accounts.telegram_user_id=$2 AND hr_telegram_accounts.cmll_hr_connected',[link.actor,String(msg.from.id),...flags]);
    await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot=$2 AND state IN ('PENDING','FAILED')",[link.actor,bot]);
+   if(bot==='leave-request')await db.query("DELETE FROM hr_telegram_link_tokens WHERE actor=$1 AND bot='leave-request'",[link.actor]);   /* joined: the person's other links are done */
    await queueTelegram(db,'linked:'+update.update_id,[link.actor],bot==='leave-request'?LEAVE_REQUEST_CONNECTED:bot==='trial-status'?TRIAL_STATUS_CONNECTED:bot==='trial'?'Connected. Vehicle trial results from Caliber HR will appear here.':bot==='joining'?'Connected. Joining approval requests from Caliber HR will appear here.':'Your Telegram account is connected to Caliber HR. Leave notifications will appear here.',bot);
   });
   if(callback)await answerCallback(callback.bot,callback.id,callback.text);
