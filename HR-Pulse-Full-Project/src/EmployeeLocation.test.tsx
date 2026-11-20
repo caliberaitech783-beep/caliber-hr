@@ -6,11 +6,17 @@ vi.mock('xlsx',async importOriginal=>({...await importOriginal<typeof import('xl
 vi.mock('./api',async importOriginal=>({...await importOriginal<typeof import('./api')>(),download:vi.fn()}));
 import {act,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
-import EmployeeLocation,{aadhaarDetails,matchChecklistDocument,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
+import EmployeeLocation,{aadhaarDetails,lockAadhaarField,matchChecklistDocument,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
 const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Reference Type','Reference Name','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Mess Deduction','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 
 describe('Corporate / HO import headers',()=>{
+ it('keeps Full Name editable when Aadhaar details are locked',()=>{
+  const form=document.createElement('form');form.innerHTML='<input name="Full Name" value="Aadhaar Name"><input name="Aadhaar Locked" value="Full Name|Aadhaar No.">';
+  lockAadhaarField(form,'Full Name');
+  expect((form.elements.namedItem('Full Name') as HTMLInputElement).readOnly).toBe(false);
+  expect((form.elements.namedItem('Aadhaar Locked') as HTMLInputElement).value).toBe('Aadhaar No.');
+ });
  it('extracts the main Aadhaar fields from OCR text',()=>{
   expect(aadhaarDetails('APURVA PRIYADARSHINI KOPULWAR\nDOB: 06/12/2000\nFEMALE\nC/O: Dyaninath Kopulwar\nAddress: Chandrapur, Maharashtra - 442507\n8573 5149 3646')).toMatchObject({name:'APURVA PRIYADARSHINI KOPULWAR',dob:'2000-12-06',gender:'Female',uid:'857351493646',relationName:'Dyaninath Kopulwar',address:expect.stringContaining('Chandrapur')});
  });
