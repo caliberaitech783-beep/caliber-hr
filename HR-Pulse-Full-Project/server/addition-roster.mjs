@@ -13,7 +13,8 @@ export function additionRoster(savedRows){
   const saved=savedRows.find(row=>row.code===template.code);
   if(OFFICE_SITES[template.code]){
    const site=OFFICE_SITES[template.code],steps=saved?.data?.steps||[];
-   for(const a of steps.find(s=>s.label==='HR Executive')?.approvers||[])add(a,'Office HR',site.office);
+   const officeHr=steps.find(s=>s.label==='HR Executive')?.approvers||[];   /* falls back to the office's default HR Executive, as the route does */
+   for(const a of officeHr.length?officeHr:site.defaultOfficeHr||[])add(a,'Office HR',site.office);
    const managers=steps.find(s=>s.label==='HR Manager')?.approvers||[];
    for(const a of managers.length?managers:site.defaultHrManager)add(a,'HR Manager',site.office);
    continue;

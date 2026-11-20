@@ -70,3 +70,10 @@ test('Link delivery: delivered, waiting with reason, failed, and a link handed o
  assert.equal(d('ncl-dude-1').state,'FORWARD');assert.equal(d('ncl-dude-2').state,'EXPIRED');
  assert.equal(d('rahulchadda'),null);
 });
+
+test('office HR Executives default to Mayuri Umate (Nagpur) and Monika Wadhai (Chandrapur) when none is saved',()=>{
+ const roster=additionRoster([]);
+ assert.deepEqual(roster.find(p=>p.actor==='mayuriumate')?.roles,['Office HR · Nagpur Office']);
+ assert.deepEqual(roster.find(p=>p.actor==='monikawadhai')?.roles,['Office HR · Chandrapur HO']);
+ assert.ok(!actors(additionRoster([{code:'CMLL-HO',status:'ACTIVE',data:{steps:[{label:'HR Executive',approvers:['otherhr']}]}}])).includes('monikawadhai'),'a saved HR Executive replaces the default');
+});
