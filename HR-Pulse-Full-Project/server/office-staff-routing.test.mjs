@@ -22,12 +22,12 @@ test('Chandrapur HO uses its own HR Manager, Virat Singh when none is saved',()=
 });
 
 test('Nagpur falls back to Vinod Pinjarkar when no HR Manager is saved',()=>{
- assert.deepEqual(officeStaffSteps('CMLL-CO',null,'anyhr')[0].approvers,['vinodpinjarkar']);
+ assert.deepEqual(officeStaffSteps('CMLL-CO',null,'mayuriumate')[0].approvers,['vinodpinjarkar']);
 });
 
 test('only the office HR (or its HR Manager) may initiate when office HR is assigned',()=>{
  assert.throws(()=>officeStaffSteps('CMLL-CO',saved(['mayuriumate'],['vinodpinjarkar']),'chphr'),e=>e.status===403&&/Nagpur Office HR/.test(e.message));
- assert.ok(officeStaffSteps('CMLL-CO',saved([],['vinodpinjarkar']),'someone'));
+ assert.ok(officeStaffSteps('CMLL-CO',saved([],['vinodpinjarkar']),'mayuriumate'));
 });
 
 test('HR Manager initiating sends the form straight to the Directors',()=>{
@@ -36,7 +36,7 @@ test('HR Manager initiating sends the form straight to the Directors',()=>{
 });
 
 test('saved extra final approvers are added to the fixed Directors, never duplicated',()=>{
- const steps=officeStaffSteps('CMLL-CO',saved([],['vinodpinjarkar'],['MohitChadda','honeysir']),'hr');
+ const steps=officeStaffSteps('CMLL-CO',saved([],['vinodpinjarkar'],['MohitChadda','honeysir']),'mayuriumate');
  assert.deepEqual(steps[1].approvers,[...OFFICE_DIRECTORS,'honeysir']);
 });
 
@@ -53,7 +53,7 @@ test('a rejected office form goes back to that office HR; site forms still go ba
  const {additionDecisionMessage}=await import('./employee-addition-bot.mjs');
  const record={code:'EMP-1',name:'New Joiner',data:{}};
  const reject=steps=>additionDecisionMessage({record,siteName:'x',state:'REJECTED',actor:'vinodpinjarkar',comments:'Wrong photo',decidedAt:'now',steps});
- assert.match(reject(officeStaffSteps('CMLL-CO',null,'nagpurhr')),/goes back to Nagpur Office HR for correction/);
+ assert.match(reject(officeStaffSteps('CMLL-CO',null,'mayuriumate')),/goes back to Nagpur Office HR for correction/);
  assert.match(reject(officeStaffSteps('CMLL-HO',saved([],['chpmanager']),'monikawadhai')),/goes back to Chandrapur HO HR for correction/);
  assert.match(reject([{stage:1,label:'Project Manager',approvers:['pm']}]),/goes back to Site HR for correction/);
  assert.match(reject(undefined),/goes back to Site HR/);
@@ -65,4 +65,11 @@ test('Chandrapur HO: Monika Wadhai initiates by default, others are refused, a s
  assert.throws(()=>officeStaffSteps('CMLL-HO',null,'someoneelse'),e=>e.status===403&&/monikawadhai/.test(e.message));
  assert.ok(officeStaffSteps('CMLL-HO',saved(['otherhr'],[]),'otherhr'));
  assert.throws(()=>officeStaffSteps('CMLL-HO',saved(['otherhr'],[]),'monikawadhai'),e=>e.status===403);
+});
+
+test('Nagpur Office: Mayuri Umate initiates by default, others are refused, a saved HR Executive overrides',()=>{
+ assert.deepEqual(officeStaffSteps('CMLL-CO',null,'mayuriumate').map(s=>s.approvers[0]),['vinodpinjarkar','mohitchadda']);
+ assert.ok(officeStaffSteps('CMLL-CO',null,'vinodpinjarkar'));
+ assert.throws(()=>officeStaffSteps('CMLL-CO',null,'someoneelse'),e=>e.status===403&&/mayuriumate/.test(e.message));
+ assert.ok(officeStaffSteps('CMLL-CO',saved(['otherhr'],[]),'otherhr'));
 });
