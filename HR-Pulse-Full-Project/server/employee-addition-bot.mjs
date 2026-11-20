@@ -53,19 +53,21 @@ export async function additionActor(db,telegramUserId){
  return Object.entries(nagpurRecipients()).find(([,chat])=>chat===id)?.[0]||'';
 }
 /* Queues the Telegram messages for one step of an employee approval (inside the caller's transaction). */
-export async function queueAdditionStep(db,queue,{approvalId,record,siteName,steps,stage,state,requestedBy,actor,comments,decidedAt,eventKey}){
+export async function queueAdditionStep(db,queue,{approvalId,record,siteName,steps,stage,state,requestedBy,actor,comments,decidedAt,eventKey,assignedOnly=false,sender=requestedBy}){
  const key=eventKey||`ea:${approvalId}:${stage}:${state}`;
+ const assigned=people=>assignedOnly?people.flatMap(person=>String(person).split(',')).map(person=>person.trim().toLowerCase()).filter(person=>person&&person!==sender&&person!==requestedBy):people;
  const actorRole=stage>0?roleTitle(steps[Math.min(stage,steps.length)-1]?.label):'';
  if(state==='SUBMITTED'){
-  await queue(db,`${key}:ask`,steps[0]?.approvers||[],additionApprovalMessage({record,siteName,steps,stage:0,requestedBy}),ADDITION_BOT,additionMarkup(approvalId,0));
-  await queue(db,`${key}:info`,[requestedBy],additionSubmittedMessage({record,siteName,steps}),ADDITION_BOT);
+  await queue(db,`${key}:ask`,assigned(steps[0]?.approvers||[]),additionApprovalMessage({record,siteName,steps,stage:0,requestedBy}),ADDITION_BOT,additionMarkup(approvalId,0));
+  if(!assignedOnly)await queue(db,`${key}:info`,[requestedBy],additionSubmittedMessage({record,siteName,steps}),ADDITION_BOT);
   return;
  }
  if(state==='PENDING'){
-  await queue(db,`${key}:ask`,steps[stage]?.approvers||[],additionApprovalMessage({record,siteName,steps,stage,requestedBy,previousApprover:actor,previousRole:actorRole}),ADDITION_BOT,additionMarkup(approvalId,stage));
-  await queue(db,`${key}:info`,[requestedBy],additionProgressMessage({record,siteName,steps,stage,actor,actorRole}),ADDITION_BOT);
+  await queue(db,`${key}:ask`,assigned(steps[stage]?.approvers||[]),additionApprovalMessage({record,siteName,steps,stage,requestedBy,previousApprover:actor,previousRole:actorRole}),ADDITION_BOT,additionMarkup(approvalId,stage));
+  if(!assignedOnly)await queue(db,`${key}:info`,[requestedBy],additionProgressMessage({record,siteName,steps,stage,actor,actorRole}),ADDITION_BOT);
   return;
  }
+ if(assignedOnly)return;
  const decidedRole=roleTitle(steps[Math.max(0,stage-1)]?.label);
  await queue(db,`${key}:done`,[requestedBy,...steps.flatMap(step=>step.approvers||[])],additionDecisionMessage({record,siteName,state,actor,actorRole:decidedRole,comments,decidedAt,steps}),ADDITION_BOT);
 }

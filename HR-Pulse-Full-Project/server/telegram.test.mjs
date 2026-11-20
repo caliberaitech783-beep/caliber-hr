@@ -181,6 +181,21 @@ test('MT HR routes all three notification types only for recipients who linked t
   }
  }
 });
+test('CMLLHRBOT sends Employee Track notifications with its three workflow links',async t=>{
+ const settings={TELEGRAM_MT_BOT_TOKEN:'test',TELEGRAM_MT_BOT_USERNAME:'CMLLHRBOT',TELEGRAM_MT_WEBHOOK_SECRET:'test-secret'};
+ const previous=Object.fromEntries(Object.keys(settings).map(key=>[key,process.env[key]]));
+ Object.assign(process.env,settings);
+ t.after(()=>{for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+ const job={id:1,chat_id:'123',bot:'nagpur',mt_hr_enabled:true,message:'Assigned next step'};
+ const db={release(){},async query(sql){return {rows:sql.startsWith('SELECT o.')?[job]:[]};}};
+ const send=t.mock.fn();
+ await deliverTelegram({connect:async()=>db},send);
+ const [chat,message,bot,markup]=send.mock.calls[0].arguments;
+ assert.deepEqual([chat,message,bot],['123','Assigned next step','mt']);
+ assert.deepEqual(markup.inline_keyboard.slice(0,3).flat().map(button=>[button.text,new URL(button.url).searchParams.get('hrWorkflow')]),[
+  ['Trial Status','trial'],['Employee Track','employee'],['Leave Request','leave']
+ ]);
+});
 test('multiple HR users allow any one per stage and reject cross-stage overlap',()=>{
  const c=validateTelegramHierarchy({...config,siteHr:' AMITSINGH, APURVAKOPULWAR,amitsingh ',regionalHr:'VINODPINJARKAR, MAYURIUMATE'});
  const steps=telegramSteps(c);assert.deepEqual(steps[0].approvers,['amitsingh','apurvakopulwar']);assert.deepEqual(steps[1].approvers,['vinodpinjarkar','mayuriumate']);

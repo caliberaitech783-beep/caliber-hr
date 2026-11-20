@@ -39,15 +39,21 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
   const[dashboardTab,setDashboardTab]=useState<DashboardTab>('HR Dashboard');
   const[masterMenu,setMasterMenu]=useState('Shift Master');
   const[expandedMenu,setExpandedMenu]=useState(()=>decodeURIComponent(window.location.hash.slice(1))||'Employee Master');
-  const[employeeMenu,setEmployeeMenuState]=useState(()=>{try{const saved=localStorage.getItem('hrPulse.employeeMenu');return saved==='Leave/OD Management'?'Leave / OD / Gatepass':saved==='Attendance Management'?'Employee Management':saved||'Employee Management';}catch{return 'Employee Management';}});
+  const workflow=new URLSearchParams(window.location.search).get('hrWorkflow');
+  const[employeeMenu,setEmployeeMenuState]=useState(()=>{
+    if(workflow==='trial')return 'Trial Form';
+    if(workflow==='employee')return 'Employee Management';
+    if(workflow==='leave')return 'Leave / OD / Gatepass';
+    try{const saved=localStorage.getItem('hrPulse.employeeMenu');return saved==='Leave/OD Management'?'Leave / OD / Gatepass':saved==='Attendance Management'?'Employee Management':saved||'Employee Management';}catch{return 'Employee Management';}
+  });
   const setEmployeeMenu=(menu:string)=>{if(menu==='Corporate / HO'||menu==='OB / COAL'){const nextGroup=menu as 'Corporate / HO'|'OB / COAL';setEmployeeGroup(nextGroup);setSelection(current=>{const next={...current,employeeGroup:nextGroup,...(nextGroup==='Corporate / HO'?{site:'',region:''}:{})};saveSelection(next);return next;});return;}setEmployeeMenuState(menu);try{localStorage.setItem('hrPulse.employeeMenu',menu);}catch{/* ignore */}};
   const[attendanceMenu,setAttendanceMenuState]=useState(()=>{try{const saved=localStorage.getItem('hrPulse.attendanceMenu')||'';return attendanceViews.includes(saved)?saved:'Biometric integration';}catch{return 'Biometric integration';}});
   const setAttendanceMenu=(menu:string)=>{setAttendanceMenuState(menu);try{localStorage.setItem('hrPulse.attendanceMenu',menu);}catch{/* ignore */}};
   const[transferTab,setTransferTab]=useState('requests');
-  const[selection,setSelection]=useState<TrialSelection>(loadSelection),trialVisible=showsTrialForm(selection);
+  const[selection,setSelection]=useState<TrialSelection>(()=>workflow==='trial'?{...loadSelection(),employeeGroup:'OB / COAL'}:loadSelection()),trialVisible=showsTrialForm(selection);
   useEffect(()=>{if(employeeMenu==='Trial Form'&&!trialVisible)setEmployeeMenu('Employee Management');},[trialVisible]);const updateSelection=(next:TrialSelection)=>{setSelection(next);saveSelection(next);};
   const[payrollMenu,setPayrollMenu]=useState('Salary Scheme');
-  const[employeeGroup,setEmployeeGroup]=useState<'Corporate / HO'|'OB / COAL'>('Corporate / HO');
+  const[employeeGroup,setEmployeeGroup]=useState<'Corporate / HO'|'OB / COAL'>(workflow==='trial'?'OB / COAL':'Corporate / HO');
   const[trialDraft,setTrialDraft]=useState<JoiningDraft>();
   const draftOwner=profile.actor||profile.username||profile.email||'';
   const storedSession=savedSession();

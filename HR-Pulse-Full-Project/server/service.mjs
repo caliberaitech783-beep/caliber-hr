@@ -25,7 +25,7 @@ import {assignedSites,siteIds,scopeSql} from './scope.mjs';
 import {createTelegramNotifier} from './telegram-notifications.mjs';
 import {initiatedSteps} from './site-staff-routing.mjs';
 import {ADDITION_BOT,queueAdditionStep,parseAdditionCallback,additionActor} from './employee-addition-bot.mjs';
-import {webhookSecretValid,botSecret,botToken} from './telegram.mjs';
+import {webhookSecretValid,botSecret,botToken,cmllHrEnabled,notSender,telegramUsers} from './telegram.mjs';
 export function problem(message,status=400) { return Object.assign(new Error(message),{status}); }
 const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || '');
 const employeeDetailFields={
@@ -157,10 +157,10 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         }
         const approvalId=randomUUID();
         await db.query('INSERT INTO hr_approvals(id,record_id,approvers,requested_by,record_snapshot,approval_steps) VALUES($1,$2,$3,$4,$5,$6)',[approvalId,id,JSON.stringify(approvers),profile.actor,snapshot,JSON.stringify(steps)]);
-        if(telegramFlow)await queueTelegram(db,approvalId+':submitted',telegramFlow.hods?[...steps[0].approvers,telegramFlow.hrManager]:[telegramFlow.siteHr,telegramFlow.regionalHr],leaveMessage(record,'SUBMITTED',{siteName:telegramSiteName,firstRole:telegramFlow.hods?steps[0].label.replace(/ — .*/,''):telegramFlow.firstRole}));
+        if(telegramFlow)await queueTelegram(db,approvalId+':submitted',cmllHrEnabled()?steps[0].approvers.flatMap(telegramUsers).filter(notSender(profile.actor)):telegramFlow.hods?[...steps[0].approvers,telegramFlow.hrManager]:[telegramFlow.siteHr,telegramFlow.regionalHr],leaveMessage(record,'SUBMITTED',{siteName:telegramSiteName,firstRole:telegramFlow.hods?steps[0].label.replace(/ — .*/,''):telegramFlow.firstRole}));
         await db.query("UPDATE hr_records SET status='PENDING',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2",[profile.actor,id]);
         await audit(db,profile.actor,'SUBMIT',kind,id,{workflowId:workflow.id,stages:steps.length});
-        if(kind==='employees'){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'';await queueAdditionStep(db,queueTelegram,{approvalId,record:snapshot,siteName,steps,stage:0,state:'SUBMITTED',requestedBy:profile.actor});}
+        if(kind==='employees'){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'';await queueAdditionStep(db,queueTelegram,{approvalId,record:snapshot,siteName,steps,stage:0,state:'SUBMITTED',requestedBy:profile.actor,assignedOnly:cmllHrEnabled()});}
         return {status:'PENDING'};
   }
   const telegramBase=createTelegram(pool);
@@ -392,7 +392,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         if(flow){
           const employee=await employeeActor(db,record.data.employeeId,approval.requested_by);
           const flowSteps=approvalSteps(approval),stageRole=flowSteps[approval.stage]?.label.replace(/ — .*/,''),nextRole=flowSteps[stage]?.label.replace(/ — .*/,'');
-          const recipients=flow.hods?(state==='APPROVED'?[employee,flow.hrManager,...flowSteps.flatMap(x=>x.approvers),handoverActor]:state==='REJECTED'?[employee,flow.hrManager,flow.regionalHr]:[employee,flow.hrManager,...(flowSteps[stage]?.approvers||[])])
+          const recipients=cmllHrEnabled()?(state==='PENDING'?(flowSteps[stage]?.approvers||[]).flatMap(telegramUsers).filter(notSender(profile.actor)):[]):flow.hods?(state==='APPROVED'?[employee,flow.hrManager,...flowSteps.flatMap(x=>x.approvers),handoverActor]:state==='REJECTED'?[employee,flow.hrManager,flow.regionalHr]:[employee,flow.hrManager,...(flowSteps[stage]?.approvers||[])])
            :(state==='APPROVED'?[employee,flow.siteHr,...flow.directors,handoverActor]:state==='REJECTED'?[employee,flow.siteHr,flow.regionalHr]:[employee,flow.regionalHr]);
           const siteName=approval.record_snapshot.telegramSiteName||(await db.query("SELECT s.name FROM hr_records e JOIN hr_records s ON s.id::text=e.data->>'siteId' AND s.kind='sites' WHERE e.id::text=$1 AND e.kind='employees'",[record.data.employeeId||''])).rows[0]?.name;
           const account=(await db.query('SELECT telegram_user_id FROM hr_telegram_accounts WHERE actor=$1',[profile.actor])).rows[0];
@@ -401,7 +401,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         await audit(db,profile.actor,input.decision,record.kind,record.id,{stage:approval.stage+1,comments,...(handoverActor?{chargeEmployeeId:record.data.chargeEmployeeId}:{})});
         if(record.kind==='employees'){
           const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[record.data.siteId||''])).rows[0]?.name||'';
-          await queueAdditionStep(db,queueTelegram,{approvalId:id,record:approval.record_snapshot,siteName,steps:approvalSteps(approval),stage,state,requestedBy:approval.requested_by,actor:profile.name||profile.actor,comments,decidedAt:new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})});
+          await queueAdditionStep(db,queueTelegram,{approvalId:id,record:approval.record_snapshot,siteName,steps:approvalSteps(approval),stage,state,requestedBy:approval.requested_by,actor:profile.name||profile.actor,sender:profile.actor,assignedOnly:cmllHrEnabled(),comments,decidedAt:new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})});
         }
         return {state};
       });
@@ -437,16 +437,18 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     },
     /* @NagpurEmployeeAdditionBot: an Approve / Reject tap decides the employee approval through decide(), like the HR app. */
     async telegramWebhook(secret,update,bot='leave'){
-      if(bot!==ADDITION_BOT||!update?.callback_query)return telegramBase.telegramWebhook(secret,update,bot);
+      const cmllAddition=bot==='mt'&&cmllHrEnabled()&&Boolean(parseAdditionCallback(update?.callback_query?.data));
+      if((bot!==ADDITION_BOT&&!cmllAddition)||!update?.callback_query)return telegramBase.telegramWebhook(secret,update,bot);
       if(!webhookSecretValid(secret,botSecret(bot)))throw problem('Unauthorized webhook',403);
       if(!Number.isSafeInteger(update.update_id))throw problem('Invalid update');
-      if(!(await pool.query('INSERT INTO hr_telegram_updates(id) VALUES($1) ON CONFLICT DO NOTHING RETURNING id',[update.update_id])).rowCount)return {ok:true};
+      const updates=cmllAddition?'hr_telegram_mt_updates':'hr_telegram_updates';
+      if(!(await pool.query(`INSERT INTO ${updates}(id) VALUES($1) ON CONFLICT DO NOTHING RETURNING id`,[update.update_id])).rowCount)return {ok:true};
       const cb=update.callback_query,tap=parseAdditionCallback(cb.data);
       const reply=async text=>{const token=botToken(bot);if(!token)return;const call=(method,body)=>fetch(`https://api.telegram.org/bot${token}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(8000)}).catch(()=>{});
         await call('answerCallbackQuery',{callback_query_id:cb.id,text,show_alert:false});
         if(cb.message?.chat?.id&&cb.message.message_id)await call('editMessageReplyMarkup',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,reply_markup:{inline_keyboard:[]}});};
       if(!tap){await reply('Unknown action');return {ok:true};}
-      const actor=await additionActor(pool,cb.from?.id);
+      const actor=cmllAddition?(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 AND cmll_hr_connected',[String(cb.from?.id||'')])).rows[0]?.actor:await additionActor(pool,cb.from?.id);
       if(!actor){await reply('Connect your Pulse login to this bot first (Caliber HR › Connect Telegram).');return {ok:true};}
       const approval=(await pool.query('SELECT * FROM hr_approvals WHERE id=$1',[tap.id])).rows[0];
       if(!approval){await reply('This request was not found');return {ok:true};}
