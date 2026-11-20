@@ -7,4 +7,6 @@ ALTER TABLE hr_telegram_accounts ADD COLUMN IF NOT EXISTS nagpur_connected boole
 CREATE TABLE IF NOT EXISTS hr_telegram_link_tokens(hash text PRIMARY KEY,actor text NOT NULL,expires_at timestamptz NOT NULL);
 ALTER TABLE hr_telegram_link_tokens ADD COLUMN IF NOT EXISTS bot text NOT NULL DEFAULT 'leave';
 CREATE TABLE IF NOT EXISTS hr_telegram_updates(id bigint PRIMARY KEY,received_at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE hr_telegram_accounts ADD COLUMN IF NOT EXISTS mt_hr_enabled boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS hr_telegram_mt_updates(id bigint PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS hr_telegram_outbox(id bigserial PRIMARY KEY,event_key text NOT NULL,actor text NOT NULL,message text NOT NULL,state text NOT NULL DEFAULT 'PENDING',attempts integer NOT NULL DEFAULT 0,next_attempt timestamptz NOT NULL DEFAULT now(),last_error text,sent_at timestamptz,UNIQUE(event_key,actor));

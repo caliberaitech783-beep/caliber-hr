@@ -163,6 +163,22 @@ test('unconnected recipients remain queued without sending',async()=>{
  const db={release(){},async query(s,v){writes.push(s);return {rows:s.startsWith('SELECT o.')?[{id:1,chat_id:null}]:[]};}};
  try{await deliverTelegram({connect:async()=>db},async()=>{sent++;});assert.equal(sent,0);assert.ok(writes.some(s=>s.includes('Recipient has not connected')));}finally{if(previous===undefined)delete process.env.TELEGRAM_BOT_TOKEN;else process.env.TELEGRAM_BOT_TOKEN=previous;}
 });
+test('MT HR routes all three notification types only for recipients who linked the new bot',async t=>{
+ const settings={TELEGRAM_MT_BOT_TOKEN:'test',TELEGRAM_MT_BOT_USERNAME:'TestMtBot',TELEGRAM_MT_WEBHOOK_SECRET:'test-secret'};
+ const previous=Object.fromEntries(Object.keys(settings).map(key=>[key,process.env[key]]));
+ Object.assign(process.env,settings);
+ t.after(()=>{for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+ for(const bot of ['leave','trial','joining']){
+  for(const linked of [true,false]){
+   const markup={inline_keyboard:[[{text:'Test',callback_data:'test'}]]};
+   const job={id:1,chat_id:'123',bot,mt_hr_enabled:linked,message:'Test message',markup};
+   const db={release(){},async query(sql){return {rows:sql.startsWith('SELECT o.')?[job]:[]};}};
+   const send=t.mock.fn();
+   await deliverTelegram({connect:async()=>db},send);
+   assert.deepEqual(send.mock.calls[0].arguments,['123','Test message',linked?'mt':bot,markup,[]]);
+  }
+ }
+});
 test('multiple HR users allow any one per stage and reject cross-stage overlap',()=>{
  const c=validateTelegramHierarchy({...config,siteHr:' AMITSINGH, APURVAKOPULWAR,amitsingh ',regionalHr:'VINODPINJARKAR, MAYURIUMATE'});
  const steps=telegramSteps(c);assert.deepEqual(steps[0].approvers,['amitsingh','apurvakopulwar']);assert.deepEqual(steps[1].approvers,['vinodpinjarkar','mayuriumate']);

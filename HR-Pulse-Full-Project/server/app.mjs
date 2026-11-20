@@ -33,6 +33,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       if(path==='/api/telegram/joining-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'joining'));
       if(path==='/api/telegram/nagpur-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'nagpur'));
       if(path==='/api/telegram/trial-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'trial'));
+      if(path==='/api/telegram/mt-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'mt'));
       const attendanceRoute=path.startsWith('/api/attendance/')?path.slice('/api/attendance/'.length):null;
       // The site bridge PC is not a Pulse user; it authenticates with its own key.
       if(attendanceRoute?.startsWith('bridge/')){
