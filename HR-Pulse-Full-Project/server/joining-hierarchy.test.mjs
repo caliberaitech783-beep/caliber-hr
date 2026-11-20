@@ -83,7 +83,12 @@ test('saved trainer moves before PM while preserving assignments and pending app
   const result=await createHierarchies(db).hierarchies({permissions:{hrDesktopAccess:['Master Configuration']}});
   assert.deepEqual(result.rows.find(r=>r.code===template.code).steps,steps);
   assert.deepEqual((await employeeHierarchy(db,'site-id')).data.steps,steps);
-  assert.deepEqual((await employeeHierarchy(db,'site-id',{driverOperator:false})).data.steps,steps.filter(s=>s.label!=='Driver Trainer'));
+  /* Office staff (site staff): Regional HR and Directors are fixed region-wise (site-staff-routing.mjs); the other steps keep their assignments. */
+  const office=(await employeeHierarchy(db,'site-id',{driverOperator:false})).data.steps;
+  assert.deepEqual(office.map(s=>s.label),steps.filter(s=>s.label!=='Driver Trainer').map(s=>s.label));
+  assert.deepEqual(office.slice(0,3).map(s=>s.approvers),steps.filter(s=>s.label!=='Driver Trainer').slice(0,3).map(s=>s.approvers));
+  assert.deepEqual(office[3].approvers,[group==='NCL'?'vinodpinjarkar':'viratsingh']);
+  assert.deepEqual(office[4].approvers,['mohitchadda','manishchadda','rahulchadda']);
   assert.deepEqual(approvalSteps({approval_steps:saved.steps}),saved.steps);
  }
 });

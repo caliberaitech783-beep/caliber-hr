@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS hr_attendance_fetch_requests(
  completed_at timestamptz
 );
 ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS last_contact timestamptz;
+-- Where the machine stands on its site (main gate, workshop, office...).
+ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS location text NOT NULL DEFAULT '';
 ALTER TABLE hr_attendance_fetch_requests ADD COLUMN IF NOT EXISTS device_serial text;
 CREATE INDEX IF NOT EXISTS hr_attendance_fetch_open ON hr_attendance_fetch_requests(requested_at) WHERE state IN ('PENDING','RUNNING');
 

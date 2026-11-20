@@ -12,6 +12,7 @@ import {siteDisplayName} from '../siteNames';
 import {findPreviousTrial} from './previousTrial';
 import type {TrialMatch} from '../TrialAadhaarHistory';
 import {optimizeDrivingVideo} from './optimizeDrivingVideo';
+import {trialRoute} from './routing';
 import type {TrialChecklistDocuments} from '../trialHandoff';
 
 type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
@@ -213,6 +214,42 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       ? empty(`Nothing waiting for ${ROLES[role]}`,'Forms arrive here once the previous step signs off.') : approvalTable(rows,selected);
     syncSelection(rows);
   }
+  /* Approval route for this site with the forms waiting at each step; the user's own step is outlined. */
+  function renderRoute() {
+    $('#route').innerHTML = trialRoute(site).map(step=>{
+      const count = step.role==='active' ? records.filter(row=>row.stage==='done'&&row.result==='PASS').length
+        : step.role==='hr' ? 0 : records.filter(row=>row.stage===step.role).length;
+      const cls = [step.role===role?'me':'',step.role==='active'?'end':''].filter(Boolean).join(' ');
+      return `<li class="${cls}"><b>${esc(step.label)}</b><span>${esc(step.who)}</span>${count?`<span class="n">${count} ${step.role==='active'?'cleared':'waiting'}</span>`:''}</li>`;
+    }).join('');
+  }
+  /* Popup for the signed-in user: forms waiting at their own step (Driver Trainer, PM, Office HR, Regional HR, Directors). */
+  let pendingShown = '', pendingRole: Role | '' = '';
+  const pendingAt = (step: Role) => step==='trainer' ? waiting().length : canApprove(step) ? records.filter(row=>row.stage===step).length : 0;
+  function showPending(force = false) {
+    if (effects.signal.aborted) return;
+    const mine = (allowedRoles ?? [role]).filter(item=>item!=='observer'&&canAct(item));
+    const list = mine.map(item=>[item,pendingAt(item)] as const).filter(([,count])=>count>0);
+    const key = JSON.stringify(list);
+    if (!list.length) {pendingShown=key;return;}
+    if (!force && key===pendingShown) return;
+    if (!$('#modal').hidden || !$('#aadhaarHistory').hidden || !$('#pendingPop').hidden) return;
+    pendingShown = key;
+    pendingRole = list[0][0];
+    $('#pendingList').innerHTML = list.map(([item,count])=>`<li><span>${item==='trainer'?'Trial result to enter as':'Approve as'} <b>${esc(ROLES[item])}</b></span><b>${count} form${count===1?'':'s'}</b></li>`).join('');
+    $('#pendingPop').hidden = false;
+    $<HTMLButtonElement>('#pendingOpen').focus();
+  }
+  function closePending(open: boolean) {
+    $('#pendingPop').hidden = true;
+    if (open && pendingRole && canAct(pendingRole)) {
+      role = pendingRole; $<HTMLSelectElement>('#role').value = role;
+      aadhaar.setDisabled(role!=='hr'); tab = roleTab[role]; selected.clear(); refresh();
+    }
+    frame.querySelector<HTMLButtonElement>('#tabs .on')?.focus();
+  }
+  $('#pendingOpen').onclick = () => closePending(true);
+  $('#pendingLater').onclick = () => closePending(false);
   function refresh() {
     $('#pipe').innerHTML = STAGES.filter(([stage])=>stage==='trainer'||stage==='done'||stage==='rejected').map(([stage,label])=>{
       const active=stageFilter===stage, number=stage==='trainer'?'Step 1':stage==='done'?'✓':'✕';
@@ -222,6 +259,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       $(selector).textContent = String(count);
       $(selector).hidden = !count;
     }
+    renderRoute();
     $('#sFormNo').textContent = 'Form No. '+nextNumber(records);
     $('#hrRoleWarn').hidden = role==='hr';
     updateSingleActions();
@@ -993,11 +1031,12 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   };
 
   frame.addEventListener('keydown',event=>{
-    const activeDialog=!$('#aadhaarHistory').hidden?$('#aadhaarHistory'):!$('#tgpop').hidden?$('#tgpop'):!$('#modal').hidden?$('#modal'):null;
+    const activeDialog=!$('#pendingPop').hidden?$('#pendingPop'):!$('#aadhaarHistory').hidden?$('#aadhaarHistory'):!$('#tgpop').hidden?$('#tgpop'):!$('#modal').hidden?$('#modal'):null;
     if (!activeDialog) return;
     if (event.key==='Escape'){
       event.stopPropagation();
-      if (activeDialog.id==='aadhaarHistory')closeAadhaarHistory();
+      if (activeDialog.id==='pendingPop')closePending(false);
+      else if (activeDialog.id==='aadhaarHistory')closeAadhaarHistory();
       else if (activeDialog.id==='tgpop')closeTelegram();
       else closeDetails();
     }
@@ -1064,6 +1103,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     selected.clear();
     $<HTMLInputElement>('#apNote').value='';
     refresh();
+    showPending(true);
   };
   /* Telegram approvals: PM / Office HR / Regional HR / Director can tap Approve or Decline on their phone.
      Every 20 s (and on load) decisions recorded on the server are merged into the browser records, so the form
@@ -1092,6 +1132,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       });
       await resendUnsent(queue);
     }catch{/* Existing browser records remain available if the queue cannot be fetched. */}
+    showPending();
   }
   void syncFromServer();
   const syncTimer = setInterval(() => { if (document.visibilityState==='visible') void syncFromServer(); }, 20000);
@@ -1144,6 +1185,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     role=allowed.includes(role)?role:overview?'observer':allowed[0];select.value=role;roleLocked=allowed.length===1;select.disabled=roleLocked;
     aadhaar.setDisabled(role!=='hr'||!canAct('hr'));if(previousRole!==role||!roleTabs[role].includes(tab))tab=roleTab[role];selected.clear();renderTrainer();renderApprovals();refresh();
     if(role==='hr'&&previousRole!=='hr')void syncFromServer();
+    showPending();
   }
   return {dispose, fillAadhaarDetails, setAadhaarBusy,setDrivingLicenceBusy,setDrivingLicenceReady,fillDrivingLicenceDetails,setTrainer,setRoles};
 }

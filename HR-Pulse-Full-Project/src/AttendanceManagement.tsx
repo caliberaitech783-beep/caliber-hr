@@ -2,6 +2,7 @@ import {hrAsset,inPulseII} from './hr-paths';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Download,RefreshCw} from 'lucide-react';
 import {api,csv,download,type Lookup,type Module} from './api';
+import BiometricMachines,{type Machine} from './BiometricMachines';
 import PunctualitySummary from './PunctualitySummary';
 import ShiftMaster from './ShiftMaster';
 import MisAttendance from './MisAttendance';
@@ -34,8 +35,7 @@ export const legacyModuleUrl=(view:string,policy?:AttendancePolicy)=>hrAsset('at
    Excel exports and the biometric vs trip card comparison. */
 export type Punch={id:string;deviceSerial:string;deviceName:string;siteName:string;biometricId:string;date:string;time:string;verify:string;punchType:string;employeeId:string;employeeCode:string;employeeName:string;machineName:string};
 export type FetchRequest={id:string;state:'PENDING'|'RUNNING'|'DONE'|'FAILED';punchesReceived:number;newPunches:number;error:string;requestedAt:string;completedAt:string|null};
-type Device={online:boolean;lastContact:string|null;serial:string;name:string;siteId:string|null;siteName:string;lastSeen:string|null};
-type Status={configured:boolean;bridgeOnline:boolean;bridgeLastSeen:string|null;devices:Device[];lastFetch:FetchRequest|null;canLink:boolean;canManageDevices:boolean};
+type Status={configured:boolean;bridgeOnline:boolean;bridgeLastSeen:string|null;devices:Machine[];lastFetch:FetchRequest|null;canLink:boolean;canManageDevices:boolean};
 type Unlinked={deviceSerial:string;biometricId:string;punches:number;lastPunch:string;machineName:string;siteName:string};
 type PunchList={from:string;to:string;truncated:boolean;rows:Punch[]};
 
@@ -99,8 +99,6 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
  const [error,setError]=useState(''),[message,setMessage]=useState('');
  const [tab,setTab]=useState<'punches'|'machines'|'sheet'|'tripPunch'|'recon'>('punches');
  const [selected,setSelected]=useState('');
- const [adding,setAdding]=useState(false);
- const [site,setSite]=useState('');
  const live=useRef(true);
  const attendanceFrame=useRef<HTMLIFrameElement>(null);
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
@@ -137,7 +135,7 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
  useEffect(()=>{
   if(tab!=='machines')return;
   let active=true;
-  const timer=setInterval(()=>{api<Status>(grant,'attendance/status').then(s=>{if(active)setStatus(s);}).catch(()=>{});},15000);
+  const timer=setInterval(()=>{api<Status>(grant,'attendance/status').then(s=>{if(active)setStatus({...s,devices:Array.isArray(s?.devices)?s.devices:[]});}).catch(()=>{});},15000);
   return()=>{active=false;clearInterval(timer);};
  },[grant,tab]);
  async function fetchAttendance(serial=''){
@@ -159,11 +157,6 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
   const employeeId=choice[row.deviceSerial+'|'+row.biometricId];if(!employeeId)return;
   setBusy(true);setError('');
   try{const result=await api<{employeeCode:string;employeeName:string}>(grant,'attendance/link','POST',{deviceSerial:row.deviceSerial,biometricId:row.biometricId,employeeId});setMessage(`Machine ID ${row.biometricId} linked to ${result.employeeCode} · ${result.employeeName}.`);await load(true);}
-  catch(e){setError((e as Error).message);}finally{setBusy(false);}
- }
- async function assignSite(device:Device,siteId:string){
-  setBusy(true);setError('');
-  try{await api(grant,'attendance/devices','POST',{serial:device.serial,siteId,name:device.name});setMessage(`Machine ${device.serial} updated.`);await load(true);}
   catch(e){setError((e as Error).message);}finally{setBusy(false);}
  }
  function exportCsv(){
@@ -198,7 +191,7 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
 
   <div className="data-card">
    <div className="attendance-filters">
-    <label>Machine<select disabled={fetching} value={selected} onChange={e=>setSelected(e.target.value)}><option value="">All machines</option>{status?.devices.map(d=><option key={d.serial} value={d.serial}>{d.serial}</option>)}</select></label>
+    <label>Machine<select disabled={fetching} value={selected} onChange={e=>setSelected(e.target.value)}><option value="">All machines</option>{status?.devices.map(d=><option key={d.serial} value={d.serial}>{[d.siteName,d.location,d.serial].filter(Boolean).join(" · ")}</option>)}</select></label>
     <label>From<input type="date" value={from} max={to} onChange={e=>e.target.value&&setFrom(e.target.value)}/></label>
     <label>To<input type="date" value={to} min={from} onChange={e=>e.target.value&&setTo(e.target.value)}/></label>
     <span>{loading?'Loading…':`${rows.length} punch${rows.length===1?'':'es'}`}</span>
@@ -231,37 +224,7 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
   </div>}
 
   </>}
-  {tab==='machines'&&status&&<div className="data-card">
-   <h2>Biometric machines</h2>
-   {status.canManageDevices&&<label>Site <select value={site} disabled={busy} onChange={e=>{setAdding(false);setSite(e.target.value);}}><option value="">Select a site</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}<option value="unassigned">Unassigned machines</option></select></label>}
-   {status.canManageDevices&&<div className="attendance-actions">
-    <button type="button" disabled={!site||site==='unassigned'||busy} onClick={()=>{setAdding(true);setError('');setMessage('');}}>Add machine</button>
-   </div>}
-   {adding&&status.canManageDevices&&site&&site!=='unassigned'&&<form className="attendance-filters" onSubmit={async e=>{
-    e.preventDefault();if(busy)return;
-    const fields=new FormData(e.currentTarget);
-    const serial=String(fields.get('serial')||'').trim();
-    setBusy(true);setError('');setMessage('');
-    try{
-     await api(grant,'attendance/devices/register','POST',{serial,name:fields.get('name'),siteId:site});
-     setAdding(false);setMessage('Machine '+serial+' registered. It will show its status after the bridge receives contact.');await load(false);
-    }catch(err){setError((err as Error).message);}finally{setBusy(false);}
-   }}>
-    <label>Machine serial number<input name="serial" required autoFocus maxLength={40} placeholder="Serial printed on the machine"/></label>
-    <label>Machine name (optional)<input name="name" maxLength={80}/></label>
-    <button className="primary" disabled={busy}>Save machine</button>
-    <button type="button" disabled={busy} onClick={()=>setAdding(false)}>Cancel</button>
-   </form>}
-   <div className="attendance-table"><table>
-    <thead><tr>{['Serial number','Site','Status','Last contact','Action'].map(x=><th key={x}>{x}</th>)}</tr></thead>
-    <tbody>{status.devices.filter(d=>!status.canManageDevices||site===(d.siteId||'unassigned')).map(d=><tr key={d.serial}>
-     <td>{d.serial}{d.name&&<small> · {d.name}</small>}</td>
-     <td>{status.canManageDevices&&sites.length?<select aria-label={`Site for machine ${d.serial}`} value={d.siteId||''} disabled={busy} onChange={e=>void assignSite(d,e.target.value)}><option value="">Not assigned</option>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select>:d.siteName||'Not assigned'}</td>
-     <td>{d.online&&status.bridgeOnline?'Online':d.lastContact?'Offline':'Awaiting contact'}</td><td>{d.lastContact?new Date(d.lastContact).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'}) :'—'}</td>
-     <td><button disabled={fetching||!status.configured||!status.bridgeOnline||!d.online} onClick={()=>void fetchAttendance(d.serial)}>Fetch log</button></td>
-    </tr>)}</tbody>
-   </table></div>
-   {status.canManageDevices&&<p className="help-text">Assign each machine to its site so site HR users can see its punches.</p>}
-  </div>}
+  {tab==='machines'&&status&&<BiometricMachines grant={grant} machines={status.devices} sites={sites} bridgeOnline={status.bridgeOnline} configured={status.configured} canManage={status.canManageDevices} fetching={fetching}
+   onFetch={serial=>void fetchAttendance(serial)} onError={setError} onSaved={async text=>{setError('');setMessage(text);await load(false);}}/>}
  </>;
 }

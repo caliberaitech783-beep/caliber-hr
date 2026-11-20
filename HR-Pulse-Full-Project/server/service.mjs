@@ -5,6 +5,7 @@ import {createTransferFlows,transferWorkflow,applyTransfer} from './employee-tra
 import {createAssets} from './assets.mjs';
 import {payroll} from './payroll.mjs';
 import {createAttendance} from './attendance.mjs';
+import {officeStaffHierarchy} from './office-staff-routing.mjs';
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval,isDriverOperator} from './joining-hierarchy.mjs';
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
@@ -22,6 +23,9 @@ import { randomUUID } from 'node:crypto';
 import { complianceKinds, modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
 import {createTelegramNotifier} from './telegram-notifications.mjs';
+import {initiatedSteps} from './site-staff-routing.mjs';
+import {ADDITION_BOT,queueAdditionStep,parseAdditionCallback,additionActor} from './employee-addition-bot.mjs';
+import {webhookSecretValid,botSecret,botToken} from './telegram.mjs';
 export function problem(message,status=400) { return Object.assign(new Error(message),{status}); }
 const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || '');
 const employeeDetailFields={
@@ -132,7 +136,9 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         const telegramFlow=kind==='leaveRequests'?await telegramLeaveFlow(db,siteId):null,odFlow=['outDutyRequests','gatePasses'].includes(kind)?await odSiteFlow(db,siteId):null,siteFlow=telegramFlow||odFlow;
         /* Site flow: only the site HR Manager raises leave / OD requests (on the employee's behalf). */
         if(siteFlow?.type==='site'&&siteFlow.hods&&siteFlow.hrManager&&siteFlow.hrManager!==profile.actor){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'this site';throw problem(`${kind==='outDutyRequests'?'OD':kind==='gatePasses'?'Gate pass':'Leave'} requests at ${siteName} are raised by the site HR Manager (${siteFlow.hrManager}). Please contact them to submit this request.`,403);}
-        const hierarchy=telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment)}}:kind==='outDutyRequests'?odApprovalWorkflow(odFlow,employeeDepartment):kind==='gatePasses'?gatePassWorkflow(odFlow,employeeDepartment):kind==='employeeTransfers'?await transferWorkflow(db,record.data.fromSiteId):['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId,{driverOperator:kind!=='employees'||await (async()=>{const d=record.data||{};const names=[];for(const [k,kindName] of [['departmentId','departments'],['designationId','designations']])if(d[k])names.push((await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind=$2",[String(d[k]),kindName])).rows[0]?.name||'');const f=d.fields||d.officeData||{};names.push(f['Department'],f['Designation'],f['Employee Category'],d.department,d.designation,d.category);return isDriverOperator(names.filter(Boolean).join(' '));})()}):null;
+        /* Office staff (Nagpur office, Chandrapur HO): office HR initiates → that office's HR Manager → Directors (office-staff-routing.mjs). */
+        const officeRoute=kind==='employees'?await officeStaffHierarchy(db,siteId,profile.actor):null;
+        const hierarchy=officeRoute||(telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment)}}:kind==='outDutyRequests'?odApprovalWorkflow(odFlow,employeeDepartment):kind==='gatePasses'?gatePassWorkflow(odFlow,employeeDepartment):kind==='employeeTransfers'?await transferWorkflow(db,record.data.fromSiteId):['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId,{driverOperator:kind!=='employees'||await (async()=>{const d=record.data||{};const names=[];for(const [k,kindName] of [['departmentId','departments'],['designationId','designations']])if(d[k])names.push((await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind=$2",[String(d[k]),kindName])).rows[0]?.name||'');const f=d.fields||d.officeData||{};names.push(f['Department'],f['Designation'],f['Employee Category'],d.department,d.designation,d.category);return isDriverOperator(names.filter(Boolean).join(' '));})()}):null);
         const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
         const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
         if(!hierarchy&&kind==='employeeTransfers')throw problem('Enable transfer routing and set the approvers in Approval Master › Employee Transfer before submitting',409);
@@ -140,7 +146,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         if(!hierarchy&&rules.length>1&&weight(rules[0])===weight(rules[1]))throw problem('Approval rules overlap. Resolve the approval matrix before submitting.',409);
         const workflow=hierarchy||(!rules.length&&record.data.approver?{id:null,data:{approvers:record.data.approver}}:(await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind='workflows' AND status='ACTIVE'",[rules[0].data.workflowId])).rows[0]);
         if(!workflow)throw problem('The configured workflow is not active',409);
-        const steps=hierarchy?hierarchy.data.steps:kind==='leaveRequests'?leaveApprovalSteps(workflow):workflow.data.approvers.split(',').map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
+        const steps=kind==='employees'&&hierarchy?initiatedSteps(hierarchy.data.steps,profile.actor):hierarchy?hierarchy.data.steps:kind==='leaveRequests'?leaveApprovalSteps(workflow):workflow.data.approvers.split(',').map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
         const approvers=steps.flatMap(s=>s.approvers);
         if(approvers.includes(profile.actor))throw problem('The requester cannot be an approver in their own workflow. Configure another approver.',409);
         const telegramSiteName=telegramFlow?(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name:null;
@@ -154,10 +160,11 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         if(telegramFlow)await queueTelegram(db,approvalId+':submitted',telegramFlow.hods?[...steps[0].approvers,telegramFlow.hrManager]:[telegramFlow.siteHr,telegramFlow.regionalHr],leaveMessage(record,'SUBMITTED',{siteName:telegramSiteName,firstRole:telegramFlow.hods?steps[0].label.replace(/ — .*/,''):telegramFlow.firstRole}));
         await db.query("UPDATE hr_records SET status='PENDING',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2",[profile.actor,id]);
         await audit(db,profile.actor,'SUBMIT',kind,id,{workflowId:workflow.id,stages:steps.length});
-         if(kind==='employees'&&hierarchy?.code==='CMLL-CO')afterCommit?.(()=>telegram.approvalRequested({siteCode:hierarchy.code,record:snapshot,step:steps[0],stage:1,total:steps.length,requestedBy:profile.actor}));
+        if(kind==='employees'){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'';await queueAdditionStep(db,queueTelegram,{approvalId,record:snapshot,siteName,steps,stage:0,state:'SUBMITTED',requestedBy:profile.actor});}
         return {status:'PENDING'};
   }
-  return {...createTelegram(pool),...createAssets(pool),...createAttendance(pool),...employeeDocuments,
+  const telegramBase=createTelegram(pool);
+  return {...telegramBase,...createAssets(pool),...createAttendance(pool),...employeeDocuments,
     payroll:(profile,method,params,input)=>transaction(db=>payroll(db,profile,method,params,input)),
     ...createDeletion(pool),
     ...createHierarchies(pool),
@@ -351,8 +358,8 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
       return (await pool.query("SELECT a.*,r.kind,a.record_snapshot->>'code' AS code,a.record_snapshot->>'name' AS name,a.record_snapshot->'data' AS data,(a.record_snapshot ? 'telegramFlow') AS telegram_flow,COALESCE(a.record_snapshot->'data'->'officeData'->>'Designation *',a.record_snapshot->'data'->>'designationTitle',(SELECT d.name FROM hr_records d WHERE d.kind='designations' AND d.id::text=a.record_snapshot->'data'->>'designationId')) AS designation FROM hr_approvals a JOIN hr_records r ON r.id=a.record_id WHERE (a.approvers ? $1 OR a.requested_by=$1) AND "+scopeSql('r','$2')+" ORDER BY a.created_at DESC LIMIT 200",[profile.actor,await siteIds(pool,profile)])).rows;
     },
-    async decide(profile,id,input) {
-      if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
+    async decide(profile,id,input,trusted=false) {
+      if(!trusted&&!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
       if(!uuid(id)||!['APPROVED','REJECTED'].includes(input.decision))throw problem('Invalid approval decision');
       const comments=String(input.comments||'').trim();if(comments.length>2000||input.decision==='REJECTED'&&!comments)throw problem('A rejection reason is required (maximum 2000 characters)');
       return transaction(async(db,afterCommit)=>{
@@ -361,7 +368,8 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         if(approval.state!=='PENDING'||approval.version!==Number(input.version))throw problem('This approval has changed. Reload it.',409);
         const next=nextApproval(approval,profile.actor,input.decision);
         const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 FOR UPDATE',[approval.record_id])).rows[0];
-        await locationAccess(db,profile,record.kind,record.data,record.id);
+        if(!trusted)await locationAccess(db,profile,record.kind,record.data,record.id);
+        if(trusted&&(record.kind!=='employees'||Number(input.stage)!==approval.stage))throw problem('This request has already moved on.',409);
         const flow=approval.record_snapshot?.telegramFlow;
         let handoverActor='';
         if(flow&&input.decision==='APPROVED'&&next.state==='APPROVED'){
@@ -392,11 +400,8 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         }
         await audit(db,profile.actor,input.decision,record.kind,record.id,{stage:approval.stage+1,comments,...(handoverActor?{chargeEmployeeId:record.data.chargeEmployeeId}:{})});
         if(record.kind==='employees'){
-          const site=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[record.data.siteId||''])).rows[0],steps=approvalSteps(approval);
-          if(site?.code==='CMLL-CO'){
-            if(state==='PENDING'){const step=steps[stage];afterCommit?.(()=>telegram.approvalRequested({siteCode:site.code,record:approval.record_snapshot,step,stage:stage+1,total:steps.length,requestedBy:approval.requested_by,previousApprover:profile.actor}));}
-            else afterCommit?.(()=>telegram.finalDecision({siteCode:site.code,record:approval.record_snapshot,state,approver:profile.actor,comments,decidedAt:new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}),recipients:steps.flatMap(step=>step.approvers)}));
-          }
+          const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[record.data.siteId||''])).rows[0]?.name||'';
+          await queueAdditionStep(db,queueTelegram,{approvalId:id,record:approval.record_snapshot,siteName,steps:approvalSteps(approval),stage,state,requestedBy:approval.requested_by,actor:profile.name||profile.actor,comments,decidedAt:new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})});
         }
         return {state};
       });
@@ -429,6 +434,29 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     async audit(profile) {
       if(!grantedMenus(profile).has('Audit Logs'))throw problem('Audit Logs permission required',403);
       return (await pool.query('SELECT a.* FROM hr_audit a JOIN hr_records r ON r.id=a.record_id WHERE '+scopeSql('r','$1')+' ORDER BY a.id DESC LIMIT 200',[await siteIds(pool,profile)])).rows;
+    },
+    /* @NagpurEmployeeAdditionBot: an Approve / Reject tap decides the employee approval through decide(), like the HR app. */
+    async telegramWebhook(secret,update,bot='leave'){
+      if(bot!==ADDITION_BOT||!update?.callback_query)return telegramBase.telegramWebhook(secret,update,bot);
+      if(!webhookSecretValid(secret,botSecret(bot)))throw problem('Unauthorized webhook',403);
+      if(!Number.isSafeInteger(update.update_id))throw problem('Invalid update');
+      if(!(await pool.query('INSERT INTO hr_telegram_updates(id) VALUES($1) ON CONFLICT DO NOTHING RETURNING id',[update.update_id])).rowCount)return {ok:true};
+      const cb=update.callback_query,tap=parseAdditionCallback(cb.data);
+      const reply=async text=>{const token=botToken(bot);if(!token)return;const call=(method,body)=>fetch(`https://api.telegram.org/bot${token}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(8000)}).catch(()=>{});
+        await call('answerCallbackQuery',{callback_query_id:cb.id,text,show_alert:false});
+        if(cb.message?.chat?.id&&cb.message.message_id)await call('editMessageReplyMarkup',{chat_id:cb.message.chat.id,message_id:cb.message.message_id,reply_markup:{inline_keyboard:[]}});};
+      if(!tap){await reply('Unknown action');return {ok:true};}
+      const actor=await additionActor(pool,cb.from?.id);
+      if(!actor){await reply('Connect your Pulse login to this bot first (Caliber HR › Connect Telegram).');return {ok:true};}
+      const approval=(await pool.query('SELECT * FROM hr_approvals WHERE id=$1',[tap.id])).rows[0];
+      if(!approval){await reply('This request was not found');return {ok:true};}
+      if(approval.state!=='PENDING'||approval.stage!==tap.stage){await reply(`Already handled (${String(approval.state).toLowerCase()})`);return {ok:true};}
+      if(!approvalSteps(approval)[approval.stage]?.approvers.includes(actor)||approval.requested_by===actor){await reply('You are not the approver for this step');return {ok:true};}
+      try{
+        const result=await this.decide({actor,name:actor},tap.id,{decision:tap.approve?'APPROVED':'REJECTED',version:approval.version,stage:tap.stage,comments:tap.approve?'':`Rejected on Telegram by ${actor}`},true);
+        await reply(tap.approve?(result.state==='APPROVED'?'Approved ✅ – employee is now Active':'Approved ✅ – sent to the next step'):'Rejected ❌ – sent back to Site HR');
+      }catch(error){await reply(error instanceof Error?error.message.slice(0,180):'Could not save the decision');}
+      return {ok:true};
     },
   };
 }

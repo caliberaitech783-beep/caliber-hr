@@ -1,5 +1,6 @@
 import TrialForm,{loadSelection,pulseTrialSites} from './TrialForm';
 import type {Profile,Session} from './api';
+import AdditionApprovalPopup from './AdditionApprovalPopup';
 
 export function isSiteHRManager(profile:Profile){
  const role=String(profile.assignedRole||'').toLowerCase().replace(/[^a-z]+/g,' ').trim();
@@ -13,5 +14,6 @@ export default function SiteHRWorkspace({profile,session,logout}:{profile:Profil
  return <main className="site-hr-workspace" style={{padding:20}}>
   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}><strong>{profile.name}</strong><button onClick={logout}>Sign out</button></div>
   <TrialForm selection={selection} profile={profile} owner={owner} legacyOwner={legacyOwner}/>
+  {[...(profile.permissions.hrDesktopAccess||[]),...(profile.permissions.hrMobileAccess||[])].includes('Approval Management')&&<AdditionApprovalPopup grant={session.grant} actor={profile.actor||''}/>}
  </main>;
 }

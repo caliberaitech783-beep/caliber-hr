@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {trialReviewStage} from './trial-review.mjs';
-import {trialAccess,requireTrialRole,trialRoleLabels} from './trial-access.mjs';
+import {trialAccess,requireTrialRole,trialRoleLabels,assignedTrialSites} from './trial-access.mjs';
 const assignedHierarchy=(actor='hr')=>({code:'NCL-JAYANT',data:{group:'NCL',steps:Object.values(trialRoleLabels).map(label=>({label,approvers:[actor]}))}});
 test('admin access is read-only and each assigned user receives only their hierarchy role',async()=>{
  const db={query:async()=>({rows:[{code:'NCL-DUDE',data:{group:'NCL',steps:Object.entries(trialRoleLabels).map(([role,label])=>({label,approvers:[role==='hr'?'ankittiwari':role]}))}}]})};
@@ -33,6 +33,23 @@ test('trial reviews cannot skip PM, Office HR, Regional HR or Director',()=>{
  for(let index=0;index<=roles.length;index++)assert.equal(trialReviewStage(approvals.slice(0,index)),roles[index]||'done');
  assert.equal(trialReviewStage(approvals.filter(h=>h.role!=='ohr')),'ohr');
  assert.equal(trialReviewStage(approvals,'2026-11-19T13:00:00Z'),'pm');
+});
+test('Pulse User Master Trial role-site assignments drive workflow authority',async()=>{
+ const db={query:async()=>assert.fail('Pulse assignments must not depend on the legacy hierarchy')};
+ const assignment=(role,site='WCL-SASTI')=>({role,allSites:false,sites:[{code:site,name:'Sasti OC',region:'WCL'}]});
+ for(const [role,workflowRole] of Object.entries({PM:'pm','HR Manager':'hr','Driver Trainer':'trainer','Office HR':'ohr','Regional HR':'rhr',Director:'director'})){
+  const profile={actor:'pulse-user',permissions:{hrAccountStatus:'Active',hrTrialAssignments:[assignment(role)],hrDesktopAccess:['Employee Master']}};
+  assert.deepEqual(await trialAccess(db,profile,{site:'Sasti OB'}),{roles:[workflowRole],overview:false});
+  assert.deepEqual(await trialAccess(db,profile,{site:'Jayant OB East'}),{roles:[],overview:false});
+ }
+ assert.deepEqual(await trialAccess(db,{actor:'admin',permissions:{hrAccountStatus:'Active',hrTrialAssignments:[{role:'Trial Admin',allSites:true,sites:[]}]}},{site:'Jayant OB East'}),{roles:[],overview:true});
+ assert.deepEqual(await trialAccess(db,{actor:'inactive',permissions:{hrAccountStatus:'Inactive',hrTrialAssignments:[assignment('PM')]}},{site:'Sasti OB'}),{roles:[],overview:false});
+});
+test('Pulse Trial assignments freeze a user to only their assigned sites',()=>{
+ const profile={permissions:{hrAccountStatus:'Active',site:'All Sites',hrTrialAssignments:[{role:'HR Manager',allSites:false,sites:[{code:'WCL-DHOPTALA',name:'Dhoptala OB'}]}]}};
+ assert.deepEqual(assignedTrialSites(profile).map(site=>site.code),['WCL-DHOPTALA']);
+ assert.equal(assignedTrialSites({permissions:{hrAccountStatus:'Active',hrTrialAssignments:[{role:'Trial Admin',allSites:true,sites:[]}]}}),null);
+ assert.deepEqual(assignedTrialSites({...profile,permissions:{...profile.permissions,hrAccountStatus:'Inactive'}}),[]);
 });
 test('only the assigned current-stage user sees a review queue; admin sees a read-only overview',async()=>{
  const records=[{id:'pm',data:{site:'Jayant OB East',pendingRole:'pm',stage:'RESULT'}},{id:'office',data:{site:'Jayant OB East',pendingRole:'ohr',stage:'APPROVAL'}},{id:'trainer',data:{site:'Jayant OB East',stage:'PART1'}}];
@@ -112,12 +129,20 @@ test('queue deduplicates recipients and uses durable unique event keys',async()=
 });
 test('private one-time connection binds the signed-in actor, never a supplied username',async()=>{
  const previous=process.env.TELEGRAM_WEBHOOK_SECRET;process.env.TELEGRAM_WEBHOOK_SECRET='secret';
- let consumed=false;const writes=[];const db={release(){},async query(s,v){writes.push([s,v]);if(s.startsWith('INSERT INTO hr_telegram_updates'))return {rowCount:1};if(s.startsWith('DELETE FROM hr_telegram_link_tokens')){assert.equal(v[0],createHash('sha256').update('a'.repeat(32)).digest('hex'));if(consumed)return {rows:[]};consumed=true;return {rows:[{actor:'amitsingh'}]};}if(s.startsWith('SELECT actor'))return {rows:[]};return {rows:[],rowCount:1};}};
+ let consumed=false;const writes=[];const db={release(){},async query(s,v){writes.push([s,v]);if(s.startsWith('INSERT INTO hr_telegram_updates'))return {rowCount:1};if(s.startsWith('DELETE FROM hr_telegram_link_tokens')){assert.equal(v[0],createHash('sha256').update('a'.repeat(32)).digest('hex'));if(consumed)return {rows:[]};consumed=true;return {rows:[{actor:'amitsingh',bot:'leave'}]};}if(s.startsWith('SELECT actor'))return {rows:[]};return {rows:[],rowCount:1};}};
  try{const svc=createTelegram({connect:async()=>db});const update={update_id:1,message:{chat:{type:'private',id:123},from:{id:123},text:'/start '+'a'.repeat(32)}};
  await assert.rejects(svc.telegramWebhook('bad',update),e=>e.status===403);
  await svc.telegramWebhook('secret',update);await svc.telegramWebhook('secret',{...update,update_id:2});
- const bindings=writes.filter(([s])=>s.startsWith('INSERT INTO hr_telegram_accounts'));assert.equal(bindings.length,1);assert.deepEqual(bindings[0][1],['amitsingh','123']);
+ const bindings=writes.filter(([s])=>s.startsWith('INSERT INTO hr_telegram_accounts'));assert.equal(bindings.length,1);assert.deepEqual(bindings[0][1],['amitsingh','123',true,false,false,false]);
  }finally{if(previous===undefined)delete process.env.TELEGRAM_WEBHOOK_SECRET;else process.env.TELEGRAM_WEBHOOK_SECRET=previous;}
+});
+test('trial bot connection is tracked separately and retries only trial messages',async()=>{
+ const previous=process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET;process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET='trial-secret';const writes=[];
+ const db={release(){},async query(s,v){writes.push([s,v]);if(s.startsWith('INSERT INTO hr_telegram_updates'))return {rowCount:1};if(s.startsWith('DELETE FROM hr_telegram_link_tokens'))return {rows:[{actor:'sajadali',bot:'trial'}]};if(s.startsWith('SELECT actor'))return {rows:[]};return {rows:[],rowCount:1};}};
+ try{await createTelegram({connect:async()=>db}).telegramWebhook('trial-secret',{update_id:3,message:{chat:{type:'private',id:456},from:{id:456},text:'/start '+'b'.repeat(32)}},'trial');
+ const binding=writes.find(([s])=>s.startsWith('INSERT INTO hr_telegram_accounts'));assert.deepEqual(binding[1],['sajadali','456',false,true,false,false]);
+ const retry=writes.find(([s])=>s.startsWith('UPDATE hr_telegram_outbox'));assert.deepEqual(retry[1],['sajadali','trial']);
+ }finally{if(previous===undefined)delete process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET;else process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET=previous;}
 });
 test('unconnected recipients remain queued without sending',async()=>{
  const previous=process.env.TELEGRAM_BOT_TOKEN;process.env.TELEGRAM_BOT_TOKEN='test';let sent=0;const writes=[];

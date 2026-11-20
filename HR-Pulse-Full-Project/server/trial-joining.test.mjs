@@ -74,3 +74,10 @@ test('joining requires marital status and Aadhaar number for each entered family
  office['Aadhaar Number']=' |  | 234500000003';assert.equal(missingJoiningField(office),undefined);
  office.Relationship='Father |  | Mother';assert.equal(missingJoiningField(office),'Aadhaar Number 1');
 });
+
+test('identification mark is optional for Corporate and HO but required for site joining',async()=>{
+ const {missingJoiningField}=await import('./joining-required.mjs');
+ const office={...employee.__officeData,'Identification mark':''};
+ assert.equal(missingJoiningField(office),'Identification mark');
+ for(const category of ['CORPORATE','HO'])assert.equal(missingJoiningField({...office,'Joining Category *':category,'A-Form No.':'','Driving licence':'','Driving Licence No.':'','DL Issue Date':'','DL Valid Upto':'','Employee Category':'Staff'}),undefined);
+});

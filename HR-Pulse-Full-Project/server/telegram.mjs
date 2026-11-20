@@ -4,7 +4,10 @@ import {randomBytes,createHash,timingSafeEqual} from 'node:crypto';
 import {grantedMenus} from './modules.mjs';
 import {assignedSites} from './scope.mjs';
 import {trialReviewStage} from './trial-review.mjs';
-import {trialAccess,requireTrialRole,canReadTrial,trialSite} from './trial-access.mjs';
+import {nagpurRecipients} from './employee-addition-bot.mjs';
+import {additionRoster,connectInviteMessage} from './addition-roster.mjs';
+import {withTrialRouting} from './trial-routing.mjs';
+import {trialAccess,requireTrialRole,canReadTrial,trialSite,assignedTrialSites} from './trial-access.mjs';
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const username=value=>String(value||'').trim().toLowerCase();
@@ -60,6 +63,7 @@ export async function registerBotWebhook(bot,fetchImpl=fetch,logger=console){
 }
 export const registerTrialWebhook=(fetchImpl=fetch,logger=console)=>registerBotWebhook('trial',fetchImpl,logger);
 export const registerJoiningWebhook=(fetchImpl=fetch,logger=console)=>registerBotWebhook('joining',fetchImpl,logger);
+export const registerNagpurWebhook=(fetchImpl=fetch,logger=console)=>registerBotWebhook('nagpur',fetchImpl,logger);
 export async function seedTelegram(db){
  const data={siteHr:'amitsingh',regionalHr:'vinodpinjarkar',directors:['manishchadda','mohitchadda','rahulchadda'],enabled:true};
  await db.query("INSERT INTO hr_telegram_hierarchies(site_id,data,updated_by) SELECT id,$1,'initial-configuration' FROM hr_records WHERE kind='sites' AND code='NCL-JAYANT' ON CONFLICT DO NOTHING",[data]);
@@ -104,7 +108,7 @@ export async function hierarchyRecipients(db,stage,target){
  const recipients=[];
  for(const template of site?[site]:hierarchyTemplates){
   const saved=rows.find(row=>row.code===template.code);
-  const data=withOfficeHr(withDriverTrainer(currentHierarchy(saved?.data)));
+  const data=withTrialRouting(withOfficeHr(withDriverTrainer(currentHierarchy(saved?.data))));
   const seen=new Set();
   for(const step of data?.steps||[]){
    if(!labels.includes(step.label))continue;
@@ -194,7 +198,7 @@ export function requireTrialUploads(attachments){
  if(!attachments.some(file=>file.kind==='trialResult'))fail('Upload the trial result file before submitting.');
  if(!attachments.some(file=>file.kind==='drivingVideo'))fail('Upload the driving video before submitting.');
 }
-const recipientIssues=async(pool,recipients)=>{const connected=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor = ANY($1)',[recipients])).rows.map(r=>r.actor.replace(/^trial:/,''));const pendingNote=(await pool.query("SELECT actor,last_error FROM hr_telegram_outbox WHERE bot='trial' AND state<>'SENT' AND last_error IS NOT NULL AND actor = ANY($1) ORDER BY id DESC LIMIT 5",[recipients])).rows;return {recipients:recipients.length,connected,bot:botUsername('trial'),configured:!!process.env.TELEGRAM_TRIAL_BOT_TOKEN,issues:pendingNote.map(r=>`${r.actor.replace(/^trial:/,'')}: ${r.last_error}`)};};
+const recipientIssues=async(pool,recipients)=>{const connected=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE trial_connected=true AND actor = ANY($1)',[recipients])).rows.map(r=>r.actor.replace(/^trial:/,''));const pendingNote=(await pool.query("SELECT actor,last_error FROM hr_telegram_outbox WHERE bot='trial' AND state<>'SENT' AND last_error IS NOT NULL AND actor = ANY($1) ORDER BY id DESC LIMIT 5",[recipients])).rows;return {recipients:recipients.length,connected,bot:botUsername('trial'),configured:!!process.env.TELEGRAM_TRIAL_BOT_TOKEN,issues:pendingNote.map(r=>`${r.actor.replace(/^trial:/,'')}: ${r.last_error}`)};};
 /* Telegram text for a saved trial form – matches the agreed format. */
 export function trialResultMessage(record,enteredBy){const f=record.fields||{},pass=f['Result']==='PASS';const date=fmtDate(f['Trial date & time']);
  const vehicle=vehicleOf(f),post=(pass?f['If PASS – recommended for']:'')||f['Post applied for']||record.department||'Driver / Operator';
@@ -207,10 +211,10 @@ export async function queueTelegram(db,eventKey,actors,message,bot='leave',marku
 /* Telegram text limit is 4096 chars: long batch messages are split at line breaks. */
 export function splitTelegram(text,max=4000){const parts=[];let cur='';for(const line of String(text).split('\n')){if((cur+'\n'+line).length>max&&cur){parts.push(cur);cur=line;}else cur=cur?cur+'\n'+line:line;}if(cur)parts.push(cur);return parts;}
 /* Bots: 'leave' = leave/approvals bot (TELEGRAM_BOT_TOKEN); 'trial' = Vehicle Trial Result bot (TELEGRAM_TRIAL_BOT_TOKEN). */
-export const botToken=bot=>bot==='trial'?process.env.TELEGRAM_TRIAL_BOT_TOKEN:bot==='joining'?process.env.TELEGRAM_JOINING_BOT_TOKEN:process.env.TELEGRAM_BOT_TOKEN;
-export const botUsername=bot=>bot==='trial'?process.env.TELEGRAM_TRIAL_BOT_USERNAME||'':bot==='joining'?process.env.TELEGRAM_JOINING_BOT_USERNAME||'':process.env.TELEGRAM_BOT_USERNAME||'';
-export const botSecret=bot=>bot==='trial'?(process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET||process.env.TELEGRAM_WEBHOOK_SECRET):bot==='joining'?(process.env.TELEGRAM_JOINING_WEBHOOK_SECRET||process.env.TELEGRAM_WEBHOOK_SECRET):process.env.TELEGRAM_WEBHOOK_SECRET;
-export const botLabel=bot=>bot==='trial'?'Vehicle Trial Result bot':bot==='joining'?'Joining Approval bot':'HR Pulse leave bot';
+export const botToken=bot=>bot==='nagpur'?process.env.TELEGRAM_NAGPUR_BOT_TOKEN:bot==='trial'?process.env.TELEGRAM_TRIAL_BOT_TOKEN:bot==='joining'?process.env.TELEGRAM_JOINING_BOT_TOKEN:process.env.TELEGRAM_BOT_TOKEN;
+export const botUsername=bot=>bot==='nagpur'?process.env.TELEGRAM_NAGPUR_BOT_USERNAME||'NagpurEmployeeAdditionBot':bot==='trial'?process.env.TELEGRAM_TRIAL_BOT_USERNAME||'':bot==='joining'?process.env.TELEGRAM_JOINING_BOT_USERNAME||'':process.env.TELEGRAM_BOT_USERNAME||'';
+export const botSecret=bot=>bot==='nagpur'?(process.env.TELEGRAM_NAGPUR_WEBHOOK_SECRET||process.env.TELEGRAM_WEBHOOK_SECRET):bot==='trial'?(process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET||process.env.TELEGRAM_WEBHOOK_SECRET):bot==='joining'?(process.env.TELEGRAM_JOINING_WEBHOOK_SECRET||process.env.TELEGRAM_WEBHOOK_SECRET):process.env.TELEGRAM_WEBHOOK_SECRET;
+export const botLabel=bot=>bot==='nagpur'?'Nagpur Employee Addition bot':bot==='trial'?'Vehicle Trial Result bot':bot==='joining'?'Joining Approval bot':'HR Pulse leave bot';
 export function leaveMessage(record,status,details={}){
  const date=value=>value?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Kolkata'}).format(new Date(value)):'Not available';
  const firstRole=details.firstRole||'Site HR';
@@ -294,14 +298,14 @@ export function createTelegram(pool){
    await requireTrialRole(pool,profile,actionRole,input);
   }
   if(!grantedMenus(profile).size)fail('HR access required',403);
-  if(route==='account'&&method==='GET')return {connected:!!(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor=$1',[profile.actor])).rowCount,botUsername:process.env.TELEGRAM_BOT_USERNAME||'',configured:!!process.env.TELEGRAM_BOT_TOKEN};
+  if(route==='account'&&method==='GET')return {connected:!!(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor=$1 AND leave_connected=true',[profile.actor])).rowCount,botUsername:process.env.TELEGRAM_BOT_USERNAME||'',configured:!!process.env.TELEGRAM_BOT_TOKEN};
   if(route==='connect'&&method==='POST'){
    if(!process.env.TELEGRAM_BOT_TOKEN||!process.env.TELEGRAM_BOT_USERNAME)fail('Telegram bot is not configured',503);
-   const token=randomBytes(24).toString('base64url');await tx(async db=>{await db.query('DELETE FROM hr_telegram_link_tokens WHERE actor=$1 OR expires_at<now()',[profile.actor]);await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,expires_at) VALUES($1,$2,now()+interval '10 minutes')",[hash(token),profile.actor]);});
+   const token=randomBytes(24).toString('base64url');await tx(async db=>{await db.query("DELETE FROM hr_telegram_link_tokens WHERE (actor=$1 AND bot='leave') OR expires_at<now()",[profile.actor]);await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'leave',now()+interval '10 minutes')",[hash(token),profile.actor]);});
    return {url:`https://t.me/${process.env.TELEGRAM_BOT_USERNAME}?start=${token}`};
   }
   /* ---- Joining approval ---- */
-  if(route==='joining-approvers'&&method==='GET'){const cfg=await joiningApprovers(pool);const linked=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor = ANY($1)',[cfg.approvers])).rows.map(r=>r.actor);const issues=Object.fromEntries((await pool.query("SELECT DISTINCT ON (actor) actor,last_error FROM hr_telegram_outbox WHERE bot='joining' AND state<>'SENT' AND last_error IS NOT NULL ORDER BY actor,id DESC")).rows.map(r=>[r.actor,r.last_error]));return {...cfg,approvers:cfg.approvers.join(', '),linked,issues,botUsername:botUsername('joining'),configured:!!process.env.TELEGRAM_JOINING_BOT_TOKEN,canWrite:grantedMenus(profile).has('Approval Management')};}
+  if(route==='joining-approvers'&&method==='GET'){const cfg=await joiningApprovers(pool);const linked=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE joining_connected=true AND actor = ANY($1)',[cfg.approvers])).rows.map(r=>r.actor);const issues=Object.fromEntries((await pool.query("SELECT DISTINCT ON (actor) actor,last_error FROM hr_telegram_outbox WHERE bot='joining' AND state<>'SENT' AND last_error IS NOT NULL ORDER BY actor,id DESC")).rows.map(r=>[r.actor,r.last_error]));return {...cfg,approvers:cfg.approvers.join(', '),linked,issues,botUsername:botUsername('joining'),configured:!!process.env.TELEGRAM_JOINING_BOT_TOKEN,canWrite:grantedMenus(profile).has('Approval Management')};}
   if(route==='joining-approvers'&&method==='POST'){
    if(!grantedMenus(profile).has('Approval Management'))fail('Approval Management permission required',403);
    const approvers=String(input.approvers||'').split(',').map(a=>a.trim().toLowerCase()).filter(a=>/^[-a-z0-9_.@]{1,100}$/.test(a));
@@ -320,7 +324,7 @@ export function createTelegram(pool){
    const data={status:'PENDING',draftId:id,candidate:String(input.candidate||'').trim().slice(0,120),post:String(input.post||'').trim().slice(0,80),site:String(input.site||'').trim().slice(0,80),company:String(input.company||'').trim().slice(0,80),submittedBy:profile.actor,requestedAt:new Date().toISOString(),otpHash:hash(code+':'+otp),expires,attempts:0,approvers:cfg.approvers,resends:(existing?.resends||0)+(existing?1:0)};
    await tx(async db=>{await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'joiningApprovals',$1,$2,$3,'PENDING',$4,$4) ON CONFLICT(kind,code) DO UPDATE SET data=$3,name=$2,status='PENDING',updated_by=$4,updated_at=now()",[code,data.candidate||code,data,profile.actor]);
     await queueTelegram(db,`joining:${code}:${data.resends}`,cfg.approvers,joiningApprovalMessage(data,otp),'joining',joiningMarkup(code));});
-   const linked=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor = ANY($1)',[cfg.approvers])).rows.map(r=>r.actor);
+   const linked=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE joining_connected=true AND actor = ANY($1)',[cfg.approvers])).rows.map(r=>r.actor);
    return {required:true,status:'PENDING',expires,approvers:cfg.approvers,connected:linked,notConnected:cfg.approvers.filter(a=>!linked.includes(a))};
   }
   if(route==='joining-approval/status'&&method==='POST'){
@@ -351,7 +355,7 @@ export function createTelegram(pool){
    if(token){const call=async(m,body)=>{try{const r=await fetch(`https://api.telegram.org/bot${token}/${m}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{}),signal:AbortSignal.timeout(10000)});return await r.json();}catch(e){return {ok:false,description:e instanceof Error?e.message:String(e)};}};
     out.me=await call('getMe');out.registered=await registerTrialWebhook();out.webhook=await call('getWebhookInfo');}
    await pool.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING' WHERE bot='trial' AND state IN ('PENDING','FAILED')");
-   out.outbox=(await pool.query("SELECT actor,state,attempts,last_error,created_at,sent_at FROM hr_telegram_outbox WHERE bot='trial' ORDER BY id DESC LIMIT 10")).rows;
+   out.outbox=(await pool.query("SELECT actor,state,attempts,last_error,sent_at FROM hr_telegram_outbox WHERE bot='trial' ORDER BY id DESC LIMIT 10")).rows;
    return out;
   }
   if(route==='joining-status'&&method==='GET'){   /* diagnostics for the Joining Approval bot */
@@ -361,12 +365,12 @@ export function createTelegram(pool){
    if(token){const call=async(m,body)=>{try{const r=await fetch(`https://api.telegram.org/bot${token}/${m}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{}),signal:AbortSignal.timeout(10000)});return await r.json();}catch(e){return {ok:false,description:e instanceof Error?e.message:String(e)};}};
     out.me=await call('getMe');out.registered=await registerJoiningWebhook();out.webhook=await call('getWebhookInfo');}
    await pool.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING' WHERE bot='joining' AND state IN ('PENDING','FAILED')");
-   out.outbox=(await pool.query("SELECT actor,state,attempts,last_error,created_at,sent_at FROM hr_telegram_outbox WHERE bot='joining' ORDER BY id DESC LIMIT 10")).rows;
+   out.outbox=(await pool.query("SELECT actor,state,attempts,last_error,sent_at FROM hr_telegram_outbox WHERE bot='joining' ORDER BY id DESC LIMIT 10")).rows;
    return out;
   }
   if(route==='trial-recipients'&&method==='GET'){
    const result=await trialRecipients(pool,'result'),part1=await trialRecipients(pool,'part1'),hierarchy={part1:await hierarchyRecipients(pool,'part1'),result:[...(await hierarchyRecipients(pool,'result')).map(r=>({...r,role:`Trial result → ${r.role}`})),...(await hierarchyRecipients(pool,'ohr')).map(r=>({...r,role:`PM approved → ${r.role}`})),...(await hierarchyRecipients(pool,'rhr')).map(r=>({...r,role:`Office HR approved → ${r.role} (Regional HR)`})),...(await hierarchyRecipients(pool,'director')).map(r=>({...r,role:`Regional HR approved → ${r.role} (Directors)`}))]},all=[...result,...part1,...hierarchy.part1,...hierarchy.result];
-   const linked=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor = ANY($1)',[all.map(recipientActor)])).rows.map(r=>r.actor);
+   const linked=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE trial_connected=true AND actor = ANY($1)',[all.map(recipientActor)])).rows.map(r=>r.actor);
    const issues=Object.fromEntries((await pool.query("SELECT DISTINCT ON (actor) actor,last_error FROM hr_telegram_outbox WHERE bot='trial' AND state<>'SENT' AND last_error IS NOT NULL ORDER BY actor,id DESC")).rows.map(r=>[r.actor,r.last_error]));
    const decorate=list=>list.map(r=>({...r,connected:linked.includes(recipientActor(r)),issue:issues[recipientActor(r)]||''}));
    return {recipients:decorate(result),part1Recipients:decorate(part1),hierarchy:{part1:decorate(hierarchy.part1),result:decorate(hierarchy.result)},botUsername:botUsername('trial'),configured:!!process.env.TELEGRAM_TRIAL_BOT_TOKEN};
@@ -380,12 +384,65 @@ export function createTelegram(pool){
     else await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms','SETTINGS','Trial form Telegram recipients',$1,'ACTIVE',$2,$2)",[data,profile.actor]);});
    return {saved:true};
   }
+  if(route==='addition-bot'&&method==='GET'){   /* Nagpur Employee Addition bot: is this user connected? */
+   const connected=!!(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor=$1 AND nagpur_connected=true',[profile.actor])).rowCount||!!nagpurRecipients()[profile.actor];
+   const issue=(await pool.query("SELECT last_error FROM hr_telegram_outbox WHERE bot='nagpur' AND actor=$1 AND state<>'SENT' AND last_error IS NOT NULL ORDER BY id DESC LIMIT 1",[profile.actor])).rows[0]?.last_error||'';
+   return {connected,issue,botUsername:botUsername('nagpur'),configured:!!process.env.TELEGRAM_NAGPUR_BOT_TOKEN};
+  }
+  if(route==='addition-link'&&method==='POST'){   /* one person's personal link to forward (WhatsApp etc.) when a bot cannot reach them */
+   if(!grantedMenus(profile).has('Approval Management')||assignedSites(profile)!==null)fail('Approval Management access without a site restriction is required',403);
+   if(!process.env.TELEGRAM_NAGPUR_BOT_TOKEN)fail('Nagpur Employee Addition bot is not configured on the server (TELEGRAM_NAGPUR_BOT_TOKEN)',503);
+   const actor=String(input.actor||'').trim().toLowerCase();
+   const person=additionRoster((await pool.query("SELECT code,status,data FROM hr_records WHERE kind='joiningHierarchies'")).rows).find(p=>p.actor===actor);
+   if(!person)fail('This login is not on any employee addition route',404);
+   const token=randomBytes(24).toString('base64url');
+   await tx(async db=>{await db.query('DELETE FROM hr_telegram_link_tokens WHERE expires_at<now()');   /* keep the link already queued on Telegram working too */
+    await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'nagpur',now()+interval '7 days')",[hash(token),actor]);
+    await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'ADDITION_BOT_FORWARD_LINK','telegram',NULL,$2)",[profile.actor,{for:actor}]);});
+   return {actor,roles:person.roles,url:`https://t.me/${botUsername('nagpur')}?start=${token}`,message:connectInviteMessage({roles:person.roles,url:`https://t.me/${botUsername('nagpur')}?start=${token}`,botUsername:botUsername('nagpur')})};
+  }
+  if(route==='addition-links'&&['GET','POST'].includes(method)){   /* Approval Master › Employee Addition bot: connect links for everyone on the routes */
+   if(!grantedMenus(profile).has('Approval Management')||assignedSites(profile)!==null)fail('Approval Management access without a site restriction is required',403);
+   const roster=additionRoster((await pool.query("SELECT code,status,data FROM hr_records WHERE kind='joiningHierarchies'")).rows);
+   const accounts=new Map((await pool.query('SELECT actor,leave_connected,joining_connected,trial_connected,nagpur_connected FROM hr_telegram_accounts WHERE actor = ANY($1)',[roster.map(p=>p.actor)])).rows.map(r=>[r.actor,r]));
+   const listed=nagpurRecipients();
+   const viaOf=a=>a?.leave_connected?'leave':a?.joining_connected?'joining':a?.trial_connected?'trial':'';
+   const people=roster.map(p=>{const a=accounts.get(p.actor);return {...p,connected:!!a?.nagpur_connected||!!listed[p.actor],via:viaOf(a)};});
+   if(method==='GET'){   /* Link delivery: the latest connect-link message per person, or a link handed out to forward */
+    const actors=people.map(p=>p.actor);
+    const sent=new Map((await pool.query("SELECT DISTINCT ON (actor) actor,bot,state,last_error,sent_at FROM hr_telegram_outbox WHERE event_key LIKE 'nagpur-invite:%' AND actor = ANY($1) ORDER BY actor,id DESC",[actors])).rows.map(r=>[r.actor,r]));
+    const tokens=new Map((await pool.query("SELECT actor,max(expires_at) AS expires_at FROM hr_telegram_link_tokens WHERE bot='nagpur' AND actor = ANY($1) GROUP BY actor",[actors])).rows.map(r=>[r.actor,r]));
+    const deliveryOf=p=>{const o=sent.get(p.actor);
+     if(o)return {state:o.state==='SENT'?'DELIVERED':o.state==='FAILED'?'FAILED':'WAITING',bot:o.bot,at:o.sent_at||'',error:o.state==='SENT'?'':o.last_error||''};
+     const t=tokens.get(p.actor);if(t)return {state:new Date(t.expires_at)<new Date()?'EXPIRED':'FORWARD',bot:'',at:t.expires_at,error:''};
+     return null;};
+    return {people:people.map(p=>({...p,delivery:deliveryOf(p)})),botUsername:botUsername('nagpur'),configured:!!process.env.TELEGRAM_NAGPUR_BOT_TOKEN};
+   }
+   if(!process.env.TELEGRAM_NAGPUR_BOT_TOKEN)fail('Nagpur Employee Addition bot is not configured on the server (TELEGRAM_NAGPUR_BOT_TOKEN)',503);
+   const batch=Date.now().toString(36),results=[];
+   await tx(async db=>{for(const p of people){
+    if(p.connected){results.push({...p,status:'already connected'});continue;}
+    const token=randomBytes(24).toString('base64url'),url=`https://t.me/${botUsername('nagpur')}?start=${token}`;
+    await db.query("DELETE FROM hr_telegram_link_tokens WHERE (actor=$1 AND bot='nagpur') OR expires_at<now()",[p.actor]);
+    await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'nagpur',now()+interval '7 days')",[hash(token),p.actor]);
+    if(p.via){await queueTelegram(db,`nagpur-invite:${batch}`,[p.actor],connectInviteMessage({roles:p.roles,url,botUsername:botUsername('nagpur')}),p.via);results.push({...p,status:`sent on ${botLabel(p.via)}`});}
+    else results.push({...p,status:'not on any HR bot – forward this link',url});
+   }
+   await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SEND_ADDITION_BOT_LINKS','telegram',NULL,$2)",[profile.actor,{sent:results.filter(r=>/^sent/.test(r.status)).map(r=>r.actor),manual:results.filter(r=>r.url).map(r=>r.actor)}]);});
+   return {people:results,botUsername:botUsername('nagpur')};
+  }
+  if(route==='addition-connect'&&method==='POST'){   /* connect link for the Nagpur Employee Addition bot (open it and tap Start) */
+   if(!process.env.TELEGRAM_NAGPUR_BOT_TOKEN)fail('Nagpur Employee Addition bot is not configured on the server (TELEGRAM_NAGPUR_BOT_TOKEN)',503);
+   const token=randomBytes(24).toString('base64url');
+   await tx(async db=>{await db.query("DELETE FROM hr_telegram_link_tokens WHERE (actor=$1 AND bot='nagpur') OR expires_at<now()",[profile.actor]);await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'nagpur',now()+interval '7 days')",[hash(token),profile.actor]);});
+   return {url:`https://t.me/${botUsername('nagpur')}?start=${token}`,botUsername:botUsername('nagpur')};
+  }
   if(route==='joining-connect'&&method==='POST'){   /* connect link for an approver on the Joining Approval bot */
    if(!process.env.TELEGRAM_JOINING_BOT_TOKEN||!process.env.TELEGRAM_JOINING_BOT_USERNAME)fail('Joining Approval bot is not configured on the server',503);
    const pulse=String(input.actor||profile.actor).trim().toLowerCase();if(!/^[-a-z0-9_.@]{1,100}$/.test(pulse))fail('Enter a Pulse username');
    if(pulse!==profile.actor&&!grantedMenus(profile).has('Approval Management'))fail('Approval Management permission required',403);
    const token=randomBytes(24).toString('base64url');
-   await tx(async db=>{await db.query('DELETE FROM hr_telegram_link_tokens WHERE actor=$1 OR expires_at<now()',[pulse]);await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,expires_at) VALUES($1,$2,now()+interval '7 days')",[hash(token),pulse]);});
+   await tx(async db=>{await db.query("DELETE FROM hr_telegram_link_tokens WHERE (actor=$1 AND bot='joining') OR expires_at<now()",[pulse]);await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'joining',now()+interval '7 days')",[hash(token),pulse]);});
    return {url:`https://t.me/${process.env.TELEGRAM_JOINING_BOT_USERNAME}?start=${token}`,botUsername:process.env.TELEGRAM_JOINING_BOT_USERNAME};
   }
   if(route==='trial-connect'&&method==='POST'){   /* connect link for a recipient's Telegram (they open it and tap Start) */
@@ -393,7 +450,7 @@ export function createTelegram(pool){
    if(!process.env.TELEGRAM_TRIAL_BOT_TOKEN||!process.env.TELEGRAM_TRIAL_BOT_USERNAME)fail('Vehicle Trial Result bot is not configured on the server',503);
    const phone=String(input.phone||'').replace(/\D/g,'').slice(-10),pulse=String(input.actor||'').trim().toLowerCase();if(!/^[-a-z0-9_.@]{1,100}$/.test(pulse)&&phone.length!==10)fail('Enter a Pulse username or a 10-digit mobile number');
    const actor=pulse||'trial:'+phone,token=randomBytes(24).toString('base64url');
-   await tx(async db=>{await db.query('DELETE FROM hr_telegram_link_tokens WHERE actor=$1 OR expires_at<now()',[actor]);await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,expires_at) VALUES($1,$2,now()+interval '7 days')",[hash(token),actor]);});
+   await tx(async db=>{await db.query("DELETE FROM hr_telegram_link_tokens WHERE (actor=$1 AND bot='trial') OR expires_at<now()",[actor]);await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'trial',now()+interval '7 days')",[hash(token),actor]);});
    return {url:`https://t.me/${process.env.TELEGRAM_TRIAL_BOT_USERNAME}?start=${token}`};
   }
   if(route==='trial-trainer'&&method==='POST'){
@@ -406,6 +463,8 @@ export function createTelegram(pool){
   if(route==='trial-scope'&&method==='GET'){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const scope=assignedSites(profile),templates=hierarchyTemplates.filter(item=>['NCL','WCL'].includes(item.group));
+   const trialAssignments=assignedTrialSites(profile);
+   if(trialAssignments!==undefined){const sites=(trialAssignments===null?templates:trialAssignments.filter(item=>['NCL','WCL'].includes(item.group)));return {admin:trialAssignments===null,sites:sites.map(item=>({region:item.group,site:item.name,code:item.code}))};}
    if(scope===null)return {admin:true,sites:templates.map(item=>({region:item.group,site:item.name,code:item.code}))};
    if(!scope.length)return {admin:false,sites:[]};
    const rows=(await pool.query("SELECT id::text,code,name FROM hr_records WHERE kind='sites' AND status='ACTIVE' AND (id::text=ANY($1) OR lower(code)=ANY($1) OR lower(name)=ANY($1))",[scope])).rows;
@@ -601,7 +660,7 @@ export function createTelegram(pool){
     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[formNo,name,record,profile.actor])).rows[0].id;
     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_TRIAL_FORM','trialForms',$2,$3)",[profile.actor,id,{formNo,result}]);
     if(recipients.length)await queueTelegram(db,`trial:${formNo}:${result}:${Date.now()}`,recipients,message,'trial');});
-   const connected=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor = ANY($1)',[recipients])).rows.map(r=>r.actor.replace(/^trial:/,''));
+   const connected=(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE trial_connected=true AND actor = ANY($1)',[recipients])).rows.map(r=>r.actor.replace(/^trial:/,''));
    const pendingNote=(await pool.query("SELECT actor,last_error FROM hr_telegram_outbox WHERE bot='trial' AND state<>'SENT' AND last_error IS NOT NULL AND actor = ANY($1) ORDER BY id DESC LIMIT 5",[recipients])).rows;
    return {saved:true,id,result,telegram:{recipients:recipients.length,connected,message,bot:botUsername('trial'),configured:!!process.env.TELEGRAM_TRIAL_BOT_TOKEN,issues:pendingNote.map(r=>`${r.actor.replace(/^trial:/,'')}: ${r.last_error}`)}};
   }
@@ -664,7 +723,7 @@ export function createTelegram(pool){
    if(!(await db.query('INSERT INTO hr_telegram_updates(id) VALUES($1) ON CONFLICT DO NOTHING RETURNING id',[update.update_id])).rowCount)return;
    const cb=update.callback_query;
    if(cb&&bot==='trial'){const m=String(cb.data||'').match(/^ta:(TA-[0-9A-F]{12}):(a|d)$/);if(!m||!cb.from?.id){callback={bot,id:cb.id,text:'Unknown action'};return;}
-    const account=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(cb.from.id)])).rows[0];const actor=account?.actor?.replace(/^trial:/,'');
+    const account=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 AND trial_connected=true',[String(cb.from.id)])).rows[0];const actor=account?.actor?.replace(/^trial:/,'');
     const group=(await db.query("SELECT id,data,status FROM hr_records WHERE kind='trialApprovals' AND code=$1 FOR UPDATE",[m[1]])).rows[0];
     if(!group){callback={bot,id:cb.id,text:'This approval request was not found'};return;}
     if(group.status!=='PENDING'){callback={bot,id:cb.id,text:`Already ${group.data.decision||'handled'}${group.data.decidedBy?' by '+group.data.decidedBy:''}`};return;}
@@ -680,7 +739,7 @@ export function createTelegram(pool){
     await queueTelegram(db,`trial-ack:${m[1]}`,[actor],`${approved?'✅':'❌'} ${approved?'Approved':'Declined'} by you (${ROLE_TITLE[role]}) – ${rows.map(r=>r.fields['Name of candidate']||r.formNo).join(', ')}${approved&&NEXT_ROLE[role]!=='done'?'. Sent to '+ROLE_TITLE[NEXT_ROLE[role]]+'.':approved?'. Cleared to join – joining approval sent to all.':'.'}`,'trial');
     callback={bot,id:cb.id,text:approved?'Approved ✅':'Declined ❌'};return;}
    if(cb&&bot==='joining'){const m=String(cb.data||'').match(/^ja:(JA-[0-9A-F]{12}):(approve|reject)$/);if(!m||!cb.from?.id){callback={bot,id:cb.id,text:'Unknown action'};return;}
-    const actor=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(cb.from.id)])).rows[0]?.actor;
+    const actor=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 AND joining_connected=true',[String(cb.from.id)])).rows[0]?.actor;
     const row=(await db.query("SELECT data FROM hr_records WHERE kind='joiningApprovals' AND code=$1 FOR UPDATE",[m[1]])).rows[0];
     if(!row){callback={bot,id:cb.id,text:'Request not found'};return;}
     const d=row.data;if(!actor||!(d.approvers||[]).includes(actor)){callback={bot,id:cb.id,text:'You are not an approver for this request'};return;}
@@ -692,11 +751,12 @@ export function createTelegram(pool){
     callback={bot,id:cb.id,text:approve?'Approved':'Rejected'};return;}
    const msg=update.message;if(msg?.chat?.type!=='private'||!msg.from?.id||String(msg.chat.id)!==String(msg.from.id))return;
    const token=String(msg.text||'').match(/^\/start(?:@\w+)? ([A-Za-z0-9_-]{32})$/)?.[1];
-   if(!token){if(bot==='joining'&&/^\/start/.test(String(msg.text||''))){const known=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(msg.from.id)])).rows[0];if(known){await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot='joining' AND state IN ('PENDING','FAILED')",[known.actor]);await queueTelegram(db,'joining-start:'+update.update_id,[known.actor],'Connected. Joining approval requests from Caliber HR will appear here.','joining');}}if(bot==='trial'&&/^\/start/.test(String(msg.text||''))){const known=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(msg.from.id)])).rows[0];if(known){await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot='trial' AND state IN ('PENDING','FAILED')",[known.actor]);await queueTelegram(db,'trial-start:'+update.update_id,[known.actor],'Connected. Vehicle trial results from Caliber HR will appear here.','trial');}}return;}
-   const link=(await db.query('DELETE FROM hr_telegram_link_tokens WHERE hash=$1 AND expires_at>now() RETURNING actor',[hash(token)])).rows[0];if(!link)return;
+   if(!token){if(['leave','joining','trial','nagpur'].includes(bot)&&/^\/start/.test(String(msg.text||''))){const known=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(msg.from.id)])).rows[0];if(known){const column=bot==='nagpur'?'nagpur_connected':bot==='trial'?'trial_connected':bot==='joining'?'joining_connected':'leave_connected';await db.query(`UPDATE hr_telegram_accounts SET ${column}=true,linked_at=now() WHERE actor=$1`,[known.actor]);await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot=$2 AND state IN ('PENDING','FAILED')",[known.actor,bot]);await queueTelegram(db,`${bot}-start:`+update.update_id,[known.actor],bot==='trial'?'Connected. Vehicle trial results from Caliber HR will appear here.':bot==='joining'?'Connected. Joining approval requests from Caliber HR will appear here.':bot==='nagpur'?'Connected. Employee addition approvals from Caliber HR will appear here with Approve / Reject buttons.':'Your Telegram account is connected to Caliber HR.',bot);}}return;}
+   const link=(await db.query('DELETE FROM hr_telegram_link_tokens WHERE hash=$1 AND expires_at>now() RETURNING actor,bot',[hash(token)])).rows[0];if(!link||link.bot!==bot)return;
    const taken=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 OR chat_id=$1',[String(msg.from.id)])).rows[0];if(taken&&taken.actor!==link.actor)return;
-   await db.query('INSERT INTO hr_telegram_accounts(actor,chat_id,telegram_user_id) VALUES($1,$2,$2) ON CONFLICT(actor) DO UPDATE SET chat_id=$2,telegram_user_id=$2,linked_at=now()',[link.actor,String(msg.from.id)]);
-   await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND state IN ('PENDING','FAILED')",[link.actor]);
+   const flags=[bot==='leave',bot==='trial',bot==='joining',bot==='nagpur'];
+   await db.query('INSERT INTO hr_telegram_accounts(actor,chat_id,telegram_user_id,leave_connected,trial_connected,joining_connected,nagpur_connected) VALUES($1,$2,$2,$3,$4,$5,$6) ON CONFLICT(actor) DO UPDATE SET chat_id=$2,telegram_user_id=$2,linked_at=now(),leave_connected=hr_telegram_accounts.leave_connected OR $3,trial_connected=hr_telegram_accounts.trial_connected OR $4,joining_connected=hr_telegram_accounts.joining_connected OR $5,nagpur_connected=hr_telegram_accounts.nagpur_connected OR $6',[link.actor,String(msg.from.id),...flags]);
+   await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot=$2 AND state IN ('PENDING','FAILED')",[link.actor,bot]);
    await queueTelegram(db,'linked:'+update.update_id,[link.actor],bot==='trial'?'Connected. Vehicle trial results from Caliber HR will appear here.':bot==='joining'?'Connected. Joining approval requests from Caliber HR will appear here.':'Your Telegram account is connected to Caliber HR. Leave notifications will appear here.',bot);
   });if(callback)await answerCallback(callback.bot,callback.id,callback.text);return {ok:true};
  }
@@ -711,14 +771,15 @@ export async function deliverTelegram(pool,send=async(chat,text,bot='leave',mark
   const response=await fetch(`https://api.telegram.org/bot${token}/sendDocument`,{method:'POST',body:form,signal:AbortSignal.timeout(60000)});
   const result=await response.json();if(!result.ok)throw telegramError(result);}
 }){
- if(!process.env.TELEGRAM_BOT_TOKEN&&!process.env.TELEGRAM_TRIAL_BOT_TOKEN&&!process.env.TELEGRAM_JOINING_BOT_TOKEN)return;
+ if(!process.env.TELEGRAM_BOT_TOKEN&&!process.env.TELEGRAM_TRIAL_BOT_TOKEN&&!process.env.TELEGRAM_JOINING_BOT_TOKEN&&!process.env.TELEGRAM_NAGPUR_BOT_TOKEN)return;
  const db=await pool.connect();try{
   await db.query('BEGIN');
-  const jobs=(await db.query("SELECT o.*,a.chat_id FROM hr_telegram_outbox o LEFT JOIN hr_telegram_accounts a ON a.actor=o.actor WHERE o.state='PENDING' AND o.next_attempt<=now() ORDER BY o.id LIMIT 1 FOR UPDATE OF o SKIP LOCKED")).rows;
+  const jobs=(await db.query("SELECT o.*,CASE WHEN (o.bot='trial' AND a.trial_connected) OR (o.bot='joining' AND a.joining_connected) OR (o.bot='leave' AND a.leave_connected) OR (o.bot='nagpur' AND a.nagpur_connected) THEN a.chat_id END AS chat_id FROM hr_telegram_outbox o LEFT JOIN hr_telegram_accounts a ON a.actor=o.actor WHERE o.state='PENDING' AND o.next_attempt<=now() ORDER BY o.id LIMIT 1 FOR UPDATE OF o SKIP LOCKED")).rows;
   for(const job of jobs){
+   if(!job.chat_id&&job.bot==='nagpur')job.chat_id=nagpurRecipients()[job.actor]||null;
    if(!job.chat_id){await db.query("UPDATE hr_telegram_outbox SET next_attempt=now()+interval '5 minutes',last_error='Recipient has not connected Telegram' WHERE id=$1",[job.id]);continue;}
    try{const files=job.files?.length?(await db.query('SELECT name,mime,data,caption FROM hr_telegram_files WHERE id = ANY($1) ORDER BY id',[job.files])).rows:[];await send(job.chat_id,job.message,job.bot||'leave',job.markup||null,files);await db.query("UPDATE hr_telegram_outbox SET state='SENT',sent_at=now(),last_error=NULL WHERE id=$1",[job.id]);}
-   catch(error){const reason=error?.code==='NO_BOT'?`${botLabel(job.bot)} is not configured on the server`:error?.code==='BAD_TOKEN'?`${job.bot==='trial'?'TELEGRAM_TRIAL_BOT_TOKEN':job.bot==='joining'?'TELEGRAM_JOINING_BOT_TOKEN':'TELEGRAM_BOT_TOKEN'} is wrong – Telegram rejected it`:error?.code==='NOT_STARTED'?`Recipient must open @${botUsername(job.bot)||job.bot+' bot'} and tap Start`:`Delivery failed${error?.description?': '+error.description:'; recipient may have blocked the bot'}`;
+   catch(error){const reason=error?.code==='NO_BOT'?`${botLabel(job.bot)} is not configured on the server`:error?.code==='BAD_TOKEN'?`${job.bot==='nagpur'?'TELEGRAM_NAGPUR_BOT_TOKEN':job.bot==='trial'?'TELEGRAM_TRIAL_BOT_TOKEN':job.bot==='joining'?'TELEGRAM_JOINING_BOT_TOKEN':'TELEGRAM_BOT_TOKEN'} is wrong – Telegram rejected it`:error?.code==='NOT_STARTED'?`Recipient must open @${botUsername(job.bot)||job.bot+' bot'} and tap Start`:`Delivery failed${error?.description?': '+error.description:'; recipient may have blocked the bot'}`;
     await db.query("UPDATE hr_telegram_outbox SET attempts=attempts+1,state=CASE WHEN attempts>=9 THEN 'FAILED' ELSE 'PENDING' END,next_attempt=now()+interval '5 minutes',last_error=$2 WHERE id=$1",[job.id,reason]);}
   }
   await db.query('COMMIT');
