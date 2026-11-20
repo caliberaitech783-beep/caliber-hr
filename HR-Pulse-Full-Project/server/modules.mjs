@@ -1,18 +1,36 @@
+import {managementModules, managementMenus} from './management-modules.mjs';
 import {leaveModules,requestFields,policyFields,prepareLeave,validateLeave} from './leave.mjs';
+import {gatePassTypes,validateGatePass} from './gate-pass.mjs';
 const text = (key, label, required = false) => ({ key, label, type: 'text', required });
 const ref = (key, label, reference, required = false) => ({ key, label, type: 'reference', reference, required });
 const date = (key, label, required = false) => ({ key, label, type: 'date', required });
 const select = (key, label, options, required = false) => ({ key, label, type: 'select', options, required });
 const module = (title, menu, fields) => ({ title, menu, fields });
+const compliance = (title, nameLabel, fields) => module(title, 'Compliance & Statutory', [
+  text('code','Register reference',true), text('name',nameLabel,true), ref('siteId','Site','sites',true),
+  ...fields, text('remarks','Remarks')
+]);
+const registers = {
+  pfEsicCompliance: compliance('PF/ESIC compliance','Establishment', [select('scheme','Scheme',['PF','ESIC'],true),text('period','Contribution period',true),text('receipt','Challan reference'),date('filedOn','Filing date')]),
+  labourLawCompliance: compliance('Labour law compliance','Applicable law', [text('obligation','Obligation',true),date('reviewDate','Review date',true),text('finding','Finding')]),
+  factoryMineRecords: compliance('Factory/Mine labour records','Factory or mine', [text('register','Register name',true),date('recordDate','Record date',true)]),
+  contractorLabourRecords: compliance('Contractor labour records','Contractor name', [text('licence','Licence reference'),date('recordDate','Record date',true),{key:'workers',label:'Worker count',type:'number',min:0}]),
+  medicalFitnessRecords: compliance('Medical and fitness record','Employee reference', [date('examDate','Examination date',true),select('fitness','Fitness status',['Fit','Fit with restrictions','Unfit','Pending'],true),date('reviewDate','Next review')]),
+  complianceDueDates: compliance('Compliance due date','Obligation', [date('dueDate','Due date',true),text('owner','Responsible person',true),date('completedOn','Completion date')]),
+  complianceAuditRegister: compliance('Audit register','Audit title', [date('auditDate','Audit date',true),text('auditor','Auditor',true),text('action','Corrective action')])
+};
+export const complianceKinds = Object.keys(registers);
 export const modules = {
+  ...registers,
   calendarEvents: module('Calendar events','Calendar',[text('code','Event reference',true),text('name','Event title',true),date('date','Date',true),select('eventType','Type',['Birthday','Work anniversary','Meeting','Event','Training','Holiday'],true),ref('siteId','Location','sites',true),text('details','Details')]),
   assetCategories: module('Category Master','Asset Management',[text('code','Tag Prefix',true),text('name','Category',true),text('group','Group'),text('extraDetails','Extra details to capture'),{key:'activeAssets',label:'Assets (active)',type:'number',min:0}]),
   assetEmployees: module('Employee Master','Asset Management',[text('code','Record reference',true),ref('employeeId','Emp Code','employees',true),text('name','Employee Name',true),text('department','Department'),text('designation','Designation'),ref('siteId','Location','sites',true),text('email','Work Email'),text('employmentStatus','Employment Status'),date('lastWorkingDay','Last Working Day'),{key:'assetsHeld',label:'Assets Held',type:'number',min:0},text('remarks','Remarks')]),
   assetAllocationLog: module('Allocation Log','Asset Management',[text('code','Log reference',true),date('date','Date',true),ref('assetId','Asset Tag','assets',true),text('name','Asset Name',true),text('action','Action',true),ref('employeeId','Emp Code','employees',true),text('employeeName','Employee Name',true),ref('fromEmployeeId','From Emp Code (transfer)','employees'),text('condition','Condition'),text('vendorMethod','Vendor / Method'),text('remarks','Remarks')]),
   assetExitClearances: module('Exit Clearance','Asset Management',[text('code','Clearance reference',true),ref('employeeId','Emp Code','employees',true),text('name','Employee Name',true),text('department','Department'),text('employmentStatus','Employment Status'),date('lastWorkingDay','Last Working Day'),{key:'assetsHeld',label:'Assets Held',type:'number',min:0},text('valueHeld','Value Held (₹)'),text('assetTagsHeld','Asset Tags Held'),text('clearance','Clearance')]),
   assets: module('Assets','Asset Management',[text('code','Asset code',true),text('name','Asset name',true),ref('siteId','Locations','sites',true),text('department','Departments'),text('vendor','Vendors'),text('condition','Conditions'),text('assetStatus','Asset Status'),text('employeeStatus','Employee Status'),text('movementAction','Movement Action'),text('assetGroup','Asset Group'),text('depreciationMethod','Dep. Method'),text('disposalMethod','Disposal Method')]),
+  gatePasses: module('Gate Pass','Employee Master',[text('code','Gate pass number',true),ref('employeeId','Employee ID','employees',true),text('name','Employee name',true),text('department','Department'),ref('siteId','Location','sites'),date('passDate','Date',true),select('passType','Pass type',gatePassTypes,true),{key:'outTime',label:'Out time',type:'time',required:true},{key:'returnTime',label:'Expected return',type:'time',required:true},text('purpose','Purpose / reason',true)]),
   outDutyRequests: module('Out Duty Form','Employee Master',[text('code','OD reference',true),text('name','Employee name',true),ref('employeeId','Employee ID','employees',true),text('designation','Designation',true),text('department','Department',true),ref('siteId','Site / Location','sites',true),date('outDutyDate','From date',true),date('toDate','To date',true),text('purpose','Purpose of out duty',true),text('visitLocation','Location / Place to visit',true),text('authorityName','Authority name'),text('authoritySignature','Reporting to'),text('employeeSignature','Employee signature (typed name)'),date('signatureDate','Signature date')]),
-  employeeTransfers: module('Employee transfers','Employee Master',[text('code','Transfer reference',true),text('name','Transfer title',true),ref('employeeId','Employee','employees',true),date('transferDate','Transfer date',true),ref('fromSiteId','From location','sites',true),ref('toSiteId','To location','sites',true),ref('fromCompanyId','From company','companies',true),ref('toCompanyId','To company','companies',true),text('fromDesignation','From designation',true),text('toDesignation','To designation',true),text('fromManager','From reporting manager',true),text('toManager','To reporting manager',true)]),
+  employeeTransfers: module('Employee transfers','Employee Master',[text('code','Transfer reference',true),text('name','Transfer title',true),ref('employeeId','Employee','employees',true),date('transferDate','Transfer date',true),ref('fromSiteId','From location','sites',true),ref('toSiteId','To location','sites',true),text('fromDesignation','From designation',true),text('toDesignation','To designation',true),text('fromManager','From reporting manager',true),text('toManager','To reporting manager',true)]),
   companies: module('Companies', 'Master Configuration', [text('code','Company code',true),text('name','Company name',true),text('address','Registered address'),text('email','Company email')]),
   clients: module('Clients','Master Configuration',[text('code','Client code',true),text('name','Client name',true),text('contact','Contact details')]),
   regions: module('Regions','Master Configuration',[text('code','Region code',true),text('name','Region name',true),text('state','State',true)]),
@@ -28,16 +46,17 @@ export const modules = {
   workflows: module('Onboarding workflows','Master Configuration',[text('code','Workflow code',true),text('name','Workflow name',true),text('approvers','Approver Pulse usernames, in order (comma separated)',true)]),
   approvalRules: module('Approval matrix','Master Configuration',[text('code','Rule code',true),text('name','Rule name',true),select('target','Module',['employees','leaveRequests'],true),ref('workflowId','Workflow','workflows',true),ref('companyId','Company (blank = all)','companies'),ref('siteId','Site (blank = all)','sites')]),
 };
-Object.assign(modules,leaveModules);
-modules.outDutyRequests.autoCode=true;
+Object.assign(modules,leaveModules,managementModules);
+modules.outDutyRequests.autoCode=true;modules.gatePasses.autoCode=true;
 modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
 modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared','Gazetted','Gazetted (General)','Paid (PH)']));
 modules.approvalRules.fields.find(f=>f.key==='target').options.push('leaveEncashments');
-export const menus = ['Calendar','Asset Management','Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management','Shift Management','Holiday & Leave','Reports & MIS','Administration','Audit Logs'];
+export const menus = ['Calendar','Asset Management','Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management',...managementMenus,'Shift Management','Holiday & Leave','Compliance & Statutory','Reports & MIS','Administration','Administration & Settings','Audit Logs'];
 export function grantedMenus(profile) { return new Set([...(profile.permissions?.hrDesktopAccess || []),...(profile.permissions?.hrMobileAccess || [])].filter(x => menus.includes(x))); }
 export function canRead(profile, kind) {
   const granted = grantedMenus(profile);
+  if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu)||granted.has('Employee Master');
   if(kind==='calendarEvents')return ['Calendar','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if (kind === 'employees') return ['Employee Master','Employee Onboarding','Employee Directory','Reports & MIS'].some(x=>granted.has(x));
@@ -46,6 +65,7 @@ export function canRead(profile, kind) {
 }
 export function canWrite(profile, kind) {
   const granted = grantedMenus(profile);
+  if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu)||granted.has('Employee Master');
   if(kind==='calendarEvents')return ['Calendar','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return ['Asset Management','Employee Master','Master Configuration'].some(menu=>granted.has(menu));
   if (kind === 'employees') return granted.has('Employee Master') || granted.has('Employee Onboarding');
@@ -64,6 +84,7 @@ export function validate(kind, input) {
       data[field.key]=raw;continue;
     }
     if(field.type==='attachment'){
+      if(field.required && !raw)throw Object.assign(new Error(field.label+' is required'),{status:400});
       if(!raw){data[field.key]='';continue;}
       if(typeof raw!=='string'||!/^data:(application\/pdf|image\/png|image\/jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(raw)||raw.length>690000)throw Object.assign(new Error('Use a PDF, PNG or JPEG attachment up to 500 KB'),{status:400});
       data[field.key]=raw;continue;
@@ -79,6 +100,7 @@ export function validate(kind, input) {
     if (field.key === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw Object.assign(new Error('Email is invalid'),{status:400});
     data[field.key] = field.type === 'number' ? Number(value) : value;
   }
+  if (kind==='gatePasses') validateGatePass(data);
   if (kind==='outDutyRequests' && data.outDutyDate > data.toDate) throw Object.assign(new Error('To date must be on or after from date'),{status:400});
   if (data.fromDate && data.toDate && data.fromDate > data.toDate) throw Object.assign(new Error('End date must be on or after start date'),{status:400});
   if (data.dateOfBirth && data.dateOfBirth >= new Date().toISOString().slice(0,10)) throw Object.assign(new Error('Date of birth must be in the past'),{status:400});
@@ -94,6 +116,8 @@ export function validate(kind, input) {
     for (const key of ['halfDayHours','fullDayHours','overtimeAfterHours']) if (data[key] !== '' && data[key] > 24) fail('Day and overtime thresholds cannot exceed 24 hours');
     if (data.halfDayHours !== '' && data.fullDayHours !== '' && data.halfDayHours > data.fullDayHours) fail('Half-day threshold cannot exceed full-day hours');
   }
+  if(['manpowerRequisitions','contractorManpower'].includes(kind) && !Number.isInteger(data.headcount))throw Object.assign(new Error('Headcount must be a whole number'),{status:400});
+  if(kind==='offerLetters' && data.issuedOn>data.joiningDate)throw Object.assign(new Error('Joining date must be on or after the offer date'),{status:400});
   validateLeave(kind,data);
   return data;
 }

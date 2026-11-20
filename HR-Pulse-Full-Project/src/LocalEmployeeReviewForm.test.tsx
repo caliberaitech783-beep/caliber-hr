@@ -114,3 +114,27 @@ it('opens, edits and saves a review without new API calls and keeps approval tie
  expect((screen.getByLabelText('Full Name *') as HTMLInputElement).value).toBe('Original Employee');
  expect(fetchMock.mock.calls.length).toBe(requestCount);
 });
+
+it('preserves the frozen account while a new account number is saved and restored',()=>{
+ const bankRecord={...record,data:{...record.data,officeData:{...record.data.officeData,'Bank Account No':'00123456789'}}};
+ const first=render(<LocalEmployeeReviewForm record={bankRecord} owner="reviewer"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Bank Details'}));
+ fireEvent.click(screen.getByRole('button',{name:'Edit'}));
+ expect((screen.getByLabelText('Bank Account No') as HTMLInputElement).readOnly).toBe(true);
+ expect((screen.getByLabelText('New Account No') as HTMLInputElement).readOnly).toBe(false);
+ fireEvent.change(screen.getByLabelText('New Account No'),{target:{value:'00987654321'}});
+ fireEvent.click(screen.getByRole('button',{name:'Save & Lock'}));first.unmount();
+ render(<LocalEmployeeReviewForm record={bankRecord} owner="reviewer"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Bank Details'}));
+ expect(screen.getByLabelText('Bank Account No')).toHaveValue('00123456789');
+ expect(screen.getByLabelText('New Account No')).toHaveValue('00987654321');
+});
+
+it('shows employee marital status once in Family Details and offers family Aadhaar preview',()=>{
+ const familyRecord={...record,data:{...record.data,officeData:{...record.data.officeData,'Marital Status':'Married','Family Aadhaar 1':'parent.pdf'}}};
+ render(<LocalEmployeeReviewForm record={familyRecord} owner="reviewer" readOnly/>);
+ fireEvent.click(screen.getByRole('button',{name:'Family Details'}));
+ expect(screen.getByLabelText('Marital Status *')).toHaveValue('Married');
+ expect(screen.getByLabelText('Marital Status *')).toBeDisabled();
+ expect(screen.getByRole('button',{name:'Preview Family Aadhaar 1: parent.pdf'})).toBeTruthy();
+});

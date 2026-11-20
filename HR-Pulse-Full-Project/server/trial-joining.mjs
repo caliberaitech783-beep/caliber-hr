@@ -1,14 +1,13 @@
 const invalid = message => Object.assign(new Error(message),{status:400});
 const clean = value => String(value??'').trim();
 const digits = value => clean(value).replace(/\D/g,'');
-const approvalRoles = ['pm','rhr','director'];
+import {trialReviewStage} from './trial-review.mjs';
 
 export function validateTrialJoining(trial, employee, office) {
   if (!trial || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(trial.id)
       || !/^TF\/\d{4}-\d{2}\/\d{4,}$/.test(trial.formNo)
       || trial.stage!=='done' || trial.result!=='PASS' || !['Driver','Operator'].includes(trial.post)
-      || !Array.isArray(trial.history) || !approvalRoles.every(role=>
-        [...trial.history].reverse().find(entry=>entry?.role===role)?.action==='Approved')) {
+      || !Array.isArray(trial.history) || trialReviewStage(trial.history)!=='done') {
     throw invalid('A completed Driver or Operator trial with a PASS result is required.');
   }
   if (office?.['Employee Category']!==trial.post || office['Department *']!==trial.post || office['Trial Form No.']!==trial.formNo) {

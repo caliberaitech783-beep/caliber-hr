@@ -4,7 +4,7 @@
     <div class="who">
       <label>Working as
         <select id="role">
-          <option value="hr">Site HR</option>
+          <option value="hr">HR Manager</option>
           <option value="trainer">Driver Trainer</option>
           <option value="pm">PM</option>
           <option value="ohr">Office HR</option>
@@ -16,10 +16,11 @@
   </header>
 
   <p class="preview-label">Records stay in this browser. Trial approval notifications follow Approval Master › Hierarchy › Driver &amp; Operator for this group and site.</p>
+  <ol class="route" id="route" aria-label="Approval route for this site"></ol>
   <nav class="pipe" id="pipe" aria-label="Workflow stages" hidden></nav>
 
   <div class="tabs" role="group" aria-label="Trial workflow" id="tabs">
-    <button data-tab="aadhaar" class="on">Upload Aadhaar</button>
+    <button data-tab="aadhaar" class="on">Upload Aadhaar Card &amp; Driving License</button>
     <button data-tab="hr">Part 1 · Site HR</button>
     <button data-tab="trainer">Part 2 · Driver Trainer<span class="badge" id="bTrainer" hidden></span></button>
     <button data-tab="approve">Approvals<span class="badge" id="bApprove" hidden></span></button>
@@ -27,7 +28,7 @@
   </div>
 
   <section class="panel" id="v-aadhaar">
-    <div class="panel-head"><h2>Upload Aadhaar Card</h2></div>
+    <div class="panel-head"><h2>Upload Aadhaar Card &amp; Driving License</h2></div>
     <slot name="aadhaar-upload"></slot>
     <div class="actions">
       <button type="button" class="btn pri" id="aadhaarContinue">Continue to Part 1 →</button>
@@ -38,7 +39,7 @@
   <section class="panel" id="v-hr" hidden>
     <div class="panel-head">
       <h2 id="part1Title" tabindex="-1">Part 1 – Candidate details &amp; document check</h2>
-      <div class="seg" id="hrMode"><button data-m="single" class="on">Single candidate</button><button data-m="bulk">Bulk trial (many candidates)</button></div>
+      <div class="seg" id="hrMode"><button data-m="single" class="on">Single candidate</button><button data-m="bulk" hidden>Bulk trial (many candidates)</button></div>
     </div>
     <div id="hrRoleWarn" class="warn-note" hidden>Part 1 is filled by Site HR. Switch "Working as" to Site HR to submit.</div>
 
@@ -61,12 +62,15 @@
           <label class="chk"><input type="radio" name="f_post" value="Driver" checked> Driver</label>
           <label class="chk"><input type="radio" name="f_post" value="Operator"> Operator</label></div></div>
         <div class="row"><div class="k">Vehicle / equipment for trial *</div><div class="v" id="f_veh"></div></div>
-        <div class="row"><label for="f_dl">Driving licence no. &amp; class</label><div class="v"><input id="f_dl" type="text" placeholder="DL number – class (HMV / LMV / Transport)"></div></div>
-        <div class="row"><label for="f_dlvalid">DL valid up to</label><div class="v"><input id="f_dlvalid" type="date"></div></div>
+        <div class="row"><label for="f_dl">Driving licence no.</label><div class="v"><input id="f_dl" type="text" placeholder="Driving licence number"></div></div>
+        <div class="row"><div class="k">Class details</div><div class="v"><div class="scroll"><table class="t" style="min-width:980px"><thead><tr><th>Class / Code</th><th>Issued by</th><th>Date of issue</th><th>Vehicle category</th><th>Badge number</th><th>Badge issued date</th><th>Badge issued by</th></tr></thead><tbody id="f_dlclasses"></tbody></table></div></div></div>
+        <div class="row"><label for="f_dlissue">DL issue date</label><div class="v"><input id="f_dlissue" type="date"></div></div>
+        <div class="row"><div class="k">DL validity</div><div class="v" id="f_dlvalids"></div></div>
         <div class="row"><label for="f_exp">Total experience (years)</label><div class="v"><input id="f_exp" type="text" inputmode="decimal"></div></div>
         <div class="row"><label for="f_prev">Previous employer</label><div class="v"><input id="f_prev" type="text"></div></div>
         <div class="row"><label for="f_trial">Trial date &amp; time *</label><div class="v"><input id="f_trial" type="datetime-local" required></div></div>
-        <div class="row"><label for="f_ref">Referred by</label><div class="v"><input id="f_ref" type="text"></div></div>
+        <div class="row"><label for="f_ref">Referred by *</label><div class="v"><input id="f_ref" type="text" required></div></div>
+        <div class="row"><label for="f_conducted">Trial Conducted by *</label><div class="v"><input id="f_conducted" type="text" required></div></div>
       </div>
 
       <div class="secbar">2. Document check (before trial) <em>No trial if the driving licence or medical fitness is missing</em></div>
@@ -121,13 +125,14 @@
     <div class="panel-head">
       <h2>Part 2 – Trial result <span class="muted small" id="trCount"></span></h2>
       <div class="actions">
-        <button class="btn sm" id="trAllPass">Mark all PASS</button>
         <button class="btn pri" id="trSubmit">Submit results → send to PM</button>
       </div>
     </div>
     <div id="trRoleWarn" class="warn-note" hidden>Switch “Working as” to Driver Trainer to upload files and submit results.</div>
     <p class="note">Set PASS or FAIL for each candidate who took the trial. Only rows with a result are submitted, so you can do a bulk trial in one go or one at a time.</p>
     <div id="trList"></div>
+    <input id="trResultPicker" type="file" data-result-file accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" hidden>
+    <input id="trVideoPicker" type="file" data-driving-video accept="video/*,.mp4,.webm,.mov,.m4v,.mkv,.avi" hidden>
   </section>
 
   <!-- APPROVALS -->
@@ -164,6 +169,15 @@
     <h2 id="aadhaarHistoryTitle">Previous trial found</h2>
     <div id="aadhaarHistoryResults"></div>
     <div class="actions"><button type="button" class="btn" id="aadhaarHistoryClose">Close</button></div>
+  </div>
+</div>
+<div class="modal" id="pendingPop" role="dialog" aria-modal="true" aria-labelledby="pendingTitle" hidden>
+  <div class="box pending-box">
+    <span class="pending-bell" aria-hidden="true">🔔</span>
+    <h2 id="pendingTitle">Waiting for your approval</h2>
+    <ul id="pendingList"></ul>
+    <p class="note">Approve or reject here, or tap Approve / Decline in the Vehicle Trial Result bot on Telegram. Once you approve, the form moves up to the next step.</p>
+    <div class="actions"><button type="button" class="btn" id="pendingLater">Later</button><button type="button" class="btn pri" id="pendingOpen">Review now</button></div>
   </div>
 </div>
 <div class="tgpop" id="tgpop" role="dialog" aria-label="Telegram preview" hidden></div>

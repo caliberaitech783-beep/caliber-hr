@@ -8,7 +8,8 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 :host{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.45}
-.wrap{max-width:1180px;margin:0 auto;padding-block:16px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:16px}
+.wrap{width:100%;max-width:none;margin:0;padding-block:16px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:16px}
+@media print{.wrap{width:100%;max-width:none;margin:0;padding:0}}
 h1,h2,h3{margin:0;text-wrap:balance}
 button,input,select,textarea{font:inherit;color:inherit}
 input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
@@ -66,6 +67,7 @@ button{cursor:pointer}
 .row>.v{padding:5px 10px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;min-width:0}
 .row input[type=text],.row input[type=date],.row input[type=datetime-local],.row input[type=tel],.row input[type=number],.row select,.row textarea{width:100%;border:0;border-bottom:1px dashed var(--line-strong);background:transparent;padding:5px 2px;font-size:14px}
 .row textarea{resize:vertical;min-height:34px}
+.dl-valid{display:grid;grid-template-columns:130px minmax(150px,1fr);align-items:center;gap:8px;flex:1 1 320px;color:var(--muted);font-size:12px;font-weight:600}.row .dl-valid input[type=date]{min-width:150px}
 .chk{display:inline-flex;gap:5px;align-items:center;font-size:13px;white-space:nowrap}
 .photo{border-left:1px solid var(--line-strong);display:grid;place-items:center;padding:10px}
 .photo label{width:120px;height:150px;border:1.5px dashed var(--line-strong);border-radius:6px;display:grid;place-items:center;text-align:center;font-size:12px;color:var(--accent);cursor:pointer;overflow:hidden;background:var(--sunk)}
@@ -108,7 +110,10 @@ table.t{width:100%;border-collapse:collapse;font-size:13px}
 .trainer-card-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:10px}
 .trainer-card .trainer-fields{border:0;border-top:1px solid var(--line-strong);border-radius:0}
 .trainer-fields .row:has(.pf)>.k{background:var(--warn-soft);font-weight:600}
+.trial-upload-actions{display:inline-flex;flex-wrap:wrap;gap:8px;vertical-align:middle}
 .trial-result-filename{max-width:100%;overflow-wrap:anywhere;text-align:left}
+.trainer-frozen[readonly]{background:#4b5563;color:#fff;border-color:#374151;cursor:not-allowed;font-weight:600}
+.trainer-frozen[readonly]::placeholder{color:#d1d5db}
 .trainer-empty{margin:0}
 .recommended-post,.trainer-machine{display:flex;align-items:center;gap:8px}
 .trainer-machine{flex:1 1 190px}
@@ -178,3 +183,22 @@ button:disabled{opacity:.5;cursor:not-allowed}
 #tgText{width:100%;min-height:170px;padding:6px;margin:8px 0;resize:vertical}
 /* Fields filled from the Aadhaar scan are locked */
 .row input[data-aadhaar-locked]{background:#f3f4f6;color:#374151;border-bottom-style:solid;cursor:not-allowed}
+.row input[data-driving-licence-locked]{background:#d1d5db;color:#1f2937;border-bottom-style:solid;cursor:not-allowed}
+
+/* Approval route (owner, 20 Nov 2026) and the "waiting for your approval" popup */
+.route{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch}
+.route li{display:grid;gap:1px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12px;min-width:0;position:relative}
+.route li:not(:last-child)::after{content:'→';position:absolute;right:-11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:11px}
+.route li{margin-right:6px}
+.route b{font-size:12px}
+.route span{color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.route .n{justify-self:start;font-size:10px;font-weight:700;border-radius:999px;padding:0 6px;background:#fef3c7;color:#92400e}
+.route li.me{border-color:#7c3aed;box-shadow:0 0 0 1px #7c3aed}
+.route li.end{background:#ecfdf5;border-color:#a7f3d0}
+.pending-box{width:min(440px,100%)!important;text-align:center;justify-items:center;margin-top:12vh}
+.pending-bell{font-size:34px}
+.pending-box h2{margin:0}
+.pending-box ul{list-style:none;margin:0;padding:0;display:grid;gap:6px;width:100%}
+.pending-box li{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:14px}
+.pending-box li b{color:#7c3aed}
+.pending-box .actions{justify-content:center}

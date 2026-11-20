@@ -1,0 +1,57 @@
+.request-progress{min-width:260px}
+.request-progress-summary{display:inline-block;font-size:11px;font-weight:700;border-radius:10px;padding:3px 9px;margin-bottom:8px;background:#edf0f4;color:#586477;white-space:nowrap}
+.request-progress-summary.tone-pending,.request-progress-summary.tone-draft{background:#f0e8fa;color:#522e90}
+.request-progress-summary.tone-approved,.request-progress-summary.tone-active{background:#e7f6ee;color:#187446}
+.request-progress-summary.tone-rejected{background:#fdebed;color:#ae364b}
+.rp-steps{display:flex;list-style:none;margin:0;padding:0}
+.rp-steps li{flex:1;min-width:52px;position:relative;text-align:center;font-size:10px;color:#8a7d95;line-height:1.3}
+.rp-steps li+li:before{content:"";position:absolute;top:10px;right:50%;width:100%;height:3px;background:#e4ddea;z-index:0}
+.rp-steps li.rp-done:before,.rp-steps li.rp-current:before{background:#1d9e75}
+.rp-steps li.rp-rejected:before{background:#e24b4a}
+.rp-dot{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;width:22px;height:22px;margin:0 auto 4px;border-radius:50%;background:#fff;border:2px solid #d8cfe0;color:#8a7d95;font-size:11px;font-weight:700}
+.rp-dot svg{width:13px;height:13px}
+.rp-done .rp-dot{background:#1d9e75;border-color:#1d9e75;color:#fff}
+.rp-current .rp-dot{border-color:#522e90;color:#522e90;box-shadow:0 0 0 3px #e9def6}
+.rp-current{color:#522e90!important;font-weight:700}
+.rp-rejected .rp-dot{background:#e24b4a;border-color:#e24b4a;color:#fff}
+.rp-rejected{color:#ae364b!important}
+.rp-label{display:block;overflow-wrap:anywhere}
+.leave-form-tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.leave-form-tabs .leave-tab-gap{width:22px}
+.leave-form-tabs .leave-tabs-note{flex:1;min-width:240px;margin:0}
+.request-form-progress{margin:4px 0 6px}
+.rfp-text{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px;color:#687385}
+.rfp-text span:first-child{color:#522e90;font-weight:700}
+.rfp-bar{height:7px;background:#eee8f2;border-radius:4px;margin-top:6px;overflow:hidden}
+.rfp-bar div{height:7px;background:#522e90;border-radius:4px;transition:width .25s}
+.rfp-bar div.full{background:#1d9e75}
+.request-form-section{border-top:1px solid #eee8f2;margin-top:16px;padding-top:12px}
+.request-form-section h3{display:flex;align-items:center;gap:9px;margin:0;font-size:15px;color:#30223e}
+.request-form-section .record-form{margin-top:12px}
+.rfs-num{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:2px solid #d8cfe0;color:#8a7d95;font-size:12px;box-sizing:border-box}
+.rfs-num svg{width:14px;height:14px}
+.rfs-num.ok{background:#1d9e75;border-color:#1d9e75;color:#fff}
+.rfs-num.now{border-color:#522e90;color:#522e90}
+.rfs-missing input,.rfs-missing select,.rfs-missing textarea{border-color:#e24b4a!important;background:#fff8f8}
+.rfs-error{display:block;color:#ae364b;font-size:12px;margin-top:4px}
+.request-route{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:#687385}
+.request-route ol{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0}
+.request-route li{background:#f0e8fa;color:#522e90;border-radius:8px;padding:4px 10px;font-weight:600}
+.request-route li+li:before{content:"→ ";color:#8a7d95}
+.request-route em{font-style:normal;color:#8a7d95}
+.rfs-summary{text-align:right;margin-top:14px}
+.rp-time{display:block;font-size:10px;color:#1d7a5c;margin-top:2px}
+.request-cards{display:grid;gap:12px}
+.request-card{border:1px solid #e4ddea;border-radius:12px;padding:14px 16px;background:#fff}
+.request-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.request-card-top p{margin:0;font-size:14px;color:#687385}
+.request-card-top b{color:#30223e}
+.request-card .request-progress-summary{margin:0}
+.request-card .rp-steps li{font-size:12px}
+.request-card-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:10px;min-width:0}
+.request-card-actions button{margin:0!important}
+.request-legend{font-size:12px;color:#8a7d95;margin:2px 0 0}
+.rfs-note{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:#fff6e5;color:#8a5a0b;font-size:12px}
+.request-card-mine{border-color:#b9a5dc;box-shadow:0 0 0 2px #efe8fa}
+.request-card-purpose{margin:-6px 0 12px;font-size:13px;color:#51415d}
+.request-card-waiting{margin-right:auto;font-size:12px;color:#8a7d95;align-self:center}

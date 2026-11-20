@@ -4,13 +4,13 @@ import {createService} from './service.mjs';
 
 const profile={actor:'hr',permissions:{hrDesktopAccess:['Employee Master']}};
 const id='00000000-0000-4000-8000-000000000001';
-const trial={id,formNo:'TF/2026-27/0001',stage:'done',result:'PASS',post:'Driver',aadhaar:'234500000000',
- history:['pm','rhr','director'].map(role=>({role,action:'Approved'}))};
+const trial={id,site:'Jayant OB East',formNo:'TF/2026-27/0001',stage:'done',result:'PASS',post:'Driver',aadhaar:'234500000000',
+ history:['pm','ohr','rhr','director'].map(role=>({role,action:'Approved'}))};
 const employee={code:'EMP-1',name:'Sample Candidate',joiningDate:'2026-11-12',category:'Permanent',companyId:id,
  __officeData:{
   'Joining Category *':'NCL','Employee Code':'EMP-1','Full Name as per Aadhar':'Sample Candidate','Full Name *':'Sample Candidate',
   'Father / Spouse Name *':'Sample Parent','Mobile *':'9876543210','Candidate E-mail *':'sample@example.test','Aadhaar No. *':trial.aadhaar,
-  'PAN No.':'ABCDE1234F','Present Address':'Sample Address','Reference Type':'Supervisor','Reference Name':'Sample Referrer',
+  'Marital Status':'Single','Identification mark':'Mole on left hand','PAN No.':'ABCDE1234F','Present Address':'Sample Address','Reference Type':'Supervisor','Reference Name':'Sample Referrer',
   'Emergency Contact Name':'Sample Contact','Emergency Contact Number':'9876543211','Department *':'Driver','Sub-department *':'Heavy Vehicles',
   'Designation *':'Tipper Driver','Employee Category':'Driver','Reporting To':'Site Manager','Joining Date *':'2026-11-12','Shift *':'General',
   'Employment Type':'Permanent','Salary Type':'HPC','Site / Project':'Jayant OB East','PT State':'Madhya Pradesh','Skill Category':'1341',
@@ -30,6 +30,7 @@ test('only a completed trial in the matching post can use direct employee save',
 test('a passed trial creates an active employee once without creating an approval',async()=>{
  let linked, active=false, employees=0;
  const db={release(){},async query(sql,params){
+  if(sql.includes("kind='joiningHierarchies'"))return {rows:[{code:'NCL-JAYANT',data:{group:'NCL',steps:[{label:'HR Manager',approvers:['hr']}]}}]};
   if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(sql)||sql.includes('pg_advisory_xact_lock')||sql.includes('INSERT INTO hr_audit')) return {rows:[]};
   if (sql.includes("WHERE t.kind='trialJoinings'")) return {rows:linked?[linked]:[]};
   if (sql.startsWith('SELECT * FROM hr_records')) return {rows:[{id,kind:'companies',data:{}}],rowCount:1};
@@ -62,4 +63,21 @@ test('joining requests fail before an employee record is written when mandatory 
  await assert.rejects(service.importEmployees(profile,[incomplete],true),/Mess Plan is required/);
  const incompleteTrial={...employee,__officeData:{...employee.__officeData,'Driving licence':''}};
  await assert.rejects(service.saveTrialEmployee(profile,{employee:incompleteTrial,trial}),/Driving licence is required/);
+});
+
+test('joining requires marital status and Aadhaar number for each entered family row',async()=>{
+ const {missingJoiningField}=await import('./joining-required.mjs');
+ const office={...employee.__officeData};
+ delete office['Marital Status'];assert.equal(missingJoiningField(office),'Marital Status');
+ office['Marital Status']='Married';office['Family Member Name']=' |  | Parent Three';
+ assert.equal(missingJoiningField(office),'Aadhaar Number 3');
+ office['Aadhaar Number']=' |  | 234500000003';assert.equal(missingJoiningField(office),undefined);
+ office.Relationship='Father |  | Mother';assert.equal(missingJoiningField(office),'Aadhaar Number 1');
+});
+
+test('identification mark is optional for Corporate and HO but required for site joining',async()=>{
+ const {missingJoiningField}=await import('./joining-required.mjs');
+ const office={...employee.__officeData,'Identification mark':''};
+ assert.equal(missingJoiningField(office),'Identification mark');
+ for(const category of ['CORPORATE','HO'])assert.equal(missingJoiningField({...office,'Joining Category *':category,'A-Form No.':'','Driving licence':'','Driving Licence No.':'','DL Issue Date':'','DL Valid Upto':'','Employee Category':'Staff'}),undefined);
 });

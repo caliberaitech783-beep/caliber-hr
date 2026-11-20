@@ -45,16 +45,16 @@ test('saved Nagpur hierarchy removes HOD while preserving assigned usernames',as
  assert.deepEqual(nagpur.steps,steps);
 });
 
-test('NCL and WCL add Driver Trainer after Project Manager; Nagpur does not',()=>{
- for(const t of hierarchyTemplates)assert.deepEqual(t.steps.slice(1,3).map(s=>s.label),["NCL","WCL"].includes(t.group)?['Project Manager','Driver Trainer']:t.steps.slice(1,3).map(s=>s.label));
+test('NCL and WCL add Driver Trainer before Project Manager; Nagpur does not',()=>{
+ for(const t of hierarchyTemplates)assert.deepEqual(t.steps.slice(1,3).map(s=>s.label),["NCL","WCL"].includes(t.group)?['Driver Trainer','Project Manager']:t.steps.slice(1,3).map(s=>s.label));
  assert.deepEqual(hierarchyTemplates.filter(t=>t.group==='WCL').map(t=>t.name),['Sasti OB','Dhoptala OB','Gauri Pauni OB','Majri OB','Hindustan Lalpeth OC']);
  assert.ok(!hierarchyTemplates.find(t=>t.code==='CMLL-CO').steps.some(s=>s.label==='Driver Trainer'));
 });
-test('saved NCL hierarchies show an empty Driver Trainer step after Project Manager',()=>{
+test('saved NCL hierarchies show an empty Driver Trainer step before Project Manager',()=>{
  const saved={code:'NCL-JAYANT',group:'NCL',steps:[{stage:1,label:'HR Manager',approvers:['a']},{stage:1,label:'Project Manager',approvers:['b']},{stage:2,label:'HR Manager — either one',approvers:['c']},{stage:2,label:'Final approval — any one',approvers:['d']}]};
  const shown=withDriverTrainer(saved);
- assert.deepEqual(shown.steps.map(s=>s.label),['HR Manager','Project Manager','Driver Trainer','HR Manager — either one','Final approval — any one']);
- assert.deepEqual(shown.steps[2].approvers,[]);assert.equal(withDriverTrainer(shown),shown);assert.equal(saved.steps.length,4);
+ assert.deepEqual(shown.steps.map(s=>s.label),['HR Manager','Driver Trainer','Project Manager','HR Manager — either one','Final approval — any one']);
+ assert.deepEqual(shown.steps[1].approvers,[]);assert.equal(withDriverTrainer(shown),shown);assert.equal(saved.steps.length,4);
 });
 test('WCL sites keep the previous flow until their hierarchy is enabled',async()=>{
  const db={query:async sql=>({rows:sql.startsWith('SELECT code')?[{code:'WCL-SASTI'}]:[]})};
@@ -71,4 +71,24 @@ test('saved NCL/WCL hierarchies show an empty Office HR step before HR Manager �
  assert.deepEqual(shown.steps.map(s=>s.label),['HR Manager','Project Manager','Driver Trainer','Office HR — either one','HR Manager — either one','Final approval — any one']);
  assert.deepEqual(shown.steps[3].approvers,[]);assert.equal(withOfficeHr(shown),shown);assert.equal(saved.steps.length,5);
  assert.ok(!withOfficeHr(hierarchyTemplates.find(t=>t.code==='CMLL-CO')).steps.some(s=>s.label==='Office HR — either one'));
+});
+
+test('saved trainer moves before PM while preserving assignments and pending approval routes',async()=>{
+ for(const group of ['NCL','WCL']){
+  const template=hierarchyTemplates.find(t=>t.group===group);
+  const steps=template.steps.map((s,i)=>({...s,approvers:['assigned-'+i]}));
+  const saved={...template,steps:[steps[0],steps[2],steps[1],...steps.slice(3)]};
+  assert.deepEqual(withDriverTrainer(saved).steps,steps);
+  const db={query:async sql=>({rows:sql.startsWith('SELECT code')?[{code:template.code}]:[{code:template.code,data:saved,status:'ACTIVE'}]})};
+  const result=await createHierarchies(db).hierarchies({permissions:{hrDesktopAccess:['Master Configuration']}});
+  assert.deepEqual(result.rows.find(r=>r.code===template.code).steps,steps);
+  assert.deepEqual((await employeeHierarchy(db,'site-id')).data.steps,steps);
+  /* Office staff (site staff): Regional HR and Directors are fixed region-wise (site-staff-routing.mjs); the other steps keep their assignments. */
+  const office=(await employeeHierarchy(db,'site-id',{driverOperator:false})).data.steps;
+  assert.deepEqual(office.map(s=>s.label),steps.filter(s=>s.label!=='Driver Trainer').map(s=>s.label));
+  assert.deepEqual(office.slice(0,3).map(s=>s.approvers),steps.filter(s=>s.label!=='Driver Trainer').slice(0,3).map(s=>s.approvers));
+  assert.deepEqual(office[3].approvers,[group==='NCL'?'vinodpinjarkar':'viratsingh']);
+  assert.deepEqual(office[4].approvers,['mohitchadda','manishchadda','rahulchadda']);
+  assert.deepEqual(approvalSteps({approval_steps:saved.steps}),saved.steps);
+ }
 });

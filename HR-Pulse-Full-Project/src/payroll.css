@@ -1,0 +1,36 @@
+.payroll-workflows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 16px;
+}
+.data-card .payroll-workflows button {
+  width: auto;
+  min-height: 30px;
+  padding: 4px 11px;
+  border: 1px solid #dcd2e6;
+  border-radius: 999px;
+  background: #fff;
+  color: #523872;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.data-card .payroll-workflows button:hover,
+.data-card .payroll-workflows button:focus-visible {
+  border-color: #9873b6;
+  background: #f2ebf8;
+  color: #412761;
+}
+.data-card .payroll-workflows button[aria-pressed="true"] {
+  border-color: #522e90;
+  background: #522e90;
+  color: #fff;
+}
+.payroll-print { display: none; }
+@media print {
+  body:has(> .payroll-print) > :not(.payroll-print) { display: none !important; }
+  .payroll-print { display: block; color: black; padding: 1rem; font: 11pt Arial, sans-serif; }
+  .payroll-print th, .payroll-print td { padding: 5pt; }
+  .payroll-print td { text-align: right; }
+}

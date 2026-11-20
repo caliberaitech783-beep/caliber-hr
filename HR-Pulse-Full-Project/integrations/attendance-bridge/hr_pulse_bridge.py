@@ -227,11 +227,15 @@ def mark_uploaded(rowids):
         DB.commit()
 
 
-def upload(request_id):
+def upload(request_id, device_serial=None):
     with db_lock:
         serials = [r[0] for r in DB.execute(
             "SELECT device_sn FROM devices UNION SELECT DISTINCT device_sn FROM attendance")]
     serials = [s for s in serials if SERIAL.match(s or "")]
+    if device_serial:
+        if device_serial not in serials:
+            raise ValueError("This machine has not connected to this bridge")
+        serials = [device_serial]
     if not serials:
         call_api("punches", {"requestId": request_id,
                              "error": "The fingerprint machine has not connected to the bridge PC yet. "
@@ -269,14 +273,17 @@ def poll_forever():
     last_error = ""
     while True:
         try:
-            request = call_api("next").get("request")
+            with db_lock:
+                recent = DB.execute("SELECT device_sn, max(0, strftime('%s','now') - strftime('%s',last_contact,'utc')) AS age FROM devices WHERE age BETWEEN 0 AND 86400 ORDER BY age LIMIT 1000").fetchall()
+            contacts = [{"serial": sn, "age": age} for sn, age in recent if SERIAL.match(sn)]
+            request = call_api("next", {"contacts": contacts}).get("request")
             if last_error:
                 log("Connected to HR Pulse again")
                 last_error = ""
             if request:
                 log("HR Pulse asked for attendance")
                 try:
-                    upload(request["id"])
+                    upload(request["id"], request.get("deviceSerial"))
                 except Exception as exc:
                     log(f"Upload failed: {exc}")
                     try:

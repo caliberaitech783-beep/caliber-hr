@@ -57,6 +57,10 @@ CREATE TABLE IF NOT EXISTS hr_attendance_fetch_requests(
  requested_at timestamptz NOT NULL DEFAULT now(),
  completed_at timestamptz
 );
+ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS last_contact timestamptz;
+-- Where the machine stands on its site (main gate, workshop, office...).
+ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS location text NOT NULL DEFAULT '';
+ALTER TABLE hr_attendance_fetch_requests ADD COLUMN IF NOT EXISTS device_serial text;
 CREATE INDEX IF NOT EXISTS hr_attendance_fetch_open ON hr_attendance_fetch_requests(requested_at) WHERE state IN ('PENDING','RUNNING');
 
 -- Single row recording when the bridge PC last checked in.
@@ -71,6 +75,17 @@ CREATE TABLE IF NOT EXISTS hr_mis_attendance_corrections(
  start_time text NOT NULL DEFAULT '',
  end_time text NOT NULL DEFAULT '',
  reason text NOT NULL,
+ updated_by text NOT NULL,
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ version integer NOT NULL DEFAULT 1 CHECK(version>0)
+);
+
+-- Attendance HR policy settings (one row). Missing values use the defaults in
+-- attendance-policy.mjs: 1 hr lunch, under 4 hrs absent, 7 hrs full duty,
+-- 15 min grace, 3 late/early marks per half duty cut, 1 hr free gate pass.
+CREATE TABLE IF NOT EXISTS hr_attendance_policy(
+ id boolean PRIMARY KEY DEFAULT true CHECK(id),
+ settings jsonb NOT NULL,
  updated_by text NOT NULL,
  updated_at timestamptz NOT NULL DEFAULT now(),
  version integer NOT NULL DEFAULT 1 CHECK(version>0)

@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import {createApi} from './app.mjs';
-import {createAttendance,keyMatches,validateUpload,validateRange,MAX_PUNCHES_PER_UPLOAD} from './attendance.mjs';
+import {createAttendance,keyMatches,validateUpload,validateRange,validateDevice,cleanText,MAX_PUNCHES_PER_UPLOAD} from './attendance.mjs';
 
 const KEY='k'.repeat(40);
 const device={serial:'JNP2260900233'};
@@ -76,4 +76,52 @@ test('API routes bridge calls by key and user calls by Pulse sign-in',async()=>{
   assert.deepEqual(calls.at(-1),['api','hr','fetch','POST']);
   assert.equal(calls.filter(c=>c[0]==='api').length,1);
  }finally{await new Promise(resolve=>server.close(resolve));}
+});
+
+const SITE='22222222-2222-4222-8222-222222222222';
+test('a biometric machine is added to a site with its location, name and serial',()=>{
+ assert.deepEqual(validateDevice({serial:' JNP2260900233 ',siteId:SITE,name:' ESSL\u0000K90 ',location:'Main  gate'},true),{serial:'JNP2260900233',siteId:SITE,name:'ESSL K90',location:'Main gate'});
+ assert.equal(cleanText('x'.repeat(200)).length,80);
+ assert.throws(()=>validateDevice({serial:'JNP1'},true),/Choose a site/);
+ assert.throws(()=>validateDevice({serial:"x';--",siteId:SITE},true),/serial/);
+ assert.throws(()=>validateDevice({serial:'JNP1',siteId:'site-1'},true),/Choose a site/);
+ // An update that leaves out the location keeps the saved one (null = unchanged).
+ assert.equal(validateDevice({serial:'JNP1',siteId:SITE},false).location,null);
+ assert.equal(validateDevice({serial:'JNP1',siteId:'',location:''},false).location,'');
+});
+
+function fakePool(handler){
+ const calls=[];
+ const query=async(sql,params)=>{calls.push([sql,params]);return handler(sql,params)||{rows:[],rowCount:0};};
+ return {calls,query,connect:async()=>({query,release(){}})};
+}
+const admin={actor:'hr',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
+
+test('machine status lists every site with location, contact and today\'s logs',async()=>{
+ const pool=fakePool(sql=>{
+  if(sql.includes('FROM hr_attendance_bridge'))return {rows:[{last_seen:'2026-11-20T05:00:00Z',online:true}]};
+  if(sql.includes('FROM hr_attendance_devices d'))return {rows:[{serial:'JNP1',name:'K90',location:'Main gate',site_id:SITE,site_name:'Amlohri',last_seen:null,last_contact:'2026-11-20T05:00:00Z',online:true,logs_today:12,last_punch:'2026-11-20 10:31'}]};
+ });
+ const status=await createAttendance(pool,{bridgeKey:KEY}).attendanceApi(admin,'status','GET',{},new URLSearchParams());
+ assert.deepEqual(status.devices[0],{serial:'JNP1',name:'K90',location:'Main gate',siteId:SITE,siteName:'Amlohri',lastContact:'2026-11-20T05:00:00Z',online:true,lastSeen:null,logsToday:12,lastPunch:'2026-11-20 10:31'});
+ assert.equal(status.canManageDevices,true);
+ const [sql,params]=pool.calls.find(([q])=>q.includes('FROM hr_attendance_devices d'));
+ assert.match(sql,/count\(\*\) FILTER \(WHERE punched_at>=\$2::date\)/);
+ assert.equal(params[0],null);assert.match(params[1],/^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('adding and editing a machine saves its location; site HR users cannot',async()=>{
+ const pool=fakePool(sql=>{
+  if(sql.includes("kind='sites'"))return {rows:[{}],rowCount:1};
+  if(sql.includes('INSERT INTO hr_attendance_devices'))return {rows:[{serial:'JNP1',location:'Main gate'}]};
+  if(sql.includes('UPDATE hr_attendance_devices'))return {rows:[{serial:'JNP1',location:'Workshop'}]};
+ });
+ const service=createAttendance(pool,{bridgeKey:KEY});
+ assert.deepEqual(await service.attendanceApi(admin,'devices/register','POST',{serial:'JNP1',siteId:SITE,name:'K90',location:'Main gate'}),{serial:'JNP1',siteId:SITE,name:'K90',location:'Main gate'});
+ assert.deepEqual(pool.calls.find(([q])=>q.includes('INSERT INTO hr_attendance_devices'))[1],['JNP1',SITE,'K90','Main gate']);
+ await service.attendanceApi(admin,'devices','POST',{serial:'JNP1',siteId:SITE,name:'K90'});
+ const update=pool.calls.find(([q])=>q.includes('UPDATE hr_attendance_devices'));
+ assert.match(update[0],/location=coalesce\(\$4,location\)/);assert.equal(update[1][3],null);
+ const siteHr={actor:'site',permissions:{application:'HR',hrDesktopAccess:['Employee Master'],site:'Amlohri'}};
+ await assert.rejects(service.attendanceApi(siteHr,'devices/register','POST',{serial:'JNP2',siteId:SITE}),e=>e.status===403);
 });

@@ -6,6 +6,17 @@ CREATE TABLE IF NOT EXISTS hr_records (
  UNIQUE(kind,code)
 );
 CREATE INDEX IF NOT EXISTS hr_records_kind_status ON hr_records(kind,status);
+CREATE TABLE IF NOT EXISTS hr_salary_structure (
+ employee_id uuid NOT NULL REFERENCES hr_records(id), month text NOT NULL,
+ amounts jsonb NOT NULL, reason text NOT NULL, actor text NOT NULL,
+ PRIMARY KEY(employee_id,month)
+);
+CREATE TABLE IF NOT EXISTS hr_payroll_period (
+ employee_id uuid NOT NULL REFERENCES hr_records(id), month text NOT NULL,
+ inputs jsonb NOT NULL, slip jsonb, settlement jsonb, version integer NOT NULL DEFAULT 1,
+ PRIMARY KEY(employee_id,month)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS hr_payroll_one_settlement ON hr_payroll_period(employee_id) WHERE settlement IS NOT NULL;
 CREATE TABLE IF NOT EXISTS hr_employee_master_register (
  id uuid PRIMARY KEY, import_key text NOT NULL UNIQUE, site_id uuid NOT NULL,
  site_code text NOT NULL, site_name text NOT NULL, name text NOT NULL,

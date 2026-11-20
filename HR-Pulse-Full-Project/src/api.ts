@@ -4,9 +4,9 @@ export const API=hrApiOrigin;
 export type Profile={name:string;username?:string;email?:string;actor?:string;assignedRole?:string;permissions:{application:string;hrDesktopAccess?:string[];hrMobileAccess?:string[];site?:unknown;adminLevel?:unknown}};
 export type Session={grant:string;profile:Profile};
 export type Field={key:string;label:string;type:string;required?:boolean;reference?:string;options?:string[];min?:number};
-export type Module={autoCode?:boolean;title:string;menu:string;fields:Field[];canWrite:boolean};
+export type Module={autoCode?:boolean;title:string;menu:string;category?:string;fields:Field[];canWrite:boolean};
 export type HRConfig={profile:Profile;modules:Record<string,Module>};
-export type RecordRow={id:string;kind:string;code:string;name:string;data:Record<string,string|number>;status:string;version:number;updated_at:string};
+export type RecordRow={id:string;kind:string;code:string;name:string;data:Record<string,string|number>;status:string;version:number;updated_at:string;progress?:{state:string;stage:number;steps:{label:string}[]}|null};
 export type Lookup={department_id?:string;id:string;kind:string;code:string;name:string};
 export async function pulse(action:string,data:object){
   const response=await fetch(hrSessionEndpoint+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),redirect:'error',signal:AbortSignal.timeout(15000)});

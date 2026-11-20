@@ -1,4 +1,4 @@
-export const ROLES = {hr: 'Site HR', trainer: 'Driver Trainer', pm: 'PM', ohr: 'Office HR', rhr: 'Regional HR', director: 'Director'} as const;
+export const ROLES = {hr: 'Site HR', trainer: 'Driver Trainer', pm: 'PM', ohr: 'Office HR', rhr: 'Regional HR', director: 'Director',observer:'Read-only overview'} as const;
 export type Role = keyof typeof ROLES;
 export const NEXT = {pm: 'ohr', ohr: 'rhr', rhr: 'director', director: 'done'} as const;
 export type Approver = keyof typeof NEXT;
@@ -24,22 +24,38 @@ export const DOCS = [
 export type Post = 'Driver' | 'Operator';
 export type Result = 'PASS' | 'FAIL' | '';
 export type Check = {seen: string; remarks: string};
+export type DrivingLicenceClass={code:string;issuedBy:string;dateOfIssue:string;vehicleCategory:string;badgeNumber:string;badgeIssuedDate:string;badgeIssuedBy:string};
 export type Candidate = {
   name: string; father: string; dob: string; mobile: string; aadhaar: string; address: string; photo: string;
-  post: Post; vehicles: string[]; otherVehicle: string; dl: string; dlValid: string; experience: string;
-  employer: string; trialDate: string; referredBy: string; docs: Record<typeof DOCS[number][0],Check>;
+  post: Post; vehicles: string[]; otherVehicle: string; dl: string; dlClasses?:DrivingLicenceClass[];dlIssue?: string; dlValid: string;dlValidDates?:string[]; experience: string;
+  employer: string; trialDate: string; referredBy: string; trialConductedBy?:string; docs: Record<typeof DOCS[number][0],Check>;
 };
 export type History = {role: Role; action: string; by: string; at: string; note?: string};
 export type Trial = Candidate & {
   id: string; formNo: string; batch: string; site: string; createdAt: string;
   stage: Stage; result: Result; history: History[]; outcome?: Outcome & {at: string};
+  /** Part 1 reached the server, so the Driver Trainer and the admin overview can see it. */
+  sent?: boolean;
 };
 export type Outcome = {
   result: Result; post: Post; machine: string; reason: string; trainer: string; remarks: string;
   attachment?: {id: string; name: string};
+  videoAttachment?: {id: string; name: string};
 };
+export function approvalStage(history: History[], resultAt=''): Stage {
+  let stage: Stage='pm';
+  const started=Date.parse(resultAt);
+  for(const entry of history){
+    if(entry.role!==stage||Number.isFinite(started)&&Date.parse(entry.at)<started)continue;
+    if(entry.action==='Rejected')return 'rejected';
+    if(entry.action==='Approved'&&canApprove(entry.role))stage=NEXT[entry.role];
+  }
+  return stage;
+}
+export const normalizeTrialApproval=(row:Trial):Trial=>row.outcome&&row.result==='PASS'&&row.stage!=='trainer'
+  ?{...row,stage:approvalStage(row.history,row.outcome.at)}:row;
 export const isClearedForJoining = (row: Trial): row is Trial & {stage: 'done'; result: 'PASS'; outcome: NonNullable<Trial['outcome']>} =>
-  row.stage === 'done' && row.result === 'PASS' && (row.outcome?.post === 'Driver' || row.outcome?.post === 'Operator');
+  row.stage === 'done' && row.result === 'PASS' && approvalStage(row.history,row.outcome?.at)==='done' && (row.outcome?.post === 'Driver' || row.outcome?.post === 'Operator');
 export const post = (value: string): Post => value === 'Operator' ? 'Operator' : 'Driver';
 export const equipment = (row: Candidate) => row.vehicles.map(item => item === 'Other' ? row.otherVehicle || item : item).join(', ');
 export const status = (row: Trial) => row.stage === 'done'

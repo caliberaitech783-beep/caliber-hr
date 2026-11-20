@@ -25,3 +25,41 @@
 .attendance .spin{animation:attendance-spin 1s linear infinite}
 @keyframes attendance-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.attendance .spin{animation:none}}
+.attendance-crumb{margin:2px 0 0;font-size:13px;color:#7a698b}
+.attendance-head .help-text{margin:0;max-width:720px}
+.attendance iframe{width:100%;min-height:720px;border:1px solid #eee7f3;border-radius:10px;background:#fff}
+.register-grid th,.register-grid td{padding:7px 6px;text-align:center;white-space:nowrap}
+.register-grid td.register-cell{min-width:34px}
+.register-grid th:first-child,.register-grid td:first-child{text-align:left;min-width:190px;position:sticky;left:0;background:#fff;z-index:1}
+.register-sub{display:block;color:#7a698b;font-size:11px}
+.register-cell{font-weight:700;font-size:12px;border-radius:6px}
+.register-cell sup{font-size:9px;color:#b45309;margin-left:1px}
+span.register-cell{display:inline-block;padding:3px 8px}
+.code-P,.code-IN{background:#edf8f1;color:#1f6b3d}
+.code-HD{background:#fff6e9;color:#8a5a0a}
+.code-A{background:#fdecec;color:#a12626}
+.code-MP{background:#fff1e0;color:#b45309}
+.code-L,.code-OD{background:#eef3ff;color:#2d5ba1}
+.code-H,.code-WO{background:#f3f0f7;color:#6b5a80}
+.attendance-policy .policy-rules{display:grid;gap:8px;margin:14px 0 20px;padding-left:20px}
+.attendance-policy .policy-rules li{display:grid;grid-template-columns:170px 1fr;gap:12px;font-size:13.5px;line-height:1.45}
+.attendance-policy .policy-rules b{color:#30263c}
+.policy-form h3{margin:0 0 8px;font-size:15px}
+.policy-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:14px}
+.policy-grid label{display:grid;gap:6px;font-size:12.5px;color:#5d4f6c;font-weight:600}
+.policy-grid label span{display:flex;align-items:center;gap:8px;font-weight:500;color:#7a698b}
+.policy-grid input[type=number]{width:100px}
+.policy-grid .policy-roles{grid-column:1/-1}
+.policy-grid .policy-roles input{max-width:520px}
+@media (max-width:640px){.attendance-policy .policy-rules li{grid-template-columns:1fr;gap:2px}}
+/* Biometric machines register */
+.biometric-machines .attendance-filters span{padding-bottom:10px}
+.biometric-machines .machine-form{background:#faf7fc;border:1px solid #ece4f3;border-radius:12px;padding:12px 14px}
+.biometric-machines .machine-form input,.biometric-machines .machine-form select{min-width:170px}
+.biometric-machines .machine-serial{font-family:ui-monospace,Consolas,monospace;white-space:nowrap}
+.biometric-machines .machine-status{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;border:1px solid #e4ddea;background:#f6f4f8;color:#5d4f6c;white-space:nowrap}
+.biometric-machines .machine-status.online{background:#edf8f1;border-color:#bfe3cc;color:#1f6b3d}
+.biometric-machines .machine-status.offline{background:#fff6e9;border-color:#f0d6a8;color:#8a5a0a}
+.biometric-machines .machine-last-punch{display:block;color:#7a698b;font-size:12px}
+.biometric-machines .machine-actions{display:flex;gap:8px;flex-wrap:wrap}
+.biometric-machines .machine-actions svg{width:14px;height:14px}

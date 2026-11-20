@@ -6,11 +6,17 @@ vi.mock('xlsx',async importOriginal=>({...await importOriginal<typeof import('xl
 vi.mock('./api',async importOriginal=>({...await importOriginal<typeof import('./api')>(),download:vi.fn()}));
 import {act,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
-import EmployeeLocation,{aadhaarDetails,matchChecklistDocument,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
+import EmployeeLocation,{aadhaarDetails,lockAadhaarField,matchChecklistDocument,corporateOfficeExportGrid,joiningOfficeData,normalizeEmploymentCategory,resolveCorporateReferences,validCorporateOfficeHeaders} from './EmployeeLocation';
 
 const officeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Reference Type','Reference Name','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Mess Deduction','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 
 describe('Corporate / HO import headers',()=>{
+ it('keeps Full Name editable when Aadhaar details are locked',()=>{
+  const form=document.createElement('form');form.innerHTML='<input name="Full Name" value="Aadhaar Name"><input name="Aadhaar Locked" value="Full Name|Aadhaar No.">';
+  lockAadhaarField(form,'Full Name');
+  expect((form.elements.namedItem('Full Name') as HTMLInputElement).readOnly).toBe(false);
+  expect((form.elements.namedItem('Aadhaar Locked') as HTMLInputElement).value).toBe('Aadhaar No.');
+ });
  it('extracts the main Aadhaar fields from OCR text',()=>{
   expect(aadhaarDetails('APURVA PRIYADARSHINI KOPULWAR\nDOB: 06/12/2000\nFEMALE\nC/O: Dyaninath Kopulwar\nAddress: Chandrapur, Maharashtra - 442507\n8573 5149 3646')).toMatchObject({name:'APURVA PRIYADARSHINI KOPULWAR',dob:'2000-12-06',gender:'Female',uid:'857351493646',relationName:'Dyaninath Kopulwar',address:expect.stringContaining('Chandrapur')});
  });
@@ -86,23 +92,17 @@ describe('Corporate / HO import headers',()=>{
 });
 
 describe('Employee Master tabs',()=>{
- it('keeps empty site dropdowns for Chadda and KSR in both employee groups',()=>{
-  const view=render(<EmployeeLocation employeeGroup="OB / COAL"/>);
-  fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
-  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
-  fireEvent.change(screen.getByLabelText('Select site'),{target:{value:'Dhoptala OB'}});
+ it('shows only CMLL and CMPL SCR Joint Venture for OB / COAL',()=>{
+  render(<EmployeeLocation employeeGroup="OB / COAL"/>);
   const options=(select:HTMLSelectElement)=>Array.from(select.options,option=>option.text);
-  for(const company of ['CHADDA TRADING COMPANY','KSR FREIGHT CARRIERS']){
-   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:company}});
-   for(const region of ['WCL','NCL']){
-    fireEvent.change(screen.getByLabelText('Select region'),{target:{value:region}});
-    const site=screen.getByLabelText('Select site') as HTMLSelectElement;
-    expect(options(site)).toEqual(['Select site']);expect(site.value).toBe('');
-    const posting=document.querySelector('select[name="Site"]') as HTMLSelectElement;
-    expect(options(posting)).toEqual(['Select']);expect(posting.required).toBe(false);
-   }
-  }
-  view.rerender(<EmployeeLocation employeeGroup="Corporate / HO"/>);
+  expect(options(screen.getByLabelText('Select company') as HTMLSelectElement)).toEqual([
+   'Select company','CALIBER MINING AND LOGISTICS LIMITED','CMPL SCR JOINT VENTURE',
+  ]);
+ });
+
+ it('keeps empty site dropdowns for Chadda and KSR in Corporate / HO',()=>{
+  render(<EmployeeLocation employeeGroup="Corporate / HO"/>);
+  const options=(select:HTMLSelectElement)=>Array.from(select.options,option=>option.text);
   for(const company of ['CHADDA TRADING COMPANY','KSR FREIGHT CARRIERS']){
    fireEvent.change(screen.getByLabelText('Select company'),{target:{value:company}});
    for(const region of ['Nagpur Corporate Office','Chandrapur Head Office']){
@@ -307,10 +307,10 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText(/^Full Name \*/)).toBeTruthy();
   expect(screen.getByLabelText(/Employee Code/)).toBeTruthy();
   expect(screen.getByLabelText('Employee group')).toBeTruthy();
-  expect(screen.getByRole('button',{name:'Upload Aadhaar Image 1'})).toBeTruthy();
-  expect(screen.getByRole('button',{name:'Upload Aadhaar Image 2'})).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Upload Aadhar Front Image'})).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Upload Aadhar Back Image'})).toBeTruthy();
   expect(screen.getByLabelText('Choose second Aadhaar image')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:'Upload Aadhaar Image 1'}));
+  fireEvent.click(screen.getByRole('button',{name:'Upload Aadhar Front Image'}));
   expect(screen.getByRole('button',{name:'Camera'})).toBeTruthy();
   expect(screen.getByRole('button',{name:'Gallery / Document'})).toBeTruthy();
   const aadhaarInput=screen.getByLabelText('Choose Aadhaar card from gallery');
@@ -429,8 +429,10 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Qualification 1'),{target:{value:'Other'}});
   expect((screen.getByLabelText('Qualification 1') as HTMLInputElement).placeholder).toBe('Enter qualification');
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Family Details/}));});
+  expect(screen.queryByLabelText('Marital Status')).toBeNull();
+  expect(screen.queryByLabelText('Dependent? (Y/N) 1')).toBeNull();
   expect(screen.getByLabelText('Family Member Name 1')).toBeTruthy();
-  for(let row=1;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Spouse','Son','Daughter']);
+  for(let row=1;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Wife','Spouse','Son','Daughter']);
   fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Mother'}});
   expect((screen.getByLabelText('Relationship 1') as HTMLSelectElement).value).toBe('Mother');
   expect(screen.getByLabelText('Contact No. 1')).toBeTruthy();
@@ -450,9 +452,10 @@ describe('Employee Master tabs',()=>{
   expect(new FormData(joiningForm).get('Date of Birth 1')).toBe('');
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));});
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
+  expect((screen.getByLabelText('From Date 1') as HTMLInputElement).min).toBe('1000-01-01');
   for(let row=1;row<=5;row++)for(const label of ['From Date','To Date']){
    const input=screen.getByLabelText(label+' '+row) as HTMLInputElement;
-   expect(input.min).toBe('1000-01-01');expect(input.max).toBe('9999-12-31');
+   expect(input.max).toBe('9999-12-31');
    fireEvent.input(input,{target:{value:'20255-06-15'}});expect(input.value).toBe('2025-06-15');
    fireEvent.input(input,{target:{value:'2024-01-31'}});expect(input.value).toBe('2024-01-31');
   }
@@ -460,6 +463,12 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('From Date 1'),{target:{value:'2020-01-15'}});
   fireEvent.change(screen.getByLabelText('To Date 1'),{target:{value:'2023-03-20'}});
   expect(screen.getByLabelText('Work Duration 1').textContent).toBe('3 years, 2 months, 5 days');
+  expect((screen.getByLabelText('To Date 1') as HTMLInputElement).min).toBe('2020-01-15');
+  expect((screen.getByLabelText('From Date 2') as HTMLInputElement).min).toBe('2023-03-21');
+  fireEvent.change(screen.getByLabelText('From Date 2'),{target:{value:'2023-03-20'}});
+  expect((screen.getByLabelText('From Date 2') as HTMLInputElement).validationMessage).toBe('The next From Date must be after the previous To Date.');
+  fireEvent.change(screen.getByLabelText('From Date 2'),{target:{value:'2023-03-21'}});
+  expect((screen.getByLabelText('From Date 2') as HTMLInputElement).validationMessage).toBe('');
   fireEvent.change(screen.getByLabelText('To Date 1'),{target:{value:'2019-01-15'}});
   expect(screen.getByLabelText('Work Duration 1').textContent).toBe('Check date range');
   fireEvent.change(screen.getByLabelText('To Date 1'),{target:{value:''}});
@@ -473,8 +482,10 @@ describe('Employee Master tabs',()=>{
   expect((screen.getByLabelText('Upload Candidate photo') as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText('Upload Aadhaar (masked display)') as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText('Upload PAN') as HTMLInputElement).required).toBe(false);
-  expect(screen.getAllByRole('button',{name:'Preview'}).every(button=>(button as HTMLButtonElement).disabled)).toBe(true);
-  expect(screen.getAllByRole('button',{name:'Remove'}).every(button=>(button as HTMLButtonElement).disabled)).toBe(true);
+  const fetchedAadhaar=screen.getByLabelText('Upload Aadhaar (masked display)') as HTMLInputElement;
+  expect(fetchedAadhaar.files?.[0]?.name).toBe('aadhaar.pdf');
+  expect(fetchedAadhaar.closest('tr')?.querySelector<HTMLButtonElement>('button.preview')).toBeEnabled();
+  expect(fetchedAadhaar.closest('tr')?.querySelector<HTMLButtonElement>('button.remove')).toBeEnabled();
   expect(screen.getByLabelText('Upload VTC certificate')).toBeTruthy();
   expect(screen.getByLabelText('Upload Medical fitness certificate')).toBeTruthy();
   expect((screen.getByLabelText('Upload VTC certificate') as HTMLInputElement).required).toBe(false);
@@ -483,7 +494,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('button',{name:'Bulk Upload'})).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Bulk upload documents'),{target:{files:[new File(['a'],'offer.pdf',{type:'application/pdf'}),new File(['b'],'photo.png',{type:'image/png'})]}});
   expect(screen.getByText('Bulk uploaded documents (2)')).toBeTruthy();
-  fireEvent.click(screen.getAllByRole('button',{name:'Remove'}).filter(button=>!(button as HTMLButtonElement).disabled)[0]);
+  fireEvent.click(screen.getByText('offer.pdf').closest('tr')!.querySelector<HTMLButtonElement>('button.remove')!);
   expect(screen.getByText('Bulk uploaded documents (1)')).toBeTruthy();expect(screen.getByText('photo.png')).toBeTruthy();expect(screen.queryByText('offer.pdf')).toBeNull();
   expect(screen.getByLabelText('Upload Operator competency certificate')).toBeTruthy();
   view.rerender(<EmployeeLocation employeeGroup="Corporate / HO"/>);
@@ -561,7 +572,8 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Department',{exact:true,selector:'select:not([name])'}),{target:{value:'Operator'}});
   fireEvent.change(screen.getByLabelText('Sub-department',{exact:true,selector:'select:not([name])'}),{target:{value:'Drilling'}});
   fireEvent.change(screen.getByLabelText('Designation',{exact:true,selector:'select:not([name])'}),{target:{value:'Drill Operator'}});
-  for(const [field,value] of Object.entries({'Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Family Member Name 1':'Parent One','Relationship 1':'Mother','Aadhaar Number 1':'234500000001','Date of Birth 1':'1970-01-01','Contact No. 1':'9876543212','Occupation 1':'Home'}))setField(field,value);
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
   upload('Upload Candidate photo','photo.jpg','image/jpeg');
   upload('Upload Aadhaar (masked display)','aadhaar.pdf','application/pdf');
@@ -589,3 +601,26 @@ describe('Aadhaar printed field positions',()=>{
 });
 
 it('matches bulk file names to checklist documents',()=>{const names=['Candidate photo','Aadhaar (masked display)','PAN','Education certificates','Bank proof / cancelled cheque'];expect(matchChecklistDocument('Rahul_PAN.pdf',names)).toBe('PAN');expect(matchChecklistDocument('aadhar-card.jpg',names)).toBe('Aadhaar (masked display)');expect(matchChecklistDocument('passport photo.png',names)).toBe('Candidate photo');expect(matchChecklistDocument('10th marksheet.pdf',names)).toBe('Education certificates');expect(matchChecklistDocument('cancelled cheque.jpg',names)).toBe('Bank proof / cancelled cheque');expect(matchChecklistDocument('company.pdf',names)).toBeUndefined();expect(matchChecklistDocument('driving licence.pdf',names)).toBeUndefined();});
+
+for(const group of ['Corporate / HO','OB / COAL'] as const)it(group+' requires family details and family Aadhaar number',()=>{
+ render(<EmployeeLocation employeeGroup={group}/>);
+ fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+ expect(screen.queryByLabelText(/^Marital Status/)).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:/Family Details/}));
+ expect(screen.getByLabelText('Family Member Name 1')).toBeRequired();
+ expect(screen.getByLabelText('Relationship 1')).toBeRequired();
+ expect(screen.getByLabelText('Aadhaar Number 1')).toBeRequired();
+ expect(screen.queryByLabelText('Upload Family Aadhaar 1')).toBeNull();
+ expect(within(screen.getByLabelText('Relationship 1')).getAllByRole('option').map(o=>o.textContent)).toContain('Wife');
+ expect(screen.getAllByRole('heading',{name:'Family Details*'})).toHaveLength(2);
+ expect(screen.queryByText('Family Details are mandatory.')).toBeNull();
+ const aadhaar=screen.getByLabelText('Aadhaar Number 3');
+ expect(aadhaar).not.toBeRequired();
+ fireEvent.change(screen.getByLabelText('Family Member Name 3'),{target:{value:'Parent Three'}});
+ expect(aadhaar).toBeRequired();
+ fireEvent.input(aadhaar,{target:{value:'2345-0000-0003'}});
+ expect(aadhaar).toHaveValue('234500000003');
+});
+it('preserves family row positions and Aadhaar numbers when earlier rows are empty',()=>{
+ expect(joiningOfficeData({'Marital Status':'Married','Family Member Name 3':'Parent Three','Relationship 3':'Mother','Aadhaar Number 3':'234500000003'})).toMatchObject({'Marital Status':'Married','Family Member Name':' |  | Parent Three',Relationship:' |  | Mother','Aadhaar Number':' |  | 234500000003'});
+});

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createAadhaarReader,cleanAadhaarResult} from './aadhaar-ocr.mjs';
+import {createAadhaarReader,cleanAadhaarResult,cleanDrivingLicenceResult} from './aadhaar-ocr.mjs';
 const profile={actor:'tester',permissions:{hrDesktopAccess:['Employee Master']}};
 const input={mime:'image/jpeg',content:Buffer.from([255,216,255,224]).toString('base64')};
 const fields={name:'Test Person',dob:'2000-02-29',gender:'Female',uid:'',address:'D/O: Test Parent',relationName:'Test Parent',relationType:'D/O'};
@@ -36,6 +36,16 @@ test('rejects concurrent scans by one account and releases slot after failure',a
 test('does not infer parent from care-of and clears malformed fields',()=>{
  const value=cleanAadhaarResult({...fields,dob:'2001-02-29',uid:'123456789012',gender:'unknown',relationType:'C/O'});
  assert.equal(value.dob,'');assert.equal(value.uid,'');assert.equal(value.gender,'');assert.equal(value.relationName,'');assert.equal(value.name,fields.name);
+});
+test('reads both driving licence sides and preserves every class and validity date',async()=>{
+ const details={name:'Sample Candidate',dob:'2000-01-02',licenceNumber:'DL-123',classDetails:[
+  {code:'HMV',issuedBy:'MH29',dateOfIssue:'2020-01-02',vehicleCategory:'TR',badgeNumber:'298/PSV/12',badgeIssuedDate:'2021-03-04',badgeIssuedBy:'MH29'},
+  {code:'LMV',issuedBy:'MH29',dateOfIssue:'2020-02-03',vehicleCategory:'NT',badgeNumber:'',badgeIssuedDate:'',badgeIssuedBy:''},
+ ],issueDate:'2020-01-02',validUpto:['2027-01-02','2030-01-02','2027-01-02']};
+ const read=createAadhaarReader({apiKey:'test',fetchImpl:async(url,options)=>{const body=JSON.parse(options.body);assert.equal(body.contents[0].parts.length,2);return new Response(JSON.stringify({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(details)}]}}]}));}});
+ const result=await read(profile,{document:'drivingLicence',images:[input,input]});
+ assert.deepEqual(result.details,{...details,validUpto:['2027-01-02','2030-01-02']});
+ assert.deepEqual(cleanDrivingLicenceResult(details).classDetails,details.classDetails);
 });
 test('rejects truncated or invalid model output',async()=>{
  const read=createAadhaarReader({apiKey:'test',fetchImpl:async()=>new Response(JSON.stringify({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'{}'}]}}]}))});

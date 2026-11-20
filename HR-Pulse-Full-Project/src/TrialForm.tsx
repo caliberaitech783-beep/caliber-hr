@@ -3,17 +3,18 @@ import FormInput from './BirthDateInput';
 import {ageText} from './age';
 import {lazy,Suspense,useEffect,useId,useRef,useState,type ReactNode} from 'react';
 import {Camera,Printer,Save,Send,X} from 'lucide-react';
-import {api,savedSession} from './api';
+import {api,savedSession,type Profile} from './api';
 import {AadhaarUpload} from './EmployeeLocation';
 import './trial-form.css';
-import {prepareTrialJoining,saveTrialHandoff,type TrialHandoff} from './trialHandoff';
+import {prepareTrialJoining,saveTrialHandoff,type TrialChecklistDocuments,type TrialHandoff} from './trialHandoff';
 import type {JoiningDraft} from './joiningDrafts';
 import type {Trial} from './trial-workflow-preview/records';
+import {departmentStructure} from './joiningDepartments';
 
 const TrialWorkflowPreview=lazy(()=>import('./trial-workflow-preview/TrialWorkflowPreview'));
 
 /* Trial Joining Form – Driver & Operator. Mirrors Trial_Joining_Form_Driver_Operator.docx.
-   Shown under Employee Master when the top bar's department is Driver or Operator. */
+   Shown under Employee Master whenever the OB / COAL employee group is selected. */
 export type TrialSelection={employeeGroup:'Corporate / HO'|'OB / COAL';company:string;region:string;site:string;department:string;subdepartment:string;designation:string};
 const SELECTION_KEY='hrPulse.employeeSelection',DRAFT_KEY='hrPulse.trialForm',COUNTER_KEY='hrPulse.trialForm.counter';
 const DRAFTS_KEY=DRAFT_KEY+'.drafts';
@@ -24,10 +25,25 @@ function writeTrialDrafts(list:TrialDraft[]){try{localStorage.setItem(DRAFTS_KEY
 export function upsertTrialDraft(draft:TrialDraft){writeTrialDrafts([draft,...listTrialDrafts().filter(d=>d.formNo!==draft.formNo)]);}
 export function removeTrialDrafts(formNos:string[]){writeTrialDrafts(listTrialDrafts().filter(d=>!formNos.includes(d.formNo)));}
 const companyShort:Record<string,string>={'Caliber Mining And Logistics Ltd':'CMLL','Caliber Mining And Logistics Ltd SCR JV':'CMPL SCR JV','KSR FREIGHT CARRIERS':'KSR','CHADDA TRADING COMPANY':'CHADDA TRADING CO.'};
+const trialRegions=['WCL','NCL'];
+const trialSitesByRegion:Record<string,string[]>={WCL:['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB','Hindustan Lalpeth OC'],NCL:['Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']};
+const trialSiteCodes:Record<string,string>={'Sasti OB':'WCL-SASTI','Dhoptala OB':'WCL-DHOPTALA','Majri OB':'WCL-MAJRI','Gauri Pauni OB':'WCL-GAURI','Hindustan Lalpeth OC':'WCL-LALPETH','Jayant OB East':'NCL-JAYANT','Jayant OB West':'NCL-JAYANT-W','Dudhichua OB East':'NCL-DUDE','Dudhichua OB West':'NCL-DUDW'};
+const trialDepartments=['Driver','Operator'];
+const scopeKey=(value:unknown)=>String(value||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');
+export function pulseTrialSites(siteScope:unknown,adminLevel:unknown){
+ const values=(Array.isArray(siteScope)?siteScope:[siteScope]).flatMap(value=>typeof value==='string'?value.split('|'):[]).map(value=>value.trim()).filter(Boolean);
+ if(!values.length)return /site|location/i.test(String(adminLevel||''))?[]:null;
+ if(values.some(value=>value==='*'||['all','allsites','alllocations'].includes(scopeKey(value))))return null;
+ const assigned=new Set(values.map(scopeKey));
+ return Object.entries(trialSitesByRegion).flatMap(([region,sites])=>sites.filter(site=>{
+  const keys=[site,trialSiteCodes[site],site.replace(/\s+(OB|OC)(\s+(East|West))?$/i,'')].map(scopeKey);
+  return keys.some(key=>assigned.has(key));
+ }).map(site=>({region,site})));
+}
 export const emptySelection:TrialSelection={employeeGroup:'Corporate / HO',company:'',region:'',site:'',department:'',subdepartment:'',designation:''};
 export function loadSelection():TrialSelection{try{return {...emptySelection,...JSON.parse(localStorage.getItem(SELECTION_KEY)||sessionStorage.getItem(SELECTION_KEY)||'{}')};}catch{return emptySelection;}}
 export function saveSelection(selection:TrialSelection){try{localStorage.setItem(SELECTION_KEY,JSON.stringify(selection));}catch{/* storage unavailable */}}
-export const showsTrialForm=(selection:TrialSelection)=>['Driver','Operator'].includes(selection.department);
+export const showsTrialForm=(selection:TrialSelection)=>selection.employeeGroup==='OB / COAL';
 function fiscalYear(){const d=new Date(),start=d.getMonth()<3?d.getFullYear()-1:d.getFullYear();return `${start}-${String(start+1).slice(-2)}`;}
 function nextFormNo(){let n=0;try{n=Number(localStorage.getItem(COUNTER_KEY)||0)+1;localStorage.setItem(COUNTER_KEY,String(n));}catch{n=Date.now()%10000;}return `TF/${fiscalYear()}/${String(n).padStart(4,'0')}`;}
 const digits=(v:string,max:number)=>v.replace(/\D/g,'').slice(0,max);
@@ -42,22 +58,36 @@ const Chk=({name,options}:{name:string;options:string[]})=><span className="tf-c
 const Radio=({name,options}:{name:string;options:string[]})=><span className="tf-chk">{options.map(o=><label key={o}><input type="radio" name={name} value={o}/> {o}</label>)}</span>;
 const YesNo=({name}:{name:string})=><select name={name} defaultValue=""><option value="">Select</option><option>Yes</option><option>No</option></select>;
 type TrialFormProps = {
+ profile?: Profile;
  selection: TrialSelection;
  onPassed?: (draft: JoiningDraft) => void;
  owner?: string;
  legacyOwner?: string;
 };
-export default function TrialForm({selection,onPassed,owner: draftOwner,legacyOwner}: TrialFormProps) {
- const profile = savedSession()?.profile;
+export default function TrialForm({selection,onPassed,owner: draftOwner,legacyOwner,profile:configuredProfile}: TrialFormProps) {
+ const session=savedSession(),profile=configuredProfile||session?.profile;
  const owner=draftOwner??(profile?.actor||profile?.username||profile?.email||'local');
- const {company, site, department, region, employeeGroup} = selection;
- async function join(rows: Trial[]) {
-  const draft=await prepareTrialJoining(rows,selection,owner);
+ const [scope,setScope]=useState(selection);
+ const [resolvedSites,setResolvedSites]=useState<{region:string;site:string}[]|null|undefined>();
+ useEffect(()=>setScope(selection),[selection]);
+ useEffect(()=>{if(!session?.grant)return;let active=true;void api<{admin:boolean;sites:{region:string;site:string}[]}>(session.grant,'telegram/trial-scope').then(result=>{if(active)setResolvedSites(result.admin?null:result.sites);}).catch(()=>{if(active)setResolvedSites(undefined);});return()=>{active=false;};},[session?.grant]);
+ const pulseSites=resolvedSites===undefined?pulseTrialSites(profile?.permissions?.site,profile?.permissions?.adminLevel):resolvedSites;
+ const allowedRegions=pulseSites===null?trialRegions:[...new Set(pulseSites.map(item=>item.region))];
+ const lockedSite=pulseSites?.length===1?pulseSites[0]:undefined;
+ const region=lockedSite?.region||(allowedRegions.includes(scope.region)?scope.region:'');
+ const allowedSites=pulseSites===null?(trialSitesByRegion[region]||[]):pulseSites.filter(item=>item.region===region).map(item=>item.site);
+ const site=lockedSite?.site||(allowedSites.includes(scope.site)?scope.site:'');
+ const {company, department, subdepartment, designation, employeeGroup} = scope;
+ const departmentOptions=trialDepartments.includes(department)?departmentStructure[department]:undefined;
+ const siteOptions=allowedSites;
+ const update=(change:Partial<TrialSelection>)=>{const next={...scope,...change};setScope(next);saveSelection(next);};
+ async function join(rows: Trial[],documents:TrialChecklistDocuments) {
+  const draft=await prepareTrialJoining(rows,scope,owner,documents);
   if (!draft?.trialHandoff) return;
   saveTrialHandoff(draft.trialHandoff,{});
   return ()=>onPassed?.(draft);
  }
- return <Suspense fallback={<p role="status">Loading Trial Form…</p>}><TrialWorkflowPreview owner={owner} legacyOwner={legacyOwner} name="" site={site} region={region} group={employeeGroup} company={companyShort[company]||company} department={department} onCleared={onPassed?join:undefined}/></Suspense>;
+ return <><section className="trial-scope" aria-label="Trial Form selection"><div className="trial-scope-filters"><label>Region<select aria-label="Trial region" value={region} disabled={allowedRegions.length===1} onChange={event=>update({region:event.target.value,site:''})}><option value="">Select region</option>{allowedRegions.map(value=><option key={value}>{value}</option>)}</select></label><label>Site<select aria-label="Trial site" value={site} disabled={Boolean(lockedSite)||!siteOptions.length} onChange={event=>update({site:event.target.value})}><option value="">Select site</option>{siteOptions.map(value=><option key={value}>{value}</option>)}</select></label><label>Department<select aria-label="Trial department" value={trialDepartments.includes(department)?department:''} onChange={event=>update({department:event.target.value,subdepartment:'',designation:''})}><option value="">Select department</option>{trialDepartments.map(value=><option key={value}>{value}</option>)}</select></label><label>Sub-department<select aria-label="Trial sub-department" value={departmentOptions?.subdepartments.includes(subdepartment)?subdepartment:''} disabled={!departmentOptions} onChange={event=>update({subdepartment:event.target.value})}><option value="">Sub-department</option>{departmentOptions?.subdepartments.map(value=><option key={value}>{value}</option>)}</select></label><label>Designation<select aria-label="Trial designation" value={departmentOptions?.designations.includes(designation)?designation:''} disabled={!departmentOptions} onChange={event=>update({designation:event.target.value})}><option value="">Designation</option>{departmentOptions?.designations.map(value=><option key={value}>{value}</option>)}</select></label></div></section><Suspense fallback={<p role="status">Loading Trial Form…</p>}><TrialWorkflowPreview owner={owner} legacyOwner={legacyOwner} name={profile?.name||profile?.username||profile?.actor||''} site={site} region={region} group={employeeGroup} company={companyShort[company]||company} department={trialDepartments.includes(department)?department:''} designation={designation} onCleared={onPassed?join:undefined}/></Suspense></>;
 }
 
 export function CurrentTrialForm({selection,onPassed,canManage=false}:{selection:TrialSelection;onPassed?:(handoff:TrialHandoff)=>void;canManage?:boolean}){

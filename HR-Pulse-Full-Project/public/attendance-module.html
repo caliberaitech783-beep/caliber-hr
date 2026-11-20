@@ -343,7 +343,7 @@ body.mini .side{width:66px}body.mini .side .lbl2,body.mini .side .sub,body.mini 
     <div class="brand"><span class="ham" onclick="document.body.classList.toggle('mini')">☰</span><span class="lg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><b>CALIBER HR</b></div>
     <div class="ni" onclick="navDemo('Dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="lbl2">Dashboard</span></div>
     <div class="ni on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6M17 11a3 3 0 1 0 0-6"/></svg><span class="lbl2">Employee Master</span><span class="chev">⌃</span></div>
-    <div class="sub"><a onclick="navDemo('Employee Management')">Employee Management</a><a onclick="navTab('leave','Leave/OD Management')">Leave/OD Management</a><a onclick="navDemo('Employee Transfer')">Employee Transfer</a><a class="on" onclick="navTab('dash')">Attendance Management</a></div>
+    <div class="sub"><a onclick="navDemo('Employee Management')">Employee Management</a><a onclick="navTab('leave','Leave / OD / Gatepass')">Leave / OD / Gatepass</a><a onclick="navDemo('Employee Transfer')">Employee Transfer</a><a class="on" onclick="navTab('dash')">Attendance Management</a></div>
     <div class="ni" onclick="navDemo('Payroll Management')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="13" rx="2"/><circle cx="12" cy="12.5" r="3"/></svg><span class="lbl2">Payroll Management</span><span class="chev">⌄</span></div>
     <div class="ni" onclick="navDemo('Asset Management')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 3 7l9 5 9-5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/></svg><span class="lbl2">Asset Management</span></div>
     <div class="ni" onclick="navDemo('Calendar')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span class="lbl2">Calendar</span></div>
@@ -457,7 +457,12 @@ app.listen(3000);</script>
 /* ============================================================
    CONFIG (Shift Master / Holiday Master / Company & Site Master)
    ============================================================ */
-const GRACE=15, FULL=8, MIN_P=6, HALF=4, OT_CAP=50, DEDUP_MIN=5, REG_MAX=3, REG_DAYS=3, LATE_PER_HALF=3, EG_GRACE=15;
+/* Attendance HR policy (Settings › HR policy · attendance). The HR page passes the saved values in the URL. */
+const PQ=new URLSearchParams(location.search),PN=(k,d)=>{const v=Number(PQ.get(k));return PQ.has(k)&&Number.isFinite(v)?v:d};
+const GRACE=PN('grace',15), FULL=8, MIN_P=PN('full',7), HALF=PN('absent',4), LUNCH=PN('lunch',60)/60, OT_CAP=50, DEDUP_MIN=5, REG_MAX=3, REG_DAYS=3, LATE_PER_HALF=PN('perCut',3), EG_GRACE=0;
+const FIXED_VIEW=PQ.get('view');
+/* Hours after the lunch break: under HALF = A, under MIN_P = HD (half duty), otherwise P. */
+const dutyCode=h=>{const w=h-LUNCH;return w<HALF?'A':w<MIN_P?'HD':'P'};
 const SHIFT_NEXT={A:'B',B:'C',C:'A'};
 const SHIFTS={
   A:{id:'A',name:'Shift A 05:00–13:00',start:300,end:780,otAfter:8},
@@ -678,10 +683,10 @@ function evalDay(e,y,m,d){
   res.inT=inT;res.outT=outT;const hrs=(outT-inT)/60;res.hours=hrs;
   if(e.src==='ESSL'){
     if(inT>sh.start+GRACE){res.late=true;T.push(['A-07',`IN ${fmtTxt(inT)} after ${fmtTxt(sh.start)} + ${GRACE} min grace → Late`]);}
-    if(!isSite&&outT<sh.end-EG_GRACE){res.early=true;T.push(['X-07',`OUT before ${fmtTxt(sh.end)} − ${EG_GRACE} min → Early going`,1]);}
+    if(outT<sh.end-EG_GRACE){res.early=true;T.push(['X-07',`OUT before ${fmtTxt(sh.end)} → Early going (no grace)`,1]);}
   }
-  const base=hrs>=MIN_P?'P':'A';
-  T.push(['A-09',`Worked ${h1(hrs)} h → ${base} (minimum ${MIN_P} h for P · no half day)`]);
+  const base=dutyCode(hrs);
+  T.push(['A-09',`Worked ${h1(hrs)} h less ${h1(LUNCH)} h lunch → ${base} (under ${HALF} h = A · under ${MIN_P} h = HD · ${MIN_P} h or more = P)`]);
   if(raw.off&&base!=='A'){
     if(isSite){res.code='PH';res.ph=2;T.push(['A-15','Worked on holiday → PH = holiday pay + worked day (1 + 1)']);}
     else{res.code='P';res.compOff=1;T.push(['X-08',`Worked on ${raw.hol?'holiday':'weekly off'} → P + 1 C-OFF credited to leave balance (use within 60 days)`,1]);}
@@ -702,7 +707,7 @@ function monthStats(e,y,m){
     if(r.ot)s.ot+=r.ot;
     if(r.compOff){s.comp+=r.compOff;s.offWorked++}if(r.hours!=null&&r.hours>=HALF){s.hrs+=r.hours;s.hdays++}}
   const mgmt=e.desig==='CMD'||e.desig==='Director';
-  s.lateDed=mgmt?0:Math.floor(s.late/LATE_PER_HALF)*0.5;
+  s.lateDed=mgmt?0:Math.floor((s.late+s.early)/LATE_PER_HALF)*0.5;
   s.paid=s.P+s.phPay+s.H+s.WO+s.L+s['C-OFF']+s.OD-s.lateDed;
   s.lop=Math.max(0,s.days-(s.paid-(s.phPay-s.PH)));
   return s;
@@ -933,7 +938,7 @@ function renderPolicy(){
   else h=`<div class="policy mixed"><div><b>Mixed scope</b> — sites and offices are evaluated with their own policy. Pick a location to see one rule set.<div class="chips"><span class="chip">Sites: P · A · L · H · PH (1+1) · OT = double shift</span><span class="chip">Offices: P · WO · A · L · C-OFF · H · OD · no OT</span><span class="chip">Exempt everywhere: CMD/Directors, VP, CFO, CA, Drivers (logbook)</span></div></div></div>`;
   $('policy').innerHTML=h;
 }
-const TABS=[['exec','Executive View'],['dash','Dashboard'],['reg','Attendance Register'],['punch','ESSL Punch Log'],['trip','Trip Cards & Logbook'],['recon','Biometric vs Trip Card'],['exc','Verification'],['entry','Live Entry'],['ot','Overtime'],['leave','Leave Balance'],['np','Exempt Roles'],['appr','Approvals'],['close','Month Close'],['rules','Rules & Policy'],['tg','Telegram Bot']];
+const TABS=[['exec','Executive View'],['dash','Dashboard'],['late','Late Come / Early Going'],['shifts','Shift Management'],['reg','Attendance Register'],['punch','ESSL Punch Log'],['trip','Trip Cards & Logbook'],['tpunch','Trip Card Punch'],['recon','Biometric vs Trip Card'],['exc','Verification'],['entry','Live Entry'],['ot','Overtime'],['leave','Leave Balance'],['np','Exempt Roles'],['appr','Approvals'],['close','Month Close'],['rules','Rules & Policy'],['tg','Telegram Bot']];
 function counts(){
   const emps=scopeEmps(),n=elapsed(S.y,S.m);let mp=0,pv=0,ot=0;
   emps.forEach(e=>{for(let d=1;d<=n;d++){const r=evalDay(e,S.y,S.m,d);if(r.code==='MP'||r.code==='NV')mp++;if(r.code==='PV')pv++;if(r.otStatus==='pending')ot++}});
@@ -942,12 +947,18 @@ function counts(){
 function renderTabs(){
   const c=counts();
   $('bellN').textContent=R().director?REQS.filter(q=>q.status==='pending').length:c.mp+c.pv+c.ot;
-  $('tabs').innerHTML=TABS.filter(([k])=>R().tabs.includes(k)).map(([k,t])=>{let n='';if(k==='exc'&&c.mp)n=c.mp;if(k==='trip'&&c.pv)n=c.pv;if(k==='ot'&&c.ot&&mode()!=='office')n=c.ot;if(k==='appr'){const p=REQS.filter(q=>q.status==='pending'&&inScopeReq(q)).length;if(p)n=p}
+  $('tabs').innerHTML=TABS.filter(([k])=>['late','shifts'].includes(k)?window.parent!==window&&R().tabs.includes('dash'):R().tabs.includes(k)).map(([k,t])=>{let n='';if(k==='exc'&&c.mp)n=c.mp;if(k==='trip'&&c.pv)n=c.pv;if(k==='ot'&&c.ot&&mode()!=='office')n=c.ot;if(k==='appr'){const p=REQS.filter(q=>q.status==='pending'&&inScopeReq(q)).length;if(p)n=p}
     return`<button class="${S.tab===k?'on':''}" onclick="setTab('${k}')">${t}${n?`<span class="n">${n}</span>`:''}</button>`}).join('');
 }
-function render(){if(!R().tabs.includes(S.tab))S.tab=R().tabs[0];renderScope();renderPolicy();renderTabs();VIEWS[S.tab]();tgBadge();}
+function render(){if(FIXED_VIEW&&VIEWS[FIXED_VIEW])S.tab=FIXED_VIEW;else if(!R().tabs.includes(S.tab))S.tab=R().tabs[0];renderScope();if(FIXED_VIEW){$('tabs').hidden=true;$('policy').hidden=true;}else{renderPolicy();renderTabs();}VIEWS[S.tab]();tgBadge();}
 function setScope(k,v){S[k]=v;if(k==='type'||k==='company'||k==='region')S.loc='ALL';if(k==='type'||k==='company')S.region='ALL';S.day=null;render()}
-function setTab(k){if(k==='trip'&&window.parent!==window){window.parent.postMessage('open-hr-mis-attendance',location.origin);return}S.tab=k;render()}
+function setTab(k){
+  if(k==='late'||k==='shifts'){
+    const message=k==='late'?{view:'hr-punctuality',month:S.y+'-'+pad(S.m+1)}:'open-hr-shift-attendance';
+    window.parent.postMessage(message,location.origin);
+    return;
+  }
+  if(k==='trip'&&window.parent!==window){window.parent.postMessage('open-hr-mis-attendance',location.origin);return}S.tab=k;render()}
 $('coSel').onchange=e=>setScope('company',e.target.value);
 $('monSel').onchange=e=>{const[y,m]=e.target.value.split('-').map(Number);S.y=y;S.m=m;S.day=null;render()};
 
@@ -1144,7 +1155,7 @@ function plDay(e,d){const s=e[4].substr((d-1)*9,9);const st=s[0];let i=plT(s.sub
   let h=null,night=false;if(i!=null&&o!=null){h=(o-i)/60;if(h<0){h+=24;night=true}}
   const sh=plShift(i);const late=PL_START[sh]!=null&&i-PL_START[sh]>GRACE&&i-PL_START[sh]<180;
   const dbl=h!=null&&h>=15;const single=(i==null)!==(o==null);const none=i==null&&o==null;
-  let sys=none?'NV':single?'MP':(h>=MIN_P?'P':'A');const v=PL.ver[e[0]+'|'+d];if(v)sys=v.code;
+  let sys=none?'NV':single?'MP':dutyCode(h);const v=PL.ver[e[0]+'|'+d];if(v)sys=v.code;
   const mism=(st==='P'&&(none||single))||(st==='A'&&!none);
   return{st,i,o,h,night,sh,late,dbl,single,none,sys,v,mism,same}}
 function plTrip(id,d){if(!RC.data||RC.data.month!==PL.data.month)return null;if(!PL._t){PL._t={};RC.data.emps.forEach(x=>{if(x[5])PL._t[x[0]]=x})}const t=PL._t[id];return t?t[5][d-1]:null}
@@ -1604,6 +1615,51 @@ function rcParse(twb,bwb){const sv=v=>v==null?'':String(v).trim();const trip={};
   const emps=ids.map(id=>{const t=trip[id]||{},b=bio[id]||{};return[id,b.name||t.name,b.des||t.des,b.dept||(t.sheet==='Driver'?'Driver':'Operator'),b.b||'',t.st||'',t.du||'',t.sheet||'']});
   const site=Object.entries(wc).sort((a,b)=>b[1]-a[1])[0];const md=month instanceof Date?month:null;
   return{month:md?`${md.getFullYear()}-${pad(md.getMonth()+1)}`:'',label:md?`${MON[md.getMonth()]} ${md.getFullYear()}`:'Uploaded month',site:site?tcase(site[0].replace(/^WORKSHOP\s*/i,'')):'Uploaded site',days:days||31,emps}}
+/* ============================================================
+   VIEW: TRIP CARD PUNCH (uploaded trip card sheet, 20 Nov 2026)
+   One line per operator / driver for the chosen day: trip card P / 0 / #N/A
+   and the duties on the card, plus the month totals. Same sheet as the
+   biometric vs trip card comparison.
+   ============================================================ */
+const TP={data:null,day:null,f:'ALL',q:'',sheet:'ALL',limit:200,src:'No trip card sheet uploaded yet – upload the trip card sheet (.xlsx)'};
+function tpParse(wb){const D=rcParse(wb,null);D.emps=D.emps.filter(e=>e[5]);return D}
+/* Day d of an employee row [id,name,des,dept,bio,st,du,sheet]: card P / 0 / N and duties (number or null). */
+function tpDay(e,d){const st=e[5][d-1]||'0',du=e[6][d-1];const duty=du&&du!=='n'?+du:null;return{st,duty:st==='P'?(duty==null?1:duty):0}}
+function tpMonth(e){let p=0,duties=0,dbl=0,na=0;for(let d=1;d<=e[5].length;d++){const x=tpDay(e,d);if(x.st==='P'){p++;duties+=x.duty;if(x.duty>=2)dbl++}else if(x.st==='N')na++}return{p,duties,dbl,na}}
+VIEWS.tpunch=function(){
+  const D=TP.data;
+  const upl=`<div class="upl"><label>📄 Upload trip card sheet (.xlsx)<input type="file" accept=".xlsx,.xls" onchange="tpUpload(this)"></label>${D?'<button class="btn" onclick="tpExport(\'day\')">⬇ Export day</button><button class="btn" onclick="tpExport(\'month\')">⬇ Export month</button><button class="btn" style="color:var(--red)" onclick="tpClear()">🗑 Remove sheet</button>':''}</div>`;
+  if(!D||!D.emps.length){$('view').innerHTML=`<div class="plsrc">${upl}<span class="muted" style="font-size:11.5px">${esc(TP.src)}</span></div><div class="card"><div class="bd"><div class="empty">Upload the trip card sheet to see each operator's and driver's trip card punch day by day. Columns needed: EMPLOYEE ID, NAME, DESIGNATION and one column per date (P / 0) with the duty count next to it.</div></div></div>`;return}
+  const N=D.days;if(!TP.day||TP.day>N)TP.day=N;const d=TP.day;const mon=(D.month||'').split('-');const dn=x=>mon.length===2?['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(+mon[0],+mon[1]-1,x).getDay()]:'';
+  const all=D.emps.map(e=>({e,x:tpDay(e,d),m:tpMonth(e)}));const sheets=[...new Set(D.emps.map(e=>e[7]).filter(Boolean))].sort();
+  const k={tot:all.length,p:all.filter(r=>r.x.st==='P').length,z:all.filter(r=>r.x.st==='0').length,dbl:all.filter(r=>r.x.duty>=2).length,na:all.filter(r=>r.x.st==='N').length,mz:all.filter(r=>!r.m.p).length};
+  const F={ALL:()=>1,P:r=>r.x.st==='P',ZERO:r=>r.x.st==='0',DBL:r=>r.x.duty>=2,NA:r=>r.x.st==='N',MZERO:r=>!r.m.p};
+  const q=TP.q.toLowerCase();const L=all.filter(r=>F[TP.f](r)&&(TP.sheet==='ALL'||r.e[7]===TP.sheet)&&(!q||(r.e[0]+' '+r.e[1]+' '+r.e[2]+' '+r.e[7]).toLowerCase().includes(q)));
+  let dopts='';for(let i=1;i<=N;i++)dopts+=`<option value="${i}" ${i===d?'selected':''}>${pad(i)} ${esc(D.label.split(' ')[0])}${dn(i)?' ('+dn(i)+')':''}</option>`;
+  const card=x=>x.st==='P'?'<b style="color:var(--green)">P</b>':x.st==='N'?'<span class="muted">#N/A</span>':'<span class="tag r">0 · no card</span>';
+  const rows=L.slice(0,TP.limit).map(({e,x,m})=>`<tr class="${x.st==='P'?'':'flag'}"><td><b>${esc(e[0])}</b></td><td><div class="emp"><b>${esc(e[1]||'')}</b><small>${esc(e[2]||'')}</small></div></td><td>${esc(e[7]||'—')}</td>
+    <td>${card(x)}</td><td>${x.st==='P'?x.duty+(x.duty>=2?' <span class="tag a">Double duty</span>':''):'—'}</td><td>${m.p} / ${N}</td><td>${m.duties}</td><td>${m.dbl||'—'}</td><td>${m.p?'':'<span class="tag r">Zero trip card</span>'}</td></tr>`).join('');
+  $('view').innerHTML=`<div class="plsrc"><div class="seg"><button class="on">Trip card · ${esc(D.site)} · ${esc(D.label)}</button></div>${upl}<span class="muted" style="font-size:11.5px">${esc(TP.src)} · ${k.tot} employees</span></div>
+   <div class="kpis">${kpi('g','Trip card present',k.p,`of ${k.tot} on ${pad(d)} ${esc(D.label)}`,'users')}${kpi('r','No trip card',k.z,'card shows 0 that day','alert')}${kpi('a','Double duty',k.dbl,'2 or more duties on the card','ot')}${kpi('b','#N/A on sheet',k.na,'blank / not filled that day','fp')}${kpi('o','Zero trip card in month',k.mz,'no P on any day','clock')}</div>
+   <div class="card" id="tpTable"><div class="hd"><div><h3>Trip card punch — ${pad(d)} ${esc(D.label)}${dn(d)?' ('+dn(d)+')':''}</h3><p>From the uploaded trip card sheet · P = trip card present, 0 = no card, #N/A = not filled · duties = number next to the day · month columns count the whole sheet</p></div><span class="grow"></span>
+     <select class="sel" aria-label="Day" onchange="TP.day=+this.value;TP.limit=200;VIEWS.tpunch()">${dopts}</select>
+     <select class="sel" aria-label="Show" onchange="TP.f=this.value;TP.limit=200;VIEWS.tpunch()">${[['ALL','All employees'],['P','Trip card present'],['ZERO','No trip card'],['DBL','Double duty'],['NA','#N/A on sheet'],['MZERO','Zero trip card in month']].map(([v,t])=>`<option value="${v}" ${TP.f===v?'selected':''}>${t}</option>`).join('')}</select>
+     ${sheets.length>1?`<select class="sel" aria-label="Sheet" onchange="TP.sheet=this.value;TP.limit=200;VIEWS.tpunch()"><option value="ALL">All sheets</option>${sheets.map(v=>`<option ${TP.sheet===v?'selected':''}>${esc(v)}</option>`).join('')}</select>`:''}
+     <input class="search" placeholder="Search ID / name / designation" value="${esc(TP.q)}" onchange="TP.q=this.value;TP.limit=200;VIEWS.tpunch()"></div>
+   <div class="tw"><table class="pl"><thead><tr><th>Emp ID</th><th>Employee</th><th>Sheet</th><th>Trip card</th><th>Duties</th><th>Days P (month)</th><th>Duties (month)</th><th>Double duty days</th><th>Flags</th></tr></thead><tbody>${rows||'<tr><td colspan="9" class="empty">No records</td></tr>'}</tbody></table></div>
+   ${L.length>TP.limit?`<div class="bd"><button class="btn" onclick="TP.limit+=400;VIEWS.tpunch()">Show more (${L.length-TP.limit} left)</button></div>`:`<div class="bd muted">${L.length} record(s)</div>`}</div>`;
+};
+async function tpUpload(input){const f=input.files[0];if(!f)return;
+  try{toast('Reading '+f.name+'…');await loadXLSX();const wb=XLSX.read(await f.arrayBuffer(),{cellDates:true});const D=tpParse(wb);
+    if(!D.emps.length)throw new Error('no EMPLOYEE ID rows with date columns found');
+    TP.data=D;TP.day=null;TP.f='ALL';TP.q='';TP.sheet='ALL';TP.limit=200;TP.src='Uploaded: '+f.name;RC.up.trip={wb,name:f.name};
+    AUDIT.unshift({ts:new Date(),user:R().user,role:R().label,action:`Trip card sheet uploaded (${D.emps.length} employees · ${D.label})`});toast(`Trip card sheet read · ${D.emps.length} employees`);VIEWS.tpunch()}
+  catch(err){toast('Could not read file: '+err.message)}finally{input.value=''}}
+function tpClear(){if(!TP.data)return;const D=TP.data;TP.data=null;TP.day=null;TP.src='No trip card sheet uploaded yet – upload the trip card sheet (.xlsx)';AUDIT.unshift({ts:new Date(),user:R().user,role:R().label,action:`Trip card sheet removed (${D.emps.length} employees · ${D.label})`});toast('Trip card sheet removed from this view');VIEWS.tpunch()}
+function tpExport(scope){const D=TP.data;if(!D)return;const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;const L=[];
+  if(scope==='day'){const d=TP.day;L.push(['Emp ID','Name','Designation','Sheet','Date','Trip card','Duties'].join(','));D.emps.forEach(e=>{const x=tpDay(e,d);L.push([q(e[0]),q(e[1]),q(e[2]),q(e[7]),q(pad(d)+' '+D.label),x.st==='P'?'P':x.st==='N'?'#N/A':'0',x.st==='P'?x.duty:''].join(','))})}
+  else{L.push(['Emp ID','Name','Designation','Sheet',...Array.from({length:D.days},(_,i)=>String(i+1)),'Days P','Duties','Double duty days'].join(','));D.emps.forEach(e=>{const m=tpMonth(e);L.push([q(e[0]),q(e[1]),q(e[2]),q(e[7]),...Array.from({length:D.days},(_,i)=>{const x=tpDay(e,i+1);return x.st==='P'?(x.duty>=2?'P'+x.duty:'P'):x.st==='N'?'#N/A':'0'}),m.p,m.duties,m.dbl].join(','))})}
+  const b=new Blob([L.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`trip_card_punch_${scope==='day'?pad(TP.day)+'_':''}${D.label.replace(/\s/g,'_')}.csv`;a.click();toast(scope==='day'?'Day exported':'Month exported')}
 async function rcUpload(kind,input){const f=input.files[0];if(!f)return;
   try{toast('Reading '+f.name+'…');await loadXLSX();const wb=XLSX.read(await f.arrayBuffer(),{cellDates:true});RC.up[kind]={wb,name:f.name};
     if(RC.up.trip&&RC.up.bio){RC.data=rcParse(RC.up.trip.wb,RC.up.bio.wb);RC.rows=null;RC.ver={};RC.src=`Uploaded: ${RC.up.trip.name} + ${RC.up.bio.name}`;RC.f='mismatch';toast(`Compared ${RC.data.emps.length} employees`)}

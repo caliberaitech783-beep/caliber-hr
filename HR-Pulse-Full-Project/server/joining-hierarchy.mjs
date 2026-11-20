@@ -1,31 +1,39 @@
 import {randomUUID} from 'node:crypto';
 import {grantedMenus} from './modules.mjs';
 import {assignedSites} from './scope.mjs';
+import {withSiteStaffRouting} from './site-staff-routing.mjs';
 const step=(stage,label,suggested)=>({stage,label,suggested,approvers:[]});
 const driverTrainer=()=>step(1,'Driver Trainer','To be confirmed');
 const officeHr=()=>step(2,'Office HR — either one','To be confirmed');
 const corporateOffice='Corporate Office';
-const wclSite=(code,name)=>({code,name,group:'WCL',steps:[step(1,'HR Manager','To be confirmed'),step(1,'Project Manager','To be confirmed'),driverTrainer(),officeHr(),step(2,'HR Manager — either one','To be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]});
+const wclSite=(code,name)=>({code,name,group:'WCL',steps:[step(1,'HR Manager','To be confirmed'),driverTrainer(),step(1,'Project Manager','To be confirmed'),officeHr(),step(2,'HR Manager — either one','To be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]});
 export const hierarchyTemplates=[
- {code:'NCL-DUDE',name:'Dudhichua OB East',group:'NCL',steps:[step(1,'HR Manager','Ankit Tiwari'),step(1,'Project Manager','Ranjit Das'),driverTrainer(),officeHr(),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
- {code:'NCL-DUDW',name:'Dudhichua OB West',group:'NCL',steps:[step(1,'HR Manager','Yogesh Laxman Sathe'),step(1,'Project Manager','Arun Kumar Soni'),driverTrainer(),officeHr(),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
- {code:'NCL-JAYANT',name:'Jayant OB East',group:'NCL',steps:[step(1,'HR Manager','Amit Singh'),step(1,'Project Manager','Md. Gulnawaz'),driverTrainer(),officeHr(),step(2,'HR Manager — either one','Vinod — to be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]},
- {code:'NCL-JAYANT-W',name:'Jayant OB West',group:'NCL',steps:[step(1,'HR Manager','To be confirmed'),step(1,'Project Manager','To be confirmed'),driverTrainer(),officeHr(),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
+ {code:'NCL-DUDE',name:'Dudhichua OB East',group:'NCL',steps:[step(1,'HR Manager','Ankit Tiwari'),driverTrainer(),step(1,'Project Manager','Ranjit Das'),officeHr(),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
+ {code:'NCL-DUDW',name:'Dudhichua OB West',group:'NCL',steps:[step(1,'HR Manager','Yogesh Laxman Sathe'),driverTrainer(),step(1,'Project Manager','Arun Kumar Soni'),officeHr(),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
+ {code:'NCL-JAYANT',name:'Jayant OB East',group:'NCL',steps:[step(1,'HR Manager','Amit Singh'),driverTrainer(),step(1,'Project Manager','Md. Gulnawaz'),officeHr(),step(2,'HR Manager — either one','Vinod — to be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]},
+ {code:'NCL-JAYANT-W',name:'Jayant OB West',group:'NCL',steps:[step(1,'HR Manager','To be confirmed'),driverTrainer(),step(1,'Project Manager','To be confirmed'),officeHr(),step(2,'HR Manager — either one','Vinod Dhoke / Vinod Pinjarkar'),step(2,'Final approval — any one','CMD / Director / VP')]},
  wclSite('WCL-SASTI','Sasti OB'),
  wclSite('WCL-DHOPTALA','Dhoptala OB'),
  wclSite('WCL-GAURI','Gauri Pauni OB'),
  wclSite('WCL-MAJRI','Majri OB'),
  wclSite('WCL-LALPETH','Hindustan Lalpeth OC'),
- {code:'CMLL-HO',name:'Chandrapur HO',group:'Chandrapur HO',steps:[step(1,'HR Executive','To be confirmed'),step(1,'HR Manager','To be confirmed'),step(2,'Final approval — any one','CMD / Director / VP')]},
+ {code:'CMLL-HO',name:'Chandrapur HO',group:'Chandrapur HO',steps:[step(1,'HR Executive','Monika Wadhai'),step(1,'HR Manager','Virat Singh'),step(2,'Final approval — any one','CMD / Director / VP')]},
  {code:'CMLL-CO',name:'Nagpur Office',group:corporateOffice,steps:[step(1,'HR Executive','Mayuri Umate'),step(1,'HR Manager','Vinod Pinjarkar'),step(2,'Final approval — any one','Mohit Chadda / Manish Chadda / Rahul Chadda / Honey Sir — CMD / Director / VP')]}
 ];
 export const currentHierarchy=data=>data?.code==='NCL-JAYANT'&&data.steps?.[0]?.label==='HR Executive'?{...data,steps:data.steps.slice(1)}:data?.code==='CMLL-CO'&&data.steps?.some(s=>s.label==='HOD')?{...data,steps:data.steps.filter(s=>s.label!=='HOD')}:data;
-// Saved NCL hierarchies predate Driver Trainer. The editor shows the new step after Project Manager;
+// Saved NCL hierarchies predate Driver Trainer. The editor shows the new step before Project Manager;
 // approvals keep the saved steps until a Driver Trainer is assigned and saved.
 // Saved NCL/WCL hierarchies predate the Office HR step. The editor shows it before "HR Manager — either one";
 // approvals keep the saved steps until an Office HR is assigned and saved.
 export const withOfficeHr=data=>{const steps=data?.steps;if(!['NCL','WCL'].includes(data?.group)||!Array.isArray(steps)||steps.some(s=>s.label==='Office HR — either one'))return data;const index=steps.findIndex(s=>s.label==='HR Manager — either one');return index>=0?{...data,steps:[...steps.slice(0,index),officeHr(),...steps.slice(index)]}:data;};
-export const withDriverTrainer=data=>{const steps=data?.steps;if(!['NCL','WCL'].includes(data?.group)||!Array.isArray(steps)||steps.some(s=>s.label==='Driver Trainer'))return data;const index=steps.findIndex(s=>s.label==='Project Manager')+1;return index?{...data,steps:[...steps.slice(0,index),driverTrainer(),...steps.slice(index)]}:data;};
+export const withDriverTrainer=data=>{
+ const steps=data?.steps;if(!['NCL','WCL'].includes(data?.group)||!Array.isArray(steps))return data;
+ const manager=steps.findIndex(s=>s.label==='Project Manager');if(manager<0)return data;
+ const trainer=steps.findIndex(s=>s.label==='Driver Trainer');if(trainer>=0&&trainer===manager-1)return data;
+ const reordered=steps.filter(s=>s.label!=='Driver Trainer');
+ reordered.splice(reordered.findIndex(s=>s.label==='Project Manager'),0,trainer<0?driverTrainer():steps[trainer]);
+ return {...data,steps:reordered};
+};
 const fail=(m,status=400)=>{throw Object.assign(new Error(m),{status});};
 /* Two hierarchies per site: Driver & Operator (all steps, incl. Driver Trainer) and Office staff (same steps without Driver Trainer).
    officeSteps are stored separately so office staff can have different approvers; when never saved they mirror the driver steps. */
@@ -35,13 +43,13 @@ export function validateHierarchy(input){
  const template=hierarchyTemplates.find(t=>t.code===input.code);if(!template)fail('Choose a supported joining site');
  if(!Array.isArray(input.steps)||input.steps.length!==template.steps.length)fail('Keep all required approval steps');
  const officeTemplate=officeStepsOf(template.steps);let officeSteps=null;
- if(Array.isArray(input.officeSteps)){if(input.officeSteps.length!==officeTemplate.length)fail('Keep all required office-staff approval steps');const seenO=new Set();officeSteps=input.officeSteps.map((s,i)=>{if(!Array.isArray(s.approvers)||s.approvers.length>10)fail('Provide up to 10 usernames per step');const approvers=s.approvers.map(v=>String(v).trim().toLowerCase()).filter(Boolean);if(approvers.some(a=>!/^[-a-z0-9_.@]{1,100}$/.test(a)))fail('Enter valid Pulse usernames');for(const a of approvers){if(seenO.has(a))fail('Each approver must occur in only one office-staff step');seenO.add(a);}if(input.enabled&&(!approvers.length||(officeTemplate[i].stage===1&&approvers.length!==1)))fail(`Office staff step ${i+1} (${officeTemplate[i].label}): ${!approvers.length?'Assign at least one Pulse username':'Assign exactly one Pulse username for this site approval step'}`);return {...officeTemplate[i],approvers};});}
+ if(Array.isArray(input.officeSteps)){if(input.officeSteps.length!==officeTemplate.length)fail('Keep all required office-staff approval steps');const seenO=new Set();const officeInput=withSiteStaffRouting({code:template.code,steps:template.steps,officeSteps:officeTemplate.map((s,i)=>({...s,approvers:input.officeSteps[i]?.approvers}))},officeStepsOf).officeSteps;officeSteps=officeInput.map((s,i)=>{if(!Array.isArray(s.approvers)||s.approvers.length>10)fail('Provide up to 10 usernames per step');const approvers=s.approvers.map(v=>String(v).trim().toLowerCase()).filter(Boolean);if(approvers.some(a=>!/^[-a-z0-9_.@]{1,100}$/.test(a)))fail('Enter valid Pulse usernames');for(const a of approvers){if(seenO.has(a))fail('Each approver must occur in only one office-staff step');seenO.add(a);}if(input.enabled&&(!approvers.length||(officeTemplate[i].stage===1&&approvers.length!==1)))fail(`Office staff step ${i+1} (${officeTemplate[i].label}): ${!approvers.length?'Assign at least one Pulse username':'Assign exactly one Pulse username for this site approval step'}`);return {...officeTemplate[i],approvers};});}
  const seen=new Set();const steps=input.steps.map((s,i)=>{if(!Array.isArray(s.approvers)||s.approvers.length>10)fail('Provide up to 10 usernames per step');const approvers=s.approvers.map(v=>String(v).trim().toLowerCase()).filter(Boolean);if(approvers.some(a=>!/^[-a-z0-9_.@]{1,100}$/.test(a)))fail('Enter valid Pulse usernames');for(const a of approvers){if(seen.has(a))fail('Each approver must occur in only one step');seen.add(a);}if(input.enabled&&(!approvers.length||(template.steps[i].stage===1&&approvers.length!==1)))fail(`Step ${i+1} (${template.steps[i].label}): ${!approvers.length?'Assign at least one Pulse username':'Assign exactly one Pulse username for this site approval step'}`);return {...template.steps[i],approvers};});
  return {...template,steps,...(officeSteps?{officeSteps}:{}),enabled:input.enabled===true};
 }
 export const approvalSteps=a=>a.approval_steps?.length?a.approval_steps:a.approvers.map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
 export function nextApproval(approval,actor,decision){const steps=approvalSteps(approval);if(approval.requested_by===actor||!steps[approval.stage]?.approvers.includes(actor))fail('Only a current assigned approver may decide; self-approval is prohibited',403);const stage=approval.stage+1;return {stage,state:decision==='REJECTED'?'REJECTED':stage===steps.length?'APPROVED':'PENDING'};}
-export async function employeeHierarchy(db,siteId,{driverOperator=true}={}){if(!siteId)return null;const site=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId])).rows[0];if(!hierarchyTemplates.some(t=>t.code===site?.code))return null;const row=(await db.query("SELECT * FROM hr_records WHERE kind='joiningHierarchies' AND code=$1 AND status='ACTIVE'",[site.code])).rows[0];if(!row){if(site.code.startsWith('WCL-')||site.code==='CMLL-HO')return null;fail('Assign approver usernames and enable this site hierarchy before submitting',409);}const data=withOfficeHr(withDriverTrainer(currentHierarchy(row.data)));return {...row,data:driverOperator?data:{...data,steps:data.officeSteps||officeStepsOf(data.steps)}};}
+export async function employeeHierarchy(db,siteId,{driverOperator=true}={}){if(!siteId)return null;const site=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId])).rows[0];if(!hierarchyTemplates.some(t=>t.code===site?.code))return null;const row=(await db.query("SELECT * FROM hr_records WHERE kind='joiningHierarchies' AND code=$1 AND status='ACTIVE'",[site.code])).rows[0];if(!row){if(site.code.startsWith('WCL-')||site.code==='CMLL-HO')return null;fail('Assign approver usernames and enable this site hierarchy before submitting',409);}const data=withSiteStaffRouting(withOfficeHr(withDriverTrainer(currentHierarchy(row.data))),officeStepsOf);return {...row,data:driverOperator?data:{...data,steps:data.officeSteps||officeStepsOf(data.steps)}};}
 export function createHierarchies(pool){
  function access(profile,write=false){if(!grantedMenus(profile).has('Master Configuration'))fail('Master Configuration permission required',403);if(write&&assignedSites(profile)!==null)fail('Hierarchy editing requires unrestricted site access',403);}
  return {
@@ -50,7 +58,7 @@ export function createHierarchies(pool){
   const rows=(await pool.query("SELECT * FROM hr_records WHERE kind='joiningHierarchies'")).rows;
   return {canWrite:assignedSites(profile)===null,rows:hierarchyTemplates.map(t=>{
    const r=rows.find(r=>r.code===t.code);
-   const data=withOfficeHr(withDriverTrainer(currentHierarchy(r?.data)));
+   const data=withSiteStaffRouting(withOfficeHr(withDriverTrainer(currentHierarchy(r?.data??{...t,steps:t.steps}))),officeStepsOf);
    const group=data?.group==='CO/HO'?corporateOffice:data?.group??t.group;
    return {...t,...data,officeSteps:data?.officeSteps||officeStepsOf(data?.steps||t.steps),group,id:r?.id,version:r?.version||0,enabled:r?.status==='ACTIVE'};
   })};

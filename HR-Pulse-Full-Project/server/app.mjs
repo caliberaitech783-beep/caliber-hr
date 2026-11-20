@@ -31,6 +31,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       }
       if(path==='/api/telegram/webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req)));
       if(path==='/api/telegram/joining-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'joining'));
+      if(path==='/api/telegram/nagpur-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'nagpur'));
       if(path==='/api/telegram/trial-webhook'&&req.method==='POST')return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),'trial'));
       const attendanceRoute=path.startsWith('/api/attendance/')?path.slice('/api/attendance/'.length):null;
       // The site bridge PC is not a Pulse user; it authenticates with its own key.
@@ -49,7 +50,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const masterImport=path.match(/^\/api\/import\/(assets|assetCategories|assetEmployees|assetAllocationLog|assetExitClearances|holidays|leaveTypes|leavePolicies|leavePeriods|leaveAllocations|leaveRequests|leaveEncashments|leaveBlocks)$/);
       const decision=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/decision$/);
       const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/transfer-flows':'transferFlows','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
-      if(!telegramRoute&&!attendanceRoute&&!assetRoute&&!documents&&!employeeDocuments&&!employeeMasterRegister&&!deletion&&!masterImport&&!record&&!decision&&!simple[path]&&!['/api/import/employees','/api/import/trial-employee','/api/aadhaar/scan','/api/letters/email','/api/employee-code/next'].includes(path))return send(404,{error:'Not found'});
+      if(path!=='/api/payroll'&&!telegramRoute&&!attendanceRoute&&!assetRoute&&!documents&&!employeeDocuments&&!employeeMasterRegister&&!deletion&&!masterImport&&!record&&!decision&&!simple[path]&&!['/api/import/employees','/api/import/trial-employee','/api/aadhaar/scan','/api/letters/email','/api/employee-code/next'].includes(path))return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
       if(!profile)return send(401,{error:'Sign in with your Caliber Pulse account to continue'});
@@ -69,7 +70,8 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       }
       if(!service)throw problem('Service unavailable',503);
       let result;
-      if(telegramRoute&&['GET','POST'].includes(req.method))result=await service.telegramApi(profile,telegramRoute,req.method,req.method==='POST'?await body(req):{});
+      if(path==='/api/payroll'&&['GET','POST'].includes(req.method))result=await service.payroll(profile,req.method,url.searchParams,req.method==='POST'?await body(req):{});
+      else if(telegramRoute&&['GET','POST'].includes(req.method))result=await service.telegramApi(profile,telegramRoute,req.method,req.method==='POST'?await body(req,12_000_000):{});
       else if(attendanceRoute&&['GET','POST'].includes(req.method))result=await service.attendanceApi(profile,attendanceRoute,req.method,req.method==='POST'?await body(req):{},url.searchParams,token);
       else if(assetRoute&&['GET','POST'].includes(req.method))result=await service.assetApi(profile,assetRoute,req.method,req.method==='POST'?await body(req):{},url.searchParams);
       else if(documents&&['GET','POST'].includes(req.method))result=await service.holidayDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);
@@ -82,6 +84,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       else if(deletion&&req.method==='POST')result=deletion[2]==='preview'?await service.deletePreview(profile,deletion[1]):await service.deleteRecords(profile,deletion[1],await body(req));
       else if(path==='/api/hierarchies'&&req.method==='POST')result=await service.saveHierarchy(profile,await body(req));
       else if(path==='/api/transfer-flows'&&req.method==='POST')result=await service.saveTransferFlow(profile,await body(req));
+      else if(path==='/api/request-preview'&&req.method==='GET')result=await service.requestPreview(profile,url.searchParams);
       else if(simple[path]&&req.method==='GET')result=await service[simple[path]](profile);
       else if(record){
         const [,kind,id,action]=record;

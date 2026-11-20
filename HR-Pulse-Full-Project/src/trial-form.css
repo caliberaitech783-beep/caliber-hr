@@ -4,7 +4,7 @@
  --tf-ink:#1d1b26;--tf-muted:#6a6779;--tf-line:#d9d6e6;--tf-border:#a9a4c2;
  --tf-sunk:#f8f7fc;--tf-accent:#5b3fd1;--tf-tint:#ece8fc;
  --tf-label-width:200px;
- max-width:1180px;margin:0 auto;display:grid;gap:16px;container-type:inline-size;
+ width:100%;max-width:none;margin:0;display:grid;gap:16px;container-type:inline-size;
  color:var(--tf-ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
 }
 .tf-hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;padding:12px 16px;border:1px solid var(--tf-line);border-radius:10px;background:#fff}

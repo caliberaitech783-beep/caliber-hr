@@ -12,6 +12,12 @@ type Props = {
   disabled?: boolean;
   onBusy?: (busy: boolean) => void;
   showScanInstructions?: boolean;
+  primaryButtonLabel?: string;
+  secondaryDocumentLabel?: string;
+  hideSecond?: boolean;
+  hidePrimary?: boolean;
+  openMenu?: boolean;
+  onMenuChange?: (open: boolean) => void;
 };
 
 const imageTypes = '.jpg,.jpeg,.png,image/jpeg,image/png';
@@ -29,8 +35,12 @@ function usePreview(file?: File) {
 
 export default function AadhaarUploader({
   photo, photo2, onPhoto, onPhoto2, fillDetails, disabled, onBusy, showScanInstructions = true,
+  primaryButtonLabel = 'Upload Aadhar Front Image', secondaryDocumentLabel, hideSecond = false,
+  hidePrimary = false, openMenu, onMenuChange,
 }: Props) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [localMenuOpen, setLocalMenuOpen] = useState(false);
+  const menuOpen=openMenu??localMenuOpen;
+  const setMenuOpen=(open:boolean)=>{setLocalMenuOpen(open);onMenuChange?.(open);};
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const [firstFile, setFirstFile] = useState(photo);
@@ -56,6 +66,10 @@ export default function AadhaarUploader({
     }
     (slot === 1 ? saveFirst : saveSecond)(file);
     setMenuOpen(false);
+    if(slot===2&&secondaryDocumentLabel){
+      setStatus(`${secondaryDocumentLabel} uploaded.`);
+      return;
+    }
     reading.current = true;
     setBusy(true);
     onBusy?.(true);
@@ -82,28 +96,28 @@ export default function AadhaarUploader({
   function remove(index: number) {
     (index === 0 ? saveFirst : saveSecond)(undefined);
     setMenuOpen(false);
-    setStatus(`Aadhaar image ${index + 1} removed.`);
+    setStatus(index===1&&secondaryDocumentLabel?`${secondaryDocumentLabel} removed.`:`Aadhaar image ${index + 1} removed.`);
   }
 
   return <section className="aadhaar-upload">
-    <p>Upload up to two Aadhaar images in JPG, JPEG, PNG, or PDF format.{showScanInstructions &&
+    <p>{secondaryDocumentLabel?`Upload one Aadhaar image and one ${secondaryDocumentLabel} in JPG, JPEG, PNG, or PDF format.`:'Upload up to two Aadhaar images in JPG, JPEG, PNG, or PDF format.'}{showScanInstructions &&
       ' Images and PDFs are sent to Google Gemini to read the details. Use an unlocked PDF up to 1.3 MB. Verify the extracted fields before saving.'}</p>
     <div className="aadhaar-upload-actions">
-      <button disabled={locked} type="button" className="employee-import" aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}><Upload/>Upload Aadhaar Image 1</button>
+      {!hidePrimary&&<button disabled={locked} type="button" className="employee-import" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><Upload/>{primaryButtonLabel}</button>}
       {menuOpen && <div className="aadhaar-source-menu">
         <button disabled={locked} type="button" onClick={() => camera.current?.click()}><Camera/>Camera</button>
         <button disabled={locked} type="button" onClick={() => gallery.current?.click()}><Images/>Gallery / Document</button>
       </div>}
-      <button disabled={locked} type="button" className="employee-import" onClick={() => second.current?.click()}><Upload/>Upload Aadhaar Image 2</button>
+      {!hideSecond&&<button disabled={locked} type="button" className="employee-import" onClick={() => second.current?.click()}><Upload/>{secondaryDocumentLabel?`Upload ${secondaryDocumentLabel}`:'Upload Aadhar Back Image'}</button>}
       <input disabled={locked} ref={camera} className="employee-import-input" aria-label="Capture Aadhaar card" type="file" accept={imageTypes} capture="environment" onChange={event => void select(event, 1)}/>
       <input disabled={locked} ref={gallery} className="employee-import-input" aria-label="Choose Aadhaar card from gallery" type="file" accept={documentTypes} onChange={event => void select(event, 1)}/>
-      <input disabled={locked} ref={second} className="employee-import-input" aria-label="Choose second Aadhaar image" type="file" accept={documentTypes} onChange={event => void select(event, 2)}/>
+      {!hideSecond&&<input disabled={locked} ref={second} className="employee-import-input" aria-label={secondaryDocumentLabel?`Choose ${secondaryDocumentLabel}`:'Choose second Aadhaar image'} type="file" accept={documentTypes} onChange={event => void select(event, 2)}/>}
     </div>
     {previews.map((preview, index) => preview && <div className="aadhaar-preview-row" key={index}>
       {files[index]?.type === 'application/pdf' || /\.pdf$/i.test(files[index]?.name || '')
-        ? <object className="aadhaar-preview aadhaar-pdf-preview" data={preview} type="application/pdf" aria-label={`Uploaded Aadhaar image ${index + 1} PDF preview`}><span>{files[index]?.name}</span></object>
-        : <img className="aadhaar-preview" src={preview} alt={`Uploaded Aadhaar image ${index + 1} preview`}/>}
-      <button disabled={locked} type="button" className="aadhaar-remove" onClick={() => remove(index)}><Trash2/>Remove Image {index + 1}</button>
+        ? <object className="aadhaar-preview aadhaar-pdf-preview" data={preview} type="application/pdf" aria-label={index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} PDF preview`:`Uploaded Aadhaar image ${index + 1} PDF preview`}><span>{files[index]?.name}</span></object>
+        : <img className="aadhaar-preview" src={preview} alt={index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} preview`:`Uploaded Aadhaar image ${index + 1} preview`}/>}
+      <button disabled={locked} type="button" className="aadhaar-remove" onClick={() => remove(index)}><Trash2/>{index===1&&secondaryDocumentLabel?`Remove ${secondaryDocumentLabel}`:`Remove Image ${index + 1}`}</button>
     </div>)}
     {status && <p className="aadhaar-status" role="status">{status}</p>}
   </section>;

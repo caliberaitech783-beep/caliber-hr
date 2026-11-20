@@ -58,7 +58,7 @@ it('saves the calendar choice in its own family row and respects scanned DOB loc
 it('shows a separate age column beside each family DOB in approved reviews',()=>{
  today();render(<LocalEmployeeReviewForm record={{id:'e',code:'E',name:'Employee',data:{officeData:{'Family Date of Birth':'2000-03-15 | 2025-10-05'}}}} owner="test" readOnly/>);
  fireEvent.click(screen.getByRole('button',{name:'Family Details'}));
- expect(screen.getAllByRole('columnheader').map(header=>header.textContent)).toEqual(['No.','Family Member Name','Relationship','Family Date of Birth','Age','Contact No.','Occupation','Dependent? (Y/N)']);
+ expect(screen.getAllByRole('columnheader').map(header=>header.textContent)).toEqual(['No.','Family Member Name','Relationship','Aadhaar Number','Family Date of Birth','Age','Contact No.','Occupation','Dependent? (Y/N)']);
  expect(screen.getByLabelText('Age 1').textContent).toBe('26 years, 7 months, 22 days');
  expect(screen.getByLabelText('Age 2').textContent).toBe('1 year, 1 month, 1 day');
  expect((screen.getByLabelText('Family Date of Birth 1') as HTMLInputElement).readOnly).toBe(true);

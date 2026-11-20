@@ -16,20 +16,24 @@ it('opens the full trial workflow directly from the Trial Form menu',async()=>{
  const profile={name:'HR user',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
  window.location.hash='Employee%20Master';
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
- vi.stubGlobal('fetch',async()=>Response.json({profile,modules:{}}));
+ vi.stubGlobal('fetch',async(url:string)=>Response.json(url.endsWith('/trial-trainer')?{roles:['hr']}: {profile,modules:{}}));
  const {container}=render(<App/>);
- fireEvent.change(await screen.findByRole('combobox',{name:/^Department$/}),{target:{value:'Driver'}});
+ fireEvent.click((await screen.findAllByRole('button',{name:'OB / COAL'}))[0]);
  fireEvent.click(await screen.findByRole('button',{name:/^Trial Form$/}));
- await screen.findByRole('button',{name:'Upload Aadhaar Image 1'});
+ await screen.findByRole('button',{name:'Upload A/D'},{timeout:5000});
+ expect(container.querySelector('[aria-label="Trial workflow local preview"]')?.shadowRoot?.querySelector('#myName')).toHaveValue('HR user');
  expect(screen.queryByRole('group',{name:'Trial Form views'})).toBeNull();
  const preview=container.querySelector('[aria-label="Trial workflow local preview"]')?.shadowRoot;
- expect(preview?.querySelector('#tabs button[aria-pressed="true"]')).toHaveTextContent('Upload Aadhaar');
+ expect(preview?.querySelector('#tabs button[aria-pressed="true"]')).toHaveTextContent('Upload Aadhaar Card & Driving License');
  const stages=preview?.querySelector('#pipe');
  expect(stages).toHaveAttribute('hidden');
  expect(Array.from(stages?.querySelectorAll('.l')??[],label=>label.textContent))
   .toEqual(['Trial pending','Completed','Rejected']);
- expect(screen.getByRole('button',{name:'Upload Aadhaar Image 1'})).toBeEnabled();
- expect(screen.getByRole('button',{name:'Upload Aadhaar Image 2'})).toBeEnabled();
+ expect(screen.getByRole('button',{name:'Upload A/D'})).toBeEnabled();
+ fireEvent.click(screen.getByRole('button',{name:'Upload A/D'}));
+ expect(screen.getByRole('button',{name:'Upload Aadhaar Image'})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Upload Front Driving License Image'})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Upload Back Driving License Image'})).toBeInTheDocument();
  expect(Array.from(preview?.querySelectorAll('#tabs button')??[],button=>button.getAttribute('data-tab')))
   .toEqual(['aadhaar','hr','trainer','approve','overview']);
  for(const tab of ['hr','trainer','approve','overview']){
@@ -46,7 +50,7 @@ it('finds candidates saved under the original sign-in and current HR account key
  const currentProfile={...profile,name:'Configured HR user',actor:'testuser'};
  window.location.hash='Employee%20Master';
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
- vi.stubGlobal('fetch',async(url:string)=>Response.json({profile:url.endsWith('/config')?currentProfile:profile,modules:{}}));
+ vi.stubGlobal('fetch',async(url:string)=>Response.json(url.endsWith('/trial-trainer')?{roles:['hr']}:{profile:url.endsWith('/config')?currentProfile:profile,modules:{}}));
  vi.spyOn(joiningDrafts,'listJoiningDrafts').mockResolvedValue([]);
  const saveDraft=vi.spyOn(joiningDrafts,'saveJoiningDraft').mockResolvedValue(undefined);
  const writeStorage=Storage.prototype.setItem;
@@ -60,7 +64,7 @@ it('finds candidates saved under the original sign-in and current HR account key
   dl:'DL123',dlValid:'',referredBy:'',employer:'',batch:'',createdAt:'2026-11-12',trialDate:'2026-11-12T10:00',
   photo:'',post:'Driver',experience:'',vehicles:['Excavator'],otherVehicle:'',
   docs:Object.fromEntries(DOCS.map(([key])=>[key,{seen:'',remarks:''}])) as Trial['docs'],
-  history:[{role:'director',action:'Approved',by:'Sample Director',at:'2026-11-12'}],
+  history:(['pm','ohr','rhr','director'] as const).map(role=>({role,action:'Approved',by:'Sample Approver',at:'2026-11-12'})),
   outcome:{at:'2026-11-12',result:'PASS',post:'Driver',machine:'Excavator',reason:'',trainer:'Sample Trainer',remarks:''},
  };
  const failed={...trial,id:'failed',formNo:'TF/2026-27/0002',result:'FAIL',name:'Failed trial'};
@@ -72,10 +76,11 @@ it('finds candidates saved under the original sign-in and current HR account key
  localStorage.setItem(key('other'),JSON.stringify([other]));
  const {container}=render(<App/>);
  await screen.findAllByText('Configured HR user');
- fireEvent.change(await screen.findByRole('combobox',{name:'Department'}),{target:{value:'Driver'}});
+ fireEvent.click((await screen.findAllByRole('button',{name:'OB / COAL'}))[0]);
  fireEvent.click(await screen.findByRole('button',{name:'Trial Form'}));
- await screen.findByRole('button',{name:'Upload Aadhaar Image 1'});
+ await screen.findByRole('button',{name:'Upload A/D'},{timeout:5000});
  const preview=container.querySelector('[aria-label="Trial workflow local preview"]')!.shadowRoot!;
+ await waitFor(()=>expect(preview.querySelector('#v-aadhaar')).not.toHaveAttribute('hidden'));
  fireEvent.click(preview.querySelector('[data-tab="overview"]')!);
  expect(preview.querySelector('#ovList')).toHaveTextContent(trial.name);
  expect(preview.querySelector('#ovList')).toHaveTextContent(failed.name);
@@ -103,9 +108,35 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  render(<App/>);
  await screen.findByRole('button',{name:'Attendance Management'});
  const sidebar=screen.getByRole('complementary');
- expect(within(sidebar).getByRole('button',{name:'Leave/OD Management'})).toBeTruthy();
- fireEvent.click(screen.getByRole('button',{name:'Attendance Management'}));
+ const smartSearch=within(sidebar).getByLabelText('Smart search navigation');
+ fireEvent.keyDown(window,{key:'k',ctrlKey:true});
+ await waitFor(()=>expect(document.activeElement).toBe(smartSearch));
+ fireEvent.change(smartSearch,{target:{value:'Payroll'}});
+ expect(within(sidebar).getByRole('button',{name:'Payroll Management'})).toBeTruthy();
+ expect(within(sidebar).queryByRole('button',{name:'Dashboard'})).toBeNull();
+ fireEvent.change(smartSearch,{target:{value:''}});
+ const autoHide=within(sidebar).getByRole('switch',{name:'Auto-hide Off'});
+ fireEvent.click(autoHide);
+ expect(autoHide).toHaveAttribute('aria-checked','true');
+ expect(document.querySelector('.app')).toHaveClass('auto-hide');
+ const temperature=screen.getByRole('button',{name:'Toggle temperature unit'});
+ expect(temperature).toHaveTextContent('(28°C) 81.9°F');
+ fireEvent.click(temperature);
+ expect(temperature).toHaveTextContent('(81.9°F) 28°C');
+ expect(screen.getByRole('button',{name:'Go back'})).toBeTruthy();
+ expect(document.querySelector('.day-scene')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Notifications'}));
+ expect(await screen.findByText('No new notifications.')).toBeTruthy();
+ expect(within(sidebar).getByRole('button',{name:'Leave / OD / Gatepass'})).toBeTruthy();
+ fireEvent.click(within(sidebar).getByRole('button',{name:'Attendance Management'}));
  expect(screen.getByRole('heading',{name:'Attendance Management'})).toBeTruthy();
+ const attendanceMenu=within(sidebar).getByLabelText('Attendance Management submenus');
+ for(const group of ['Attendance fetch','Attendance regularization','Shift management','Settings'])expect(within(attendanceMenu).getByText(group)).toBeTruthy();
+ for(const item of ['Biometric integration','Trip card and logbook','Late come / early going','OD (on duty)','Miss punch','Gate pass','Overtime','Weekly off and holiday','Shift roster','Monthly attendance register','Weekly and daily attendance register','Site-wise attendance','HR policy · attendance'])expect(within(attendanceMenu).getByRole('button',{name:item})).toBeTruthy();
+ fireEvent.click(within(attendanceMenu).getByRole('button',{name:'Monthly attendance register'}));
+ expect(screen.getByRole('heading',{name:'Monthly attendance register'})).toBeTruthy();
+ expect(within(attendanceMenu).getByRole('button',{name:'Monthly attendance register'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(within(sidebar).getByRole('button',{name:'Employee Master'}));
  fireEvent.click(screen.getByRole('button',{name:'Employee Management'}));
  expect(screen.getByRole('button',{name:'Employee Management'}).getAttribute('aria-pressed')).toBe('true');
  fireEvent.click(screen.getByRole('button',{name:'Payroll Management'}));
@@ -171,7 +202,7 @@ it.each([true,false])('loads only the HR employee register when the configuratio
   vi.stubGlobal('fetch',fetchMock);
   render(<App/>);
   expect(await screen.findByRole('button',{name:'Approval Master'})).toBeTruthy();
-  await screen.findByRole('heading',{name:'Joining Approval Hierarchy'});
+  await screen.findByRole('heading',{name:'Trial Hierarchy'});
   fireEvent.click(screen.getByRole('button',{name:'Leave'}));
   await screen.findByRole('heading',{name:'Leave Approval Flow'});
   expect(await screen.findByRole('button',{name:'Save leave flow'})).toBeTruthy();
@@ -179,8 +210,8 @@ it.each([true,false])('loads only the HR employee register when the configuratio
   fireEvent.click(screen.getByRole('button',{name:'OD'}));
   expect(screen.getByRole('heading',{name:'OD Approval Flow'})).toBeTruthy();
   expect(await screen.findByRole('button',{name:'Save OD flow'})).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:'Hierarchy'}));
-  await screen.findByRole('heading',{name:'Joining Approval Hierarchy'});
+  fireEvent.click(screen.getByRole('button',{name:'Trial Hierarchy'}));
+  await screen.findByRole('heading',{name:'Trial Hierarchy'});
   window.location.hash='';
  });
 
@@ -216,4 +247,32 @@ it('returns to sign-in when the HR API rejects a saved session',async()=>{
  render(<App/>);
  await screen.findByRole('button',{name:'Sign in'});
  await waitFor(()=>expect(sessionStorage.getItem('hrPulseSession')).toBeNull());
+});
+
+it('places both settings sections around reports and opens their module chips',async()=>{
+ const profile={name:'HR admin',actor:'admin',permissions:{application:'HR',hrDesktopAccess:['Master Configuration','Reports & MIS','Audit Logs','Others']}};
+ const register={title:'Audit register',menu:'Compliance & Statutory',fields:[],canWrite:true};
+ const other = (category:string,title:string) => ({...register,menu:'Others',category,title});
+ const modules={complianceAuditRegister:register,contractorManpower:other('Contractor Management','Contractor Wise Manpower'),
+   laptopAllocations:other('Asset Allocations','Laptop'),ppeAllocations:other('Asset Allocations','PPE')};
+ window.location.hash=encodeURIComponent('Administration & Settings');
+ sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
+ vi.stubGlobal('fetch',async(input:RequestInfo|URL)=>new Response(JSON.stringify(String(input).includes('/config')?{profile,modules}:{rows:[],total:0,pageSize:50})));
+ render(<App/>);
+ const chips=await screen.findByRole('group',{name:'Administration & Settings modules'});
+ expect(within(chips).getAllByRole('button')).toHaveLength(11);
+ fireEvent.click(within(chips).getByRole('button',{name:'Access permission'}));
+ expect(await screen.findByRole('heading',{name:'Access permission'})).toBeVisible();
+ const sidebar=within(screen.getByRole('navigation'));
+ const names=sidebar.getAllByRole('button').map(button=>button.title).filter(Boolean);
+ expect(names.slice(-5)).toEqual(['Compliance & Statutory','Reports & MIS','Audit Logs','Administration & Settings','Others']);
+ fireEvent.click(sidebar.getByRole('button',{name:'Compliance & Statutory'}));
+ expect(await screen.findByRole('button',{name:'Audit register'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(sidebar.getByRole('button',{name:'Others'}));
+ expect(await screen.findByRole('heading',{name:'Contractor Wise Manpower'})).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Asset Allocations'}));
+ expect(screen.getByRole('heading',{name:'Laptop'})).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'PPE'}));
+ expect(screen.getByRole('heading',{name:'PPE'})).toBeVisible();
+ window.location.hash='';
 });

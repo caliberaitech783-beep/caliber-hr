@@ -3,11 +3,17 @@ import {act,fireEvent,render,waitFor} from '@testing-library/react';
 import {createElement} from 'react';
 import {utils,write} from 'xlsx';
 import TrialWorkflowPreview from './TrialWorkflowPreview';
-import type {PrepareJoining} from './mount';
+import {sameDocumentBirthDate,type PrepareJoining} from './mount';
 import * as trialResultFiles from './trialResultFiles';
+import * as telegramSend from './telegramSend';
+import {reviewTrial} from './reviewQueue';
 import type {Trial} from './records';
 
+vi.mock('./optimizeDrivingVideo',()=>({optimizeDrivingVideo:vi.fn(async(file:File)=>({file,format:{label:'WebM/AV1'}}))}));
+vi.mock('./telegramSend',async()=>({...await vi.importActual<typeof import('./telegramSend')>('./telegramSend'),fetchReviewQueue:vi.fn(async()=>[])}));
+
 const scope = {company:'CMLL',site:'Jayant OB East',region:'NCL',group:'OB / COAL',name:'Sample Signer',owner:'sample',department:'Driver'};
+const hierarchyTrainer={roles:['hr','trainer','pm','ohr','rhr','director'],actor:'sajadali',name:'Sajad Ali',site:'Jayant OB East'};
 let dispose: (()=>void)|undefined;
 function setup(overrides: Partial<typeof scope> = {},onCleared?: PrepareJoining) {
   dispose?.();
@@ -34,6 +40,177 @@ afterEach(()=>{
 });
 
 describe('Trial workflow preview',()=>{
+  it('sends a Part 1 form that never reached the server again and takes the number the server kept',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    const key='hrPulse.localTrialWorkflow.v1:'+JSON.stringify([scope.owner,scope.company,scope.site]);
+    const unsent={id:'local-1',formNo:'TF/2026-27/0001',stage:'trainer',result:'',site:scope.site,name:'Vishal Suresh Jadhao',father:'',dob:'',mobile:'1234567894',aadhaar:'',address:'',dl:'',dlValid:'',referredBy:'',employer:'',batch:'',createdAt:'2026-11-20T06:13:00Z',trialDate:'2026-11-20T11:43',photo:'',post:'Driver',experience:'',vehicles:['Water Tanker'],otherVehicle:'',docs:{dl:{seen:'Yes',remarks:''},hemm:{seen:'',remarks:''},aadhaar:{seen:'',remarks:''},medical:{seen:'Yes',remarks:''},exp:{seen:'',remarks:''}},history:[{role:'hr',by:'Ankit',at:'2026-11-20T06:13:00Z',action:'Submitted Part 1'}]};
+    localStorage.setItem(key,JSON.stringify([unsent]));
+    const request=vi.spyOn(window,'fetch').mockImplementation(async url=>Response.json(
+      String(url).endsWith('/trial-part1')?{batchId:'',formNos:['TF/2026-27/0009'],telegram:{message:'',recipients:1,connected:[]}}:{...hierarchyTrainer,roles:['hr']}));
+    setup();
+    await waitFor(()=>expect(JSON.parse(localStorage.getItem(key)||'[]')[0]).toMatchObject({formNo:'TF/2026-27/0009',sent:true}));
+    const part1=request.mock.calls.filter(([url])=>String(url).endsWith('/trial-part1'));
+    expect(part1).toHaveLength(1);
+    expect(JSON.parse(String(part1[0][1]?.body)).candidates[0]).toMatchObject({formNo:'TF/2026-27/0001',clientId:'local-1'});
+  });
+  it('shows the admin trial overview before selecting a site without enabling actions',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    vi.spyOn(window,'fetch').mockResolvedValue(Response.json({roles:[],overview:true,name:''}));
+    const {el}=setup({site:'',region:''});
+    await waitFor(()=>expect(el('#v-overview').hidden).toBe(false));
+    expect(el('#role')).toHaveValue('observer');
+    expect(el('#ovList')).toHaveTextContent('Select a region and site to view trial records');
+    expect(el('#ovList').querySelector('[data-go="hr"]')).toBeNull();
+    expect(el('#sSubmit')).toBeDisabled();expect(el('#trSubmit')).toBeDisabled();
+  });
+  it.each([
+    {roles:[],overview:true,option:'observer',panel:'overview'},
+    {roles:['hr'],overview:false,option:'hr',panel:'aadhaar'},
+    {roles:['trainer'],overview:false,option:'trainer',panel:'trainer'},
+    {roles:['pm'],overview:false,option:'pm',panel:'approve'},
+    {roles:['ohr'],overview:false,option:'ohr',panel:'approve'},
+    {roles:['rhr'],overview:false,option:'rhr',panel:'approve'},
+    {roles:['director'],overview:false,option:'director',panel:'approve'},
+  ])('shows only assigned roles: $option',async({roles,overview,option,panel})=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    vi.spyOn(window,'fetch').mockResolvedValue(Response.json({...hierarchyTrainer,roles,overview}));
+    const {el,root}=setup();
+    await waitFor(()=>expect(el<HTMLSelectElement>('#role').value).toBe(option));
+    expect(Array.from(el<HTMLSelectElement>('#role').options,item=>item.value)).toEqual([option]);
+    expect(el('#v-'+panel).hidden).toBe(false);
+    if(overview){
+      expect(el('#sSubmit')).toBeDisabled();expect(el('#trSubmit')).toBeDisabled();
+      fireEvent.change(el('#role'),{target:{value:'hr'}});
+      expect(el('#v-overview').hidden).toBe(false);
+      expect(root.querySelector('[data-open-joining]')).toBeNull();
+    }
+  });
+  it('hides the workflow when no role is assigned or access lookup fails',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    vi.spyOn(window,'fetch').mockResolvedValue(Response.json({roles:[],overview:false}));
+    const {el,getByRole}=setup();
+    await waitFor(()=>expect(el('#toast')).toHaveTextContent('not assigned'));
+    for(const panel of ['aadhaar','hr','trainer','approve','overview'])expect(el('#v-'+panel).hidden).toBe(true);
+    expect(getByRole('button',{name:'Upload A/D'})).toBeDisabled();
+  });
+  it.each(['pm','ohr','rhr','director'])('shows only Approvals for %s and blocks candidate navigation',role=>{
+    const {root,el,change,click}=setup();
+    change('#role',role);
+    expect(Array.from(root.querySelectorAll<HTMLButtonElement>('#tabs button')).filter(button=>!button.hidden).map(button=>button.dataset.tab)).toEqual(['approve']);
+    expect(el('#v-approve')).not.toHaveAttribute('hidden');
+    expect(el('#pipe')).toHaveAttribute('hidden');
+    click('[data-tab="overview"]');
+    click('#pipe [data-stage="done"]');
+    expect(el('#v-overview')).toHaveAttribute('hidden');
+    expect(el('#v-approve')).not.toHaveAttribute('hidden');
+    change('#role','hr');
+    expect(el('[data-tab="overview"]')).not.toHaveAttribute('hidden');
+    change('#role','trainer');
+    expect(el('[data-tab="overview"]')).toHaveAttribute('hidden');
+  });
+
+  it('shows only trial results when working as Driver Trainer',()=>{
+    const {el,change}=setup();
+    change('#role','trainer');
+    expect(el('#v-trainer').hidden).toBe(false);
+    expect(el('#pipe').hidden).toBe(true);
+    expect(el('#tabs').hidden).toBe(true);
+    expect(el('[data-tab="overview"]').hidden).toBe(true);
+    for(const section of ['aadhaar','hr','approve','overview'])expect(el('#v-'+section).hidden).toBe(true);
+    change('#role','pm');
+    expect(el('#tabs').hidden).toBe(false);
+    expect(el('[data-tab="overview"]').hidden).toBe(true);
+    expect(el('#v-approve').hidden).toBe(false);
+  });
+  it('requires the referrer and trial conductor',()=>{
+    const {el,click}=setup();
+    click('[data-tab="hr"]');
+    expect(el('#f_ref')).toBeRequired();
+    expect(el('#f_conducted')).toBeRequired();
+  });
+  it('loads a trainer PASS into the PM queue without opening joining details',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    vi.spyOn(window,'fetch').mockResolvedValue(Response.json({...hierarchyTrainer,roles:['pm']}));
+    const row=reviewTrial({id:'shared-trial',formNo:'TF/2026-27/0001',site:scope.site,resultAt:'2026-11-19T12:00:00Z',
+      fields:{Result:'PASS','Name of candidate':'Shared Candidate','Mobile no.':'9876543210'}})!;
+    vi.mocked(telegramSend.fetchReviewQueue).mockResolvedValueOnce([row]);
+    const onCleared=vi.fn();const {el}=setup({},onCleared);
+    await waitFor(()=>expect(el('#apList')).toHaveTextContent('Shared Candidate'));
+    expect(el('#apList')).toHaveTextContent('TF/2026-27/0001');
+    expect(onCleared).not.toHaveBeenCalled();
+    expect(el('#bTrainer')).toHaveTextContent('0');
+  });
+  it('reloads a trainer saved in another tab without losing the candidate draft',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    const request=vi.spyOn(window,'fetch').mockImplementation(async url=>Response.json(
+      String(url).endsWith('/trial-trainer')?{roles:hierarchyTrainer.roles,actor:'',name:'',site:scope.site}:{}
+    ));
+    const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
+    click('[data-tab="hr"]');
+    input('#f_name','Hierarchy Candidate');
+    input('#f_mobile','9876543210');
+    input('#f_conducted','Trial Form Trainer');
+    click('input[name="f_vehicle"][value="Excavator"]');
+    change('#d_dl','Yes');
+    change('#d_medical','Yes');
+    fireEvent.submit(el('#single'));
+    change('#role','trainer');
+    await waitFor(()=>expect(el('[data-f="trainer"]')).toHaveValue('Trial Form Trainer'));
+    request.mockImplementation(async()=>Response.json(hierarchyTrainer));
+    fireEvent.focus(window);
+    await waitFor(()=>expect(el('[data-f="trainer"]')).toHaveValue('Trial Form Trainer'));
+    expect(el('#trList')).toHaveTextContent('Hierarchy Candidate');
+    click('[aria-label="Hierarchy Candidate: PASS"]');
+    const resultPicker=el('#trResultPicker'),videoPicker=el('#trVideoPicker');
+    click('[aria-label="Hierarchy Candidate: Upload trial result"]');
+    request.mockImplementation(async()=>Response.json({...hierarchyTrainer,name:'Updated Trainer'}));
+    fireEvent.focus(window);
+    await waitFor(()=>expect(el('[data-f="trainer"]')).toHaveValue('Trial Form Trainer'));
+    expect(el('#trResultPicker')).toBe(resultPicker);
+    expect(resultPicker.isConnected).toBe(true);
+    fireEvent.change(resultPicker,{target:{files:[new File(['result'],'result.pdf',{type:'application/pdf'})]}});
+    expect(el('#trList')).toHaveTextContent('result.pdf');
+    click('[aria-label="Hierarchy Candidate: Upload Driving Video"]');
+    expect(el('#trVideoPicker')).toBe(videoPicker);
+    fireEvent.change(videoPicker,{target:{files:[new File(['video'],'trial.mp4',{type:'video/mp4'})]}});
+    await waitFor(()=>expect(el('#trList')).toHaveTextContent('trial.mp4'));
+    vi.spyOn(trialResultFiles,'saveTrialResultFiles').mockResolvedValue();
+    request.mockImplementation(async url=>Response.json(String(url).endsWith('/trial-trainer')
+      ?{...hierarchyTrainer,name:'New Trainer',roles:['trainer']}
+      :{telegram:{message:'Sent',recipients:1,connected:[]}}));
+    click('#trSubmit');
+    await waitFor(()=>expect(el('#bTrainer')).toHaveTextContent('0'));
+    const stored=JSON.parse(localStorage.getItem('hrPulse.localTrialWorkflow.v1:'+JSON.stringify([scope.owner,scope.company,scope.site]))!);
+    expect(stored[0].outcome.trainer).toBe('Trial Form Trainer');
+  });
+  it('requires the Aadhaar and driving licence dates of birth to match',()=>{
+    expect(sameDocumentBirthDate('2000-01-02','2000-01-02')).toBe(true);
+    expect(sameDocumentBirthDate('02-01-2000','2000-01-02')).toBe(true);
+    expect(sameDocumentBirthDate('02/01/2000','02.01.2000')).toBe(true);
+    expect(sameDocumentBirthDate('2000-01-02','2001-03-04')).toBe(false);
+    expect(sameDocumentBirthDate('','2000-01-02')).toBe(false);
+    expect(sameDocumentBirthDate('unreadable','2000-01-02')).toBe(false);
+  });
+  it('copies and freezes Trial conducted by from the Part 1 Trial Form',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    const request=vi.spyOn(window,'fetch').mockResolvedValue(Response.json(hierarchyTrainer));
+    const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
+    click('[data-tab="hr"]');
+    input('#f_name','Hierarchy Candidate');
+    input('#f_mobile','9876543210');
+    input('#f_conducted','Trial Form Trainer');
+    click('input[name="f_vehicle"][value="Excavator"]');
+    change('#d_dl','Yes');
+    change('#d_medical','Yes');
+    fireEvent.submit(el('#single'));
+    change('#role','trainer');
+    await waitFor(()=>expect(el('[aria-label="Hierarchy Candidate: Trial conducted by"]')).toHaveValue('Trial Form Trainer'));
+    expect(el('[aria-label="Hierarchy Candidate: Trial conducted by"]')).toHaveAttribute('readonly');
+    expect(el('[aria-label="Hierarchy Candidate: Trial conducted by"]')).toHaveClass('trainer-frozen');
+    expect(request).toHaveBeenCalledWith(expect.stringMatching(/\/telegram\/trial-trainer$/),expect.objectContaining({method:'POST'}));
+  });
   it('scans Aadhaar with the signed-in session and fills only empty candidate fields',async()=>{
     const grant = 'a'.repeat(43);
     sessionStorage.setItem('hrPulseSession', JSON.stringify({grant}));
@@ -42,15 +219,21 @@ describe('Trial workflow preview',()=>{
       uid:'234500000000', address:'Sample Address', gender:'',
     };
     const scan = vi.spyOn(window,'fetch')
+      .mockResolvedValueOnce(Response.json(hierarchyTrainer))
       .mockResolvedValueOnce(Response.json({details}))
       .mockResolvedValueOnce(Response.json({matches:[]}))
-      .mockResolvedValueOnce(Response.json({error:'The card could not be read.'}, {status:422}));
-    const {el,click,input,getByLabelText,getByRole,change} = setup();
+      .mockResolvedValueOnce(Response.json({details:{name:'Different Name',dob:'2000-01-02',licenceNumber:'DL-123',classDetails:[
+        {code:'HMV',issuedBy:'MH29',dateOfIssue:'2020-01-02',vehicleCategory:'TR',badgeNumber:'298/PSV/12',badgeIssuedDate:'2021-03-04',badgeIssuedBy:'MH29'},
+        {code:'LMV',issuedBy:'MH29',dateOfIssue:'2020-02-03',vehicleCategory:'NT',badgeNumber:'',badgeIssuedDate:'',badgeIssuedBy:''},
+      ],issueDate:'2020-01-02',validUpto:['2027-01-02','2030-01-02']}}));
+    const {root,el,click,input,getByLabelText,getByRole,change} = setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     click('[data-tab="hr"]');
     input('#f_name','Verified Name');
     click('[data-tab="aadhaar"]');
     const file = new File(['%PDF-1.7'],'sample-aadhaar.pdf',{type:'application/pdf'});
-    fireEvent.click(getByRole('button',{name:'Upload Aadhaar Image 1'}));
+    fireEvent.click(getByRole('button',{name:'Upload A/D'}));
+    fireEvent.click(getByRole('button',{name:'Upload Aadhaar Image'}));
     expect(getByRole('button',{name:'Camera'})).toBeEnabled();
     expect(getByRole('button',{name:'Gallery / Document'})).toBeEnabled();
     fireEvent.change(getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[file]}});
@@ -62,6 +245,27 @@ describe('Trial workflow preview',()=>{
       method:'POST',
       headers:{Authorization:'Bearer '+grant,'Content-Type':'application/json'},
     }));
+    fireEvent.click(getByRole('button',{name:'Upload A/D'}));
+    fireEvent.click(getByRole('button',{name:'Upload Front Driving License Image'}));
+    expect(getByRole('button',{name:'Camera'})).toBeEnabled();
+    expect(getByRole('button',{name:'Gallery / Document'})).toBeEnabled();
+    expect(getByLabelText('Capture front driving licence image')).toHaveAttribute('capture','environment');
+    const licenceImage=new File(['image-bytes'],'front.jpg',{type:'image/jpeg'});
+    fireEvent.change(getByLabelText('Choose front driving licence image'),{target:{files:[licenceImage]}});
+    await waitFor(()=>expect(document.querySelector('img[alt="Uploaded front driving licence preview"]')).toHaveAttribute('src',expect.stringMatching(/^blob:/)));
+    expect(el('#aadhaarContinue')).toBeDisabled();
+    fireEvent.change(getByLabelText('Choose front driving licence image'),{target:{files:[file]}});
+    fireEvent.click(getByRole('button',{name:'Upload A/D'}));
+    fireEvent.click(getByRole('button',{name:'Upload Back Driving License Image'}));
+    expect(getByRole('button',{name:'Camera'})).toBeEnabled();
+    expect(getByRole('button',{name:'Gallery / Document'})).toBeEnabled();
+    expect(getByLabelText('Capture back driving licence image')).toHaveAttribute('capture','environment');
+    fireEvent.change(getByLabelText('Choose back driving licence image'),{target:{files:[file]}});
+    expect(getByLabelText('Uploaded front driving licence PDF preview')).toBeInTheDocument();
+    expect(getByLabelText('Uploaded back driving licence PDF preview')).toBeInTheDocument();
+    await waitFor(()=>expect(el('#f_dl')).toHaveValue('DL-123'));
+    expect(el<HTMLInputElement>('[aria-label="Valid up to (TR)"]')).toHaveValue('2027-01-02');
+    expect(el<HTMLInputElement>('[aria-label="Valid up to (NT)"]')).toHaveValue('2030-01-02');
     click('#aadhaarContinue');
     expect(el('#v-hr').hidden).toBe(false);
     expect(el('#v-aadhaar').hidden).toBe(true);
@@ -74,20 +278,20 @@ describe('Trial workflow preview',()=>{
     expect(el('#aadhaarHistory')).not.toBeVisible();
     expect(localStorage.length).toBe(0);
 
+    expect(el('#f_dl')).toHaveValue('DL-123');
+    expect(el('#f_dlissue')).toHaveValue('2020-01-02');
+    expect(root.querySelectorAll('[data-dl-class-row]')).toHaveLength(2);
+    expect(el('[data-dl-class="code"]')).toHaveValue('HMV');
+    expect(el('[data-dl-class="badgeNumber"]')).toHaveValue('298/PSV/12');
+    expect([...root.querySelectorAll<HTMLInputElement>('[data-dl-valid]')].map(input=>input.value)).toEqual(['2027-01-02','2030-01-02']);
     click('[data-tab="aadhaar"]');
-    fireEvent.change(getByLabelText('Choose second Aadhaar image'),{target:{files:[file]}});
-    await waitFor(()=>expect(getByRole('status')).toHaveTextContent('The card could not be read.'));
-    expect(getByLabelText('Uploaded Aadhaar image 1 PDF preview')).toBeInTheDocument();
-    expect(getByLabelText('Uploaded Aadhaar image 2 PDF preview')).toBeInTheDocument();
-    fireEvent.click(getByRole('button',{name:'Remove Image 2'}));
-    expect(getByRole('status')).toHaveTextContent('Aadhaar image 2 removed');
     expect(el('#f_aadhaar')).toHaveValue(details.uid);
     expect(el('#sSubmit')).toBeEnabled();
     click('#sReset');
-    expect(getByLabelText('Choose second Aadhaar image')).toBeEnabled();
-    expect(getByRole('button',{name:'Upload Aadhaar Image 1'})).toBeEnabled();
+    expect(getByLabelText('Choose front driving licence image')).toBeEnabled();
+    expect(getByRole('button',{name:'Upload A/D'})).toBeEnabled();
     change('#role','trainer');
-    expect(getByLabelText('Choose second Aadhaar image')).toBeDisabled();
+    expect(getByLabelText('Choose front driving licence image')).toBeDisabled();
   });
 
   it.each([
@@ -98,9 +302,11 @@ describe('Trial workflow preview',()=>{
     sessionStorage.setItem('hrPulseSession',JSON.stringify({grant}));
     const uid='234500000000';
     const fetch=vi.spyOn(window,'fetch')
+      .mockResolvedValueOnce(Response.json(hierarchyTrainer))
       .mockResolvedValueOnce(Response.json({details:{uid,name:'Sample Candidate',relationName:'',dob:'',address:'',gender:''}}))
       .mockResolvedValueOnce(Response.json({matches:[match]}));
     const {el,click,getByLabelText}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     const file=new File(['%PDF-1.7'],'sample-aadhaar.pdf',{type:'application/pdf'});
     fireEvent.change(getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[file]}});
     await waitFor(()=>expect(el('#aadhaarHistory')).toBeVisible());
@@ -117,7 +323,7 @@ describe('Trial workflow preview',()=>{
     }));
     click('#aadhaarHistoryClose');
     expect(popup).not.toBeVisible();
-    expect(el('#aadhaarContinue')).toBeEnabled();
+    expect(el('#aadhaarContinue')).toBeDisabled();
   });
 
   it('finds a past pass saved for the same account at another site',async()=>{
@@ -131,9 +337,11 @@ describe('Trial workflow preview',()=>{
       {...savedPass,id:'unrelated-pass',site:'Majri OB',trialDate:'2026-11-10',vehicles:['Grader']},
     ]));
     vi.spyOn(window,'fetch')
+      .mockResolvedValueOnce(Response.json(hierarchyTrainer))
       .mockResolvedValueOnce(Response.json({details:{uid,name:'Sample Candidate',relationName:'',dob:'',address:'',gender:''}}))
       .mockResolvedValueOnce(Response.json({matches:[{result:'FAIL',site:'Jayant OB East',equipment:'Dozer',trialDate:'2026-11-01'}]}));
     const {el,getByLabelText}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     const file=new File(['%PDF-1.7'],'sample-aadhaar.pdf',{type:'application/pdf'});
     fireEvent.change(getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[file]}});
     await waitFor(()=>expect(el('#aadhaarHistory')).toBeVisible());
@@ -155,12 +363,14 @@ describe('Trial workflow preview',()=>{
     Object.defineProperty(excel,'arrayBuffer',{value:async()=>bytes});
     const details={name:'Read Candidate',relationName:'Sample Parent',dob:'2000-01-02',uid:'234500000000',address:'Sample Address',gender:''};
     vi.spyOn(window,'fetch')
+      .mockResolvedValueOnce(Response.json(hierarchyTrainer))
       .mockResolvedValueOnce(Response.json({details}))
       .mockResolvedValueOnce(Response.json({matches:[]}))
       .mockResolvedValueOnce(Response.json({details:{...details,uid:''}}))
       .mockResolvedValueOnce(Response.json({details:{...details,name:'New Candidate',uid:'234500000001'}}))
       .mockResolvedValueOnce(Response.json({matches:[{result:'FAIL',site:'Sasti OB',equipment:'Dozer',failureReason:'Unsafe handling'}]}));
     const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     click('[data-tab="hr"]');
     click('[data-m="bulk"]');
     fireEvent.change(el('#bExcelFile'),{target:{files:[excel]}});
@@ -195,6 +405,7 @@ describe('Trial workflow preview',()=>{
     const network = vi.spyOn(window,'fetch').mockRejectedValue(new Error('Network is disabled in the preview'));
     const saved = new Map<string,File>();
     const file = new File(['%PDF-1.7'],'signed-result.pdf',{type:'application/pdf'});
+    const video = new File(['video'],'driving-trial.mp4',{type:'video/mp4'});
     vi.spyOn(trialResultFiles,'saveTrialResultFiles')
       .mockRejectedValueOnce(new Error('Storage unavailable'))
       .mockImplementation(async attachments=>{for (const attachment of attachments) saved.set(attachment.id,attachment.file);});
@@ -208,13 +419,15 @@ describe('Trial workflow preview',()=>{
     change('#role','trainer');
     expect(el('#trList')).toHaveTextContent('Submit a candidate in Part 1');
     expect(el('#trList [aria-label="PASS"]')).toBeDisabled();
-    expect(el('#trList [aria-label="Trial conducted by"]')).toBeDisabled();
+    expect(el('#trList [aria-label="Trial conducted by"]')).toHaveAttribute('readonly');
     expect(el('#trList [data-choose-result-file]')).toBeDisabled();
+    expect(el('#trList [data-choose-driving-video]')).toBeDisabled();
     change('#role','hr');
     click('[data-tab="overview"]');
     click('[data-go="hr"]');
     input('#f_name','Sample Pass');
     input('#f_mobile','9876543210');
+    input('#f_conducted','Trial Form Trainer');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
     fireEvent.submit(el('#single'));
@@ -227,19 +440,30 @@ describe('Trial workflow preview',()=>{
     change('#role','director');
     expect(el('#apList').textContent).toContain('Nothing waiting for Director');
     change('#role','trainer');
-    expect(el('[aria-label="Sample Pass: Trial conducted by"]')).toBeEnabled();
+    expect(el('[aria-label="Sample Pass: Trial conducted by"]')).toHaveAttribute('readonly');
+    expect(el('[aria-label="Sample Pass: Trial conducted by"]')).toHaveValue('Trial Form Trainer');
+    expect(el('[aria-label="Sample Pass: Trial conducted by"]')).toHaveClass('trainer-frozen');
     expect(el('[aria-label="Sample Pass: Upload trial result"]')).toBeEnabled();
+    expect(el('[aria-label="Sample Pass: Upload Driving Video"]')).toBeEnabled();
+    expect(el('.trial-upload-actions')).toContainElement(el('[aria-label="Sample Pass: Upload trial result"]'));
+    expect(el('.trial-upload-actions')).toContainElement(el('[aria-label="Sample Pass: Upload Driving Video"]'));
+    click('[aria-label="Sample Pass: PASS"]');
+    click('#trSubmit');
+    expect(el('#toast')).toHaveTextContent('Upload the trial result file for Sample Pass');
     fireEvent.change(el('[data-result-file]'),{target:{files:[file]}});
+    click('#trSubmit');
+    expect(el('#toast')).toHaveTextContent('Upload the driving video for Sample Pass');
+    fireEvent.change(el('[data-driving-video]'),{target:{files:[video]}});
     expect(el('#trList')).toHaveTextContent(file.name);
-    click('#trAllPass');
+    await waitFor(()=>expect(el('#trList')).toHaveTextContent(video.name));
     click('[aria-label="Sample Pass: Recommend Operator"]');
     input('[aria-label="Sample Pass: Machine"]','Sample excavator');
-    input('[aria-label="Sample Pass: Trial conducted by"]','Sample Trainer');
     input('[aria-label="Sample Pass: Examiner remarks"]','Completed the inspection');
     click('#trSubmit');
     expect(el('#trSubmit')).toBeDisabled();
-    await waitFor(()=>expect(el('#toast')).toHaveTextContent('Could not save the trial result file'));
+    await waitFor(()=>expect(el('#toast')).toHaveTextContent('Could not save the trial result files'));
     expect(el('#trList')).toHaveTextContent(file.name);
+    expect(el('#trList')).toHaveTextContent(video.name);
     expect(el('#bTrainer')).toHaveTextContent('1');
     click('#trSubmit');
     await waitFor(()=>expect(el('#tgpop')).toHaveTextContent('Sent to PM for approval'));
@@ -253,18 +477,19 @@ describe('Trial workflow preview',()=>{
       click('#apApprove');
     }
     expect(el('#tgpop').textContent).toContain('CLEARED TO JOIN');
-    expect(onCleared).toHaveBeenCalledWith([expect.objectContaining({stage:'done',result:'PASS',name:'Sample Pass'})]);
+    expect(onCleared).toHaveBeenCalledWith([expect.objectContaining({stage:'done',result:'PASS',name:'Sample Pass'})],expect.objectContaining({aadhaar:undefined,drivingLicence:undefined}));
     expect(openJoining).not.toHaveBeenCalled();
     expect(el('#tgClose2')).toHaveTextContent('Open Step 2');
     click('#tgClose2');
     await waitFor(()=>expect(openJoining).toHaveBeenCalledOnce());
+    change('#role','hr');
     click('[data-stage="done"]');
     expect(el('#ovTitle')).toHaveTextContent('Completed (1)');
     expect(el('#ovList').textContent).toContain('Cleared to join');
     click('#ovList [data-open]');
     expect(el('#modalBox').textContent).toContain('Approvals');
     expect(el('#modalBox').textContent).toContain('Operator – Sample excavator');
-    expect(el('#modalBox').textContent).toContain('Sample Trainer');
+    expect(el('#modalBox').textContent).toContain('Sample Signer');
     expect(el('#modalBox').textContent).toContain('Completed the inspection');
     expect(el('#modalBox .sigs').textContent).toContain('DirectorApproved');
     const next = setup();
@@ -272,17 +497,22 @@ describe('Trial workflow preview',()=>{
     expect(next.el('#ovList').textContent).toContain('Cleared to join');
     next.click('#ovList [data-open]');
     expect(next.el('[data-download-result]')).toHaveTextContent('Download signed-result.pdf');
+    expect(next.el('[data-download-driving-video]')).toHaveTextContent('Download driving-trial.mp4');
     next.click('[data-download-result]');
-    await waitFor(()=>expect(download).toHaveBeenCalledOnce());
+    next.click('[data-download-driving-video]');
+    await waitFor(()=>expect(download).toHaveBeenCalledTimes(2));
     expect(createUrl).toHaveBeenCalledWith(file);
+    expect(createUrl).toHaveBeenCalledWith(video);
     expect((download.mock.contexts[0] as HTMLAnchorElement).download).toBe(file.name);
+    expect((download.mock.contexts[1] as HTMLAnchorElement).download).toBe(video.name);
     const other = setup({site:'Another site'});
     other.click('[data-tab="overview"]');
     expect(other.el('#ovList').textContent).toContain('No trial forms yet');
     expect(network).not.toHaveBeenCalled();
   });
 
-  it('submits a bulk batch, requires a reason for FAIL and records a rejection note',()=>{
+  it('submits a bulk batch, requires a reason for FAIL and records a rejection note',async()=>{
+    vi.spyOn(trialResultFiles,'saveTrialResultFiles').mockResolvedValue();
     const {el,click,input,change} = setup();
     click('[data-tab="hr"]');
     click('[data-m="bulk"]');
@@ -300,11 +530,19 @@ describe('Trial workflow preview',()=>{
 
     change('#role','trainer');
     click('[aria-label="Batch Candidate: FAIL"]');
+    expect(el('[aria-label="Batch Candidate: Failure reason"]')).toBeRequired();
     click('#trSubmit');
     expect(el('#toast').textContent).toContain('Enter the fail reason');
     input('[aria-label="Batch Candidate: Failure reason"]','Did not complete trial safely');
+    const batchCard=el('[aria-label="Batch Candidate: Upload trial result"]').closest<HTMLElement>('[data-id]')!;
+    fireEvent.click(batchCard.querySelector('[data-choose-result-file]')!);
+    fireEvent.change(el('#trResultPicker'),{target:{files:[new File(['result'],'batch-result.pdf',{type:'application/pdf'})]}});
+    const refreshedCard=el('[aria-label="Batch Candidate: Upload Driving Video"]').closest<HTMLElement>('[data-id]')!;
+    fireEvent.click(refreshedCard.querySelector('[data-choose-driving-video]')!);
+    fireEvent.change(el('#trVideoPicker'),{target:{files:[new File(['video'],'batch-driving.mp4',{type:'video/mp4'})]}});
+    await waitFor(()=>expect(el('#trList')).toHaveTextContent('batch-driving.mp4'));
     click('#trSubmit');
-    expect(el('#bTrainer')).toHaveTextContent('1');
+    await waitFor(()=>expect(el('#bTrainer')).toHaveTextContent('1'));
     expect(el('#tgpop').hidden).toBe(true);
     change('#role','pm');
     click('[aria-label="Select Batch Candidate"]');
@@ -312,6 +550,7 @@ describe('Trial workflow preview',()=>{
     expect(el('#toast').textContent).toContain('explain the rejection');
     input('#apNote','Review again after re-training');
     click('#apReject');
+    change('#role','hr');
     click('[data-tab="overview"]');
     expect(el('#ovList').textContent).toContain('Rejected');
     click('#ovList [data-open]');
