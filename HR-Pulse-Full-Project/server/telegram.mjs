@@ -393,10 +393,10 @@ export function createTelegram(pool){
    const people=roster.map(p=>{const a=accounts.get(p.actor);return {...p,connected:!!a?.nagpur_connected||!!listed[p.actor],via:viaOf(a)};});
    if(method==='GET'){   /* Link delivery: the latest connect-link message per person, or a link handed out to forward */
     const actors=people.map(p=>p.actor);
-    const sent=new Map((await pool.query("SELECT DISTINCT ON (actor) actor,bot,state,last_error,sent_at,created_at FROM hr_telegram_outbox WHERE event_key LIKE 'nagpur-invite:%' AND actor = ANY($1) ORDER BY actor,id DESC",[actors])).rows.map(r=>[r.actor,r]));
+    const sent=new Map((await pool.query("SELECT DISTINCT ON (actor) actor,bot,state,last_error,sent_at FROM hr_telegram_outbox WHERE event_key LIKE 'nagpur-invite:%' AND actor = ANY($1) ORDER BY actor,id DESC",[actors])).rows.map(r=>[r.actor,r]));
     const tokens=new Map((await pool.query("SELECT actor,max(expires_at) AS expires_at FROM hr_telegram_link_tokens WHERE bot='nagpur' AND actor = ANY($1) GROUP BY actor",[actors])).rows.map(r=>[r.actor,r]));
     const deliveryOf=p=>{const o=sent.get(p.actor);
-     if(o)return {state:o.state==='SENT'?'DELIVERED':o.state==='FAILED'?'FAILED':'WAITING',bot:o.bot,at:o.sent_at||o.created_at,error:o.state==='SENT'?'':o.last_error||''};
+     if(o)return {state:o.state==='SENT'?'DELIVERED':o.state==='FAILED'?'FAILED':'WAITING',bot:o.bot,at:o.sent_at||'',error:o.state==='SENT'?'':o.last_error||''};
      const t=tokens.get(p.actor);if(t)return {state:new Date(t.expires_at)<new Date()?'EXPIRED':'FORWARD',bot:'',at:t.expires_at,error:''};
      return null;};
     return {people:people.map(p=>({...p,delivery:deliveryOf(p)})),botUsername:botUsername('nagpur'),configured:!!process.env.TELEGRAM_NAGPUR_BOT_TOKEN};
