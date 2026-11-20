@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState, type FormEvent} from 'react';
 import {ChevronDown, Download} from 'lucide-react';
-import {api, csv, download, downloadBlob} from './api';
+import {api, downloadBlob} from './api';
 import {assetPrintHtml} from './assetPrint';
 
 const columns = [
@@ -12,7 +12,7 @@ const exportColumns: {key:'serial' | typeof columns[number][0];label:string}[] =
   {key:'serial',label:'Serial No'},
   ...columns.map(([key,label])=>({key,label:label.toUpperCase()})),
 ];
-const formats = [['csv','CSV'], ['excel','Excel'], ['pdf','PDF']] as const;
+const formats = [['excel','Excel'], ['pdf','PDF']] as const;
 type ExportFormat = typeof formats[number][0];
 type Employee = Record<typeof columns[number][0], string> & {id:string};
 type RegisterColumn = typeof columns[number];
@@ -250,11 +250,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
         downloadBlob('hr-employee-master.xlsx',workbook);
       } else {
         const records = rows.map((row,index)=>({...row,serial:index+1}));
-        if (format==='csv') {
-          const headings = exportColumns.map(({label})=>label);
-          const values = records.map(row=>Object.fromEntries(exportColumns.map(({key,label})=>[label,row[key]])));
-          download('hr-employee-master.csv',csv(headings,values));
-        } else if (popup) {
+        if (popup) {
           if (popup.closed) throw new Error('The PDF window was closed. Choose PDF from the Download menu again.');
           popup.document.open();
           popup.document.write(assetPrintHtml('Employee Master',exportColumns,records));

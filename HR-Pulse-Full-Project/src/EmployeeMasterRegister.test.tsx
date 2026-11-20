@@ -61,7 +61,7 @@ it('prints all matching rows, including records on later pages, with the current
   expect(screen.queryByRole('group',{name:'Download format'})).toBeNull();
   fireEvent.click(download);
   const formats = screen.getByRole('group',{name:'Download format'});
-  expect(within(formats).getAllByRole('button').map(button=>button.textContent)).toEqual(['CSV','Excel','PDF']);
+  expect(within(formats).getAllByRole('button').map(button=>button.textContent)).toEqual(['Excel','PDF']);
   fireEvent.keyDown(within(formats).getByRole('button',{name:'PDF'}),{key:'Escape'});
   expect(download).toHaveFocus();
   expect(download).toHaveAttribute('aria-expanded','false');

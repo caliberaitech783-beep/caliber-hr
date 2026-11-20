@@ -1,6 +1,7 @@
+import {downloadExcel} from './excelFiles';
 import {useEffect,useMemo,useState} from 'react';
 import {Download} from 'lucide-react';
-import {api,csv,download} from './api';
+import {api} from './api';
 import type {AttendancePolicy} from '../server/attendance-policy.mjs';
 
 /* Registers built from the server day calculation (GET attendance/register),
@@ -54,13 +55,13 @@ export default function AttendanceRegister({grant,mode}:{grant:string;mode:Regis
  const dates=datesBetween(range.from,range.to);
  const title={month:'Monthly attendance register','week-day':weekly?'Weekly attendance register':'Daily attendance register',site:'Site-wise attendance',miss:'Miss punch',gate:'Gate pass deductions'}[mode];
 
- function exportCsv(){
+ function exportExcel(){
   if(mode==='month'||mode==='week-day'&&weekly){
    const cols=['Employee code','Employee name','Site',...dates.map(show),'Full duty','Half duty','Absent','Miss punch','Late','Early','Half duty cuts','Duties'];
-   download(`attendance-register-${range.from}-to-${range.to}.csv`,csv(cols,rows.map(r=>({'Employee code':r.code,'Employee name':r.name,Site:r.site,...Object.fromEntries(dates.map(d=>[show(d),r.days.find(x=>x.date===d)?.status||''])),'Full duty':r.summary.full,'Half duty':r.summary.half,Absent:r.summary.absent,'Miss punch':r.summary.missPunch,Late:r.summary.late,Early:r.summary.early,'Half duty cuts':r.summary.halfDutyCuts,Duties:r.summary.duties}))));
+   downloadExcel(`attendance-register-${range.from}-to-${range.to}.xlsx`,cols,rows.map(r=>({'Employee code':r.code,'Employee name':r.name,Site:r.site,...Object.fromEntries(dates.map(d=>[show(d),r.days.find(x=>x.date===d)?.status||''])),'Full duty':r.summary.full,'Half duty':r.summary.half,Absent:r.summary.absent,'Miss punch':r.summary.missPunch,Late:r.summary.late,Early:r.summary.early,'Half duty cuts':r.summary.halfDutyCuts,Duties:r.summary.duties})));
   }else{
    const cols=['Date','Employee code','Employee name','Site','Shift','In','Out','Worked','Status','Late','Early','Gate pass','Deduction','Note'];
-   download(`attendance-${mode}-${range.from}-to-${range.to}.csv`,csv(cols,rows.flatMap(r=>r.days.filter(d=>mode!=='miss'||d.missPunch).filter(d=>mode!=='gate'||d.gatePassMinutes>0).map(d=>({Date:show(d.date),'Employee code':r.code,'Employee name':r.name,Site:r.site,Shift:r.shift,In:d.in,Out:d.out,Worked:hoursText(d.workedMinutes),Status:STATUS[d.status]||d.status,Late:d.late?'Yes':'',Early:d.early?'Yes':'',['Gate pass']:hoursText(d.gatePassMinutes||null),Deduction:d.gatePassDeduction||'',Note:d.note})))));
+   downloadExcel(`attendance-${mode}-${range.from}-to-${range.to}.xlsx`,cols,rows.flatMap(r=>r.days.filter(d=>mode!=='miss'||d.missPunch).filter(d=>mode!=='gate'||d.gatePassMinutes>0).map(d=>({Date:show(d.date),'Employee code':r.code,'Employee name':r.name,Site:r.site,Shift:r.shift,In:d.in,Out:d.out,Worked:hoursText(d.workedMinutes),Status:STATUS[d.status]||d.status,Late:d.late?'Yes':'',Early:d.early?'Yes':'',['Gate pass']:hoursText(d.gatePassMinutes||null),Deduction:d.gatePassDeduction||'',Note:d.note}))));
   }
  }
 
@@ -77,7 +78,7 @@ export default function AttendanceRegister({grant,mode}:{grant:string;mode:Regis
    {mode!=='site'&&<label>Site<select value={site} onChange={e=>setSite(e.target.value)}><option value="">All sites</option>{sites.map(s=><option key={s}>{s}</option>)}</select></label>}
    {mode!=='site'&&<label>Employee<input type="search" value={search} placeholder="Name, code or designation" onChange={e=>setSearch(e.target.value)}/></label>}
    <span>{loading?'Loading…':current?`${rows.length} employee${rows.length===1?'':'s'}`:''}</span>
-   {mode!=='site'&&<button type="button" disabled={!rows.length} onClick={exportCsv}><Download/>Export CSV</button>}
+   {mode!=='site'&&<button type="button" disabled={!rows.length} onClick={exportExcel}><Download/>Export Excel</button>}
   </div>
   {error&&<p className="error" role="alert">{error}</p>}
   {(mode==='month'||mode==='week-day'&&weekly)&&<div className="attendance-table"><table className="register-grid">

@@ -139,7 +139,7 @@ describe('Employee Master tabs',()=>{
   }finally{URL.createObjectURL=originalCreate;URL.revokeObjectURL=originalRevoke;}
  });
 
- it('exports the selected employee section as Excel and CSV with loaded values',async()=>{
+ it('exports the selected employee section as Excel with loaded values',async()=>{
   const rows=[{id:'employee-export',kind:'employees',code:'EMP-CSV',name:'Employee, Example',data:{officeData:{'Mobile *':'9876543210'}},status:'ACTIVE',version:1}];
   vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify({rows}))));
   try{
@@ -155,10 +155,7 @@ describe('Employee Master tabs',()=>{
    expect(grid[0]).toContain('Employee Code');
    expect(grid[1]).toContain('EMP-CSV');expect(grid[1]).toContain('Employee, Example');
    fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
-   fireEvent.click(screen.getByRole('menuitem',{name:'Download as CSV'}));
-   const [csvName,contents]=vi.mocked(download).mock.calls.at(-1)!;
-   expect(csvName).toBe('joining-personal-details.csv');
-   expect(parseCsv(contents)[0]).toMatchObject({'Employee Code':'EMP-CSV','Full Name *':'Employee, Example','Mobile *':'9876543210'});
+   expect(screen.queryByRole('menuitem',{name:'Download as CSV'})).toBeNull();
   }finally{vi.unstubAllGlobals();vi.mocked(writeFile).mockClear();vi.mocked(download).mockClear();}
  });
 
@@ -294,7 +291,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.queryByRole('menuitem',{name:/Download as CSV/})).toBeNull();
   expect(screen.getByRole('menuitem',{name:/Smart Print/})).toBeTruthy();
   expect(screen.getByRole('menuitem',{name:/Download as Excel/})).toBeTruthy();
-  expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.csv');
+  expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xlsx');
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xlsx');
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xls');
   for(const section of ['Upload Aadhaar Card','Joining & Personal Details','Educational Details','Family Details','Previous Work Experience','Document Checklist'])expect(screen.getByRole('button',{name:new RegExp(section)})).toBeTruthy();

@@ -1,7 +1,8 @@
+import {downloadExcel} from './excelFiles';
 import {hrAsset,inPulseII} from './hr-paths';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Download,RefreshCw} from 'lucide-react';
-import {api,csv,download,type Lookup,type Module} from './api';
+import {api,type Lookup,type Module} from './api';
 import BiometricMachines,{type Machine} from './BiometricMachines';
 import PunctualitySummary from './PunctualitySummary';
 import ShiftMaster from './ShiftMaster';
@@ -159,9 +160,9 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
   try{const result=await api<{employeeCode:string;employeeName:string}>(grant,'attendance/link','POST',{deviceSerial:row.deviceSerial,biometricId:row.biometricId,employeeId});setMessage(`Machine ID ${row.biometricId} linked to ${result.employeeCode} · ${result.employeeName}.`);await load(true);}
   catch(e){setError((e as Error).message);}finally{setBusy(false);}
  }
- function exportCsv(){
+ function exportExcel(){
   const rows=(punches?.rows||[]).map(p=>({'Employee code':p.employeeCode,'Employee name':p.employeeName,'Machine ID':p.biometricId,'Name on machine':p.machineName,Date:displayDate(p.date),Time:p.time,'Verified by':verifyLabel(p.verify),'Punch type':punchTypeLabel(p.punchType),Site:p.siteName,Machine:p.deviceName||p.deviceSerial}));
-  download(`attendance-${from}-to-${to}.csv`,csv(['Employee code','Employee name','Machine ID','Name on machine','Date','Time','Verified by','Punch type','Site','Machine'],rows));
+  downloadExcel(`attendance-${from}-to-${to}.xlsx`,['Employee code','Employee name','Machine ID','Name on machine','Date','Time','Verified by','Punch type','Site','Machine'],rows);
  }
 
  const employees=lookups.filter(x=>x.kind==='employees'),sites=lookups.filter(x=>x.kind==='sites');
@@ -195,7 +196,7 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
     <label>From<input type="date" value={from} max={to} onChange={e=>e.target.value&&setFrom(e.target.value)}/></label>
     <label>To<input type="date" value={to} min={from} onChange={e=>e.target.value&&setTo(e.target.value)}/></label>
     <span>{loading?'Loading…':`${rows.length} punch${rows.length===1?'':'es'}`}</span>
-    <button disabled={!rows.length} onClick={exportCsv}><Download/>Export CSV</button>
+    <button disabled={!rows.length} onClick={exportExcel}><Download/>Export Excel</button>
    </div>
    {punches?.truncated&&<p className="help-text">Showing the latest {rows.length} punches. Choose a shorter date range to see the rest.</p>}
    <div className="attendance-table"><table>

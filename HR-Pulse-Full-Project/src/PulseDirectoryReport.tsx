@@ -1,6 +1,6 @@
 import {siteDisplayName} from './siteNames';
 import {useEffect,useState} from 'react';
-import {pulse,csv,download,downloadBlob} from './api';
+import {pulse,downloadBlob} from './api';
 type Person={employeeId:string;name:string;category:string;designation:string;department:string;reportingTo:string;contact:string;email:string;status:string;siteId:string;site:string;region:string};
 type Directory={source:string;fetchedAt:string;sites:{id:string;label:string;region:string}[];rows:Person[]};
 const columns:[keyof Person,string,number][]=[
@@ -48,7 +48,7 @@ export default function PulseDirectoryReport({grant,employeeGroup}:{grant?:strin
    <div className="toolbar-buttons">
     <button type="button" disabled={loading} onClick={()=>setAttempt(value=>value+1)}>Refresh directory</button>
     <button type="button" className="primary" disabled={loading||exporting||!rows.length} onClick={()=>void exportExcel()}>{exporting?'Preparing Excel…':'Export formatted Excel'}</button>
-    <button type="button" disabled={!data||loading||!rows.length} onClick={()=>download('region-employee-details.csv',csv(columns.map(([key])=>key),rows))}>Export CSV</button>
+
    </div>
   </div>
   {error&&<p className="error" role="alert">{error}</p>}
