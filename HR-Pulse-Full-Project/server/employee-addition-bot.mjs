@@ -30,10 +30,12 @@ export function additionSubmittedMessage({record,siteName,steps}){
  const employee=details(record);
  return ['📩 Employee Addition submitted','',`Employee: ${employee.name} (${employee.code})`,`Site: ${clean(siteName)}`,`Route: ${route(steps)}`,`⏳ Now with: ${roleTitle(steps[0]?.label)}`].join('\n');
 }
-export function additionDecisionMessage({record,siteName,state,actor,actorRole,comments,decidedAt}){
+/* Office staff steps carry their office (office-staff-routing.mjs): a rejected office form goes back to that office's HR, not Site HR. */
+const returnsTo=steps=>{const office=(steps||[]).find(step=>step?.office)?.office;return office?`${office} HR`:'Site HR';};
+export function additionDecisionMessage({record,siteName,state,actor,actorRole,comments,decidedAt,steps}){
  const employee=details(record),approved=state==='APPROVED';
  const lines=[approved?'✅ Employee Approved — now Active':'❌ Employee Rejected','',`Employee: ${employee.name} (${employee.code})`,`Site: ${clean(siteName)}`,`Department: ${employee.department}`,`Designation: ${employee.designation}`,`${approved?'Final approval':'Rejected'} by: ${clean(actor)}${actorRole?` (${actorRole})`:''}`];
- if(!approved)lines.push(`Reason: ${clean(comments)}`,'The form goes back to Site HR for correction.');
+ if(!approved)lines.push(`Reason: ${clean(comments)}`,`The form goes back to ${returnsTo(steps)} for correction.`);
  lines.push(`Date & time: ${clean(decidedAt)}`);
  return lines.join('\n');
 }
@@ -65,5 +67,5 @@ export async function queueAdditionStep(db,queue,{approvalId,record,siteName,ste
   return;
  }
  const decidedRole=roleTitle(steps[Math.max(0,stage-1)]?.label);
- await queue(db,`${key}:done`,[requestedBy,...steps.flatMap(step=>step.approvers||[])],additionDecisionMessage({record,siteName,state,actor,actorRole:decidedRole,comments,decidedAt}),ADDITION_BOT);
+ await queue(db,`${key}:done`,[requestedBy,...steps.flatMap(step=>step.approvers||[])],additionDecisionMessage({record,siteName,state,actor,actorRole:decidedRole,comments,decidedAt,steps}),ADDITION_BOT);
 }
