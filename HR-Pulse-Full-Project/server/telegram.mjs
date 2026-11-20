@@ -307,6 +307,21 @@ const NEXT_ROLE={pm:'ohr',ohr:'rhr',rhr:'director',director:'done'};
 export const OTP_ROLES=['pm','director'];
 const TRIAL_OTP_MINUTES=15,TRIAL_OTP_ATTEMPTS=5;
 const approvalMarkup=(code,role)=>({inline_keyboard:[OTP_ROLES.includes(role)?[{text:'❌ Decline',callback_data:`ta:${code}:d`}]:[{text:'✅ Approve',callback_data:`ta:${code}:a`},{text:'❌ Decline',callback_data:`ta:${code}:d`}]]});
+/* Owner, 20 Nov 2026: when a candidate passes, the site's Office HR is told on Telegram to request the PM's OTP. */
+export function trialOhrAlertMessage({forms,site,trialBy}){
+ return ['🔔 PM OTP NEEDED – OFFICE HR','',
+  `${forms.length} candidate${forms.length===1?' has':'s have'} passed the vehicle trial and wait${forms.length===1?'s':''} for PM approval:`,
+  ...forms.map((f,i)=>`${i+1}. ${dash(f.fields?.['Name of candidate'])} – ${f.formNo}`),'',
+  `Trial by: ${dash(trialBy)}`,
+  'Open HRMS › Trial Status › Approvals and press "Request OTP from PM". The PM gets the OTP on this bot; ask the PM for it and enter it in HRMS.',
+  `Site: ${dash(site)}`].join('\n');
+}
+async function alertOfficeHr(db,{forms,target,trialBy,actor,key}){
+ const passed=forms.filter(f=>f.fields?.Result==='PASS');if(!passed.length)return [];
+ const to=[...new Set((await hierarchyRecipients(db,'ohr',target)).map(recipientActor))].filter(notSender(actor));
+ if(to.length)await queueTelegram(db,key,to,trialOhrAlertMessage({forms:passed,site:target.site,trialBy}),trialBot());
+ return to;
+}
 export function trialOtpMessage({reviewer,forms,otp,requestedBy,site}){
  return [`🔐 OTP FOR ${reviewer==='pm'?'PM APPROVAL':'FINAL APPROVAL – DIRECTORS'}`,'',
   ...forms.map((f,i)=>`${forms.length>1?(i+1)+'. ':''}${dash(f.fields?.['Name of candidate'])} – ${f.formNo} – ✅ PASS`),
@@ -782,7 +797,8 @@ export function createTelegram(pool){
     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_TRIAL_FORM','trialForms',$2,$3)",[profile.actor,id,{formNo,result:fields.Result}]);
     const files=[{name:`${formNo.replace(/\//g,'-')}_Trial_Form.pdf`,mime:'application/pdf',data:trialFormPdf(record,'Trial joining form'),caption:'Trial joining form'}];
     const markup=fields.Result==='PASS'&&recipients.length?await openApprovalGroup(db,{role:'pm',formNos:[formNo],target:{site:record.site,region:String(input.region||'').slice(0,80),company:record.company,group:String(input.group||'').slice(0,80)},batchId:record.batchId||'',actor:profile.actor}):null;
-    if(recipients.length)await queueTelegram(db,`trial:${formNo}:${fields.Result}:${Date.now()}`,recipients,message,trialBot(),markup,files);});
+    if(recipients.length)await queueTelegram(db,`trial:${formNo}:${fields.Result}:${Date.now()}`,recipients,message,trialBot(),markup,files);
+    await alertOfficeHr(db,{forms:[record],target:{site:record.site,region:String(input.region||'').slice(0,80),company:record.company,group:String(input.group||'').slice(0,80)},trialBy:record.trialBy||profile.name||profile.actor,actor:profile.actor,key:`trial-ohr-alert:${formNo}:${Date.now()}`});});
    return {saved:true,result:fields.Result,telegram:{...(await recipientIssues(pool,recipients)),message}};
   }
   /* ---- Part 2 batch result (driver trainer): PASS/FAIL per candidate → PM, with Excel sheet + attachments ---- */
@@ -820,7 +836,8 @@ export function createTelegram(pool){
     const first=records[0];message=trialBatchResultMessage({batchId,site:first.site||first.heading,trialBy,trialDate:first.fields['Trial date & time'],vehicle:vehicleOf(first.fields),post:first.fields['Post applied for']||first.department},records,{passed:passed.length,failed:failed.length});
     const passedNos=records.filter(r=>r.fields.Result==='PASS').map(r=>r.formNo);
     const markup=passedNos.length&&recipients.length?await openApprovalGroup(db,{role:'pm',formNos:passedNos,target:{site,region:String(input.region||'').slice(0,80),company,group:String(input.group||'').slice(0,80)},batchId,actor:profile.actor}):null;
-    if(recipients.length)await queueTelegram(db,`trial-batch:${batchId}:${Date.now()}`,recipients,message+(markup?'\n\nPM approval is by OTP: Office HR requests it. Tap Decline below to refuse the PASSED candidates.':''),trialBot(),markup,files);});
+    if(recipients.length)await queueTelegram(db,`trial-batch:${batchId}:${Date.now()}`,recipients,message+(markup?'\n\nPM approval is by OTP: Office HR requests it. Tap Decline below to refuse the PASSED candidates.':''),trialBot(),markup,files);
+    await alertOfficeHr(db,{forms:records,target:{site,region:String(input.region||'').slice(0,80),company,group:String(input.group||'').slice(0,80)},trialBy,actor:profile.actor,key:`trial-ohr-alert:${batchId}:${Date.now()}`});});
    return {saved:true,batchId,passed:records.filter(r=>r.fields.Result==='PASS').map(r=>r.formNo),telegram:{...(await recipientIssues(pool,recipients)),message}};
   }
   if(route==='trial-forms'&&method==='POST'){

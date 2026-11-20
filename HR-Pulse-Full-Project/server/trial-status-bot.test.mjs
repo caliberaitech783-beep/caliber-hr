@@ -100,3 +100,25 @@ test('Office HR requests the PM OTP, a wrong OTP is counted, the right one appro
   await assert.rejects(service.telegramApi(ohr,'trial-otp-verify','POST',{...target,reviewer:'pm',formNos:['TF/1'],otp}),{status:409},'an OTP works once');
  });
 });
+
+test('a PASS goes to the PM and tells Office HR to request the PM OTP; a FAIL does not alert Office HR',async()=>{
+ await withEnv(trialStatusEnv,async()=>{
+  const outbox=[];
+  const db={release(){},async query(sql,v=[]){
+   if(sql.includes("kind='joiningHierarchies'"))return {rows};
+   if(sql.startsWith('INSERT INTO hr_telegram_outbox')){outbox.push({key:v[0],actor:v[1],message:v[2],bot:v[3]});return {rowCount:1};}
+   if(sql.startsWith('INSERT INTO hr_telegram_files'))return {rows:[{id:1}]};
+   if(sql.includes('RETURNING id'))return {rows:[{id:'new'}]};
+   return {rows:[],rowCount:1};}};
+  const service=createTelegram({query:db.query,connect:async()=>db});
+  const trainer={actor:'jayanttrainer',name:'Rakesh Singh',permissions:{hrDesktopAccess:['Employee Master'],hrAccountStatus:'Active',hrTrialAssignments:[{role:'Driver Trainer',sites:[{code:'NCL-JAYANT'}]}]}};
+  const files=[{name:'r.pdf',mime:'application/pdf',kind:'trialResult',data:'QQ=='},{name:'v.mp4',mime:'video/mp4',kind:'drivingVideo',data:'QQ=='}];
+  const send=(formNo,Result)=>service.telegramApi(trainer,'trial-result','POST',{formNo,site:'Jayant OB East',region:'NCL',fields:{Result,'Name of candidate':'Ramesh Yadav','If FAIL – reason':Result==='FAIL'?'Could not reverse':''},attachments:files});
+  await send('TF/9','PASS');
+  assert.deepEqual(outbox.map(o=>[o.actor,o.bot]),[['gulnawaz','trial-status'],['apurvakopulwar','trial-status']]);
+  assert.match(outbox[1].message,/PM OTP NEEDED – OFFICE HR[\s\S]*Ramesh Yadav – TF\/9[\s\S]*Request OTP from PM/);
+  outbox.length=0;
+  await send('TF/10','FAIL');
+  assert.deepEqual(outbox.map(o=>o.actor),['gulnawaz'],'a failed candidate needs no PM OTP');
+ });
+});
