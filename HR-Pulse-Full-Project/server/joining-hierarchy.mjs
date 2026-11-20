@@ -1,7 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {grantedMenus} from './modules.mjs';
 import {assignedSites} from './scope.mjs';
-import {withTrialRouting} from './trial-routing.mjs';
 const step=(stage,label,suggested)=>({stage,label,suggested,approvers:[]});
 const driverTrainer=()=>step(1,'Driver Trainer','To be confirmed');
 const officeHr=()=>step(2,'Office HR — either one','To be confirmed');
@@ -44,12 +43,12 @@ export function validateHierarchy(input){
  if(!Array.isArray(input.steps)||input.steps.length!==template.steps.length)fail('Keep all required approval steps');
  const officeTemplate=officeStepsOf(template.steps);let officeSteps=null;
  if(Array.isArray(input.officeSteps)){if(input.officeSteps.length!==officeTemplate.length)fail('Keep all required office-staff approval steps');const seenO=new Set();officeSteps=input.officeSteps.map((s,i)=>{if(!Array.isArray(s.approvers)||s.approvers.length>10)fail('Provide up to 10 usernames per step');const approvers=s.approvers.map(v=>String(v).trim().toLowerCase()).filter(Boolean);if(approvers.some(a=>!/^[-a-z0-9_.@]{1,100}$/.test(a)))fail('Enter valid Pulse usernames');for(const a of approvers){if(seenO.has(a))fail('Each approver must occur in only one office-staff step');seenO.add(a);}if(input.enabled&&(!approvers.length||(officeTemplate[i].stage===1&&approvers.length!==1)))fail(`Office staff step ${i+1} (${officeTemplate[i].label}): ${!approvers.length?'Assign at least one Pulse username':'Assign exactly one Pulse username for this site approval step'}`);return {...officeTemplate[i],approvers};});}
- const seen=new Set();const routed=withTrialRouting({code:template.code,steps:template.steps.map((s,i)=>({...s,approvers:input.steps[i]?.approvers}))}).steps;const steps=routed.map((s,i)=>{if(!Array.isArray(s.approvers)||s.approvers.length>10)fail('Provide up to 10 usernames per step');const approvers=s.approvers.map(v=>String(v).trim().toLowerCase()).filter(Boolean);if(approvers.some(a=>!/^[-a-z0-9_.@]{1,100}$/.test(a)))fail('Enter valid Pulse usernames');for(const a of approvers){if(seen.has(a))fail('Each approver must occur in only one step');seen.add(a);}if(input.enabled&&(!approvers.length||(template.steps[i].stage===1&&approvers.length!==1)))fail(`Step ${i+1} (${template.steps[i].label}): ${!approvers.length?'Assign at least one Pulse username':'Assign exactly one Pulse username for this site approval step'}`);return {...template.steps[i],approvers};});
+ const seen=new Set();const steps=input.steps.map((s,i)=>{if(!Array.isArray(s.approvers)||s.approvers.length>10)fail('Provide up to 10 usernames per step');const approvers=s.approvers.map(v=>String(v).trim().toLowerCase()).filter(Boolean);if(approvers.some(a=>!/^[-a-z0-9_.@]{1,100}$/.test(a)))fail('Enter valid Pulse usernames');for(const a of approvers){if(seen.has(a))fail('Each approver must occur in only one step');seen.add(a);}if(input.enabled&&(!approvers.length||(template.steps[i].stage===1&&approvers.length!==1)))fail(`Step ${i+1} (${template.steps[i].label}): ${!approvers.length?'Assign at least one Pulse username':'Assign exactly one Pulse username for this site approval step'}`);return {...template.steps[i],approvers};});
  return {...template,steps,...(officeSteps?{officeSteps}:{}),enabled:input.enabled===true};
 }
 export const approvalSteps=a=>a.approval_steps?.length?a.approval_steps:a.approvers.map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
 export function nextApproval(approval,actor,decision){const steps=approvalSteps(approval);if(approval.requested_by===actor||!steps[approval.stage]?.approvers.includes(actor))fail('Only a current assigned approver may decide; self-approval is prohibited',403);const stage=approval.stage+1;return {stage,state:decision==='REJECTED'?'REJECTED':stage===steps.length?'APPROVED':'PENDING'};}
-export async function employeeHierarchy(db,siteId,{driverOperator=true}={}){if(!siteId)return null;const site=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId])).rows[0];if(!hierarchyTemplates.some(t=>t.code===site?.code))return null;const row=(await db.query("SELECT * FROM hr_records WHERE kind='joiningHierarchies' AND code=$1 AND status='ACTIVE'",[site.code])).rows[0];if(!row){if(site.code.startsWith('WCL-')||site.code==='CMLL-HO')return null;fail('Assign approver usernames and enable this site hierarchy before submitting',409);}const data=withTrialRouting(withOfficeHr(withDriverTrainer(currentHierarchy(row.data))));return {...row,data:driverOperator?data:{...data,steps:data.officeSteps||officeStepsOf(data.steps)}};}
+export async function employeeHierarchy(db,siteId,{driverOperator=true}={}){if(!siteId)return null;const site=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId])).rows[0];if(!hierarchyTemplates.some(t=>t.code===site?.code))return null;const row=(await db.query("SELECT * FROM hr_records WHERE kind='joiningHierarchies' AND code=$1 AND status='ACTIVE'",[site.code])).rows[0];if(!row){if(site.code.startsWith('WCL-')||site.code==='CMLL-HO')return null;fail('Assign approver usernames and enable this site hierarchy before submitting',409);}const data=withOfficeHr(withDriverTrainer(currentHierarchy(row.data)));return {...row,data:driverOperator?data:{...data,steps:data.officeSteps||officeStepsOf(data.steps)}};}
 export function createHierarchies(pool){
  function access(profile,write=false){if(!grantedMenus(profile).has('Master Configuration'))fail('Master Configuration permission required',403);if(write&&assignedSites(profile)!==null)fail('Hierarchy editing requires unrestricted site access',403);}
  return {
@@ -58,7 +57,7 @@ export function createHierarchies(pool){
   const rows=(await pool.query("SELECT * FROM hr_records WHERE kind='joiningHierarchies'")).rows;
   return {canWrite:assignedSites(profile)===null,rows:hierarchyTemplates.map(t=>{
    const r=rows.find(r=>r.code===t.code);
-   const data=withTrialRouting(withOfficeHr(withDriverTrainer(currentHierarchy(r?.data??{...t,steps:t.steps}))));
+   const data=withOfficeHr(withDriverTrainer(currentHierarchy(r?.data)));
    const group=data?.group==='CO/HO'?corporateOffice:data?.group??t.group;
    return {...t,...data,officeSteps:data?.officeSteps||officeStepsOf(data?.steps||t.steps),group,id:r?.id,version:r?.version||0,enabled:r?.status==='ACTIVE'};
   })};

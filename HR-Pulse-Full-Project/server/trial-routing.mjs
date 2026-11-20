@@ -5,7 +5,9 @@
      NCL – Jayant, Dudhichua East, Dudhichua West → Vinod Pinjarkar (CMPL3399)
      WCL – Sasti, Majri, Dhuptala, Gauri Pauni     → Virat Singh (CMPL18114)
      Directors (any one approves)                  → Mohit, Manish, Rahul Chadda
-   src/trial-workflow-preview/routing.ts shows the same table in the browser; test/trial-routing.test keeps both equal. */
+   Only vehicle trials use this (trial-access.mjs and the Vehicle Trial Result bot recipients in telegram.mjs);
+   leave and joining approvals keep the saved hierarchy.
+   src/trial-workflow-preview/routing.ts shows the same table in the browser; trial-routing.test.mjs keeps both equal. */
 export const REGIONAL_HR_LABEL='HR Manager — either one';
 export const DIRECTORS_LABEL='Final approval — any one';
 export const TRIAL_REGIONAL_HR=[

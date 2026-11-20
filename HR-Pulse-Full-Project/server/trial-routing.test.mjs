@@ -17,13 +17,15 @@ test('the route keeps Site HR → Driver Trainer → PM → Office HR → Region
  assert.deepEqual(route('NCL-DUDE').steps.map(step=>step.label),['HR Manager','Driver Trainer','Project Manager','Office HR — either one','HR Manager — either one','Final approval — any one']);
 });
 
-test('saved Regional HR or Director usernames cannot replace the fixed ones',()=>{
+test('vehicle trials replace saved Regional HR and Directors; leave and joining keep the saved hierarchy',()=>{
  const t=hierarchyTemplates.find(item=>item.code==='WCL-SASTI');
  const steps=t.steps.map((step,i)=>({approvers:[['sitehr'],['trainer1'],['pm1'],['office1'],['someoneelse'],['otherdirector']][i]}));
  const saved=validateHierarchy({code:'WCL-SASTI',steps,enabled:true});
- assert.deepEqual(approversOf(saved,'HR Manager — either one'),['viratsingh']);
- assert.deepEqual(approversOf(saved,'Final approval — any one'),['mohitchadda','manishchadda','rahulchadda']);
- assert.deepEqual(approversOf(saved,'Project Manager'),['pm1']);
+ assert.deepEqual(approversOf(saved,'HR Manager — either one'),['someoneelse']);
+ const trial=withTrialRouting(saved);
+ assert.deepEqual(approversOf(trial,'HR Manager — either one'),['viratsingh']);
+ assert.deepEqual(approversOf(trial,'Final approval — any one'),['mohitchadda','manishchadda','rahulchadda']);
+ assert.deepEqual(approversOf(trial,'Project Manager'),['pm1']);
 });
 
 test('other sites are left to Approval Master',()=>{
