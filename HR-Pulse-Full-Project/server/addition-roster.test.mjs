@@ -71,6 +71,22 @@ test('Link delivery: delivered, waiting with reason, failed, and a link handed o
  assert.equal(d('rahulchadda'),null);
 });
 
+test('Copy link to forward: one person on a route gets a new link; the queued link keeps working',async()=>{
+ const env={...process.env};process.env.TELEGRAM_NAGPUR_BOT_TOKEN='t';process.env.TELEGRAM_NAGPUR_BOT_USERNAME='NagpurEmployeeAdditionBot';
+ const writes=[];const query=async(sql,values)=>{writes.push([sql,values]);if(sql.includes("kind='joiningHierarchies'"))return {rows:[site('NCL-DUDE')]};return {rows:[],rowCount:1};};
+ const svc=createTelegram({query,connect:async()=>({query,release(){}})});const admin={actor:'admin',permissions:{hrDesktopAccess:['Approval Management']}};
+ try{
+  await assert.rejects(svc.telegramApi({actor:'x',permissions:{hrDesktopAccess:['Employee Master']}},'addition-link','POST',{actor:'vinodpinjarkar'}),e=>e.status===403);
+  await assert.rejects(svc.telegramApi(admin,'addition-link','POST',{actor:'stranger'}),e=>e.status===404);
+  writes.length=0;
+  const r=await svc.telegramApi(admin,'addition-link','POST',{actor:'VinodPinjarkar'});
+  assert.match(r.url,/^https:\/\/t\.me\/NagpurEmployeeAdditionBot\?start=[A-Za-z0-9_-]{32}$/);assert.ok(r.message.includes(r.url));assert.match(r.message,/Regional HR/);
+  assert.ok(!writes.some(([sql,v])=>sql.startsWith('DELETE FROM hr_telegram_link_tokens')&&v?.length),'the earlier link for this person is not removed');
+  assert.deepEqual(writes.find(([sql])=>sql.startsWith('INSERT INTO hr_telegram_link_tokens'))[1].slice(1),['vinodpinjarkar']);
+  assert.ok(writes.some(([sql])=>sql.includes("'ADDITION_BOT_FORWARD_LINK'")));
+ }finally{for(const k of ['TELEGRAM_NAGPUR_BOT_TOKEN','TELEGRAM_NAGPUR_BOT_USERNAME'])if(env[k]===undefined)delete process.env[k];else process.env[k]=env[k];}
+});
+
 test('office HR Executives default to Mayuri Umate (Nagpur) and Monika Wadhai (Chandrapur) when none is saved',()=>{
  const roster=additionRoster([]);
  assert.deepEqual(roster.find(p=>p.actor==='mayuriumate')?.roles,['Office HR · Nagpur Office']);

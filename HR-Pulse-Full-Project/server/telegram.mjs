@@ -372,6 +372,18 @@ export function createTelegram(pool){
    const issue=(await pool.query("SELECT last_error FROM hr_telegram_outbox WHERE bot='nagpur' AND actor=$1 AND state<>'SENT' AND last_error IS NOT NULL ORDER BY id DESC LIMIT 1",[profile.actor])).rows[0]?.last_error||'';
    return {connected,issue,botUsername:botUsername('nagpur'),configured:!!process.env.TELEGRAM_NAGPUR_BOT_TOKEN};
   }
+  if(route==='addition-link'&&method==='POST'){   /* one person's personal link to forward (WhatsApp etc.) when a bot cannot reach them */
+   if(!grantedMenus(profile).has('Approval Management')||assignedSites(profile)!==null)fail('Approval Management access without a site restriction is required',403);
+   if(!process.env.TELEGRAM_NAGPUR_BOT_TOKEN)fail('Nagpur Employee Addition bot is not configured on the server (TELEGRAM_NAGPUR_BOT_TOKEN)',503);
+   const actor=String(input.actor||'').trim().toLowerCase();
+   const person=additionRoster((await pool.query("SELECT code,status,data FROM hr_records WHERE kind='joiningHierarchies'")).rows).find(p=>p.actor===actor);
+   if(!person)fail('This login is not on any employee addition route',404);
+   const token=randomBytes(24).toString('base64url');
+   await tx(async db=>{await db.query('DELETE FROM hr_telegram_link_tokens WHERE expires_at<now()');   /* keep the link already queued on Telegram working too */
+    await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'nagpur',now()+interval '7 days')",[hash(token),actor]);
+    await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'ADDITION_BOT_FORWARD_LINK','telegram',NULL,$2)",[profile.actor,{for:actor}]);});
+   return {actor,roles:person.roles,url:`https://t.me/${botUsername('nagpur')}?start=${token}`,message:connectInviteMessage({roles:person.roles,url:`https://t.me/${botUsername('nagpur')}?start=${token}`,botUsername:botUsername('nagpur')})};
+  }
   if(route==='addition-links'&&['GET','POST'].includes(method)){   /* Approval Master › Employee Addition bot: connect links for everyone on the routes */
    if(!grantedMenus(profile).has('Approval Management')||assignedSites(profile)!==null)fail('Approval Management access without a site restriction is required',403);
    const roster=additionRoster((await pool.query("SELECT code,status,data FROM hr_records WHERE kind='joiningHierarchies'")).rows);
