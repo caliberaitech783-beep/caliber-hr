@@ -58,6 +58,12 @@ it('opens a completed operator trial at step two and saves it on the sixth step 
  expect(screen.getByLabelText(/^Mobile \*/)).toHaveValue('9876543210');
  expect(screen.getByLabelText(/^Aadhaar No\./)).toHaveValue('');
  expect(screen.getByLabelText(/^Trial Form No\./)).toHaveValue(row.formNo);
+ for(const label of [/^Full Name \*/,/^Mobile \*/,/^Trial Form No\./]){
+  const control=screen.getByLabelText(label) as HTMLInputElement;
+  expect(control).toHaveAttribute('readonly');
+  expect(control).toHaveClass('trial-handoff-locked');
+ }
+ expect(screen.getByLabelText(/^A-Form No\./)).not.toHaveClass('trial-handoff-locked');
  expect(screen.getByRole('heading',{name:'Joining & Personal Details',level:2})).toBeInTheDocument();
  expect(screen.queryByRole('heading',{name:'Upload Aadhaar Card'})).toBeNull();
  await waitFor(()=>{

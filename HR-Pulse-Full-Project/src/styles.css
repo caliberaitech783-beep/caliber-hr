@@ -16,6 +16,7 @@
 .employee-master .employee-location-types label{border:1px solid var(--pulse-border,#e4d7ed);cursor:pointer;border-radius:8px;align-items:center;gap:9px;padding:12px 18px;display:flex}
 .employee-master .employee-location-types label:has(input:checked){background:var(--pulse-soft,#f3edf9);border-color:var(--pulse-purple,#522e90)}
 .employee-master input{accent-color:var(--pulse-purple,#522e90)}
+.joining-form .trial-handoff-locked,.joining-form .trial-handoff-locked:disabled{background:#4b5563;color:#fff;-webkit-text-fill-color:#fff;border-color:#374151;opacity:1;cursor:not-allowed;font-weight:600}
 .mandatory-star{color:#d43768}.family-details-wrap{border:2px solid #d7bee9;background:#fcf9ff}.family-details-table th:nth-child(4),.family-details-table td:nth-child(4){min-width:250px;background:#f6effc}.family-details-table .family-aadhaar-upload{min-width:225px;border:1px solid #9b67c7;background:#fff;padding:8px;color:#4f2378;font-weight:600}
 .employee-master .employee-location-select{flex:260px;gap:10px;min-width:0;max-width:360px;margin-top:0;display:grid}
 .employee-master select{border:1px solid var(--pulse-border,#e4d7ed);width:100%;color:inherit;background:#fff;border-radius:8px;padding:12px}
