@@ -93,7 +93,7 @@ describe('Trial workflow preview',()=>{
     for(const panel of ['aadhaar','hr','trainer','approve','overview'])expect(el('#v-'+panel).hidden).toBe(true);
     expect(getByRole('button',{name:'Upload A/D'})).toBeDisabled();
   });
-  it.each(['pm','ohr','rhr','director'])('shows only Approvals for %s and blocks candidate navigation',role=>{
+  it.each(['pm','ohr','rhr'])('shows only Approvals for %s and blocks candidate navigation',role=>{
     const {root,el,change,click}=setup();
     change('#role',role);
     expect(Array.from(root.querySelectorAll<HTMLButtonElement>('#tabs button')).filter(button=>!button.hidden).map(button=>button.dataset.tab)).toEqual(['approve']);
@@ -107,6 +107,14 @@ describe('Trial workflow preview',()=>{
     expect(el('[data-tab="overview"]')).not.toHaveAttribute('hidden');
     change('#role','trainer');
     expect(el('[data-tab="overview"]')).toHaveAttribute('hidden');
+  });
+  it('gives Directors a read-only completed-candidate view with approval details',()=>{
+    const {root,el,change,click}=setup();
+    change('#role','director');
+    expect(Array.from(root.querySelectorAll<HTMLButtonElement>('#tabs button')).filter(button=>!button.hidden).map(button=>button.dataset.tab)).toEqual(['approve','overview']);
+    click('[data-tab="overview"]');
+    expect(el('#v-overview')).not.toHaveAttribute('hidden');
+    expect(el('#pipe')).not.toHaveAttribute('hidden');
   });
 
   it('shows only trial results when working as Driver Trainer',()=>{

@@ -51,4 +51,4 @@ export async function requireTrialRole(db,profile,role,target){
  return access;
 }
 export const trialStageOf=data=>data?.stage==='PART1'?'trainer':data?.pendingRole||'';
-export const canReadTrial=(access,data)=>access.overview||access.roles.includes('hr')||access.roles.includes(trialStageOf(data));
+export const canReadTrial=(access,data)=>access.overview||access.roles.includes('hr')||access.roles.includes(trialStageOf(data))||access.roles.includes('director')&&data?.stage==='CLEARED';

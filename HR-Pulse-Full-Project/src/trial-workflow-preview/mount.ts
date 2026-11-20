@@ -20,8 +20,8 @@ type Scope = TrialScope & {owner: string; legacyOwner?: string; name: string;des
 export type PrepareJoining = (rows: Trial[]) => Promise<(() => void) | void>;
 const tabs: Tab[] = ['aadhaar','hr','trainer','approve','overview'];
 const roleTab: Record<Role,Tab> = {hr:'aadhaar',trainer:'trainer',pm:'approve',ohr:'approve',rhr:'approve',director:'approve',observer:'overview'};
-/* Tabs each role may open: Site HR → Aadhaar + Part 1; Driver Trainer → Part 2; approvers → Approvals only; Site HR also sees All candidates. */
-const roleTabs: Record<Role,Tab[]> = {hr:['aadhaar','hr','overview'],trainer:['trainer'],pm:['approve'],ohr:['approve'],rhr:['approve'],director:['approve'],observer:['overview']};
+/* Tabs each role may open: Site HR → Aadhaar + Part 1; Driver Trainer → Part 2; approvers → Approvals. Directors retain a read-only completed view after final clearance. */
+const roleTabs: Record<Role,Tab[]> = {hr:['aadhaar','hr','overview'],trainer:['trainer'],pm:['approve'],ohr:['approve'],rhr:['approve'],director:['approve','overview'],observer:['overview']};
 const defaultOutcome = (row: Trial): Outcome => ({result:'',post:row.post,machine:equipment(row),reason:'',trainer:row.trialConductedBy||'',remarks:''});
 const digits = (value: string) => value.replace(/\D/g,'');
 const sorted = (rows: Trial[]) => [...rows].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
