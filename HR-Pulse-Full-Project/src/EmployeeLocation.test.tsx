@@ -285,8 +285,8 @@ describe('Employee Master tabs',()=>{
  });
  it('shows the requested tabs and the complete joining workflow',async()=>{
   const view=render(<EmployeeLocation/>);
-  const labels=['Add Temp. Employee','Update Existing Employee','Employee Verify','Completed Form','Reports'];
-  expect(labels.map(label=>screen.getByRole('button',{name:label}))).toHaveLength(5);
+  const labels=['Add Temp. Employee','EMP Rejoin','Update Existing Employee','Employee Verify','Completed Form','Reports'];
+  expect(labels.map(label=>screen.getByRole('button',{name:label}))).toHaveLength(labels.length);
   expect(screen.queryByRole('button',{name:'T to P C.Id'})).toBeNull();
   expect(screen.getByRole('button',{name:'Import'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));

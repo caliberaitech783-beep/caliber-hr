@@ -176,7 +176,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       authorize(profile,kind);
       const page=Math.max(1,Math.min(10000,Number(params.get('page'))||1));
       const search=(params.get('search')||'').slice(0,150);const status=params.get('status')||'';
-      let filter="r.kind=$1 AND ($2='' OR r.code ILIKE '%'||$2||'%' OR r.name ILIKE '%'||$2||'%') AND ($3='' OR r.status=$3) AND "+scopeSql('r','$4','$5');
+      let filter="r.kind=$1 AND ($2='' OR r.code ILIKE '%'||$2||'%' OR r.name ILIKE '%'||$2||'%' OR ($1='employees' AND COALESCE(r.data->'officeData'->>'Aadhaar No. *',r.data->'officeData'->>'Aadhaar No.','') ILIKE '%'||$2||'%')) AND ($3='' OR r.status=$3) AND "+scopeSql('r','$4','$5');
       const values=[kind,search,status,await siteIds(pool,profile),profile.actor];
       const filters=[['leaveTypeId',"r.data->>'leaveTypeId'"],['periodId',"r.data->>'periodId'"],['siteId',"r.data->>'siteId'"],['year',"left(r.data->>'date',4)"],['departmentId',"COALESCE(r.data->>'departmentId',(SELECT e.data->>'departmentId' FROM hr_records e WHERE e.id::text=r.data->>'employeeId'))"]];
       for(const [key,expression] of filters){const value=params.get(key);if(value){values.push(value);filter+=' AND '+expression+'=$'+values.length;}}
