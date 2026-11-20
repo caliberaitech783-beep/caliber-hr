@@ -151,14 +151,14 @@ test('private one-time connection binds the signed-in actor, never a supplied us
  try{const svc=createTelegram({connect:async()=>db});const update={update_id:1,message:{chat:{type:'private',id:123},from:{id:123},text:'/start '+'a'.repeat(32)}};
  await assert.rejects(svc.telegramWebhook('bad',update),e=>e.status===403);
  await svc.telegramWebhook('secret',update);await svc.telegramWebhook('secret',{...update,update_id:2});
- const bindings=writes.filter(([s])=>s.startsWith('INSERT INTO hr_telegram_accounts'));assert.equal(bindings.length,1);assert.deepEqual(bindings[0][1],['amitsingh','123',true,false,false,false,false]);
+ const bindings=writes.filter(([s])=>s.startsWith('INSERT INTO hr_telegram_accounts'));assert.equal(bindings.length,1);assert.deepEqual(bindings[0][1],['amitsingh','123',true,false,false,false,false,false]);
  }finally{if(previous===undefined)delete process.env.TELEGRAM_WEBHOOK_SECRET;else process.env.TELEGRAM_WEBHOOK_SECRET=previous;}
 });
 test('trial bot connection is tracked separately and retries only trial messages',async()=>{
  const previous=process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET;process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET='trial-secret';const writes=[];
  const db={release(){},async query(s,v){writes.push([s,v]);if(s.startsWith('INSERT INTO hr_telegram_updates'))return {rowCount:1};if(s.startsWith('DELETE FROM hr_telegram_link_tokens'))return {rows:[{actor:'sajadali',bot:'trial'}]};if(s.startsWith('SELECT actor'))return {rows:[]};return {rows:[],rowCount:1};}};
  try{await createTelegram({connect:async()=>db}).telegramWebhook('trial-secret',{update_id:3,message:{chat:{type:'private',id:456},from:{id:456},text:'/start '+'b'.repeat(32)}},'trial');
- const binding=writes.find(([s])=>s.startsWith('INSERT INTO hr_telegram_accounts'));assert.deepEqual(binding[1],['sajadali','456',false,true,false,false,false]);
+ const binding=writes.find(([s])=>s.startsWith('INSERT INTO hr_telegram_accounts'));assert.deepEqual(binding[1],['sajadali','456',false,true,false,false,false,false]);
  const retry=writes.find(([s])=>s.startsWith('UPDATE hr_telegram_outbox'));assert.deepEqual(retry[1],['sajadali','trial']);
  }finally{if(previous===undefined)delete process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET;else process.env.TELEGRAM_TRIAL_WEBHOOK_SECRET=previous;}
 });

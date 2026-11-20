@@ -120,7 +120,7 @@ function RecordEditor({grant,kind,module,row,lookups,writable,close,saved}:{gran
 
 }
 
-type ApprovalStep={stage:number;label:string;approvers:string[]};
+type ApprovalStep={stage:number;label:string;approvers:string[];otp?:boolean};
 
 const stepsFor=(a:Approval):ApprovalStep[]=>a.approval_steps?.length?a.approval_steps:a.approvers.map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
 
@@ -143,7 +143,15 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
   async function load(){setLoading(true);try{const result=await api<Approval[]>(grant,'approvals');setRows(result.filter(row=>(!kind||row.kind===kind)&&(completed===undefined||(completed?row.state==='APPROVED':row.state!=='APPROVED'))));setError('');}catch(e){setError((e as Error).message);}finally{setLoading(false);}}
 
   useEffect(()=>{setSelected(null);void load();},[grant,kind,completed]);
-  useEffect(()=>{if(selected?.telegram_flow&&selected.stage===1){void api<Lookup[]>(grant,'lookups').then(rows=>setChargeEmployees(rows.filter(r=>r.kind==='employees'))).catch(e=>setError(e.message));}setChargeEmployeeId('');},[selected?.id,grant]);
+  const finalLeaveStep=(a:Approval|null)=>!!a?.telegram_flow&&a.stage===stepsFor(a).length-1;
+  const[otp,setOtp]=useState(''),[otpNote,setOtpNote]=useState('');
+  useEffect(()=>{setOtp('');setOtpNote('');if(finalLeaveStep(selected)){void api<Lookup[]>(grant,'lookups').then(rows=>setChargeEmployees(rows.filter(r=>r.kind==='employees'))).catch(e=>setError(e.message));}setChargeEmployeeId('');},[selected?.id,selected?.stage,grant]);
+
+  /* Leave at the Directors' step: Regional HR requests the OTP and enters it once a Director tells it (owner, 20 Nov 2026). */
+  const otpStep=!!selected&&selected.state==='PENDING'&&!!stepsFor(selected)[selected.stage]?.otp;
+  const otpEnterer=otpStep&&!!selected&&!!stepsFor(selected)[selected.stage+1]?.approvers.includes(actor);
+  async function requestOtp(){if(!selected)return;setBusy(true);setError('');try{const r=await api<{sentTo:string[]}>(grant,`approvals/${selected.id}/otp`,'POST',{});setOtpNote(r.sentTo.length?`OTP sent to the Directors on Telegram (${r.sentTo.join(' / ')}). Ask any one Director for it; it is valid for 15 minutes.`:'No Director could be sent the OTP. Check the leave flow in Approval Master.');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function verifyOtp(){if(!selected)return;setBusy(true);setError('');try{await api(grant,`approvals/${selected.id}/otp-verify`,'POST',{otp});setSelected(null);setOtp('');notice("Directors' approval recorded. The leave now waits for your final approval.");await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 
   async function decide(decision:string){if(!selected)return;setBusy(true);try{await api(grant,`approvals/${selected.id}/decision`,'POST',{version:selected.version,decision,comments,chargeEmployeeId});setSelected(null);setComments('');notice('Approval decision saved');await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 
@@ -198,9 +206,16 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
       <ErrorBox message={error}/>
       {selected.state==='PENDING'&&<div className="approval-decision">
         <p>{canDecide?'Review the employee details, then approve this stage or reject with a reason.':selected.kind==='employees'&&localReviewChanged?'Local changes are saved only on this browser. Reset to the submitted form before making an approval decision.':`Awaiting approval from ${stepsFor(selected)[selected.stage]?.approvers.join(' / ')||'the assigned approver'}. Only the assigned approver can approve this stage.`}</p>
-        {canDecide&&selected.telegram_flow&&selected.stage===1&&<label>Charge handed over to (required for approval)<select value={chargeEmployeeId} onChange={e=>setChargeEmployeeId(e.target.value)}><option value="">Select employee</option>{chargeEmployees.map(e=><option key={e.id} value={e.id}>{e.code} · {e.name}</option>)}</select></label>}
+        {otpStep&&<div className="leave-otp" aria-label="Directors' OTP">
+          <p><b>Directors approve by OTP.</b> {otpEnterer?'Press Request OTP: the Directors get it on the Leave Request bot. Ask any one Director for the OTP and enter it here.':canDecide?'Regional HR requests the OTP; tell it to Regional HR to approve. To refuse, reject with a reason.':'Waiting for Regional HR to enter the OTP from a Director.'}</p>
+          {otpEnterer&&<div className="form-actions"><button disabled={busy} onClick={()=>void requestOtp()}>{otpNote?'Resend OTP':'Request OTP from Directors'}</button>
+            <label>OTP from a Director<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={e=>setOtp(e.target.value.replace(/\D/g,''))}/></label>
+            <button className="primary" disabled={busy||otp.length!==6} onClick={()=>void verifyOtp()}>{busy?'Checking…':'Enter OTP'}</button></div>}
+          {otpNote&&<p role="status">{otpNote}</p>}
+        </div>}
+        {canDecide&&finalLeaveStep(selected)&&<label>Charge handed over to (required for approval)<select value={chargeEmployeeId} onChange={e=>setChargeEmployeeId(e.target.value)}><option value="">Select employee</option>{chargeEmployees.map(e=><option key={e.id} value={e.id}>{e.code} · {e.name}</option>)}</select></label>}
         {canDecide&&<label className="comments-label">Comments (required for rejection)<textarea maxLength={2000} value={comments} onChange={e=>setComments(e.target.value)}/></label>}
-        <div className="form-actions">{canDecide&&<button disabled={busy||!comments.trim()} onClick={()=>void decide('REJECTED')}>Reject</button>}<button className="primary" disabled={busy||!canDecide} onClick={()=>void decide('APPROVED')}>{busy?'Saving…':approvalActionLabel(selected)}</button></div>
+        <div className="form-actions">{canDecide&&<button disabled={busy||!comments.trim()} onClick={()=>void decide('REJECTED')}>Reject</button>}{!otpStep&&<button className="primary" disabled={busy||!canDecide} onClick={()=>void decide('APPROVED')}>{busy?'Saving…':approvalActionLabel(selected)}</button>}</div>
       </div>}
     </section></div>}
     {letter&&<EmployeeLetter employee={letter.employee} kind={letter.kind} serial={letter.serial} close={()=>setLetter(null)}/>}
