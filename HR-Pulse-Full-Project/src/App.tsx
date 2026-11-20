@@ -10,11 +10,6 @@ const Workspace=lazy(loadWorkspace);
 const pulseOrigin = 'https://pulse.cmll.in';
 const embedded = window.parent !== window && new URLSearchParams(window.location.search).get('embedded') === 'pulse';
 
-function startPulseSignIn(){
-  sessionStorage.setItem('pulseIIOpenHr','1');
-  window.location.assign('/api/mis-credentials/start');
-}
-
 async function openSharedHr():Promise<Session|null>{
   const stored=localStorage.getItem('nerveCenterSession')||sessionStorage.getItem('nerveCenterSession')||'null';
   let token:string|undefined;
@@ -51,7 +46,7 @@ export default function App(){
     sharedRequest.current.request.then(next=>{
       if(!active)return;
       if(next){setError('');setSession(next);}
-      else if(new URLSearchParams(window.location.search).get('signin')==='1')startPulseSignIn();
+      else setError('Sign in with your Pulse account to open HR.');
     }).catch(e=>{if(active)setError(e instanceof Error?e.message:'Unable to open HR.');})
       .finally(()=>{if(active)setOpeningShared(false);});
     return()=>{active=false;};
@@ -96,13 +91,7 @@ export default function App(){
 
   if(inPulseII&&!session?.grant){
     if(openingShared)return <main className="loading-screen" role="status">Opening HR in Pulse-II…</main>;
-    return <main className="loading-screen"><div>
-      <h1>HR · Caliber Pulse-II</h1>
-      {error&&<p role="alert">{error}</p>}
-      {error?<button onClick={()=>{setError('');setAttempt(value=>value+1);}}>Retry connection</button>:
-        <button onClick={startPulseSignIn}>Sign in with Pulse</button>}
-      {' '}<a href="/">Back to MIS</a>
-    </div></main>;
+    return <><main className="loading-screen"><div><h1>HR · Caliber Pulse-II</h1>{error&&<p role="alert">{error}</p>}<a href="/">Back to MIS</a></div></main><HrLogin embedded preload={loadWorkspace} onLogin={next=>{pending.current=undefined;setError('');setSession(next);}}/></>;
   }
   if(!session?.grant)return <HrLogin embedded={embedded} preload={loadWorkspace} onLogin={next=>{pending.current=undefined;setError('');setSession(next);}}/>;
   const opening=<div className="loading-screen" role="status">Opening your HR workspace…</div>;

@@ -42,12 +42,20 @@ it('uses the existing Pulse-II sign-in to open HR without storing an HR credenti
   expect(localStorage.getItem('hrPulseSession')).toBeNull();
 });
 
-it('shows the HR permission error without opening a separate password form',async()=>{
+it('shows the HR permission error and allows a direct Pulse HR sign-in',async()=>{
   sessionStorage.setItem('nerveCenterSession',JSON.stringify({token:'fixture'}));
   const fetcher=vi.fn(async()=>Response.json({error:'HR access is not assigned.'},{status:403}));
   vi.stubGlobal('fetch',fetcher);
   render(<App/>);
   expect(await screen.findByRole('alert')).toHaveTextContent('HR access is not assigned.');
-  expect(screen.queryByLabelText('Password')).toBeNull();
+  expect(screen.getByLabelText('Password')).toBeInTheDocument();
   expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it('shows the direct HR sign-in when no shared Pulse-II session exists',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>new Response(null,{status:401})));
+ render(<App/>);
+ expect(await screen.findByRole('heading',{name:'HR sign in'})).toBeInTheDocument();
+ expect(screen.getByLabelText('Pulse username')).toBeInTheDocument();
+ expect(screen.getByLabelText('Password')).toBeInTheDocument();
 });
