@@ -18,6 +18,7 @@ import {api,savedSession,type Session,type HRConfig} from './api';
 import Logo from './Logo';
 import {Records,Approvals,Overview,Audit,AccessAdministration} from './Modules';
 import EmployeeLocation from './EmployeeLocation';
+import AdditionApprovalPopup from './AdditionApprovalPopup';
 import EmployeeMasterRegister from './EmployeeMasterRegister';
 import type {JoiningDraft} from './joiningDrafts';
 import './modules.css';
@@ -145,7 +146,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
       <SettingsRegisters key={page} page={page} grant={session.grant} profile={profile} modules={config} notice={setNotice}/>}
     {page==='Audit Logs'&&<Audit grant={session.grant}/>}
     {page==='Administration'&&<AccessAdministration grant={session.grant} profile={profile} modules={config} notice={setNotice}/>}
-    </>}</>}</div>{notice&&(page!=='Master Configuration'||masterMenu==='Holiday & Leave Master')&&<div className="toast" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}><X/></button></div>}</main></div>;
+    </>}</>}</div>{access.has('Approval Management')&&<AdditionApprovalPopup grant={session.grant} actor={profile.actor||''} onOpenApprovals={()=>setPage('Approval Management')}/>}{notice&&(page!=='Master Configuration'||masterMenu==='Holiday & Leave Master')&&<div className="toast" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}><X/></button></div>}</main></div>;
 }
 
 function ModuleLanding({title}:{title:string}){return <section className="data-card"><h2>{title}</h2><div className="empty"><h3>Module setup pending</h3><p>This menu is ready. The management workflow is not yet configured.</p></div></section>;}
