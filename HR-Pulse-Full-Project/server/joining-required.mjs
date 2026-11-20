@@ -21,7 +21,8 @@ export function missingJoiningField(office = {}) {
 
   for(let index=0;index<5;index++){
     const entered=['Family Member Name','Relationship','Family Date of Birth','Contact No.','Occupation','Dependent? (Y/N)'].some(key=>String(office[key]||'').split('|')[index]?.trim());
-    if(entered)required.push(`Family Aadhaar ${index+1}`);
+    const aadhaar=String(office['Aadhaar Number']||'').split('|')[index]?.trim()||'';
+    if(entered&&!/^\d{12}$/.test(aadhaar))return `Aadhaar Number ${index+1}`;
   }
   if(siteJoining)required.push('A-Form No.');
   if(driverOrOperator){

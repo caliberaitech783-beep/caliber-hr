@@ -11,7 +11,7 @@ const groups=[
  {name:'Job & Posting Details',fields:['Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Type','Skill Category','Salary Structure /Scheme','Monthly Gross Salary','Mess Deduction','Cost Centre / Project Code']},
  {name:'Bank Details',fields:['Bank Name','IFSC Code','Bank Account No','New Account No','Branch Name','Payment Mode','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable']},
  {name:'Educational Details',repeated:true,fields:['Qualification','Board / University','Institute / College','Year of Passing','Percentage / CGPA']},
- {name:'Family Details',repeated:true,fields:['Family Member Name','Relationship','Family Date of Birth','Contact No.','Occupation','Dependent? (Y/N)']},
+ {name:'Family Details',repeated:true,fields:['Family Member Name','Relationship','Aadhaar Number','Family Date of Birth','Contact No.','Occupation','Dependent? (Y/N)']},
  {name:'Previous Work Experience',repeated:true,fields:['Employer Name','Previous Designation','From Date','To Date','Last Drawn Salary','Reason for Leaving']},
  {name:'Mine Compliance',fields:['VT Certificate No.','VTC Centre Name','VTC Valid Upto','WUIN No.','A-Form No.','Medical Examination Date','Medical Fitness Valid Upto','Medical Fitness Status','Safety Induction Date','Driving Licence No.','DL Class','DL Issue Date','DL Valid Upto','Operator Competency Certificate','Other Mine Permit / Training']},
 ];

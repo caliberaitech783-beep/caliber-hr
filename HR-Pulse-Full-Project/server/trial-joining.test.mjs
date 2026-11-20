@@ -65,12 +65,12 @@ test('joining requests fail before an employee record is written when mandatory 
  await assert.rejects(service.saveTrialEmployee(profile,{employee:incompleteTrial,trial}),/Driving licence is required/);
 });
 
-test('joining requires marital status and Aadhaar for each entered family row',async()=>{
+test('joining requires marital status and Aadhaar number for each entered family row',async()=>{
  const {missingJoiningField}=await import('./joining-required.mjs');
  const office={...employee.__officeData};
  delete office['Marital Status'];assert.equal(missingJoiningField(office),'Marital Status');
  office['Marital Status']='Married';office['Family Member Name']=' |  | Parent Three';
- assert.equal(missingJoiningField(office),'Family Aadhaar 3');
- office['Family Aadhaar 3']='parent.pdf';assert.equal(missingJoiningField(office),undefined);
- office.Relationship='Father |  | Mother';assert.equal(missingJoiningField(office),'Family Aadhaar 1');
+ assert.equal(missingJoiningField(office),'Aadhaar Number 3');
+ office['Aadhaar Number']=' |  | 234500000003';assert.equal(missingJoiningField(office),undefined);
+ office.Relationship='Father |  | Mother';assert.equal(missingJoiningField(office),'Aadhaar Number 1');
 });
