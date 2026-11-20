@@ -5,6 +5,7 @@ import {grantedMenus} from './modules.mjs';
 import {assignedSites} from './scope.mjs';
 import {trialReviewStage} from './trial-review.mjs';
 import {nagpurRecipients} from './employee-addition-bot.mjs';
+import {additionRoster,connectInviteMessage} from './addition-roster.mjs';
 import {withTrialRouting} from './trial-routing.mjs';
 import {trialAccess,requireTrialRole,canReadTrial,trialSite} from './trial-access.mjs';
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
@@ -370,6 +371,27 @@ export function createTelegram(pool){
    const connected=!!(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor=$1 AND nagpur_connected=true',[profile.actor])).rowCount||!!nagpurRecipients()[profile.actor];
    const issue=(await pool.query("SELECT last_error FROM hr_telegram_outbox WHERE bot='nagpur' AND actor=$1 AND state<>'SENT' AND last_error IS NOT NULL ORDER BY id DESC LIMIT 1",[profile.actor])).rows[0]?.last_error||'';
    return {connected,issue,botUsername:botUsername('nagpur'),configured:!!process.env.TELEGRAM_NAGPUR_BOT_TOKEN};
+  }
+  if(route==='addition-links'&&['GET','POST'].includes(method)){   /* Approval Master › Employee Addition bot: connect links for everyone on the routes */
+   if(!grantedMenus(profile).has('Approval Management')||assignedSites(profile)!==null)fail('Approval Management access without a site restriction is required',403);
+   const roster=additionRoster((await pool.query("SELECT code,status,data FROM hr_records WHERE kind='joiningHierarchies'")).rows);
+   const accounts=new Map((await pool.query('SELECT actor,leave_connected,joining_connected,trial_connected,nagpur_connected FROM hr_telegram_accounts WHERE actor = ANY($1)',[roster.map(p=>p.actor)])).rows.map(r=>[r.actor,r]));
+   const listed=nagpurRecipients();
+   const viaOf=a=>a?.leave_connected?'leave':a?.joining_connected?'joining':a?.trial_connected?'trial':'';
+   const people=roster.map(p=>{const a=accounts.get(p.actor);return {...p,connected:!!a?.nagpur_connected||!!listed[p.actor],via:viaOf(a)};});
+   if(method==='GET')return {people,botUsername:botUsername('nagpur'),configured:!!process.env.TELEGRAM_NAGPUR_BOT_TOKEN};
+   if(!process.env.TELEGRAM_NAGPUR_BOT_TOKEN)fail('Nagpur Employee Addition bot is not configured on the server (TELEGRAM_NAGPUR_BOT_TOKEN)',503);
+   const batch=Date.now().toString(36),results=[];
+   await tx(async db=>{for(const p of people){
+    if(p.connected){results.push({...p,status:'already connected'});continue;}
+    const token=randomBytes(24).toString('base64url'),url=`https://t.me/${botUsername('nagpur')}?start=${token}`;
+    await db.query("DELETE FROM hr_telegram_link_tokens WHERE (actor=$1 AND bot='nagpur') OR expires_at<now()",[p.actor]);
+    await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'nagpur',now()+interval '7 days')",[hash(token),p.actor]);
+    if(p.via){await queueTelegram(db,`nagpur-invite:${batch}`,[p.actor],connectInviteMessage({roles:p.roles,url,botUsername:botUsername('nagpur')}),p.via);results.push({...p,status:`sent on ${botLabel(p.via)}`});}
+    else results.push({...p,status:'not on any HR bot – forward this link',url});
+   }
+   await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SEND_ADDITION_BOT_LINKS','telegram',NULL,$2)",[profile.actor,{sent:results.filter(r=>/^sent/.test(r.status)).map(r=>r.actor),manual:results.filter(r=>r.url).map(r=>r.actor)}]);});
+   return {people:results,botUsername:botUsername('nagpur')};
   }
   if(route==='addition-connect'&&method==='POST'){   /* connect link for the Nagpur Employee Addition bot (open it and tap Start) */
    if(!process.env.TELEGRAM_NAGPUR_BOT_TOKEN)fail('Nagpur Employee Addition bot is not configured on the server (TELEGRAM_NAGPUR_BOT_TOKEN)',503);
