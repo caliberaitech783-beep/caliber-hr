@@ -7,7 +7,7 @@
    the same three as for site staff. Every step is sent on the Nagpur Employee Addition bot with
    Approve / Reject buttons (employee-addition-bot.mjs). */
 export const OFFICE_SITES={
- 'CMLL-CO':{office:'Nagpur Office',defaultHrManager:['vinodpinjarkar']},
+ 'CMLL-CO':{office:'Nagpur Office',defaultHrManager:['vinodpinjarkar'],defaultOfficeHr:['mayuriumate']},   /* HR Executive Mayuri Umate (CMPL14903), owner 20 Nov 2026 */
  'CMLL-HO':{office:'Chandrapur HO',defaultHrManager:['viratsingh'],defaultOfficeHr:['monikawadhai']},   /* HR Manager Virat Singh (18114), HR Executive Monika Wadhai (CMPL12730), owner 20 Nov 2026 */
 };
 export const OFFICE_DIRECTORS=['mohitchadda','manishchadda','rahulchadda'];
