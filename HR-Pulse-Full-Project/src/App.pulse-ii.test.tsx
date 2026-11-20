@@ -58,4 +58,7 @@ it('shows the direct HR sign-in when no shared Pulse-II session exists',async()=
  expect(await screen.findByRole('heading',{name:'HR sign in'})).toBeInTheDocument();
  expect(screen.getByLabelText('Pulse username')).toBeInTheDocument();
  expect(screen.getByLabelText('Password')).toBeInTheDocument();
+ expect(screen.queryByRole('heading',{name:'HR · Caliber Pulse-II'})).toBeNull();
+ expect(screen.queryByRole('alert')).toBeNull();
+ expect(screen.getByRole('link',{name:'Back to MIS'})).toHaveAttribute('href','/');
 });
