@@ -63,12 +63,13 @@ test('leave messages use the Leave Request bot once it is set up',async()=>{
 test('a personal join link connects that login on the Leave Request bot',async()=>{
  await withEnv(botEnv,async()=>{const writes=[];
   const db={release(){},async query(s,v){writes.push([s,v]);if(s.startsWith('INSERT INTO hr_telegram_leave_request_updates'))return {rowCount:1};
-   if(s.startsWith('DELETE FROM hr_telegram_link_tokens')){assert.equal(v[0],createHash('sha256').update('d'.repeat(32)).digest('hex'));return {rows:[{actor:'ravi.k',bot:'leave-request'}]};}
+   if(s.startsWith('DELETE FROM hr_telegram_link_tokens WHERE hash')){assert.equal(v[0],createHash('sha256').update('d'.repeat(32)).digest('hex'));return {rows:[{actor:'ravi.k',bot:'leave-request'}]};}
    if(s.startsWith('SELECT actor'))return {rows:[]};return {rows:[],rowCount:1};}};
   await createTelegram({connect:async()=>db}).telegramWebhook('lr-secret',{update_id:9,message:{chat:{type:'private',id:321},from:{id:321},text:'/start '+'d'.repeat(32)}},'leave-request');
   const binding=writes.find(([s])=>s.startsWith('INSERT INTO hr_telegram_accounts'));
   assert.deepEqual(binding[1],['ravi.k','321',false,false,false,false,false,true]);
   assert.ok(writes.some(([s,v])=>s.startsWith('UPDATE hr_telegram_outbox')&&v[1]==='leave-request'),'waiting leave messages are retried at once');
+  assert.ok(writes.some(([s,v])=>s.startsWith("DELETE FROM hr_telegram_link_tokens WHERE actor=$1 AND bot='leave-request'")&&v[0]==='ravi.k'),'once joined, the other links of the person are cleared');
   assert.ok(writes.some(([s,v])=>s.startsWith('INSERT INTO hr_telegram_outbox')&&v[3]==='leave-request'&&/Connected to CALIBER Leave Request/.test(v[2])));
  });
 });
@@ -131,4 +132,41 @@ test('Regional HR requests the Directors\' OTP and enters it; a wrong OTP is ref
 test('Directors cannot approve leave directly – only by OTP; they can still reject',async()=>{
  const {service}=otpDb();
  await assert.rejects(service.decide({actor:'mohitchadda',permissions:{hrDesktopAccess:['Approval Management']}},approvalId,{decision:'APPROVED',version:3}),/approve leave by OTP/);
+});
+
+/* Owner, 20 Nov 2026: an old, used or replaced join link must not leave someone stuck on "link expired". */
+const startWith=async(account)=>withEnv(botEnv,async()=>{const writes=[],sent=[];
+ const db={release(){},async query(s,v){writes.push([s,v]);if(s.startsWith('INSERT INTO hr_telegram_leave_request_updates'))return {rowCount:1};
+  if(s.startsWith('DELETE FROM hr_telegram_link_tokens WHERE hash'))return {rows:[]};
+  if(s.startsWith('SELECT actor,leave_request_connected'))return {rows:account?[account]:[]};
+  return {rows:[],rowCount:1};}};
+ const realFetch=globalThis.fetch;globalThis.fetch=async(url,init)=>{sent.push(JSON.parse(init.body).text);return new Response(JSON.stringify({ok:true}));};
+ try{await createTelegram({connect:async()=>db}).telegramWebhook('lr-secret',{update_id:11,message:{chat:{type:'private',id:555},from:{id:555},text:'/start '+'e'.repeat(32)}},'leave-request');}
+ finally{globalThis.fetch=realFetch;}
+ return {writes,sent};});
+test('a used link from someone already joined says they are connected, not that the link expired',async()=>{
+ const {sent,writes}=await startWith({actor:'ravi.k',leave_request_connected:true});
+ assert.deepEqual(sent,["You're already connected to CALIBER Leave Request. Your leave status, and leave waiting for your approval, will arrive here."]);
+ assert.ok(!writes.some(([s])=>s.startsWith('UPDATE hr_telegram_accounts')));
+});
+test('a used or replaced link from a Telegram account HR already knows joins them anyway',async()=>{
+ const {sent,writes}=await startWith({actor:'ops.hod',leave_request_connected:false});
+ assert.deepEqual(sent,[]);
+ assert.ok(writes.some(([s,v])=>s.startsWith('UPDATE hr_telegram_accounts SET leave_request_connected=true')&&v[0]==='ops.hod'));
+ assert.ok(writes.some(([s,v])=>s.startsWith('INSERT INTO hr_telegram_outbox')&&v[1]==='ops.hod'&&/Connected to CALIBER Leave Request/.test(v[2])));
+});
+test('an unknown Telegram account with a dead link is still told to ask HR for a new one',async()=>{
+ const {sent}=await startWith(null);
+ assert.deepEqual(sent,['This link has expired or was already used. Ask HR for a new Leave Request link.']);
+});
+test('making a new join link keeps the person\'s older links working',async()=>{
+ await withEnv(botEnv,async()=>{const writes=[];
+  const db={release(){},async query(s,v){writes.push([s,v]);
+   if(s.includes('FROM hr_records e'))return {rows:[{actor:'ravi.k',name:'Ravi',site:'Jayant OB'}]};
+   return {rows:[],rowCount:1};}};
+  const svc=createTelegram({query:db.query,connect:async()=>db});
+  await svc.telegramApi({actor:'hr',permissions:{hrDesktopAccess:['Approval Management']}},'leave-request-link','POST',{actor:'ravi.k'});
+  const cleanup=writes.filter(([s])=>s.startsWith('DELETE FROM hr_telegram_link_tokens'));
+  assert.deepEqual(cleanup.map(([s])=>s),['DELETE FROM hr_telegram_link_tokens WHERE expires_at<now()']);
+ });
 });

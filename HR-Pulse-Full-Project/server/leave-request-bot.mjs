@@ -65,3 +65,4 @@ export function leaveOtpMessage({record,siteName,otp,requestedBy}){
  return ['🔐 OTP FOR LEAVE APPROVAL – DIRECTORS','',...leaveLines(record,siteName),`Requested by: ${requestedBy||'Regional HR'} (Regional HR)`,'',
   `OTP: ${otp} (valid ${LEAVE_OTP_MINUTES} min)`,'Tell this OTP to Regional HR to approve the leave. To refuse, decline it in HRMS › Approvals.'].join('\n');
 }
+export const LEAVE_REQUEST_ALREADY="You're already connected to CALIBER Leave Request. Your leave status, and leave waiting for your approval, will arrive here.";
