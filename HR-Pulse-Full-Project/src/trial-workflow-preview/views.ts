@@ -95,10 +95,12 @@ export function detailView(row: Trial, role: Role, canOpenJoining = false, otpAp
   const dlValidDates=(row.dlValidDates?.length?row.dlValidDates:row.dlValid.split(',')).map(value=>date(value.trim())).filter(Boolean).join('; ');
   const photo=/^data:image\/jpeg;base64,[\w+/=]+$/.test(row.photo) ? `<img src="${esc(row.photo)}" alt="Photo of ${esc(row.name)}" style="width:120px;height:150px;object-fit:cover;border-radius:6px">` : '<span class="muted small">No photo</span>';
   const signs = Object.entries(ROLES).map(([key,label])=>{
-    const entry=[...row.history].reverse().find(h=>h.role===key);
+    const entry=[...row.history].reverse().find(h=>h.role===key)
+      // A result saved before the trainer's step was recorded still names who conducted the trial.
+      ||(key==='trainer'&&out&&row.result?{role:'trainer',action:'Trial result: '+row.result,by:out.trainer,at:out.at}:undefined);
     const cls=!entry?'wait':entry.action==='Rejected'||key==='trainer'&&row.result==='FAIL'?'no':'ok';
     const action=entry ? key==='trainer'?row.result:entry.action : row.stage===key?'Pending':'–';
-    return `<div class="sig ${cls}"><b>${label}</b><span class="st">${esc(action)}</span><span>${esc(entry?.by)}</span><span class="muted">${entry?esc(date(indiaDay(new Date(entry.at)))):''}</span></div>`;
+    return `<div class="sig ${cls}"><b>${label}</b><span class="st">${esc(action)}</span><span>${esc(entry?.by)}</span><span class="muted">${entry?.at?esc(date(indiaDay(new Date(entry.at)))):''}</span></div>`;
   }).join('');
   return `<div class="panel-head"><div><h2>${esc(row.name)}</h2><span class="mono muted small">${esc(row.formNo)}${row.batch?' · Batch '+esc(row.batch):''} · ${esc(row.site)}</span></div>
       <div class="actions">${stagePill(row)}${canOpenJoining&&isClearedForJoining(row)?'<button type="button" class="btn pri sm" data-open-joining>Open Step 2</button>':''}${row.result==='PASS'?'<button type="button" class="btn tg sm" id="mTelegram">Telegram message</button>':''}<button type="button" class="btn sm" id="mClose">Close</button></div></div>

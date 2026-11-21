@@ -3,7 +3,7 @@ import {hierarchyTemplates,currentHierarchy,withOfficeHr,withDriverTrainer} from
 import {randomBytes,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {grantedMenus} from './modules.mjs';
 import {assignedSites} from './scope.mjs';
-import {trialReviewStage} from './trial-review.mjs';
+import {trialHistoryWithSteps,trialReviewStage} from './trial-review.mjs';
 import {nagpurRecipients} from './employee-addition-bot.mjs';
 import {additionRoster,connectInviteMessage} from './addition-roster.mjs';
 import {withTrialRouting} from './trial-routing.mjs';
@@ -761,7 +761,7 @@ export function createTelegram(pool){
    const site=String(input.site||'').slice(0,80),company=String(input.company||'').slice(0,120),department=String(input.department||'').slice(0,80),heading=String(input.heading||'').slice(0,120),trialBy=String(input.trialBy||'').slice(0,80);
    const batchId=items.length>1?(String(input.batchId||'').trim().slice(0,40)||newBatchId()):'';
    const records=items.map(c=>{const fields=cleanFields(c.fields),formNo=String(c.formNo||'').trim().slice(0,40);if(!formNo)fail('Form number is required');const name=String(fields['Name of candidate']||'').trim();if(!name)fail('Candidate name is required for every row');
-    return {formNo,clientId:String(c.clientId||'').slice(0,64),heading,site,company,department,fields,stage:'PART1',status:'Sent to driver trainer',batchId,trialBy,attachments:cleanAttachments(c.attachments),part1By:profile.actor,part1At:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};});
+    return {formNo,clientId:String(c.clientId||'').slice(0,64),heading,site,company,department,fields,stage:'PART1',status:'Sent to driver trainer',batchId,trialBy,attachments:cleanAttachments(c.attachments),part1By:profile.actor,part1Name:String(profile.name||profile.actor||'').slice(0,80),part1At:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};});
    const target={site,region:String(input.region||'').slice(0,80),company,group:String(input.group||'').slice(0,80)};
    const recipients=(await hierarchyRecipients(pool,'part1',target)).map(recipientActor).filter(notSender(profile.actor));
    let message,files=[];
@@ -877,7 +877,7 @@ export function createTelegram(pool){
       AND (lower(s.code)=ANY($2) OR lower(s.name)=ANY($2) OR s.id::text=ANY($2))
       AND (lower(s.name)=lower(t.data->>'site') OR lower(s.code)=lower(t.data->>'site'))))
     ORDER BY updated_at DESC LIMIT 300`,[[template.code,template.name,...(trialSiteAliases[template.code]||[])].map(norm),scope])).rows;
-   return {rows:rows.filter(({data})=>canReadTrial(access,data)).map(({id,data})=>{const {attachments,...record}=data;return {...record,id};})};
+   return {rows:rows.filter(({data})=>canReadTrial(access,data)).map(({id,data})=>{const {attachments,...record}=data;return {...record,history:trialHistoryWithSteps(data),id};})};
   }
   /* ---- Browser sync: decisions taken on Telegram since the browser last looked ---- */
   if(route==='trial-sync'&&method==='POST'){
@@ -885,7 +885,7 @@ export function createTelegram(pool){
    const formNos=(Array.isArray(input.formNos)?input.formNos:[]).slice(0,500).map(f=>String(f).slice(0,40));if(!formNos.length)return {rows:[]};
    const rows=(await pool.query("SELECT code,data FROM hr_records WHERE kind='trialForms' AND code = ANY($1)",[formNos])).rows;
    const visible=[];for(const r of rows)if(canReadTrial(await trialAccess(pool,profile,r.data),r.data))visible.push(r);
-   return {rows:visible.map(r=>({formNo:r.code,history:(r.data.history||[]).filter(h=>h&&h.role&&h.at),stage:r.data.stage||'',pendingRole:r.data.pendingRole||'',status:r.data.status||''}))};
+   return {rows:visible.map(r=>({formNo:r.code,history:trialHistoryWithSteps(r.data).filter(h=>h&&h.role&&h.at),stage:r.data.stage||'',pendingRole:r.data.pendingRole||'',status:r.data.status||''}))};
   }
   /* ---- Part 2 single result (driver trainer) → PM, with the candidate's attachments ---- */
   if(route==='trial-result'&&method==='POST'){

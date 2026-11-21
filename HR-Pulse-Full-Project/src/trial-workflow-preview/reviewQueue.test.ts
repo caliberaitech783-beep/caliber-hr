@@ -22,3 +22,12 @@ it('requires every approval in order before joining',()=>{
  expect(approvalStage(history(roles),'2026-11-19T13:00:00Z')).toBe('pm');
  expect(approvalStage([...history(['pm']),{role:'ohr',action:'Rejected',by:'Reviewer',at:''}])).toBe('rejected');
 });
+it('names the Site HR and Driver Trainer in the approvals of a form from the server',async()=>{
+ const {detailView}=await import('./views');
+ const row=reviewTrial({...record,fields:{...record.fields,'Trial conducted by':'SANTOSH KUMAR MOHANTA'},
+  history:[{role:'hr',action:'Submitted Part 1',by:'AMIT SINGH',at:'2026-11-19T05:00:00Z'},...history(['pm'])]})!;
+ const box=document.createElement('div');box.innerHTML=detailView(row,'observer');
+ const sigs=box.querySelector('.sigs')!.textContent!;
+ expect(sigs).toContain('Site HRSubmitted Part 1AMIT SINGH19-11-2026');
+ expect(sigs).toContain('Driver TrainerPASSSANTOSH KUMAR MOHANTA19-11-2026');
+});
