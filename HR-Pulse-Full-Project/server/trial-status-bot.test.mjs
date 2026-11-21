@@ -121,6 +121,54 @@ test('a PASS goes to the PM with Approve and Decline buttons; Office HR is not a
  });
 });
 
+/* Owner, 21 Nov 2026: Directors approve two ways – directly (HRMS or Telegram Approve), or by OTP through Office HR when out of station. */
+test('Directors get Approve buttons and approve directly; the OTP through Office HR still works as the backup',async()=>{
+ await withEnv(trialStatusEnv,async()=>{
+  const at='2026-11-21T06:00:00Z',approved=role=>({role,action:'Approved',by:role,at});
+  const form=(formNo,history,pendingRole)=>['trialForms:'+formNo,{id:formNo,code:formNo,data:{formNo,site:'Jayant OB East',resultAt:'2026-11-21T05:00:00Z',fields:{Result:'PASS','Name of candidate':'Cand '+formNo},history,pendingRole}}];
+  const records=new Map([form('TF/20',[approved('pm'),approved('ohr')],'rhr'),form('TF/21',[approved('pm'),approved('ohr'),approved('rhr')],'director')]);
+  const outbox=[],groups=[];
+  const db={release(){},async query(sql,v=[]){
+   if(/^(BEGIN|COMMIT|ROLLBACK)/.test(sql))return {rows:[]};
+   if(sql.includes("kind='joiningHierarchies'"))return {rows};
+   if(sql.includes("kind='trialForms' AND code = ANY"))return {rows:v[0].map(code=>records.get('trialForms:'+code)).filter(Boolean)};
+   if(sql.includes("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1"))return {rows:[records.get('trialForms:'+v[0])].filter(Boolean)};
+   if(sql.startsWith('UPDATE hr_records SET data=$1,status=$2')){const r=[...records.values()].find(x=>x.id===v[3]);r.data=v[0];return {rowCount:1};}
+   if(sql.includes("kind='trialApprovals' AND status='PENDING'")&&sql.startsWith('SELECT'))return {rows:groups.filter(g=>g.role===v[0]&&JSON.stringify(g.formNos)===v[1]).map(g=>({code:g.code}))};
+   if(sql.includes("'trialApprovals'")&&sql.startsWith('INSERT')){groups.push({code:v[0],...v[2]});return {rowCount:1};}
+   if(sql.includes("kind='trialOtps'")&&sql.startsWith('SELECT'))return {rows:[records.get('trialOtps:'+v[0])].filter(Boolean)};
+   if(sql.includes("'trialOtps'")&&sql.startsWith('INSERT')){records.set('trialOtps:'+v[0],{data:v[2]});return {rowCount:1};}
+   if(sql.includes("kind='trialOtps'")&&sql.startsWith('UPDATE')){records.get('trialOtps:'+v[0]).data=v[1];return {rowCount:1};}
+   if(sql.startsWith('INSERT INTO hr_telegram_outbox')){outbox.push({actor:v[1],message:v[2],markup:JSON.parse(v[4]||'null')});return {rowCount:1};}
+   if(sql.startsWith('INSERT INTO hr_telegram_files'))return {rows:[{id:1}]};
+   return {rows:[],rowCount:1};}};
+  const service=createTelegram({query:db.query,connect:async()=>db});
+  const person=(actor,role)=>({actor,name:actor,permissions:{hrDesktopAccess:['Employee Master'],hrAccountStatus:'Active',hrTrialAssignments:[{role,sites:[{code:'NCL-JAYANT'}]}]}});
+  const target={site:'Jayant OB East',region:'NCL'};
+  /* Regional HR approves → the three Directors get Approve / Decline; Office HR is told about the OTP backup, without buttons */
+  const rhr=await service.telegramApi(person('vinodpinjarkar','Regional HR'),'trial-approval','POST',{...target,reviewer:'rhr',approved:true,rows:[{formNo:'TF/20',fields:{Result:'PASS'}}]});
+  assert.equal(rhr.stage,'director');
+  const directors=outbox.filter(o=>o.markup);
+  assert.deepEqual(directors.map(o=>o.actor).sort(),['manishchadda','mohitchadda','rahulchadda']);
+  assert.deepEqual(directors[0].markup.inline_keyboard[0].map(b=>b.text),['✅ Approve','❌ Decline']);
+  const backup=outbox.filter(o=>!o.markup);
+  assert.deepEqual(backup.map(o=>o.actor),['apurvakopulwar']);
+  assert.match(backup[0].message,/out of station[\s\S]*Request OTP from Directors/);
+  /* a Director approves directly in HRMS: cleared to join */
+  const direct=await service.telegramApi(person('mohitchadda','Director'),'trial-approval','POST',{...target,reviewer:'director',approved:true,rows:[{formNo:'TF/20',fields:{Result:'PASS'}}]});
+  assert.equal(direct.stage,'final');
+  /* the OTP backup: Office HR requests it, the Director's message keeps Approve, Office HR enters the OTP */
+  outbox.length=0;
+  const ohr=person('apurvakopulwar','Office HR');
+  await service.telegramApi(ohr,'trial-otp','POST',{...target,reviewer:'director',formNos:['TF/21']});
+  assert.deepEqual(outbox.map(o=>o.actor).sort(),['manishchadda','mohitchadda','rahulchadda']);
+  assert.deepEqual(outbox[0].markup.inline_keyboard[0].map(b=>b.text),['✅ Approve','❌ Decline']);
+  const otp=outbox[0].message.match(/OTP: (\d{6})/)[1];
+  const viaOtp=await service.telegramApi(ohr,'trial-otp-verify','POST',{...target,reviewer:'director',formNos:['TF/21'],otp});
+  assert.equal(viaOtp.stage,'final');
+ });
+});
+
 /* 20 Nov 2026: the PM's OTP was stuck behind messages for people who never linked a bot. */
 test('a deliverable OTP is sent in the same sweep even behind many unlinked recipients',async()=>{
  await withEnv(trialStatusEnv,async()=>{
