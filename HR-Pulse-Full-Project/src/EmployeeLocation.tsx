@@ -369,7 +369,7 @@ export function lockAadhaarField(form:HTMLFormElement,name:string){let control=f
  control.title='Filled from the Aadhaar card – cannot be edited';
  const flag=form.elements.namedItem(AADHAAR_LOCK_FIELD) as HTMLInputElement|null;if(flag){const set=new Set(flag.value.split('|').filter(Boolean));set.add(name);flag.value=[...set].join('|');}}
 export function applyAadhaarLocks(form:HTMLFormElement){const flag=form.elements.namedItem(AADHAAR_LOCK_FIELD) as HTMLInputElement|null;for(const name of (flag?.value||'').split('|').filter(Boolean))lockAadhaarField(form,name);}
-export function lockTrialHandoffField(form:HTMLFormElement,name:string){if(name==='Full Name')return;let control=form.elements.namedItem(name) as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|null;if(!control)return;
+export function lockTrialHandoffField(form:HTMLFormElement,name:string){if(name==='Full Name'||name==='DL Valid Upto')return;let control=form.elements.namedItem(name) as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement|null;if(!control)return;
  if(control instanceof HTMLInputElement&&control.type==='hidden'){
   const visible=control.previousElementSibling;
   if(!(visible instanceof HTMLInputElement))return;
