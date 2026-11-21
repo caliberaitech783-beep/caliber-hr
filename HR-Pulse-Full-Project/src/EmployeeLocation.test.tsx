@@ -335,7 +335,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xlsx');
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xlsx');
   expect(screen.getByLabelText('Import employee file').getAttribute('accept')).toContain('.xls');
-  for(const section of ['Upload Aadhaar Card','Joining & Personal Details','Educational Details','Family Details','Previous Work Experience','Document Checklist'])expect(screen.getByRole('button',{name:new RegExp(section)})).toBeTruthy();
+  for(const section of ['Upload Aadhaar Card','Joining & Personal Details','Educational Details','Family Details','Previous Work Experience','Document Checklist'])expect(screen.getByRole('button',{name:new RegExp('^[1-6]\\s*'+section)})).toBeTruthy();
   expect(screen.queryByRole('button',{name:/Job & Posting Details/})).toBeNull();
   expect(screen.queryByRole('button',{name:/Contract & Policies/})).toBeNull();
   expect(screen.queryByRole('button',{name:/Assets$/})).toBeNull();
@@ -345,10 +345,10 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText(/^Full Name \*/)).toBeTruthy();
   expect(screen.getByLabelText(/Employee Code/)).toBeTruthy();
   expect(screen.getByLabelText('Employee group')).toBeTruthy();
-  expect(screen.getByRole('button',{name:'Upload Aadhar Front Image'})).toBeTruthy();
-  expect(screen.getByRole('button',{name:'Upload Aadhar Back Image'})).toBeTruthy();
-  expect(screen.getByLabelText('Choose second Aadhaar image')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button',{name:'Upload Aadhar Front Image'}));
+  expect(screen.getByRole('button',{name:'Upload Aadhaar Card',exact:true})).toBeTruthy();
+  expect(screen.queryByRole('button',{name:'Upload Aadhar Back Image'})).toBeNull();
+  expect(screen.queryByLabelText('Choose second Aadhaar image')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Upload Aadhaar Card',exact:true}));
   expect(screen.getByRole('button',{name:'Camera'})).toBeTruthy();
   expect(screen.getByRole('button',{name:'Gallery / Document'})).toBeTruthy();
   const aadhaarInput=screen.getByLabelText('Choose Aadhaar card from gallery');
