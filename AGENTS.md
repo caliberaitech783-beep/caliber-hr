@@ -48,3 +48,11 @@ Set by the owner on 21 November 2026.
 - Each approver's ticks are kept apart, so two Directors ticking at once do not change each other's choice. One candidate keeps the plain Approve / Decline buttons, and batches above 45 candidates keep Approve / Decline for all (Telegram's button limit).
 - HRMS › Trial Status already lets each approver select forms before Approve / Reject, and the Driver Trainer marks PASS / FAIL per candidate there.
 - `trialGroupMarkup` and `parseTrialCallback` in `HR-Pulse-Full-Project/server/telegram.mjs` hold it; `server/trial-batch-picks.test.mjs` checks it.
+
+# Directors' decision on a vehicle trial is final
+
+Set by the owner on 21 November 2026.
+
+- Once any Director approves (cleared to join) or rejects a candidate, that trial form is closed: nobody can change it, enter a new trial result or send it for approval again. The server refuses it with "The Directors have already given the final decision on this candidate."
+- A candidate the Directors rejected cannot be sent through a fresh trial either (same Aadhaar number), on the server and in Site HR's Part 1 form. A rejection at an earlier step (PM, Office HR, Regional HR) still allows a new trial.
+- `directorDecided` in `HR-Pulse-Full-Project/server/trial-review.mjs` and `src/trial-workflow-preview/records.ts` holds it; `server/trial-director-final.test.mjs` and `src/trial-workflow-preview/director-final.test.ts` check it.

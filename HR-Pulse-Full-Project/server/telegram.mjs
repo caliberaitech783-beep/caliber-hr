@@ -3,7 +3,7 @@ import {hierarchyTemplates,currentHierarchy,withOfficeHr,withDriverTrainer} from
 import {randomBytes,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {grantedMenus} from './modules.mjs';
 import {assignedSites} from './scope.mjs';
-import {trialHistoryWithSteps,trialReviewStage,trialStepNames} from './trial-review.mjs';
+import {trialHistoryWithSteps,trialReviewStage,trialStepNames,directorDecided,DIRECTOR_FINAL_MESSAGE,DIRECTOR_REJECTED_MESSAGE} from './trial-review.mjs';
 import {nagpurRecipients} from './employee-addition-bot.mjs';
 import {additionRoster,connectInviteMessage} from './addition-roster.mjs';
 import {withTrialRouting} from './trial-routing.mjs';
@@ -156,6 +156,12 @@ export function sameTrialSubmission(saved,next){
  if(saved.clientId&&next.clientId)return saved.clientId===next.clientId;
  const key=f=>String(f?.['Name of candidate']||'').trim().toLowerCase()+'|'+String(f?.['Mobile no.']||'').replace(/\D/g,'');
  return key(saved.fields)===key(next.fields);
+}
+/* A candidate the Directors rejected cannot be sent through a fresh trial (owner, 21 Nov 2026). */
+const AADHAAR_SQL="regexp_replace(COALESCE(data->'fields'->>'Aadhaar no.',data->'fields'->>'Aadhaar No.',data->'fields'->>'Aadhaar No. *',''),'[^0-9]','','g')";
+export async function directorRejectedTrial(db,aadhaar){
+ const digits=String(aadhaar||'').replace(/\D/g,'');if(!/^\d{12}$/.test(digits))return '';
+ return (await db.query(`SELECT code FROM hr_records WHERE kind='trialForms' AND status='REJECTED' AND (data->'lastDecision'->>'reviewer'='director' OR data->'history' @> '[{"role":"director","action":"Rejected"}]'::jsonb) AND ${AADHAAR_SQL}=$1 LIMIT 1`,[digits])).rows[0]?.code||'';
 }
 /* Next unused number in the same series, e.g. TF/2026-27/0001 → TF/2026-27/0007 when 0006 is the highest saved. */
 export async function nextFreeTrialNumber(db,formNo){
@@ -787,6 +793,7 @@ export function createTelegram(pool){
     /* Each browser numbers its own forms, so two sites or two HR browsers can pick the same number.
        A resend of the same form keeps its number; any other form gets the next free number in the series. */
     await db.query("SELECT pg_advisory_xact_lock(hashtext('hrPulse.trialFormNumber'))");
+    for(const r of records){const rejected=await directorRejectedTrial(db,r.fields['Aadhaar no.']||r.fields['Aadhaar No.']||r.fields['Aadhaar No. *']);if(rejected)fail(`${r.fields['Name of candidate']}: ${DIRECTOR_REJECTED_MESSAGE} (${rejected})`,409);}
     for(const r of records){let old=(await db.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1",[r.formNo])).rows[0];
      if(old&&!sameTrialSubmission(old.data,r)){r.formNo=await nextFreeTrialNumber(db,r.formNo);old=undefined;}
      const name=r.fields['Name of candidate'];let id;
@@ -915,6 +922,7 @@ export function createTelegram(pool){
    const fields=cleanFields(input.fields);if(!['PASS','FAIL'].includes(fields.Result))fail('Result must be PASS or FAIL');if(!fields['Name of candidate']?.trim())fail('Candidate name is required');
    const prev=(await pool.query("SELECT id,data FROM hr_records WHERE kind='trialForms' AND code=$1",[formNo])).rows[0];
    if(prev?.data?.site&&trialSite(prev.data.site)?.code!==trialSite(input.site)?.code)fail('The trial form belongs to another site.',403);
+   if(directorDecided(prev?.data))fail(DIRECTOR_FINAL_MESSAGE,409);
    const attachments=cleanAttachments(input.attachments);
    requireTrialUploads(attachments);
    {const problem=trainerVotesProblem(fields);if(problem)fail(problem);}
@@ -946,6 +954,8 @@ export function createTelegram(pool){
    await tx(async db=>{const stored=(await db.query("SELECT id,code,data FROM hr_records WHERE kind='trialForms' AND status='ACTIVE' AND data->>'batchId'=$1 FOR UPDATE",[batchId])).rows;
     const rows=[...stored];for(const [formNo,g] of given)if(!stored.some(r=>r.code===formNo))rows.push({id:null,code:formNo,data:{formNo,heading,site,company,department,batchId,fields:g.fields,attachments:g.attachments,stage:'PART1',status:'Sent to driver trainer'}});
     if(!rows.length)fail('Batch not found',404);
+    const closed=(await db.query("SELECT code,data FROM hr_records WHERE kind='trialForms' AND (code = ANY($1) OR data->>'batchId'=$2)",[[...new Set([...given.keys(),...results.map(r=>r.formNo)])],batchId])).rows.filter(r=>directorDecided(r.data)).map(r=>r.code);
+    if(closed.length)fail(`${DIRECTOR_FINAL_MESSAGE} (${closed.join(', ')})`,409);
     if(rows.some(row=>row.data?.site&&trialSite(row.data.site)?.code!==trialSite(site)?.code))fail('The trial batch belongs to another site.',403);
     for(const row of rows){const res=results.find(r=>r.formNo===row.code);if(!res)fail(`Missing result for ${row.code}`);const g=given.get(row.code);const data={...row.data,fields:{...row.data.fields,...(g?.fields||{}),Result:res.result,'If FAIL – reason':res.result==='FAIL'?res.reason:'', 'Examiner remarks':res.remarks,'Examiner name':trialBy},attachments:keepTrialDocuments(row.data.attachments,g?.attachments?.length?g.attachments:row.data.attachments||[]),stage:'RESULT',pendingRole:res.result==='PASS'?'pm':'',history:[],status:'Sent to PM for approval',trialBy,resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
      if(row.id)await db.query('UPDATE hr_records SET data=$1,version=version+1,updated_by=$2,updated_at=now() WHERE id=$3',[data,profile.actor,row.id]);
@@ -974,6 +984,7 @@ export function createTelegram(pool){
    const result=f['Result']==='PASS'?'PASS':f['Result']==='FAIL'?'FAIL':'';if(!result)fail('Select the trial Result (PASS / FAIL) before saving.');
    const prev=(await pool.query("SELECT data FROM hr_records WHERE kind='trialForms' AND code=$1",[formNo])).rows[0]?.data||{};
    if(prev.site&&trialSite(prev.site)?.code!==trialSite(input.site)?.code)fail('The trial form belongs to another site.',403);
+   if(directorDecided(prev))fail(DIRECTOR_FINAL_MESSAGE,409);
    const record={...prev,formNo,heading:String(input.heading||'').slice(0,120),site:String(input.site||'').slice(0,80),company:String(input.company||'').slice(0,120),department:String(input.department||'').slice(0,80),fields:cleanFields(f),stage:'RESULT',status:'Sent to PM for approval',trialBy:String(input.trialBy||f['Examiner name']||profile.name||profile.actor).slice(0,80),resultBy:profile.actor,resultAt:new Date().toISOString(),savedBy:profile.actor,savedAt:new Date().toISOString()};
    const message=trialResultMessage(record,profile.name||profile.actor);
    const recipients=(await hierarchyRecipients(pool,'result',{site:record.site,region:input.region,company:record.company,group:input.group})).map(recipientActor).filter(notSender(profile.actor));
@@ -983,6 +994,7 @@ export function createTelegram(pool){
     await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['trial-aadhaar:'+aadhaar]);
     const passed=(await db.query("SELECT id FROM hr_records WHERE kind='trialForms' AND status='ACTIVE' AND data->'fields'->>'Result'='PASS' AND regexp_replace(COALESCE(data->'fields'->>'Aadhaar no.',data->'fields'->>'Aadhaar No.',data->'fields'->>'Aadhaar No. *',''),'[^0-9]','','g')=$1 LIMIT 1",[aadhaar])).rows[0];
     if(passed)fail('This candidate has already passed. View the previous result or start another trial; another trial cannot be saved.',409);
+    {const rejected=await directorRejectedTrial(db,aadhaar);if(rejected&&rejected!==formNo)fail(`${DIRECTOR_REJECTED_MESSAGE} (${rejected})`,409);}
     const old=(await db.query("SELECT id FROM hr_records WHERE kind='trialForms' AND code=$1",[formNo])).rows[0];
     if(old){id=old.id;await db.query('UPDATE hr_records SET name=$1,data=$2,version=version+1,updated_by=$3,updated_at=now() WHERE id=$4',[name,record,profile.actor,id]);}
     else id=(await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialForms',$1,$2,$3,'ACTIVE',$4,$4) RETURNING id",[formNo,name,record,profile.actor])).rows[0].id;
