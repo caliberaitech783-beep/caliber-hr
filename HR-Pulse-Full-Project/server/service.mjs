@@ -27,7 +27,7 @@ import {createTelegramNotifier} from './telegram-notifications.mjs';
 import {initiatedSteps} from './site-staff-routing.mjs';
 import {ADDITION_BOT,queueAdditionStep,parseAdditionCallback,additionActor} from './employee-addition-bot.mjs';
 import {webhookSecretValid,botSecret,botToken,cmllHrEnabled,notSender,telegramUsers,additionBot} from './telegram.mjs';
-import {employeeTrackSteps,otpEnterers,isEmployeeTrack,queueTrackStep,trackOtpMessage,trackMarkup,EMPLOYEE_TRACK_BOT} from './employee-track.mjs';
+import {employeeTrackSteps,missingTrackApprovers,otpEnterers,isEmployeeTrack,queueTrackStep,trackOtpMessage,trackMarkup,EMPLOYEE_TRACK_BOT} from './employee-track.mjs';
 export function problem(message,status=400) { return Object.assign(new Error(message),{status}); }
 const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || '');
 const employeeDetailFields={
@@ -140,6 +140,10 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         const code=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='sites'",[String(siteId)])).rows[0]?.code;
         if(!code)return null;
         const saved=officeRoute?(await db.query("SELECT data FROM hr_records WHERE kind='joiningHierarchies' AND code=$1",[code])).rows[0]?.data?.steps:hierarchy?.data?.steps;
+        /* OB / COAL (owner, 21 Nov 2026): Site PM and Office HR must be set in Approval Master › Hierarchy. */
+        const missing=missingTrackApprovers({code,steps:saved||[]});
+        if(missing.length){const name=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[String(siteId)])).rows[0]?.name||code;
+         throw problem(`Set the ${missing.join(' and ')} for ${name} in Approval Master › Hierarchy and enable it, then submit again.`,409);}
         const steps=employeeTrackSteps({code,steps:saved||[],requester});
         return steps?.length?steps:null;
    }
@@ -182,7 +186,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         if(!hierarchy&&!trackSteps&&rules.length>1&&weight(rules[0])===weight(rules[1]))throw problem('Approval rules overlap. Resolve the approval matrix before submitting.',409);
         const workflow=hierarchy||(trackSteps?{id:null,data:{}}:null)||(!rules.length&&record.data.approver?{id:null,data:{approvers:record.data.approver}}:(await db.query("SELECT * FROM hr_records WHERE id=$1 AND kind='workflows' AND status='ACTIVE'",[rules[0].data.workflowId])).rows[0]);
         if(!workflow)throw problem('The configured workflow is not active',409);
-        /* New employees (owner, 21 Nov 2026): Site HR initiates → Regional HR → Directors (OTP), employee-track.mjs. */
+        /* New employees (owner, 21 Nov 2026): Site HR initiates → Site PM → Office HR (OB / COAL sites) → Regional HR → Directors (OTP), employee-track.mjs. */
         const steps=trackSteps?trackSteps:kind==='employees'&&hierarchy?initiatedSteps(hierarchy.data.steps,profile.actor):hierarchy?hierarchy.data.steps:kind==='leaveRequests'?leaveApprovalSteps(workflow):workflow.data.approvers.split(',').map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
         const approvers=steps.flatMap(s=>s.approvers);
         if(approvers.includes(profile.actor))throw problem('The requester cannot be an approver in their own workflow. Configure another approver.',409);

@@ -1,6 +1,9 @@
 /* CALIBER Employee Track bot (@ its TELEGRAM_EMPLOYEE_TRACK_BOT_USERNAME), owner, 21 Nov 2026.
    One route for every newly added employee (site staff, drivers / operators, Nagpur office and Chandrapur HO):
      Site HR initiates the form → Regional HR → Directors → the employee becomes Active.
+   - OB / COAL sites (owner, 21 Nov 2026, evening): Site HR initiates → Site PM → Office HR → Regional HR → Directors.
+     Site PM ("Project Manager") and Office HR come from the site's Approval Master › Hierarchy and approve normally,
+     like the vehicle trial form; submitting fails with a clear message while either is not set.
    - Site HR is the site's "HR Manager" step in Approval Master › Hierarchy (office HR for the two offices).
      When that Site HR submits, the submission is their step. Anyone else who submits still needs Site HR's approval.
    - Regional HR is fixed per region (site-staff-routing.mjs); for the offices it is that office's HR Manager.
@@ -8,10 +11,20 @@
      Approve / Reject and an OTP. Any one Director taps Approve (or approves in HRMS). The OTP is the backup when they are out
      of station: a Director tells it to Regional HR, who enters it in HRMS. 15 minutes, single use, five wrong tries.
    - Each message goes only to the people of the next step, never to the sender; Site HR hears the final result. */
-import {SITE_HR_LABEL,REGIONAL_HR_LABEL,SITE_STAFF_DIRECTORS,siteStaffRegionalHr,roleTitle} from './site-staff-routing.mjs';
+import {SITE_HR_LABEL,PM_LABEL,REGIONAL_HR_LABEL,SITE_STAFF_DIRECTORS,siteStaffRegionalHr,roleTitle} from './site-staff-routing.mjs';
 import {OFFICE_SITES} from './office-staff-routing.mjs';
 
-export const EMPLOYEE_TRACK_ROUTE=['Site HR','Regional HR','Directors (OTP)'];
+export const EMPLOYEE_TRACK_ROUTE=['Site HR','PM / HOD','Office HR','Regional HR','Directors (OTP)'];
+export const OFFICE_HR_LABEL='Office HR — either one';
+const isOfficeHr=label=>/^Office HR/.test(label||'');
+/* OB / COAL sites: the saved Site PM and Office HR (empty when not set). */
+const siteApprovers=steps=>({pm:users(steps.find(step=>step.label===PM_LABEL)?.approvers),officeHr:users(steps.find(step=>isOfficeHr(step.label))?.approvers)});
+/* The OB / COAL approvers still missing from a site's saved hierarchy ([] when complete, or for an office / unknown site). */
+export function missingTrackApprovers({code,steps=[]}){
+ if(OFFICE_SITES[code]||!siteStaffRegionalHr(code))return [];
+ const {pm,officeHr}=siteApprovers(steps);
+ return [...(pm.length?[]:['Site PM (Project Manager)']),...(officeHr.length?[]:['Office HR'])];
+}
 export const DIRECTORS_OTP_LABEL='Directors — approve by OTP, any one';
 export const EMPLOYEE_TRACK_BOT='employee-track';
 const HR_URL='https://hrpulse.cmll.in/#Employee%20Master';
@@ -26,6 +39,7 @@ export function employeeTrackSteps({code,steps=[],requester=''}){
  const regionalFixed=siteStaffRegionalHr(code);
  if(!office&&!regionalFixed)return null;
  const siteHr=office?[]:users(steps.find(step=>step.label===SITE_HR_LABEL)?.approvers);
+ const {pm,officeHr}=office?{pm:[],officeHr:[]}:siteApprovers(steps);
  const regional=office
   ?(users(steps.find(step=>step.label===SITE_HR_LABEL)?.approvers).length?users(steps.find(step=>step.label===SITE_HR_LABEL).approvers):users(office.defaultHrManager))
   :[regionalFixed.username];
@@ -34,6 +48,9 @@ export function employeeTrackSteps({code,steps=[],requester=''}){
  const route=[
   /* Site HR initiating: their submission is the Site HR step. */
   ...(siteHr.length&&!siteHr.includes(me)?[{label:SITE_HR_LABEL,approvers:siteHr,...extra}]:[]),
+  /* OB / COAL: Site PM, then Office HR, approve normally. */
+  {label:PM_LABEL,approvers:pm.filter(a=>a!==me)},
+  {label:OFFICE_HR_LABEL,approvers:officeHr.filter(a=>a!==me)},
   {label:REGIONAL_HR_LABEL,approvers:regional.filter(a=>a!==me),
    suggested:office?`${office.office} HR Manager`:`${regionalFixed.name} (employee ${regionalFixed.employeeId}) — ${regionalFixed.region} sites`,fixed:true,...extra},
   {label:DIRECTORS_OTP_LABEL,approvers:directors.filter(a=>a!==me),otp:true,otpBy:regional,
@@ -110,7 +127,12 @@ export function employeeTrackRoster({sites=[],saved=[]}){
   }
   const regional=siteStaffRegionalHr(site.code);if(!regional)continue;
   add(regional.username,'Regional HR',site.name);
-  if(row&&row.status==='ACTIVE')for(const a of users((row.data?.steps||[]).find(s=>s.label===SITE_HR_LABEL)?.approvers))add(a,'Site HR',site.name);
+  if(row&&row.status==='ACTIVE'){
+   const steps=row.data?.steps||[],{pm,officeHr}=siteApprovers(steps);
+   for(const a of users(steps.find(s=>s.label===SITE_HR_LABEL)?.approvers))add(a,'Site HR',site.name);
+   for(const a of pm)add(a,'PM / HOD',site.name);
+   for(const a of officeHr)add(a,'Office HR',site.name);
+  }
  }
  for(const d of SITE_STAFF_DIRECTORS)add(d.username,'Directors (OTP)','');
  const rank=p=>Math.max(...[...p.steps.keys()].map(role=>EMPLOYEE_TRACK_ROUTE.indexOf(role)));

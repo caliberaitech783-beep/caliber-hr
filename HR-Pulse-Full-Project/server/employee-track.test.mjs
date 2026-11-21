@@ -1,31 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {employeeTrackSteps,employeeTrackRoster,employeeTrackInvite,trackOtpMessage,queueTrackStep,otpEnterers,isEmployeeTrack,DIRECTORS_OTP_LABEL} from './employee-track.mjs';
+import {employeeTrackSteps,missingTrackApprovers,employeeTrackRoster,employeeTrackInvite,trackOtpMessage,queueTrackStep,otpEnterers,isEmployeeTrack,DIRECTORS_OTP_LABEL} from './employee-track.mjs';
 import {createTelegram,deliverTelegram,additionBot} from './telegram.mjs';
 import {nextApproval} from './joining-hierarchy.mjs';
 import {createService} from './service.mjs';
 
 /* Owner, 21 Nov 2026: every new employee goes Site HR (initiates) → Regional HR → Directors (approve by OTP) → Active,
-   on the CALIBER Employee Track bot. */
+   on the CALIBER Employee Track bot. Owner, 21 Nov 2026 (evening): OB / COAL sites add Site PM and Office HR after Site HR. */
 const siteSteps=[{label:'HR Manager',approvers:['amitsingh']},{label:'Driver Trainer',approvers:['trainer']},{label:'Project Manager',approvers:['gulnawaz']},{label:'Office HR',approvers:['mayuriumate']}];
 const roles=steps=>steps.map(s=>[s.label.replace(/ — .*/,''),s.approvers.join(',')]);
 
-test('Site HR initiating: Regional HR → Directors (OTP); no PM / HOD, Driver Trainer or Office HR step',()=>{
+test('OB / COAL, Site HR initiating: Site PM → Office HR → Regional HR → Directors (OTP); no Driver Trainer step',()=>{
  const steps=employeeTrackSteps({code:'NCL-JAYANT',steps:siteSteps,requester:'AmitSingh'});
- assert.deepEqual(roles(steps),[['HR Manager','vinodpinjarkar'],['Directors','mohitchadda,manishchadda,rahulchadda']]);
- assert.equal(steps[1].label,DIRECTORS_OTP_LABEL);
- assert.deepEqual(steps.map(s=>!!s.otp),[false,true]);
- assert.deepEqual(otpEnterers(steps,1),['vinodpinjarkar'],'Regional HR enters the Directors\' OTP');
+ assert.deepEqual(roles(steps),[['Project Manager','gulnawaz'],['Office HR','mayuriumate'],['HR Manager','vinodpinjarkar'],['Directors','mohitchadda,manishchadda,rahulchadda']]);
+ assert.equal(steps[3].label,DIRECTORS_OTP_LABEL);
+ assert.deepEqual(steps.map(s=>!!s.otp),[false,false,false,true]);
+ assert.deepEqual(otpEnterers(steps,3),['vinodpinjarkar'],'Regional HR enters the Directors\' OTP');
  assert.ok(isEmployeeTrack(steps));
  const a={requested_by:'amitsingh',stage:0,approval_steps:steps};
- assert.equal(nextApproval(a,'vinodpinjarkar','APPROVED').state,'PENDING','Regional HR approval moves it to the Directors');
- assert.throws(()=>nextApproval(a,'gulnawaz','APPROVED'),e=>e.status===403,'PM is not on the route');
+ assert.equal(nextApproval(a,'gulnawaz','APPROVED').state,'PENDING','Site PM approves normally and it moves to Office HR');
+ assert.throws(()=>nextApproval(a,'vinodpinjarkar','APPROVED'),e=>e.status===403,'Regional HR waits for Site PM and Office HR');
+ assert.throws(()=>nextApproval(a,'trainer','APPROVED'),e=>e.status===403,'Driver Trainer is not on the route');
+});
+
+test('OB / COAL: Site PM and Office HR must be set in the site hierarchy; offices do not need them',()=>{
+ assert.deepEqual(missingTrackApprovers({code:'NCL-JAYANT',steps:siteSteps}),[]);
+ assert.deepEqual(missingTrackApprovers({code:'WCL-MAJRI',steps:[{label:'HR Manager',approvers:['majri.hr']}]}),['Site PM (Project Manager)','Office HR']);
+ assert.deepEqual(missingTrackApprovers({code:'CMLL-HO',steps:[]}),[]);
+ assert.deepEqual(missingTrackApprovers({code:'XYZ',steps:[]}),[]);
 });
 
 test('someone else submitting still needs Site HR first; WCL sites use Virat Singh',()=>{
- assert.deepEqual(roles(employeeTrackSteps({code:'NCL-JAYANT',steps:siteSteps,requester:'hr.exec'})).map(r=>r[1]),['amitsingh','vinodpinjarkar','mohitchadda,manishchadda,rahulchadda']);
- assert.deepEqual(employeeTrackSteps({code:'WCL-SASTI',steps:[],requester:'sasti.hr'}).map(s=>s.approvers[0]),['viratsingh','mohitchadda']);
+ assert.deepEqual(roles(employeeTrackSteps({code:'NCL-JAYANT',steps:siteSteps,requester:'hr.exec'})).map(r=>r[1]),['amitsingh','gulnawaz','mayuriumate','vinodpinjarkar','mohitchadda,manishchadda,rahulchadda']);
+ assert.deepEqual(employeeTrackSteps({code:'WCL-MAJRI',steps:siteSteps,requester:'amitsingh'}).map(s=>s.approvers[0]),['gulnawaz','mayuriumate','viratsingh','mohitchadda']);
 });
 
 test('offices: office HR initiates → that office\'s HR Manager (Regional HR) → Directors (OTP)',()=>{
@@ -57,19 +65,19 @@ test('each step is told only to the next people; Site HR hears the result',async
  const out=[];const db={};const queue=async(_db,key,actors,message,bot,markup)=>{out.push({key,actors,message,bot,markup});};
  const steps=employeeTrackSteps({code:'NCL-JAYANT',steps:siteSteps,requester:'hr.exec'});
  assert.deepEqual(await queueTrackStep(db,queue,'employee-track',{key:'k',approvalId:'id',record,siteName:'Jayant OB',steps,stage:0,state:'SUBMITTED',requestedBy:'hr.exec',sender:'hr.exec'}),['amitsingh']);
- assert.match(out[0].message,/NEW EMPLOYEE — APPROVAL REQUIRED[\s\S]*Step 1 of 3: Site HR[\s\S]*Ravi Kumar \(EMP-101\)[\s\S]*Route: Site HR → Regional HR → Directors \(OTP\)/);
+ assert.match(out[0].message,/NEW EMPLOYEE — APPROVAL REQUIRED[\s\S]*Step 1 of 5: Site HR[\s\S]*Ravi Kumar \(EMP-101\)[\s\S]*Route: Site HR → PM \/ HOD → Office HR → Regional HR → Directors \(OTP\)/);
  assert.deepEqual(out[0].markup.inline_keyboard[0].map(b=>b.text),['✅ Approve','❌ Reject']);
  out.length=0;
- assert.deepEqual(await queueTrackStep(db,queue,'employee-track',{key:'k',approvalId:'id',record,siteName:'Jayant OB',steps,stage:2,state:'PENDING',requestedBy:'hr.exec',sender:'vinodpinjarkar'}),[],'the OTP step is sent by the OTP issuer, not here');
- assert.deepEqual(await queueTrackStep(db,queue,'employee-track',{key:'k',approvalId:'id',record,siteName:'Jayant OB',steps,stage:3,state:'APPROVED',requestedBy:'hr.exec',sender:'vinodpinjarkar',actor:'Vinod'}),['hr.exec']);
+ assert.deepEqual(await queueTrackStep(db,queue,'employee-track',{key:'k',approvalId:'id',record,siteName:'Jayant OB',steps,stage:4,state:'PENDING',requestedBy:'hr.exec',sender:'vinodpinjarkar'}),[],'the OTP step is sent by the OTP issuer, not here');
+ assert.deepEqual(await queueTrackStep(db,queue,'employee-track',{key:'k',approvalId:'id',record,siteName:'Jayant OB',steps,stage:5,state:'APPROVED',requestedBy:'hr.exec',sender:'vinodpinjarkar',actor:'Vinod'}),['hr.exec']);
  assert.match(out[0].message,/NOW ACTIVE[\s\S]*Final approval by: Vinod/);
  out.length=0;
- assert.deepEqual(await queueTrackStep(db,queue,'employee-track',{key:'k',approvalId:'id',record,siteName:'Jayant OB',steps,stage:3,state:'REJECTED',requestedBy:'hr.exec',sender:'mohitchadda',actor:'Mohit',comments:'Documents missing'}),['hr.exec','amitsingh','vinodpinjarkar']);
+ assert.deepEqual(await queueTrackStep(db,queue,'employee-track',{key:'k',approvalId:'id',record,siteName:'Jayant OB',steps,stage:5,state:'REJECTED',requestedBy:'hr.exec',sender:'mohitchadda',actor:'Mohit',comments:'Documents missing'}),['hr.exec','amitsingh','gulnawaz','mayuriumate','vinodpinjarkar']);
  assert.match(out[0].message,/REJECTED[\s\S]*Documents missing[\s\S]*back to Site HR/);
  assert.match(trackOtpMessage({record,siteName:'Jayant OB',otp:'123456',requestedBy:'Vinod',minutes:15}),/OTP: 123456 \(valid 15 min\)[\s\S]*Tell this OTP to Regional HR/);
 });
 
-test('join-link roster: Site HR of enabled sites, the fixed Regional HR, office HR and the Directors',()=>{
+test('join-link roster: Site HR, Site PM and Office HR of enabled sites, the fixed Regional HR, office HR and the Directors',()=>{
  const roster=employeeTrackRoster({sites:[{code:'NCL-JAYANT',name:'Jayant OB East'},{code:'NCL-DUDE',name:'Dudhichua OB East'},{code:'CMLL-HO',name:'Chandrapur HO'}],
   saved:[{code:'NCL-JAYANT',status:'ACTIVE',data:{steps:siteSteps}},{code:'NCL-DUDE',status:'DRAFT',data:{steps:[{label:'HR Manager',approvers:['dude.hr']}]}}]});
  const by=actor=>roster.find(p=>p.actor===actor);
@@ -79,9 +87,11 @@ test('join-link roster: Site HR of enabled sites, the fixed Regional HR, office 
  assert.deepEqual(by('viratsingh').roles,['Regional HR · Chandrapur HO']);
  assert.deepEqual(by('monikawadhai').roles,['Site HR · Chandrapur HO']);
  assert.deepEqual(by('mohitchadda').roles,['Directors (OTP) · all sites']);
- assert.equal(by('gulnawaz'),undefined,'PM is not on the route');
+ assert.deepEqual(by('gulnawaz').roles,['PM / HOD · Jayant OB East']);
+ assert.deepEqual(by('mayuriumate').roles,['Office HR · Jayant OB East']);
+ assert.equal(by('trainer'),undefined,'Driver Trainer is not on the route');
  assert.equal(roster[0].stage,'Directors (OTP)');
- assert.match(employeeTrackInvite({roles:['Site HR · Jayant OB East'],url:'https://t.me/x?start=y',botUsername:'CMLLEmployeeTrackBot'}),/@CMLLEmployeeTrackBot[\s\S]*Site HR → Regional HR → Directors \(OTP\)[\s\S]*https:\/\/t\.me\/x\?start=y/);
+ assert.match(employeeTrackInvite({roles:['Site HR · Jayant OB East'],url:'https://t.me/x?start=y',botUsername:'CMLLEmployeeTrackBot'}),/@CMLLEmployeeTrackBot[\s\S]*Site HR → PM \/ HOD → Office HR → Regional HR → Directors \(OTP\)[\s\S]*https:\/\/t\.me\/x\?start=y/);
 });
 
 test('a personal join link connects that login on the Employee Track bot',async()=>{
@@ -104,13 +114,14 @@ test('Employee Track messages leave on the Employee Track bot',async()=>{
  });
 });
 
-/* Regional HR approves → the Directors get the OTP on the bot → Regional HR enters it → the employee is Active. */
+/* Regional HR approves → the Directors get the OTP on the bot → Regional HR enters it → the employee is Active.
+   The form starts at the Regional HR step (Site PM and Office HR already approved). */
 const approvalId='33333333-3333-4333-8333-333333333333',recordId='44444444-4444-4444-8444-444444444444';
 const perms={permissions:{hrDesktopAccess:['Approval Management']}};
 const rhr={actor:'vinodpinjarkar',name:'Vinod',...perms};
 function trackDb(){
  const steps=employeeTrackSteps({code:'NCL-JAYANT',steps:siteSteps,requester:'amitsingh'});
- const state={approval:{id:approvalId,record_id:recordId,state:'PENDING',stage:0,version:1,history:[],requested_by:'amitsingh',approvers:steps.flatMap(s=>s.approvers),approval_steps:steps,record_snapshot:{...record}},record:{id:recordId,kind:'employees',status:'PENDING',...record,data:{...record.data,siteId:'site-1'}},otp:null,outbox:[]};
+ const state={approval:{id:approvalId,record_id:recordId,state:'PENDING',stage:steps.length-2,version:1,history:[],requested_by:'amitsingh',approvers:steps.flatMap(s=>s.approvers),approval_steps:steps,record_snapshot:{...record}},record:{id:recordId,kind:'employees',status:'PENDING',...record,data:{...record.data,siteId:'site-1'}},otp:null,outbox:[]};
  const db={release(){},async query(s,v=[]){
   if(/^(BEGIN|COMMIT|ROLLBACK)/.test(s))return {rows:[]};
   if(s.startsWith('SELECT * FROM hr_approvals'))return {rows:[{...state.approval}]};
@@ -131,7 +142,7 @@ test('Regional HR\'s approval sends the Directors the OTP; the right OTP makes t
   const {state,service}=trackDb();
   const approved=await service.decide(rhr,approvalId,{decision:'APPROVED',version:1});
   assert.deepEqual(approved.otpSentTo,['mohitchadda','manishchadda','rahulchadda']);
-  assert.equal(state.approval.stage,1);assert.equal(state.approval.state,'PENDING');
+  assert.equal(state.approval.stage,3);assert.equal(state.approval.state,'PENDING');
   const msg=state.outbox.at(-1);
   assert.equal(msg.bot,'employee-track');
   assert.deepEqual(msg.markup.inline_keyboard[0].map(b=>b.text),['✅ Approve','❌ Reject'],'Directors can approve directly; the OTP is the backup');
