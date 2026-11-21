@@ -14,7 +14,7 @@ import {createEmployeeMasterRegister} from './employee-master-register.mjs';
 import {createReportingManagers} from './reporting-managers.mjs';
 import {validateTrialJoining} from './trial-joining.mjs';
 import {requireTrialRole} from './trial-access.mjs';
-import {missingJoiningField, requiredEmployeeDetail, underageBirthDate} from './joining-required.mjs';
+import {missingJoiningField, requiredEmployeeDetail, siteProjectMismatch, underageBirthDate} from './joining-required.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
@@ -283,6 +283,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
 
         const savedAccount=String(record.data.officeData?.['Bank Account No']??'').trim();
         if(savedAccount&&Object.hasOwn(officeData,'Bank Account No')&&officeData['Bank Account No'].trim()!==savedAccount)throw problem('Bank account number is locked after it is saved.');
+        if(Object.hasOwn(officeData,'Site / Project')){const mismatch=siteProjectMismatch({...record.data.officeData,...officeData});if(mismatch)throw problem(mismatch);}
 
         const coreChanges={};
         for(const [header,value] of changes){
@@ -350,6 +351,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
           const input={...record};
           const officeData=input.__officeData;delete input.__officeData;
           if(officeData&&(!officeData.constructor||officeData.constructor!==Object))throw problem(`Row ${count+1}: Corporate / HO employee data is invalid`);
+          if(officeData){const mismatch=siteProjectMismatch(officeData);if(mismatch)throw problem('Row '+(count+1)+': '+mismatch);}
           if (submitForApproval||trialClearance) {
             const missing=missingJoiningField(officeData);
             if(missing)throw problem('Row '+(count+1)+': '+missing.replace(/\s*\*$/,'')+' is required');

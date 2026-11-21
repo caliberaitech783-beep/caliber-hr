@@ -11,9 +11,17 @@ function F({label,required,hint,children,id,hidden}:{label:string;required?:bool
  return <label className="joining-field salary-field" htmlFor={id} hidden={hidden}><span>{label}{required&&<b> *</b>}</span>{children}{hint&&<small className="salary-hint">{hint}</small>}</label>}
 
 /* Links the top-bar selection (group / company / region / site) and the form's Resident + Gender fields to the salary fields. */
-export type SalaryDefaults={employeeGroup?:'Corporate / HO'|'OB / COAL';company?:string;region?:string;site?:string};
+export type SalaryDefaults={employeeGroup?:'Corporate / HO'|'OB / COAL';company?:string;region?:string;site?:string;permittedSites?:string[]|null};
 /* PT State is never auto-filled: it stays blank unless HR picks a state. */
 const MESS_SITE_FOR:Record<string,string>={'Sasti OB':'Sasti OB','Dhoptala OB':'Dhoptala OB','Majri OB':'Majri OB','Gauri Pauni OB':'Gouri Pauni OB','Jayant OB East':'Jayant OB East','Jayant OB West':'Jayant OB West','Dudhichua OB East':'Dhudhichua OB East','Dudhichua OB West':'Dhudhichua OB West','Dudichua OB East':'Dhudhichua OB East','Dudichua OB West':'Dhudhichua OB West','Nagpur CO':'Nagpur Corporate Office','Nagpur Office':'Nagpur Corporate Office','Nagpur Corporate Office':'Nagpur Corporate Office','Chandrapur HO':'Chandrapur Head Office','Chandrapur Head Office':'Chandrapur Head Office','Head Office, Chandrapur':'Chandrapur Head Office'};
+/* Owner, 21 Nov 2026: Site / Project offers only the site picked at the top of the form; before one is picked,
+   only the sites in the login's site rights (permittedSites null = every site). */
+export function siteProjectChoices(all:string[],d:SalaryDefaults){
+ if(d.site)return all.filter(site=>site===MESS_SITE_FOR[d.site||'']);
+ if(!d.permittedSites)return all;
+ const allowed=new Set(d.permittedSites.map(site=>MESS_SITE_FOR[site]).filter(Boolean));
+ return all.filter(site=>allowed.has(site));
+}
 export function salaryAutoFill(d:SalaryDefaults,gender:string,resident:string){
  const corporate=d.employeeGroup==='Corporate / HO';
  return {'Salary Type':corporate?(/^f/i.test(gender)?'STDW':'STD'):'HPC','Site / Project':MESS_SITE_FOR[d.site||'']||'','PT State':'',
@@ -30,7 +38,9 @@ export default function SalaryFields({enforce=true,defaults={}}:{enforce?:boolea
   for(const [name,value] of Object.entries(fill)){const el=box.current?.querySelector<HTMLSelectElement>(`select[name="${name}"]`);if(!el)continue;const manual=el.value&&el.dataset.auto!==el.value;if(!value){if(el.value&&!manual){el.value='';el.dataset.auto='';changed=true;}continue;}if(manual||el.value===value)continue;if(![...el.options].some(o=>o.value===value))continue;el.value=value;el.dataset.auto=value;changed=true;}
   if(changed)sync();};
  useEffect(()=>{const t=setTimeout(()=>{autoFill();sync();},0);const form=box.current?.closest('form');const onChange=()=>{autoFill();sync();};form?.addEventListener('change',onChange);form?.addEventListener('input',sync);return()=>{clearTimeout(t);form?.removeEventListener('change',onChange);form?.removeEventListener('input',sync);};},[]);
- useEffect(()=>{autoFill();},[defaults.employeeGroup,defaults.company,defaults.region,defaults.site]);
+ const siteChoices=siteProjectChoices(sites.map(k=>k.site),defaults),siteChoicesKey=siteChoices.join('|');
+ /* A site outside the choices (another site picked at the top, or a restored draft) is cleared before auto-fill. */
+ useEffect(()=>{const el=box.current?.querySelector<HTMLSelectElement>('select[name="Site / Project"]');if(el&&el.value&&!siteChoices.includes(el.value)){el.value='';el.dataset.auto='';}autoFill();sync();},[defaults.employeeGroup,defaults.company,defaults.region,defaults.site,siteChoicesKey]);
  const stype=read('Salary Type') as SalaryType,cat=read('Skill Category'),gn=read('Monthly Gross Salary'),site=read('Site / Project'),acc=read('Accommodation Category')||'Camp',plan=read('Mess Plan'),sp=read('Special Approval (food)'),state=read('PT State');
  const st=isStd(stype),r=+cat||0,sal=+String(gn).replace(/[^0-9]/g,'')||0,S=siteInfo(site,sites),hasPlan=!st&&!!stype&&!!S?.plans,sp0=specialRates(site,sites),hasSp=!st&&stype==='NON'&&sp0.length>1;
  const fr=foodRule(site,stype,acc,hasSp?sp:'',hasPlan?plan:'',sites),typeLabel=SALARY_TYPES.find(x=>x.value===stype)?.label||'',catLabel=SKILL_CATEGORIES.find(x=>String(x.value)===cat)?.label||'';
@@ -52,7 +62,7 @@ export default function SalaryFields({enforce=true,defaults={}}:{enforce?:boolea
   <F id="monthly-gross-salary" label="Monthly Gross Salary" required={enforce} hint={st?'Monthly gross – split into Basic 50%, HRA, Medical, Special Allowance; paid on paid days':'Fixed salary – paid as (Salary ÷ month days, rounded to ₹) × paid days'} hidden={!(stype==='NON'||st)}>
    <input id="monthly-gross-salary" name="Monthly Gross Salary" required={enforce&&(stype==='NON'||st)} inputMode="numeric" placeholder="₹" defaultValue="" onInput={sync}/></F>
   <F id="site-project" label="Site / Project" required={enforce} hint={S?`Company: ${S.company}`+(S.plans?' · mess plan site – choose per day or per month below':''):(defaults.company?`Company: ${defaults.company}`:'Auto from the site selected above')}>
-   <select id="site-project" name="Site / Project" required={enforce} defaultValue="" onChange={sync}><option value="">Select</option>{sites.map(k=><option key={k.site} value={k.site}>{siteDisplayName(k.site)}</option>)}</select></F>
+   <select id="site-project" name="Site / Project" required={enforce} defaultValue="" onChange={sync}><option value="">Select</option>{siteChoices.map(site=><option key={site} value={site}>{siteDisplayName(site)}</option>)}</select></F>
   <F id="accommodation-category" label="Accommodation Category" required={enforce} hint="Decides the food (mess) deduction at the site" hidden={st||hasPlan}>
    <select id="accommodation-category" name="Accommodation Category" required={enforce&&!st&&!hasPlan} defaultValue="Camp" onChange={sync}><option value="Camp">Camp (Non-local)</option><option value="NonCamp">Non-Camp (Local)</option></select></F>
   <F id="mess-deduction" label="Food (Mess) Deduction" hint={fr?`Food: ${fr.food} · ${fr.rem}`:'HPC / Non-HPC only – from the site-wise food deduction master'} hidden={st}>

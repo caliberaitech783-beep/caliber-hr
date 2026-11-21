@@ -58,3 +58,16 @@ export function underageBirthDate(value, asOf = todayInIndia(), minYears = MINIM
   if(!tooYoung)return '';
   return `Date of Birth: age must be at least ${minYears} years as of today (born on or before ${String(latest[2]).padStart(2,'0')}/${String(latest[1]).padStart(2,'0')}/${latest[0]})`;
 }
+
+// Owner, 21 Nov 2026: Site / Project must be the site chosen at the top of the joining form. That site is
+// already checked against the login's site rights, so a matching Site / Project is within them too.
+const siteKey = value => {
+  const key = String(value||'').toLowerCase().replace(/\b2nd\b/g,'').replace(/[^a-z0-9]+/g,'')
+    .replace(/^dh?u?d?h?ichua/,'dudhichua').replace(/^gouri/,'gauri');
+  return {nagpurco:'nagpurcorporateoffice',nagpuroffice:'nagpurcorporateoffice',chandrapurho:'chandrapurheadoffice',headofficechandrapur:'chandrapurheadoffice'}[key]||key;
+};
+export function siteProjectMismatch(office = {}) {
+  const site = String(office['Site *']||'').trim(), project = String(office['Site / Project']||'').trim();
+  if(!site||!project||siteKey(site)===siteKey(project))return '';
+  return `Site / Project (${project}) must be the selected site (${site})`;
+}
