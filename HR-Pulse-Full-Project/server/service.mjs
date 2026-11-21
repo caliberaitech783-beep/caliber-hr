@@ -39,6 +39,14 @@ const employeeCategories=new Map([['fixed-term','Contract'],['fixed term','Contr
 const lockedEmployeeDetails=new Set(['Employee Code','Site *','Status','Employment Status']);
 export function createService(pool,{telegram=createTelegramNotifier()}={}) {
   const employeeDocuments=createEmployeeDocuments(pool);
+  /* Approval lists. `mine` keeps only requests the user submitted or must approve; every list stays inside the
+     user's Pulse sites. `filter` and `limit` are fixed strings and numbers from this file, never user input. */
+  const approvalRows=async(profile,{mine,filter='',limit})=>{
+    if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
+    const sites=await siteIds(pool,profile),params=mine?[profile.actor,sites]:[sites];
+    const where=[mine?'(a.approvers ? $1 OR a.requested_by=$1)':'',filter,scopeSql('r',mine?'$2':'$1')].filter(Boolean).join(' AND ');
+    return (await pool.query("SELECT a.*,r.kind,a.record_snapshot->>'code' AS code,a.record_snapshot->>'name' AS name,a.record_snapshot->'data' AS data,(a.record_snapshot ? 'telegramFlow') AS telegram_flow,COALESCE(a.record_snapshot->'data'->'officeData'->>'Designation *',a.record_snapshot->'data'->>'designationTitle',(SELECT d.name FROM hr_records d WHERE d.kind='designations' AND d.id::text=a.record_snapshot->'data'->>'designationId')) AS designation FROM hr_approvals a JOIN hr_records r ON r.id=a.record_id WHERE "+where+" ORDER BY a.created_at DESC LIMIT "+Number(limit),params)).rows;
+  };
   const audit = (db,actor,action,kind,id,detail={}) => db.query('INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,$3,$4,$5)',[actor,action,kind,id,detail]);
   async function transaction(fn) {
     const afterCommit=[];
@@ -387,8 +395,17 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     },
     async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction((db,afterCommit)=>submitRecord(db,profile,kind,id,version,afterCommit));},
     async approvals(profile) {
-      if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
-      return (await pool.query("SELECT a.*,r.kind,a.record_snapshot->>'code' AS code,a.record_snapshot->>'name' AS name,a.record_snapshot->'data' AS data,(a.record_snapshot ? 'telegramFlow') AS telegram_flow,COALESCE(a.record_snapshot->'data'->'officeData'->>'Designation *',a.record_snapshot->'data'->>'designationTitle',(SELECT d.name FROM hr_records d WHERE d.kind='designations' AND d.id::text=a.record_snapshot->'data'->>'designationId')) AS designation FROM hr_approvals a JOIN hr_records r ON r.id=a.record_id WHERE (a.approvers ? $1 OR a.requested_by=$1) AND "+scopeSql('r','$2')+" ORDER BY a.created_at DESC LIMIT 200",[profile.actor,await siteIds(pool,profile)])).rows;
+      return approvalRows(profile,{mine:true,limit:200});
+    },
+    /* Employee Verify: the user's employee forms not yet fully approved, so leave, OD and gate pass requests
+       never push them out of the latest-200 list (owner, 21 Nov 2026). */
+    async employeeApprovals(profile) {
+      return approvalRows(profile,{mine:true,filter:"r.kind='employees' AND a.state<>'APPROVED'",limit:200});
+    },
+    /* Completed Form: every fully approved employee in the user's Pulse sites, whoever submitted or approved it
+       (owner, 21 Nov 2026). */
+    async completedEmployees(profile) {
+      return approvalRows(profile,{mine:false,filter:"r.kind='employees' AND a.state='APPROVED'",limit:2000});
     },
     /* Leave at the Directors' step: Regional HR requests the OTP (sent to the Directors on the Leave Request bot),
        a Director tells it to Regional HR, who enters it here. 15 minutes, single use, five wrong tries. */
