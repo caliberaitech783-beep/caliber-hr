@@ -61,6 +61,13 @@ it('opens a completed operator trial at step two and saves it on the sixth step 
  const fullName=screen.getByLabelText(/^Full Name \*/) as HTMLInputElement;
  expect(fullName).not.toHaveAttribute('readonly');
  expect(fullName).not.toHaveClass('trial-handoff-locked');
+ const expiry=screen.getByLabelText(/^DL Valid Upto/) as HTMLInputElement;
+ expect(expiry.type).toBe('date');
+ expect(expiry.readOnly).toBe(false);
+ expect(expiry).toBeEnabled();
+ expect(expiry).toHaveValue(row.dlValid);
+ fireEvent.change(expiry,{target:{value:'2030-06-15'}});
+ expect(expiry).toHaveValue('2030-06-15');
  for(const label of [/^Full Name as per Aadhaar/,/^Mobile \*/,/^Trial Form No\./]){
   const control=screen.getByLabelText(label) as HTMLInputElement;
   expect(control).toHaveAttribute('readonly');
