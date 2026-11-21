@@ -429,9 +429,14 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText(/^Marital Status/)).toBeRequired();
   expect(screen.queryByLabelText('Dependent? (Y/N) 1')).toBeNull();
   expect(screen.getByLabelText('Family Member Name 1')).toBeTruthy();
-  for(let row=1;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Wife','Spouse','Son','Daughter']);
-  fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Mother'}});
-  expect((screen.getByLabelText('Relationship 1') as HTMLSelectElement).value).toBe('Mother');
+  for(let row=1;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Wife','Husband','Son','Daughter']);
+  fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Husband'}});
+  expect((screen.getByLabelText('Relationship 1') as HTMLSelectElement).value).toBe('Husband');
+  expect(Array.from((screen.getByLabelText('Relationship 2') as HTMLSelectElement).options).find(option=>option.value==='Husband')).toMatchObject({hidden:true,disabled:true});
+  fireEvent.change(screen.getByLabelText('Relationship 2'),{target:{value:'Father'}});
+  expect(Array.from((screen.getByLabelText('Relationship 3') as HTMLSelectElement).options).find(option=>option.value==='Father')).toMatchObject({hidden:true,disabled:true});
+  fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:''}});
+  expect(Array.from((screen.getByLabelText('Relationship 3') as HTMLSelectElement).options).find(option=>option.value==='Husband')).toMatchObject({hidden:false,disabled:false});
   expect(screen.getByLabelText('Contact No. 1')).toBeTruthy();
   expect(screen.getByRole('columnheader',{name:'Age'})).toBeTruthy();
   const familyDob=screen.getByLabelText('Date of Birth 1') as HTMLInputElement;
