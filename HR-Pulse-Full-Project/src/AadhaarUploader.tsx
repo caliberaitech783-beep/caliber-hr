@@ -36,16 +36,21 @@ function usePreview(file?: File) {
   return preview;
 }
 
-function ZoomableImage({url, label, combined}: {url:string; label:string; combined:boolean}) {
+function ZoomablePreview({url, label, combined=false, pdf=false}: {url:string; label:string; combined?:boolean; pdf?:boolean}) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
   return <>
-    <button type="button" className="aadhaar-zoom-trigger" aria-label={`Enlarge ${label}`} onClick={() => dialog.current?.showModal()}>
-      <img className="aadhaar-preview" src={url} alt={label} style={combined ? {maxHeight:'none'} : undefined}/>
+    <button type="button" className="aadhaar-zoom-trigger" aria-label={`Enlarge ${label}`} onClick={() => {dialog.current?.showModal(); setOpen(true);}}>
+      {pdf
+        ? <object className="aadhaar-preview aadhaar-pdf-preview" data={url} type="application/pdf" tabIndex={-1} style={{pointerEvents:'none'}} aria-label={label}/>
+        : <img className="aadhaar-preview" src={url} alt={label} style={combined ? {maxHeight:'none'} : undefined}/>}
       <ZoomIn aria-hidden="true"/>
     </button>
-    <dialog ref={dialog} className="aadhaar-zoom-dialog" aria-label={label}>
+    <dialog ref={dialog} className="aadhaar-zoom-dialog" aria-label={`Enlarged ${label}`} onClose={() => setOpen(false)}>
       <button type="button" aria-label="Close enlarged image" onClick={() => dialog.current?.close()}><X/></button>
-      <div className="aadhaar-zoom-scroll"><img src={url} alt={`Enlarged ${label}`}/></div>
+      {pdf
+        ? open && <object data={url} type="application/pdf" aria-label="Enlarged PDF document" style={{display:'block',width:'100%',height:'78vh'}}><a href={url} target="_blank" rel="noreferrer">Open PDF</a></object>
+        : <div className="aadhaar-zoom-scroll"><img src={url} alt={`Enlarged ${label}`}/></div>}
     </dialog>
   </>;
 }
@@ -164,8 +169,8 @@ export default function AadhaarUploader({
     </div>
     {previews.map((preview, index) => preview && <div className="aadhaar-preview-row" key={index}>
       {files[index]?.type === 'application/pdf' || /\.pdf$/i.test(files[index]?.name || '')
-        ? <object className="aadhaar-preview aadhaar-pdf-preview" data={preview} type="application/pdf" aria-label={index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} PDF preview`:`Uploaded Aadhaar image ${index + 1} PDF preview`}><span>{files[index]?.name}</span></object>
-        : <ZoomableImage url={preview} combined={combined} label={combined?"Aadhaar front and back":index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} preview`:`Uploaded Aadhaar image ${index + 1} preview`}/>}
+        ? <ZoomablePreview url={preview} pdf label={index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} PDF preview`:`Uploaded Aadhaar image ${index + 1} PDF preview`}/>
+        : <ZoomablePreview url={preview} combined={combined} label={combined?"Aadhaar front and back":index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} preview`:`Uploaded Aadhaar image ${index + 1} preview`}/>}
       <button disabled={locked} type="button" className="aadhaar-remove" onClick={() => remove(index)}><Trash2/>{index===1&&secondaryDocumentLabel?`Remove ${secondaryDocumentLabel}`:`Remove Image ${index + 1}`}</button>
     </div>)}
     {status && <p className="aadhaar-status" role="status">{status}</p>}
