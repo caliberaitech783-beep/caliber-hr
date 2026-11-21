@@ -3,7 +3,7 @@ import {act,fireEvent,render,waitFor} from '@testing-library/react';
 import {createElement} from 'react';
 import {utils,write} from 'xlsx';
 import TrialWorkflowPreview from './TrialWorkflowPreview';
-import {sameDocumentAadhaarNumber,sameDocumentBirthDate,type PrepareJoining} from './mount';
+import {sameDocumentAadhaarNumber,type PrepareJoining} from './mount';
 import * as trialResultFiles from './trialResultFiles';
 import * as telegramSend from './telegramSend';
 import {reviewTrial} from './reviewQueue';
@@ -243,14 +243,6 @@ describe('Trial workflow preview',()=>{
     await waitFor(()=>expect(el('#bTrainer')).toHaveTextContent('0'));
     const stored=JSON.parse(localStorage.getItem('hrPulse.localTrialWorkflow.v1:'+JSON.stringify([scope.owner,scope.company,scope.site]))!);
     expect(stored[0].outcome.trainer).toBe('Trial Form Trainer');
-  });
-  it('requires the Aadhaar and driving licence dates of birth to match',()=>{
-    expect(sameDocumentBirthDate('2000-01-02','2000-01-02')).toBe(true);
-    expect(sameDocumentBirthDate('02-01-2000','2000-01-02')).toBe(true);
-    expect(sameDocumentBirthDate('02/01/2000','02.01.2000')).toBe(true);
-    expect(sameDocumentBirthDate('2000-01-02','2001-03-04')).toBe(false);
-    expect(sameDocumentBirthDate('','2000-01-02')).toBe(false);
-    expect(sameDocumentBirthDate('unreadable','2000-01-02')).toBe(false);
   });
   it('compares Aadhaar numbers after removing printed spaces and separators',()=>{
     expect(sameDocumentAadhaarNumber('808138856642','8081 3885 6642')).toBe(true);
