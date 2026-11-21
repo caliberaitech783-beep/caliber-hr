@@ -130,3 +130,4 @@ nav button .chev{flex-shrink:0;transition:transform .2s}nav button .chev.expande
 .trial-route-strip li{position:relative;padding:6px 12px;border:1px solid #e4e0f0;border-radius:8px;background:#fff;font-size:13px;font-weight:600}
 .trial-route-strip li:not(:last-child)::after{content:'→';position:absolute;right:-12px;top:50%;transform:translateY(-50%);color:#8a8499;font-weight:400}
 .trial-route-strip li.done{background:#ecfdf5;border-color:#a7f3d0}
+.rejoin-doc-menu{display:grid;grid-template-columns:1fr;gap:2px}.rejoin-doc-menu label{display:flex;width:100%;align-items:center;gap:9px;padding:8px 6px;font-size:12px;box-sizing:border-box}.rejoin-doc-menu label:hover{background:#f7f3fa}
