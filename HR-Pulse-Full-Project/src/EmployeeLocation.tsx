@@ -27,7 +27,7 @@ const obCoalCompanyOptions=['Caliber Mining And Logistics Ltd','Caliber Mining A
 const companiesWithoutSites=new Set(['CHADDA TRADING COMPANY','KSR FREIGHT CARRIERS']);
 // Display the updated WCL names while preserving saved site values.
 const locations={Site:['NCL','WCL'],Office:['Nagpur CO','Chandrapur HO']};
-const tabs=['Add Temp. Employee','Rejoin Form','Update Existing Employee','Employee Verify','Completed Form','Reports'];
+const tabs=['Add Temp. Employee','Rejoing Form','Update Existing Employee','Employee Verify','Completed Form','Reports'];
 const enforceJoiningMandatoryFields=true;
 const corporateOfficeHeaders=['Sr. No.','Joining Category *','Employee Code','Full Name *','Full Name as per Aadhar','Father / Spouse Name *','Date of Birth','Gender','Caste/category','Identification mark','BLOOD GROUP','Mobile *','Alternate Mobile','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Reference Type','Reference Name','Permanent Address','Emergency Contact Name','Emergency Contact Number','Site *','Department *','Sub-department *','Designation *','Grade','Employee Category','Reporting To','Joining Date *','Shift *','Resident','Employment Type','Probation Period','Confirmation Status','Salary Structure /Scheme','Monthly Gross Salary','Mess Deduction','Cost Centre / Project Code','Father Name','Spouse Name','Payment Mode','Bank Name','IFSC Code','Bank Account No','UAN','PF Account No','PF Deduction','ESIC Account No','ESIC Establishment Code','ESIC Applicable','Status'];
 const corporateOfficeUploadHeaders=[corporateOfficeHeaders[0],corporateOfficeHeaders[2],corporateOfficeHeaders[1],...corporateOfficeHeaders.slice(3)];
@@ -572,7 +572,7 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
 export default function EmployeeLocation({title='Employee Master',grant,module,notice,employeeGroup='Corporate / HO',onEmployeeGroupChange,onSelectionChange,draftOwner='',canApprove=false,initialTrialDraft,onTrialDraftOpened}:{initialTrialDraft?:JoiningDraft;onTrialDraftOpened?:()=>void;canApprove?:boolean;draftOwner?:string;title?:string;grant?:string;module?:Module;notice?:(message:string)=>void;employeeGroup?:'Corporate / HO'|'OB / COAL';onEmployeeGroupChange?:(value:'Corporate / HO'|'OB / COAL')=>void;onSelectionChange?:(selection:{employeeGroup:'Corporate / HO'|'OB / COAL';company:string;region:string;site:string;department:string;subdepartment:string;designation:string})=>void}){
  const[tab,setTab]=useState('Add Temp. Employee');
  useEffect(()=>{
-  if(tab!=='Rejoin Form'||!grant)return;
+  if(tab!=='Rejoing Form'||!grant)return;
   const owner=document.querySelector('.employee-master');if(!owner)return;
   const host=document.createElement('div');host.className='employee-rejoin-host';owner.append(host);
   const root=createRoot(host);root.render(<EmployeeRejoinForm grant={grant} notice={notice}/>);
