@@ -72,3 +72,11 @@ Set by the owner on 21 November 2026.
 
 - Submit Employee (Document Checklist) saves the employee straight into the saved hierarchy route (Approval Master › Trial Hierarchy, Employee Track bot). It never opens the "Joining approval – Telegram" OTP pop-up.
 - Approval Master has no "Joining Approval" tab; `joiningApprovers` in `HR-Pulse-Full-Project/server/telegram.mjs` always reports it switched off, whatever the old setting says.
+
+# Completed Form shows every approved employee in the user's sites
+
+Set by the owner on 21 November 2026.
+
+- Employee Master › Completed Form lists every fully approved employee form in the sites the user's Pulse login covers, whoever submitted or approved it (up to the latest 2000). It still needs Approval Management access.
+- Employee Verify lists only the user's own employee forms (submitted by them or waiting for them) that are not yet fully approved, so leave, OD and gate pass requests never push them out of its latest-200 list.
+- `completedEmployees` and `employeeApprovals` in `HR-Pulse-Full-Project/server/service.mjs` (`/api/approvals/completed-employees`, `/api/approvals/employees`) hold it; `server/completed-employees.test.mjs` and `src/ApprovalReview.test.tsx` check it.

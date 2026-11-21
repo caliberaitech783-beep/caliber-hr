@@ -56,7 +56,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const masterImport=path.match(/^\/api\/import\/(assets|assetCategories|assetEmployees|assetAllocationLog|assetExitClearances|holidays|leaveTypes|leavePolicies|leavePeriods|leaveAllocations|leaveRequests|leaveEncashments|leaveBlocks)$/);
       const decision=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/decision$/);
       const leaveOtp=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/(otp|otp-verify)$/);
-      const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/transfer-flows':'transferFlows','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals'};
+      const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/transfer-flows':'transferFlows','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals','/api/approvals/employees':'employeeApprovals','/api/approvals/completed-employees':'completedEmployees'};
       if(path!=='/api/payroll'&&!telegramRoute&&!attendanceRoute&&!assetRoute&&!documents&&!employeeDocuments&&!employeeMasterRegister&&!deletion&&!masterImport&&!record&&!decision&&!leaveOtp&&!simple[path]&&!['/api/import/employees','/api/import/trial-employee','/api/aadhaar/scan','/api/letters/email','/api/employee-code/next'].includes(path))return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);

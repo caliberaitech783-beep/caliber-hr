@@ -142,7 +142,7 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
   const[chargeEmployeeId,setChargeEmployeeId]=useState(''),[chargeEmployees,setChargeEmployees]=useState<Lookup[]>([]);
   const[rows,setRows]=useState<Approval[]>([]),[error,setError]=useState(''),[loading,setLoading]=useState(true),[selected,setSelected]=useState<Approval|null>(null),[letter,setLetter]=useState<{employee:Approval;kind:EmployeeLetterKind;serial:number}|null>(null),[comments,setComments]=useState(''),[busy,setBusy]=useState(false);
 
-  async function load(){setLoading(true);try{const result=await api<Approval[]>(grant,'approvals');setRows(result.filter(row=>(!kind||row.kind===kind)&&(completed===undefined||(completed?row.state==='APPROVED':row.state!=='APPROVED'))));setError('');}catch(e){setError((e as Error).message);}finally{setLoading(false);}}
+  async function load(){setLoading(true);try{const result=await api<Approval[]>(grant,kind==='employees'?(completed?'approvals/completed-employees':completed===false?'approvals/employees':'approvals'):'approvals');setRows(result.filter(row=>(!kind||row.kind===kind)&&(completed===undefined||(completed?row.state==='APPROVED':row.state!=='APPROVED'))));setError('');}catch(e){setError((e as Error).message);}finally{setLoading(false);}}
 
   useEffect(()=>{setSelected(null);void load();},[grant,kind,completed]);
   const finalLeaveStep=(a:Approval|null)=>!!a?.telegram_flow&&a.stage===stepsFor(a).length-1;
@@ -166,7 +166,7 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
   const transferApprovals=kind==='employeeTransfers';
   return <section className={employeeApprovals?'data-card employee-approvals':'data-card'}>
     <div className="data-heading">
-      <div><h2>{completed?'Completed employee forms':employeeApprovals?'Employee Verify':transferApprovals?'Transfer approvals':'Your approval inbox'}</h2><p>Requests assigned to you or submitted by you. Latest 200 requests.</p></div>
+      <div><h2>{completed?'Completed employee forms':employeeApprovals?'Employee Verify':transferApprovals?'Transfer approvals':'Your approval inbox'}</h2><p>{completed&&kind==='employees'?'Every fully approved employee in your sites, whoever submitted or approved the form.':'Requests assigned to you or submitted by you. Latest 200 requests.'}</p></div>
       <button onClick={()=>void load()} disabled={loading}><RefreshCw/>Refresh</button>
     </div>
     <ErrorBox message={error}/>
