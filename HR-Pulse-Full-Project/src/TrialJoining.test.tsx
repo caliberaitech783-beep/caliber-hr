@@ -77,7 +77,7 @@ it('opens a completed operator trial at step two and saves it on the sixth step 
  const form=container.querySelector<HTMLFormElement>('.joining-form')!;
  for(const control of form.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('[required]')){
   if(control.value||control.disabled||control instanceof HTMLInputElement&&control.type==='file'&&control.files?.length)continue;
-  if(control instanceof HTMLSelectElement){if(control.options.length>1)fireEvent.change(control,{target:{value:control.options[1].value}});continue;}
+  if(control instanceof HTMLSelectElement){if(control.options.length>1)fireEvent.change(control,{target:{value:control.name==='Marital Status'?'Unmarried':control.options[1].value}});continue;}
   const name=control.name;
   if(control instanceof HTMLInputElement&&control.type==='file'){
    fireEvent.change(control,{target:{files:[new File(['sample'],'sample.jpg',{type:'image/jpeg'})]}});
