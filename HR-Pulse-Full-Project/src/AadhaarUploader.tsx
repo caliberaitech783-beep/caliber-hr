@@ -7,7 +7,7 @@ import { combineAadhaarSides } from './trial-workflow-preview/combineAadhaarSide
 
 type Props = {
   combineSides?: boolean;
-  singleDocument?: boolean;
+  allowCompleteCard?: boolean;
   photo?: File;
   photo2?: File;
   onPhoto?: (file?: File) => void;
@@ -59,7 +59,7 @@ function ZoomablePreview({url, label, combined=false, pdf=false}: {url:string; l
 export default function AadhaarUploader({
   photo, photo2, onPhoto, onPhoto2, fillDetails, disabled, onBusy, showScanInstructions = true,
   primaryButtonLabel = 'Upload Aadhar Front Image', secondaryDocumentLabel, hideSecond = false,
-  singleDocument = false, combineSides = false, hidePrimary = false, openMenu, onMenuChange,
+  allowCompleteCard = false, combineSides = false, hidePrimary = false, openMenu, onMenuChange,
 }: Props) {
   const [localMenuOpen, setLocalMenuOpen] = useState(false);
   const menuOpen=openMenu??localMenuOpen;
@@ -71,6 +71,7 @@ export default function AadhaarUploader({
   const reading = useRef(false);
   const camera = useRef<HTMLInputElement>(null);
   const gallery = useRef<HTMLInputElement>(null);
+  const front = useRef<HTMLInputElement>(null);
   const addBack = useRef<HTMLInputElement>(null);
   const [combined,setCombined] = useState(false);
   const second = useRef<HTMLInputElement>(null);
@@ -81,10 +82,10 @@ export default function AadhaarUploader({
   const locked = disabled || busy;
   useEffect(() => () => { reading.current = false; }, []);
 
-  async function select(event: ChangeEvent<HTMLInputElement>, slot: 1 | 2, append = false) {
+  async function select(event: ChangeEvent<HTMLInputElement>, slot: 1 | 2, mode?: 'append' | 'complete') {
     const selected = Array.from(event.currentTarget.files ?? []);
     if (!selected.length) return;
-    const sides = append && files[0] ? [files[0], ...selected] : selected;
+    const sides = mode === 'append' && files[0] ? [files[0], ...selected] : selected;
     let file = sides[0];
     event.currentTarget.value = '';
     if (!file || disabled || reading.current) return;
@@ -114,9 +115,9 @@ export default function AadhaarUploader({
         return;
       }
     }
-    setCombined(combineSides && sides.length === 2);
+    if (slot === 1) setCombined(combineSides && sides.length === 2);
     (slot === 1 ? saveFirst : saveSecond)(file);
-    if (singleDocument && files[1]) saveSecond(undefined);
+    if (mode === 'complete' && files[1]) saveSecond(undefined);
     setMenuOpen(false);
     if(slot===2&&secondaryDocumentLabel){
       setStatus(`${secondaryDocumentLabel} uploaded.`);
@@ -152,27 +153,33 @@ export default function AadhaarUploader({
   }
 
   return <section className="aadhaar-upload">
-    <p>{singleDocument?'Upload a complete Aadhaar card as JPG, JPEG, PNG, or PDF. A two-page PDF stays together. For separate front and back photos, select both together, front first.':combineSides?'Choose the Aadhaar front and back photos together, front first, or upload the front and then add the back. You can also upload one image or PDF.':secondaryDocumentLabel?`Upload one Aadhaar image and one ${secondaryDocumentLabel} in JPG, JPEG, PNG, or PDF format.`:'Upload up to two Aadhaar images in JPG, JPEG, PNG, or PDF format.'}{showScanInstructions &&
+    <p>{allowCompleteCard?'Upload a complete Aadhaar card as JPG, JPEG, PNG, or PDF. A two-page PDF stays together. You can also upload front and back images separately.':combineSides?'Choose the Aadhaar front and back photos together, front first, or upload the front and then add the back. You can also upload one image or PDF.':secondaryDocumentLabel?`Upload one Aadhaar image and one ${secondaryDocumentLabel} in JPG, JPEG, PNG, or PDF format.`:'Upload up to two Aadhaar images in JPG, JPEG, PNG, or PDF format.'}{showScanInstructions &&
       ' Images and PDFs are sent to Google Gemini to read the details. Use an unlocked PDF up to 1.3 MB. Verify the extracted fields before saving.'}</p>
     <div className="aadhaar-upload-actions">
+      <span style={allowCompleteCard ? {position:'relative', display:'inline-block'} : {display:'contents'}}>
       {!hidePrimary&&<button disabled={locked} type="button" className="employee-import" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><Upload/>{primaryButtonLabel}</button>}
       {menuOpen && <div className="aadhaar-source-menu">
         <button disabled={locked} type="button" onClick={() => camera.current?.click()}><Camera/>Camera</button>
         <button disabled={locked} type="button" onClick={() => gallery.current?.click()}><Images/>Gallery / Document</button>
       </div>}
-      {!hideSecond&&<button disabled={locked} type="button" className="employee-import" onClick={() => second.current?.click()}><Upload/>{secondaryDocumentLabel?`Upload ${secondaryDocumentLabel}`:'Upload Aadhar Back Image'}</button>}
-      <input disabled={locked} ref={camera} className="employee-import-input" aria-label="Capture Aadhaar card" type="file" accept={imageTypes} capture="environment" onChange={event => void select(event, 1)}/>
-      <input disabled={locked} ref={gallery} multiple={combineSides} className="employee-import-input" aria-label="Choose Aadhaar card from gallery" type="file" accept={documentTypes} onChange={event => void select(event, 1)}/>
-      {combineSides && !singleDocument && files[0] && !combined && !/\.pdf$/i.test(files[0].name) && files[0].type !== 'application/pdf' && <>
+      </span>
+      {allowCompleteCard && <>
+        <button disabled={locked} type="button" className="employee-import" onClick={() => {setMenuOpen(false); front.current?.click();}}><Upload/>Upload Aadhaar Front Image</button>
+        <input disabled={locked} ref={front} className="employee-import-input" aria-label="Choose Aadhaar front image" type="file" accept={documentTypes} onChange={event => void select(event, 1)}/>
+      </>}
+      {!hideSecond&&<button disabled={locked} type="button" className="employee-import" onClick={() => second.current?.click()}><Upload/>{secondaryDocumentLabel?`Upload ${secondaryDocumentLabel}`:allowCompleteCard?'Upload Aadhaar Back Image':'Upload Aadhar Back Image'}</button>}
+      <input disabled={locked} ref={camera} className="employee-import-input" aria-label="Capture Aadhaar card" type="file" accept={imageTypes} capture="environment" onChange={event => void select(event, 1, allowCompleteCard ? 'complete' : undefined)}/>
+      <input disabled={locked} ref={gallery} multiple={combineSides} className="employee-import-input" aria-label="Choose Aadhaar card from gallery" type="file" accept={documentTypes} onChange={event => void select(event, 1, allowCompleteCard ? 'complete' : undefined)}/>
+      {combineSides && !allowCompleteCard && files[0] && !combined && !/\.pdf$/i.test(files[0].name) && files[0].type !== 'application/pdf' && <>
         <button type="button" disabled={locked} className="employee-import" onClick={()=>addBack.current?.click()}>Add Aadhaar back image</button>
-        <input ref={addBack} disabled={locked} className="employee-import-input" aria-label="Choose Aadhaar back image" type="file" accept={imageTypes} onChange={event=>void select(event,1,true)}/>
+        <input ref={addBack} disabled={locked} className="employee-import-input" aria-label="Choose Aadhaar back image" type="file" accept={imageTypes} onChange={event=>void select(event,1,'append')}/>
       </>}
       {!hideSecond&&<input disabled={locked} ref={second} className="employee-import-input" aria-label={secondaryDocumentLabel?`Choose ${secondaryDocumentLabel}`:'Choose second Aadhaar image'} type="file" accept={documentTypes} onChange={event => void select(event, 2)}/>}
     </div>
     {previews.map((preview, index) => preview && <div className="aadhaar-preview-row" key={index}>
       {files[index]?.type === 'application/pdf' || /\.pdf$/i.test(files[index]?.name || '')
         ? <ZoomablePreview url={preview} pdf label={index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} PDF preview`:`Uploaded Aadhaar image ${index + 1} PDF preview`}/>
-        : <ZoomablePreview url={preview} combined={combined} label={combined?"Aadhaar front and back":index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} preview`:`Uploaded Aadhaar image ${index + 1} preview`}/>}
+        : <ZoomablePreview url={preview} combined={combined && index===0} label={combined && index===0?"Aadhaar front and back":index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} preview`:`Uploaded Aadhaar image ${index + 1} preview`}/>}
       <button disabled={locked} type="button" className="aadhaar-remove" onClick={() => remove(index)}><Trash2/>{index===1&&secondaryDocumentLabel?`Remove ${secondaryDocumentLabel}`:`Remove Image ${index + 1}`}</button>
     </div>)}
     {status && <p className="aadhaar-status" role="status">{status}</p>}

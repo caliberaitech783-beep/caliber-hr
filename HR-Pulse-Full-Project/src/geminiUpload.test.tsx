@@ -18,3 +18,18 @@ it('keeps successful fields when scanning a replacement upload fails',async()=>{
  expect(screen.getByLabelText('Employee name')).toHaveValue('Example Person');expect(screen.getByLabelText('Parent')).toHaveValue('Example Parent');
  expect(readGeminiAadhaar).toHaveBeenCalledTimes(2);
 });
+it('keeps separate Aadhaar sides until a complete card replaces them',async()=>{
+ vi.spyOn(URL,'createObjectURL').mockImplementation(file=>'blob:'+(file as File).name);
+ vi.spyOn(URL,'revokeObjectURL').mockImplementation(()=>{});
+ render(<Form/>);
+ function upload(label:string,name:string){
+  fireEvent.change(screen.getByLabelText(label),{target:{files:[new File(['test'],name,{type:'image/jpeg'})]}});
+ }
+ upload('Choose second Aadhaar image','back.jpg');
+ upload('Choose Aadhaar front image','front.jpg');
+ expect(screen.getByAltText('Uploaded Aadhaar image 1 preview')).toHaveAttribute('src','blob:front.jpg');
+ expect(screen.getByAltText('Uploaded Aadhaar image 2 preview')).toHaveAttribute('src','blob:back.jpg');
+ upload('Choose Aadhaar card from gallery','card.jpg');
+ expect(screen.getByAltText('Uploaded Aadhaar image 1 preview')).toHaveAttribute('src','blob:card.jpg');
+ expect(screen.queryByAltText('Uploaded Aadhaar image 2 preview')).toBeNull();
+});
