@@ -316,7 +316,14 @@ describe('Employee Master tabs',()=>{
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));});
   expect((screen.getByLabelText(/^Full Name \*/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/Full Name as per Aadhaar/) as HTMLInputElement).required).toBe(true);
-  expect((screen.getByLabelText(/PAN No\./) as HTMLInputElement).required).toBe(true);
+  const email=screen.getByLabelText('Candidate E-mail') as HTMLInputElement;
+  expect(email.required).toBe(false);
+  expect(email.checkValidity()).toBe(true);
+  const pan=screen.getByLabelText(/PAN No\./) as HTMLInputElement;
+  expect(pan.required).toBe(true);
+  fireEvent.input(pan,{target:{value:'axbhg2345j'}});
+  expect(pan.value).toBe('AXBHG2345J');
+  expect(pan.checkValidity()).toBe(true);
   expect((screen.getByLabelText(/Employee Code/) as HTMLInputElement).required).toBe(true);
   const mobile=screen.getByLabelText(/^Mobile/);
   expect((mobile as HTMLInputElement).required).toBe(true);
