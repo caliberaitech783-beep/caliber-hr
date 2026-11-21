@@ -206,29 +206,54 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd SCR JV'}});
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
   const site=screen.getByLabelText('Select site') as HTMLSelectElement;
-  const postingSite=document.querySelector('select[name="Site"]') as HTMLSelectElement;
+  const posting=()=>document.querySelector('select[name="Site"]') as HTMLSelectElement;
   const names=(select:HTMLSelectElement)=>Array.from(select.options,option=>option.text);
   expect(names(site)).toEqual(['Select site','Sasti OB']);
-  expect(names(postingSite)).toEqual(['Select','Sasti OB']);
+  expect(names(posting())).toEqual(['Select','Sasti OB']);
   fireEvent.change(site,{target:{value:'Sasti OB'}});
+  /* A site chosen at the top is filled into the form as text, not a dropdown. */
+  expect(posting()).toBeNull();
+  expect((document.querySelector('input[type="hidden"][name="Site"]') as HTMLInputElement).value).toBe('Sasti OB');
+  expect((screen.getByLabelText(/^Site\s*\*?$/,{selector:'input'}) as HTMLInputElement).readOnly).toBe(true);
   fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd'}});
   expect(site.value).toBe('');
+  const postingSite=posting();
   expect(postingSite.value).toBe('');
   expect(names(site)).toEqual(['Select site','Dhoptala OB 2nd','Majri OB','Gauri Pauni OB 2nd','Lalpeth OB']);
-  expect(names(postingSite)).toEqual(['Select','Dhoptala OB 2nd','Majri OB','Gauri Pauni OB 2nd','Lalpeth OB']);
+  expect(names(posting())).toEqual(['Select','Dhoptala OB 2nd','Majri OB','Gauri Pauni OB 2nd','Lalpeth OB']);
   fireEvent.change(site,{target:{value:'Dhoptala OB'}});
   fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd SCR JV'}});
   expect(site.value).toBe('');
-  expect(postingSite.value).toBe('');
+  expect(posting().value).toBe('');
   expect(names(site)).toEqual(['Select site','Sasti OB']);
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'NCL'}});
   expect(names(site)).toEqual(['Select site']);
-  expect(names(postingSite)).toEqual(['Select']);
-  expect(postingSite.required).toBe(false);
+  expect(names(posting())).toEqual(['Select']);
+  expect(posting().required).toBe(false);
   expect(site.value).toBe('');
   fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd'}});
   expect(names(site)).toEqual(['Select site','Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']);
-  expect(names(postingSite)).toEqual(['Select','Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']);
+  expect(names(posting())).toEqual(['Select','Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']);
+ });
+
+ it('offers only the regions and sites in the login site rights and fills a single site by itself',()=>{
+  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'',profile:{permissions:{site:'WCL-DHOPTALA|Majri OB',adminLevel:'Site'}}}));
+  try{
+   const view=render(<EmployeeLocation employeeGroup="OB / COAL"/>);
+   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
+   const region=screen.getByLabelText('Select region') as HTMLSelectElement;
+   expect(Array.from(region.options,option=>option.text)).toEqual(['Select region','WCL']);
+   expect(region.value).toBe('WCL');
+   const site=screen.getByLabelText('Select site') as HTMLSelectElement;
+   expect(Array.from(site.options,option=>option.text)).toEqual(['Select site','Dhoptala OB 2nd','Majri OB']);
+   expect(site.value).toBe('');
+   view.unmount();
+   sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'',profile:{permissions:{site:'WCL-DHOPTALA',adminLevel:'Site'}}}));
+   render(<EmployeeLocation employeeGroup="OB / COAL"/>);
+   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
+   expect((screen.getByLabelText('Select site') as HTMLSelectElement).value).toBe('Dhoptala OB');
+   expect((document.querySelector('input[type="hidden"][name="Site"]') as HTMLInputElement).value).toBe('Dhoptala OB');
+  }finally{sessionStorage.removeItem('hrPulseSession');}
  });
 
  it('loads only finally approved employees for Update Existing Employee',async()=>{
@@ -362,11 +387,16 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Manager'}).length).toBeGreaterThan(0);
   expect(screen.queryByRole('option',{name:'Technician'})).toBeNull();
   fireEvent.change(screen.getAllByLabelText('Designation').find(element=>!element.hasAttribute('name'))!,{target:{value:'Manager'}});
-  expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('CORPORATE');
-  expect((screen.getAllByLabelText(/^Site\s*\*?$/).at(-1) as HTMLSelectElement).value).toBe('Nagpur CO');
-  expect((screen.getAllByLabelText(/Department/).at(-1) as HTMLSelectElement).value).toBe('Production');
-  expect((screen.getAllByLabelText(/Sub-department/).at(-1) as HTMLSelectElement).value).toBe('Operations');
-  expect((document.querySelector('select[name="Designation"]') as HTMLSelectElement).value).toBe('Manager');
+  /* Region, site and department chosen at the top are filled into the form as read-only text, not dropdowns. */
+  const autoFilled=(name:string)=>document.querySelector(`input[type="hidden"][name="${name}"]`) as HTMLInputElement;
+  expect(autoFilled('Joining Category').value).toBe('CORPORATE');
+  expect(autoFilled('Site').value).toBe('Nagpur CO');
+  expect((screen.getAllByLabelText(/^Site\s*\*?$/).at(-1) as HTMLInputElement).value).toBe('Nagpur Corporate Office');
+  expect(autoFilled('Department').value).toBe('Production');
+  expect(autoFilled('Sub-department').value).toBe('Operations');
+  expect(autoFilled('Designation').value).toBe('Manager');
+  for(const name of ['Joining Category','Site','Department','Sub-department','Designation'])expect(document.querySelector(`select[name="${name}"]`)).toBeNull();
+  expect((screen.getByLabelText(/Joining Category/) as HTMLInputElement).readOnly).toBe(true);
   expect(screen.getByLabelText('UAN No.')).toBeTruthy();
   expect(screen.getByLabelText('ESIC')).toBeTruthy();
   expect((screen.getByLabelText(/Reference Name/) as HTMLInputElement).required).toBe(true);
@@ -410,8 +440,8 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
   expect(screen.getAllByRole('option',{name:'Sasti OB'}).length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Select site'),{target:{value:'Sasti OB'}});
-  expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('WCL');
-  expect((screen.getAllByLabelText(/^Site\s*\*?$/).at(-1) as HTMLSelectElement).value).toBe('Sasti OB');
+  expect((document.querySelector('input[type="hidden"][name="Joining Category"]') as HTMLInputElement).value).toBe('WCL');
+  expect((document.querySelector('input[type="hidden"][name="Site"]') as HTMLInputElement).value).toBe('Sasti OB');
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Employee Category'}));
   fireEvent.click(screen.getByRole('option',{name:'Staff'}));
