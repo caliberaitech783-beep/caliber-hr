@@ -322,3 +322,32 @@ test('trial trainer comes from the active site hierarchy and only the trial resu
  assert.doesNotThrow(()=>requireTrialUploads([{kind:'trialResult'}]));
  assert.doesNotThrow(()=>requireTrialUploads([{kind:'trialResult'},{kind:'drivingVideo'}]));
 });
+test('joining OTP reaches an approver who started another Caliber HR bot but not the Joining bot (21 Nov 2026)',async t=>{
+ const settings={TELEGRAM_BOT_TOKEN:'leave-token',TELEGRAM_JOINING_BOT_TOKEN:'joining-token'};
+ const previous=Object.fromEntries(Object.keys(settings).map(key=>[key,process.env[key]]));
+ Object.assign(process.env,settings);
+ t.after(()=>{for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+ const markup={inline_keyboard:[[{text:'✅ Approve',callback_data:'ja:JA-0123456789AB:approve'}]]};
+ const cases=[[{joining_connected:false,leave_connected:true},'leave'],[{joining_connected:true,leave_connected:true},'joining'],[{joining_connected:false,leave_request_connected:true},'joining']];
+ for(const [flags,expected] of cases){
+  const job={id:1,chat_id:'777',bot:'joining',mt_hr_enabled:false,message:'Joining OTP 123456',markup,...flags};
+  let sql='';const db={release(){},async query(q){if(q.startsWith('SELECT o.'))sql=q;return {rows:q.startsWith('SELECT o.')?[job]:[]};}};
+  const send=t.mock.fn();
+  await deliverTelegram({connect:async()=>db},send);
+  assert.match(sql,/o\.bot='joining' AND \(a\.joining_connected OR a\.leave_connected OR/);
+  assert.deepEqual(send.mock.calls[0].arguments,['777','Joining OTP 123456',expected,markup,[]]);
+ }
+});
+test('joining Approve tapped on the leave bot approves the request',async()=>{
+ const previous=process.env.TELEGRAM_WEBHOOK_SECRET;process.env.TELEGRAM_WEBHOOK_SECRET='leave-secret';
+ const data={status:'PENDING',approvers:['vinodpinjarkar'],candidate:'Anush',expires:new Date(Date.now()+60000).toISOString()};
+ const writes=[];
+ const db={release(){},async query(s,v){writes.push([s,v]);if(s.startsWith('INSERT INTO hr_telegram_updates'))return {rowCount:1,rows:[{id:1}]};
+  if(s.includes('FROM hr_telegram_accounts WHERE telegram_user_id'))return {rows:[{actor:'vinodpinjarkar'}]};
+  if(s.includes("kind='joiningApprovals' AND code=$1 FOR UPDATE"))return {rows:[{data}]};return {rows:[],rowCount:1};}};
+ const fetchMock=globalThis.fetch;globalThis.fetch=async()=>({json:async()=>({ok:true})});
+ try{await createTelegram({connect:async()=>db}).telegramWebhook('leave-secret',{update_id:9,callback_query:{id:'c1',from:{id:777},data:'ja:JA-0123456789AB:approve'}},'leave');
+  const update=writes.find(([s])=>s.startsWith('UPDATE hr_records SET data=$2,status=$3'));
+  assert.ok(update,'request was not approved');assert.equal(update[1][2],'APPROVED');assert.equal(update[1][1].approvedBy,'vinodpinjarkar');
+ }finally{globalThis.fetch=fetchMock;if(previous===undefined)delete process.env.TELEGRAM_WEBHOOK_SECRET;else process.env.TELEGRAM_WEBHOOK_SECRET=previous;}
+});

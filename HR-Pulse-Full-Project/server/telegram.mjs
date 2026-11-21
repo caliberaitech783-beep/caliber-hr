@@ -248,6 +248,14 @@ const mainBotConnectionColumn=()=>cmllHrEnabled()?'cmll_hr_connected':'mt_hr_ena
 const workflowBot=bot=>cmllHrEnabled()?'mt':bot;
 const workflowUsername=bot=>botUsername(workflowBot(bot));
 const workflowConfigured=bot=>Boolean(botToken(workflowBot(bot)));
+/* Joining approvals (21 Nov 2026): an approver who started any Caliber HR bot gets the OTP there, not only on the Joining Approval bot.
+   Order: the Joining bot, then bots that also carry the Approve / Reject buttons, then the Leave Request bot (OTP text only). */
+const JOINING_FALLBACK=[['leave','leave_connected'],['employee-track','employee_track_connected'],['trial-status','trial_status_connected'],['trial','trial_connected'],['leave-request','leave_request_connected']];
+export const joiningConnectedSql=(prefix='')=>`(${prefix}joining_connected OR ${JOINING_FALLBACK.map(([,column])=>prefix+column).join(' OR ')})`;
+export function joiningDeliveryBot(job){
+ if(job?.joining_connected!==false)return 'joining';
+ return JOINING_FALLBACK.find(([bot,column])=>job[column]&&botToken(bot))?.[0]||'joining';
+}
 /* Vehicle trial messages: CALIBER Trial Status bot (@CMLLTrialStatusBot) once its token and username are set; before that the old route. */
 export const trialStatusReady=()=>Boolean(botToken('trial-status')&&botUsername('trial-status'));
 export const trialBot=()=>trialStatusReady()?'trial-status':'trial';
@@ -465,7 +473,7 @@ export function createTelegram(pool){
    return {url:`https://t.me/${process.env.TELEGRAM_BOT_USERNAME}?start=${token}`};
   }
   /* ---- Joining approval ---- */
-  if(route==='joining-approvers'&&method==='GET'){const cfg=await joiningApprovers(pool);const linked=(await pool.query(`SELECT actor FROM hr_telegram_accounts WHERE (($1::boolean AND ${mainBotConnectionColumn()}) OR joining_connected) AND actor = ANY($2)`,[mtEnabled(),cfg.approvers])).rows.map(r=>r.actor);const issues=Object.fromEntries((await pool.query("SELECT DISTINCT ON (actor) actor,last_error FROM hr_telegram_outbox WHERE bot='joining' AND state<>'SENT' AND last_error IS NOT NULL ORDER BY actor,id DESC")).rows.map(r=>[r.actor,r.last_error]));return {...cfg,approvers:cfg.approvers.join(', '),linked,issues,botUsername:workflowUsername('joining'),configured:workflowConfigured('joining'),canWrite:grantedMenus(profile).has('Approval Management')};}
+  if(route==='joining-approvers'&&method==='GET'){const cfg=await joiningApprovers(pool);const linked=(await pool.query(`SELECT actor FROM hr_telegram_accounts WHERE (($1::boolean AND ${mainBotConnectionColumn()}) OR ${joiningConnectedSql()}) AND actor = ANY($2)`,[mtEnabled(),cfg.approvers])).rows.map(r=>r.actor);const issues=Object.fromEntries((await pool.query("SELECT DISTINCT ON (actor) actor,last_error FROM hr_telegram_outbox WHERE bot='joining' AND state<>'SENT' AND last_error IS NOT NULL ORDER BY actor,id DESC")).rows.map(r=>[r.actor,r.last_error]));return {...cfg,approvers:cfg.approvers.join(', '),linked,issues,botUsername:workflowUsername('joining'),configured:workflowConfigured('joining'),canWrite:grantedMenus(profile).has('Approval Management')};}
   if(route==='joining-approvers'&&method==='POST'){
    if(!grantedMenus(profile).has('Approval Management'))fail('Approval Management permission required',403);
    const approvers=String(input.approvers||'').split(',').map(a=>a.trim().toLowerCase()).filter(a=>/^[-a-z0-9_.@]{1,100}$/.test(a));
@@ -484,7 +492,7 @@ export function createTelegram(pool){
    const data={status:'PENDING',draftId:id,candidate:String(input.candidate||'').trim().slice(0,120),post:String(input.post||'').trim().slice(0,80),site:String(input.site||'').trim().slice(0,80),company:String(input.company||'').trim().slice(0,80),submittedBy:profile.actor,requestedAt:new Date().toISOString(),otpHash:hash(code+':'+otp),expires,attempts:0,approvers:cfg.approvers,resends:(existing?.resends||0)+(existing?1:0)};
    await tx(async db=>{await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'joiningApprovals',$1,$2,$3,'PENDING',$4,$4) ON CONFLICT(kind,code) DO UPDATE SET data=$3,name=$2,status='PENDING',updated_by=$4,updated_at=now()",[code,data.candidate||code,data,profile.actor]);
     await queueTelegram(db,`joining:${code}:${data.resends}`,cfg.approvers,joiningApprovalMessage(data,otp),'joining',joiningMarkup(code));});
-   const linked=(await pool.query(`SELECT actor FROM hr_telegram_accounts WHERE (($1::boolean AND ${mainBotConnectionColumn()}) OR joining_connected) AND actor = ANY($2)`,[mtEnabled(),cfg.approvers])).rows.map(r=>r.actor);
+   const linked=(await pool.query(`SELECT actor FROM hr_telegram_accounts WHERE (($1::boolean AND ${mainBotConnectionColumn()}) OR ${joiningConnectedSql()}) AND actor = ANY($2)`,[mtEnabled(),cfg.approvers])).rows.map(r=>r.actor);
    return {required:true,status:'PENDING',expires,approvers:cfg.approvers,connected:linked,notConnected:cfg.approvers.filter(a=>!linked.includes(a))};
   }
   if(route==='joining-approval/status'&&method==='POST'){
@@ -1105,6 +1113,17 @@ export function createTelegram(pool){
      callback={bot,id:cb.id,text:action==='mt:trial'?'Your assigned vehicle trial results and approvals arrive in this chat.':'Your assigned joining requests and approvals arrive in this chat.'};return;
     }
    }
+   if(cb&&(bot==='joining'||action.startsWith('ja:'))){   /* buttons may arrive on any Caliber HR bot that carried the request */const m=action.match(/^ja:(JA-[0-9A-F]{12}):(approve|reject)$/);if(!m||!cb.from?.id){callback={bot,id:cb.id,text:'Unknown action'};return;}
+    const actor=(await db.query(`SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 AND (${joiningConnectedSql()} OR $2)`,[String(cb.from.id),mt])).rows[0]?.actor;
+    const row=(await db.query("SELECT data FROM hr_records WHERE kind='joiningApprovals' AND code=$1 FOR UPDATE",[m[1]])).rows[0];
+    if(!row){callback={bot,id:cb.id,text:'Request not found'};return;}
+    const d=row.data;if(!actor||!(d.approvers||[]).includes(actor)){callback={bot,id:cb.id,text:'You are not an approver for this request'};return;}
+    if(d.status!=='PENDING'){callback={bot,id:cb.id,text:`Already ${d.status.toLowerCase()} by ${d.approvedBy||'-'}`};return;}
+    if(new Date(d.expires)<new Date()){callback={bot,id:cb.id,text:'Request expired – HR must resend'};return;}
+    const approve=m[2]==='approve';Object.assign(d,{status:approve?'APPROVED':'REJECTED',approvedBy:actor,approvedAt:new Date().toISOString(),otpHash:null});
+    await db.query("UPDATE hr_records SET data=$2,status=$3,updated_at=now() WHERE kind='joiningApprovals' AND code=$1",[m[1],d,d.status]);
+    if(!cmllHrEnabled())await queueTelegram(db,`joining:${m[1]}:done`,d.approvers||[],`${approve?'✅':'❌'} Joining of ${d.candidate||'candidate'} ${approve?'approved':'rejected'} by ${actor}.`,'joining');
+    callback={bot,id:cb.id,text:approve?'Approved':'Rejected'};return;}
    if(cb&&action.startsWith('tp:')&&(bot==='trial'||bot==='trial-status'||mt)){const m=action.match(/^tp:(\d{1,2})(:s)?$/);if(!m){callback={bot,id:cb.id,text:'Unknown action'};return;}
     const mask=Number(m[1])&((1<<PREVIEW_NAMES.length)-1),no=PREVIEW_NAMES.filter((_,i)=>(mask>>i)&1).length;
     if(cb.message)edit={bot,chat:cb.message.chat?.id,message:cb.message.message_id,markup:m[2]?null:trialPreviewMarkup(mask)};
@@ -1140,17 +1159,6 @@ export function createTelegram(pool){
     if(bot==='trial-status'||!cmllHrEnabled())await queueTelegram(db,`trial-ack:${p.code}`,[actor],ack,trialBot());
     if(cb.message&&p.kind==='submit')edit={bot,chat:cb.message.chat?.id,message:cb.message.message_id,markup:null};
     callback={bot,id:cb.id,text:decision==='approved'?'Approved ✅':decision==='declined'?'Declined ❌':`${yes.length} approved ✅ · ${no.length} declined ❌`};return;}
-   if(cb&&(bot==='joining'||(mt&&action.startsWith('ja:')))){const m=action.match(/^ja:(JA-[0-9A-F]{12}):(approve|reject)$/);if(!m||!cb.from?.id){callback={bot,id:cb.id,text:'Unknown action'};return;}
-    const actor=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 AND (joining_connected OR $2)',[String(cb.from.id),mt])).rows[0]?.actor;
-    const row=(await db.query("SELECT data FROM hr_records WHERE kind='joiningApprovals' AND code=$1 FOR UPDATE",[m[1]])).rows[0];
-    if(!row){callback={bot,id:cb.id,text:'Request not found'};return;}
-    const d=row.data;if(!actor||!(d.approvers||[]).includes(actor)){callback={bot,id:cb.id,text:'You are not an approver for this request'};return;}
-    if(d.status!=='PENDING'){callback={bot,id:cb.id,text:`Already ${d.status.toLowerCase()} by ${d.approvedBy||'-'}`};return;}
-    if(new Date(d.expires)<new Date()){callback={bot,id:cb.id,text:'Request expired – HR must resend'};return;}
-    const approve=m[2]==='approve';Object.assign(d,{status:approve?'APPROVED':'REJECTED',approvedBy:actor,approvedAt:new Date().toISOString(),otpHash:null});
-    await db.query("UPDATE hr_records SET data=$2,status=$3,updated_at=now() WHERE kind='joiningApprovals' AND code=$1",[m[1],d,d.status]);
-    if(!cmllHrEnabled())await queueTelegram(db,`joining:${m[1]}:done`,d.approvers||[],`${approve?'✅':'❌'} Joining of ${d.candidate||'candidate'} ${approve?'approved':'rejected'} by ${actor}.`,'joining');
-    callback={bot,id:cb.id,text:approve?'Approved':'Rejected'};return;}
    const msg=update.message;if(msg?.chat?.type!=='private'||!msg.from?.id||String(msg.chat.id)!==String(msg.from.id))return;
    const token=String(msg.text||'').match(/^\/start(?:@\w+)? ([A-Za-z0-9_-]{32})$/)?.[1];
    if(mt&&!token){
@@ -1228,11 +1236,12 @@ export async function deliverTelegram(pool,send=sendTelegram){
  const db=await pool.connect();try{
   await db.query('BEGIN');
   const connectedColumn=mainBotConnectionColumn();
-  const jobs=(await db.query(`SELECT o.*,a.${connectedColumn} AS mt_hr_enabled,CASE WHEN ($1 AND a.${connectedColumn} AND (o.bot IN ('leave','trial','joining','mt') OR ($2 AND o.bot='nagpur'))) OR (o.bot='trial' AND a.trial_connected) OR (o.bot='trial-status' AND a.trial_status_connected) OR (o.bot='leave-request' AND a.leave_request_connected) OR (o.bot='employee-track' AND a.employee_track_connected) OR (o.bot='joining' AND a.joining_connected) OR (o.bot='leave' AND a.leave_connected) OR (o.bot='nagpur' AND a.nagpur_connected) THEN a.chat_id END AS chat_id FROM hr_telegram_outbox o LEFT JOIN hr_telegram_accounts a ON a.actor=o.actor WHERE o.state='PENDING' AND o.next_attempt<=now() ORDER BY o.id LIMIT ${DELIVERY_SCAN} FOR UPDATE OF o SKIP LOCKED`,[mtEnabled(),cmllHrEnabled()])).rows;
+  const jobs=(await db.query(`SELECT o.*,a.${connectedColumn} AS mt_hr_enabled,a.joining_connected,a.leave_connected,a.employee_track_connected,a.trial_status_connected,a.trial_connected,a.leave_request_connected,CASE WHEN ($1 AND a.${connectedColumn} AND (o.bot IN ('leave','trial','joining','mt') OR ($2 AND o.bot='nagpur'))) OR (o.bot='trial' AND a.trial_connected) OR (o.bot='trial-status' AND a.trial_status_connected) OR (o.bot='leave-request' AND a.leave_request_connected) OR (o.bot='employee-track' AND a.employee_track_connected) OR (o.bot='joining' AND ${joiningConnectedSql('a.')}) OR (o.bot='leave' AND a.leave_connected) OR (o.bot='nagpur' AND a.nagpur_connected) THEN a.chat_id END AS chat_id FROM hr_telegram_outbox o LEFT JOIN hr_telegram_accounts a ON a.actor=o.actor WHERE o.state='PENDING' AND o.next_attempt<=now() ORDER BY o.id LIMIT ${DELIVERY_SCAN} FOR UPDATE OF o SKIP LOCKED`,[mtEnabled(),cmllHrEnabled()])).rows;
   let sends=0;
   for(const job of jobs){
    if(!job.chat_id&&job.bot==='nagpur')job.chat_id=nagpurRecipients()[job.actor]||null;
-   const bot=['trial-status','leave-request','employee-track'].includes(job.bot)?job.bot:(job.bot!=='nagpur'||cmllHrEnabled())&&job.mt_hr_enabled&&mtEnabled()?'mt':job.bot||'leave';
+   let bot=['trial-status','leave-request','employee-track'].includes(job.bot)?job.bot:(job.bot!=='nagpur'||cmllHrEnabled())&&job.mt_hr_enabled&&mtEnabled()?'mt':job.bot||'leave';
+   if(bot==='joining')bot=joiningDeliveryBot(job);   /* not on the Joining bot: use a Caliber HR bot they already started */
    if(!job.chat_id||(cmllHrEnabled()&&bot!=='mt'&&!botToken(bot))){await db.query("UPDATE hr_telegram_outbox SET next_attempt=now()+interval '5 minutes',last_error='Recipient has not connected Telegram' WHERE id=$1",[job.id]);continue;}
    if(sends>=DELIVERY_SENDS)continue;   /* stays due: the next sweep sends it */
    sends++;
