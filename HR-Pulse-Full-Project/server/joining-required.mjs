@@ -1,7 +1,7 @@
 // Office field names used by the joining form after export aliases are applied.
 const requiredDetails = new Set([
   'Joining Category *','Employee Code','Full Name as per Aadhar','Full Name *','Father / Spouse Name *',
-  'Marital Status','Mobile *','Candidate E-mail *','Aadhaar No. *','PAN No.','Present Address','Reference Type','Reference Name',
+  'Marital Status','Mobile *','Aadhaar No. *','PAN No.','Present Address','Reference Type','Reference Name',
   'Emergency Contact Name','Emergency Contact Number','Department *','Sub-department *','Designation *',
   'Employee Category','Reporting To','Joining Date *','Shift *','Employment Type','Salary Type','Site / Project','PT State',
 ]);
@@ -24,7 +24,6 @@ export function missingJoiningField(office = {}) {
     const aadhaar=String(office['Aadhaar Number']||'').split('|')[index]?.trim()||'';
     if(entered&&!/^\d{12}$/.test(aadhaar))return `Aadhaar Number ${index+1}`;
   }
-  if(siteJoining)required.push('A-Form No.');
   if(siteJoining)required.push('Identification mark');
   if(driverOrOperator){
     required.push('Driving licence');
