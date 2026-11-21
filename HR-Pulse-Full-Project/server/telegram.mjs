@@ -3,7 +3,7 @@ import {hierarchyTemplates,currentHierarchy,withOfficeHr,withDriverTrainer} from
 import {randomBytes,randomInt,createHash,timingSafeEqual} from 'node:crypto';
 import {grantedMenus} from './modules.mjs';
 import {assignedSites} from './scope.mjs';
-import {trialHistoryWithSteps,trialReviewStage} from './trial-review.mjs';
+import {trialHistoryWithSteps,trialReviewStage,trialStepNames} from './trial-review.mjs';
 import {nagpurRecipients} from './employee-addition-bot.mjs';
 import {additionRoster,connectInviteMessage} from './addition-roster.mjs';
 import {withTrialRouting} from './trial-routing.mjs';
@@ -877,7 +877,8 @@ export function createTelegram(pool){
       AND (lower(s.code)=ANY($2) OR lower(s.name)=ANY($2) OR s.id::text=ANY($2))
       AND (lower(s.name)=lower(t.data->>'site') OR lower(s.code)=lower(t.data->>'site'))))
     ORDER BY updated_at DESC LIMIT 300`,[[template.code,template.name,...(trialSiteAliases[template.code]||[])].map(norm),scope])).rows;
-   return {rows:rows.filter(({data})=>canReadTrial(access,data)).map(({id,data})=>{const {attachments,...record}=data;return {...record,history:trialHistoryWithSteps(data),id};})};
+   const readable=rows.filter(({data})=>canReadTrial(access,data)),names=await trialStepNames(pool,readable.map(r=>r.data));
+   return {rows:readable.map(({id,data})=>{const {attachments,...record}=data;return {...record,history:trialHistoryWithSteps(data,names),id};})};
   }
   /* ---- Browser sync: decisions taken on Telegram since the browser last looked ---- */
   if(route==='trial-sync'&&method==='POST'){
@@ -885,7 +886,8 @@ export function createTelegram(pool){
    const formNos=(Array.isArray(input.formNos)?input.formNos:[]).slice(0,500).map(f=>String(f).slice(0,40));if(!formNos.length)return {rows:[]};
    const rows=(await pool.query("SELECT code,data FROM hr_records WHERE kind='trialForms' AND code = ANY($1)",[formNos])).rows;
    const visible=[];for(const r of rows)if(canReadTrial(await trialAccess(pool,profile,r.data),r.data))visible.push(r);
-   return {rows:visible.map(r=>({formNo:r.code,history:trialHistoryWithSteps(r.data).filter(h=>h&&h.role&&h.at),stage:r.data.stage||'',pendingRole:r.data.pendingRole||'',status:r.data.status||''}))};
+   const names=await trialStepNames(pool,visible.map(r=>r.data));
+   return {rows:visible.map(r=>({formNo:r.code,history:trialHistoryWithSteps(r.data,names).filter(h=>h&&h.role&&h.at),stage:r.data.stage||'',pendingRole:r.data.pendingRole||'',status:r.data.status||''}))};
   }
   /* ---- Part 2 single result (driver trainer) → PM, with the candidate's attachments ---- */
   if(route==='trial-result'&&method==='POST'){
