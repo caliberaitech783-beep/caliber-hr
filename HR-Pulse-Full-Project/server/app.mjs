@@ -57,7 +57,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const decision=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/decision$/);
       const completedEmployeeDelete=path.match(/^\/api\/approvals\/completed-employees\/([a-fA-F0-9-]+)\/permanent-delete$/);
       const leaveOtp=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/(otp|otp-verify)$/);
-      const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/transfer-flows':'transferFlows','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals','/api/approvals/employees':'employeeApprovals','/api/approvals/completed-employees':'completedEmployees'};
+      const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/transfer-flows':'transferFlows','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals','/api/approvals/employees':'employeeApprovals','/api/approvals/completed-employees':'completedEmployees','/api/reporting-managers':'reportingManagers'};
       if(path!=='/api/payroll'&&!telegramRoute&&!attendanceRoute&&!assetRoute&&!documents&&!employeeDocuments&&!employeeMasterRegister&&!deletion&&!masterImport&&!record&&!decision&&!completedEmployeeDelete&&!leaveOtp&&!simple[path]&&!['/api/import/employees','/api/import/trial-employee','/api/aadhaar/scan','/api/letters/email','/api/employee-code/next'].includes(path))return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
@@ -93,6 +93,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       else if(path==='/api/hierarchies'&&req.method==='POST')result=await service.saveHierarchy(profile,await body(req));
       else if(path==='/api/transfer-flows'&&req.method==='POST')result=await service.saveTransferFlow(profile,await body(req));
       else if(path==='/api/request-preview'&&req.method==='GET')result=await service.requestPreview(profile,url.searchParams);
+      else if(path==='/api/reporting-managers'&&req.method==='GET')result=await service.reportingManagers(profile,url.searchParams);
       else if(simple[path]&&req.method==='GET')result=await service[simple[path]](profile);
       else if(record){
         const [,kind,id,action]=record;
