@@ -66,8 +66,8 @@ test('Trial Status messages leave on the Trial Status bot, never on CMLL HR',asy
  });
 });
 
-/* PM and Directors approve by OTP: Office HR requests it, the PM gets it on the Trial Status bot, Office HR enters it. */
-test('Office HR requests the PM OTP, a wrong OTP is counted, the right one approves and moves the form to Office HR',async()=>{
+/* Owner, 21 Nov 2026: the PM approves directly like the Driver Trainer; only Directors approve by OTP. */
+test('the PM approves directly in HRMS (no OTP) and the form moves to Office HR',async()=>{
  await withEnv(trialStatusEnv,async()=>{
   const records=new Map([['trialForms:TF/1',{id:'f1',code:'TF/1',data:{formNo:'TF/1',site:'Jayant OB East',fields:{Result:'PASS','Name of candidate':'Ramesh Yadav'},history:[],pendingRole:'pm'}}]]);
   const outbox=[];
@@ -86,27 +86,24 @@ test('Office HR requests the PM OTP, a wrong OTP is counted, the right one appro
   const pool={query:db.query,connect:async()=>db},service=createTelegram(pool);
   const ohr={actor:'apurvakopulwar',name:'Apurva Kopulwar',permissions:{hrDesktopAccess:['Employee Master'],hrAccountStatus:'Active',hrTrialAssignments:[{role:'Office HR',sites:[{code:'NCL-JAYANT'}]}]}};
   const target={site:'Jayant OB East',region:'NCL'};
-  await assert.rejects(service.telegramApi({...ohr,actor:'gulnawaz',permissions:{...ohr.permissions,hrTrialAssignments:[{role:'PM',sites:[{code:'NCL-JAYANT'}]}]}},'trial-otp','POST',{...target,reviewer:'pm',formNos:['TF/1']}),{status:403},'only Office HR requests the OTP');
-  await service.telegramApi(ohr,'trial-otp','POST',{...target,reviewer:'pm',formNos:['TF/1']});
-  assert.deepEqual(outbox.map(o=>[o.actor,o.bot]),[['gulnawaz','trial-status']],'the OTP goes to the PM of Jayant only');
-  assert.deepEqual(outbox[0].markup.inline_keyboard[0].map(b=>b.text),['❌ Decline'],'PM can only decline on Telegram');
-  const otp=outbox[0].message.match(/OTP: (\d{6})/)[1];
-  await assert.rejects(service.telegramApi(ohr,'trial-otp-verify','POST',{...target,reviewer:'pm',formNos:['TF/1'],otp:otp==='000000'?'111111':'000000'}),e=>e.status===400&&/4 attempts left/.test(e.message));
-  const out=await service.telegramApi(ohr,'trial-otp-verify','POST',{...target,reviewer:'pm',formNos:['TF/1'],otp});
+  const pm={...ohr,actor:'gulnawaz',name:'PM Sir',permissions:{...ohr.permissions,hrTrialAssignments:[{role:'PM',sites:[{code:'NCL-JAYANT'}]}]}};
+  await assert.rejects(service.telegramApi(ohr,'trial-otp','POST',{...target,reviewer:'pm',formNos:['TF/1']}),{status:400},'there is no PM OTP any more');
+  await assert.rejects(service.telegramApi(ohr,'trial-approval','POST',{...target,reviewer:'pm',approved:true,rows:[{formNo:'TF/1',fields:{Result:'PASS'}}]}),{status:403},'only the PM approves the PM step');
+  const out=await service.telegramApi(pm,'trial-approval','POST',{...target,reviewer:'pm',approved:true,rows:[{formNo:'TF/1',fields:{Result:'PASS','Name of candidate':'Ramesh Yadav'}}]});
   assert.equal(out.stage,'ohr');
   assert.equal(records.get('trialForms:TF/1').data.pendingRole,'ohr');
-  assert.match(records.get('trialForms:TF/1').data.history[0].by,/PM Sir \(OTP entered by Apurva Kopulwar\)/);
-  assert.deepEqual(outbox.slice(1).map(o=>o.actor),['apurvakopulwar'],'after the PM, the form goes to Office HR');
-  await assert.rejects(service.telegramApi(ohr,'trial-otp-verify','POST',{...target,reviewer:'pm',formNos:['TF/1'],otp}),{status:409},'an OTP works once');
+  assert.equal(records.get('trialForms:TF/1').data.history[0].action,'Approved');
+  assert.deepEqual(outbox.map(o=>o.actor),['apurvakopulwar'],'after the PM, the form goes to Office HR');
+  assert.deepEqual(outbox[0].markup.inline_keyboard[0].map(b=>b.text),['✅ Approve','❌ Decline']);
  });
 });
 
-test('a PASS goes to the PM and tells Office HR to request the PM OTP; a FAIL does not alert Office HR',async()=>{
+test('a PASS goes to the PM with Approve and Decline buttons; Office HR is not asked for a PM OTP',async()=>{
  await withEnv(trialStatusEnv,async()=>{
   const outbox=[];
   const db={release(){},async query(sql,v=[]){
    if(sql.includes("kind='joiningHierarchies'"))return {rows};
-   if(sql.startsWith('INSERT INTO hr_telegram_outbox')){outbox.push({key:v[0],actor:v[1],message:v[2],bot:v[3]});return {rowCount:1};}
+   if(sql.startsWith('INSERT INTO hr_telegram_outbox')){outbox.push({key:v[0],actor:v[1],message:v[2],bot:v[3],markup:JSON.parse(v[4]||'null')});return {rowCount:1};}
    if(sql.startsWith('INSERT INTO hr_telegram_files'))return {rows:[{id:1}]};
    if(sql.includes('RETURNING id'))return {rows:[{id:'new'}]};
    return {rows:[],rowCount:1};}};
@@ -115,11 +112,12 @@ test('a PASS goes to the PM and tells Office HR to request the PM OTP; a FAIL do
   const files=[{name:'r.pdf',mime:'application/pdf',kind:'trialResult',data:'QQ=='},{name:'v.mp4',mime:'video/mp4',kind:'drivingVideo',data:'QQ=='}];
   const send=(formNo,Result)=>service.telegramApi(trainer,'trial-result','POST',{formNo,site:'Jayant OB East',region:'NCL',fields:{Result,'Name of candidate':'Ramesh Yadav','If FAIL – reason':Result==='FAIL'?'Could not reverse':''},attachments:files});
   await send('TF/9','PASS');
-  assert.deepEqual(outbox.map(o=>[o.actor,o.bot]),[['gulnawaz','trial-status'],['apurvakopulwar','trial-status']]);
-  assert.match(outbox[1].message,/PM OTP NEEDED – OFFICE HR[\s\S]*Ramesh Yadav – TF\/9[\s\S]*Request OTP from PM/);
+  assert.deepEqual(outbox.map(o=>[o.actor,o.bot]),[['gulnawaz','trial-status']],'only the PM is told');
+  assert.deepEqual(outbox[0].markup?.inline_keyboard[0].map(b=>b.text),['✅ Approve','❌ Decline'],'the PM approves on Telegram');
+  assert.doesNotMatch(outbox[0].message,/OTP/);
   outbox.length=0;
   await send('TF/10','FAIL');
-  assert.deepEqual(outbox.map(o=>o.actor),['gulnawaz'],'a failed candidate needs no PM OTP');
+  assert.deepEqual(outbox.map(o=>o.actor),['gulnawaz'],'a failed candidate goes to the PM only');
  });
 });
 

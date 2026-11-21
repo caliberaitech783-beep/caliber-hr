@@ -125,7 +125,7 @@ export type OtpGroup = {key: string; reviewer: 'pm'|'director'; rows: Trial[]; e
 export function otpPanel(groups: OtpGroup[]) {
   if (!groups.length) return '';
   const who = (g: OtpGroup) => g.reviewer==='pm' ? 'PM' : 'Directors';
-  return `<div class="otp-panel"><h3>OTP approvals – PM and Directors</h3>
+  return `<div class="otp-panel"><h3>OTP approvals – Directors</h3>
     <p class="note">Press Request OTP: the OTP goes on the CALIBER Trial Status bot to the PM (or to all three Directors). Ask them for it, type it here and press Verify. Valid 15 minutes, single use.</p>
     ${table(['Approval of','Candidates','OTP'],groups.map(g=>`<tr data-otp="${esc(g.key)}"><td><b>${g.reviewer==='pm'?'PM':'Directors (final)'}</b></td>
       <td>${g.rows.map(r=>`${candidateLink(r)} <span class="mono muted small">${esc(r.formNo)}</span>`).join('<br>')}</td>

@@ -43,8 +43,9 @@ export type TrainerVote = {actor: string; name: string; vote: 'YES' | 'NO' | ''}
 export const voteResult = (votes: TrainerVote[]): Result => votes.some(v=>!v.vote) ? '' : votes.every(v=>v.vote==='YES') ? 'PASS' : 'FAIL';
 export const votesText = (votes?: TrainerVote[]) => (votes||[]).map(v=>`${v.name}: ${v.vote}`).join('; ');
 /** PM and Directors approve by OTP; Office HR requests it and enters it (owner, 20 Nov 2026). */
-export const OTP_ROLES = ['pm','director'] as const;
-export const isOtpRole = (role: string): role is 'pm'|'director' => (OTP_ROLES as readonly string[]).includes(role);
+/* Owner, 21 Nov 2026: only Directors approve by OTP; the PM approves directly like the Driver Trainer. */
+export const OTP_ROLES = ['director'] as const;
+export const isOtpRole = (role: string): role is 'director' => (OTP_ROLES as readonly string[]).includes(role);
 export type Outcome = {
   result: Result; post: Post; machine: string; reason: string; trainer: string; remarks: string;
   votes?: TrainerVote[];
