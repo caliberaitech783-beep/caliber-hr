@@ -393,7 +393,7 @@ export function AadhaarUpload({form,photo,photo2,onPhoto,onPhoto2}:{form:RefObje
    ? `Image ${slot} details were filled. Please verify them; not confidently read: ${missing.join(', ')}.`
    : `All detected details from image ${slot} were filled and locked (they come from the card and cannot be edited).`;
  }
- return <AadhaarUploader singleDocument hideSecond combineSides primaryButtonLabel="Upload Aadhaar Card" photo={photo} photo2={photo2} onPhoto={onPhoto} onPhoto2={onPhoto2} fillDetails={fillDetails}/>;
+ return <AadhaarUploader allowCompleteCard combineSides primaryButtonLabel="Upload Aadhaar Card" photo={photo} photo2={photo2} onPhoto={onPhoto} onPhoto2={onPhoto2} fillDetails={fillDetails}/>;
 }
 
 function JobPostingSections({employeeGroup,employeeCategory,setEmployeeCategory,defaults,subdepartments,designations}:{employeeGroup:'Corporate / HO'|'OB / COAL';employeeCategory:string;setEmployeeCategory:(value:string)=>void;defaults:FormDefaults;subdepartments:string[];designations:string[]}){const mineCompliance=employeeGroup==='OB / COAL'&&['Driver','Staff','Operator'].includes(employeeCategory),staffOnly=employeeCategory==='Staff';

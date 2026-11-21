@@ -346,8 +346,8 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText(/Employee Code/)).toBeTruthy();
   expect(screen.getByLabelText('Employee group')).toBeTruthy();
   expect(screen.getByRole('button',{name:'Upload Aadhaar Card'})).toBeTruthy();
-  expect(screen.queryByRole('button',{name:'Upload Aadhar Back Image'})).toBeNull();
-  expect(screen.queryByLabelText('Choose second Aadhaar image')).toBeNull();
+  expect(screen.getByRole('button',{name:'Upload Aadhaar Front Image'})).toBeTruthy();
+  expect(screen.getByRole('button',{name:'Upload Aadhaar Back Image'})).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Upload Aadhaar Card'}));
   expect(screen.getByRole('button',{name:'Camera'})).toBeTruthy();
   expect(screen.getByRole('button',{name:'Gallery / Document'})).toBeTruthy();
