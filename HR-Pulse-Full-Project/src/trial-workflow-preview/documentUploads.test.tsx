@@ -41,14 +41,15 @@ it.each(['jpg','pdf'])('scans a complete %s licence once and clears readiness wh
   fireEvent.click(screen.getByRole('button',{name:'Remove'}));
   await waitFor(()=>expect(ready).toHaveBeenLastCalledWith(false));
 });
-it('opens and closes the enlarged Aadhaar image',async()=>{
-  render(<AadhaarUploader photo={photo('front.jpg')} fillDetails={()=>'Read'}/>);
+it.each(['jpg','jpeg','png','pdf'])('opens and closes the enlarged Aadhaar %s preview',async format=>{
+  render(<AadhaarUploader photo={new File(['preview'],'front.'+format,{type:format==='pdf'?'application/pdf':format==='png'?'image/png':'image/jpeg'})} fillDetails={()=>'Read'}/>);
   const dialog=document.querySelector('dialog')!;
   // jsdom does not implement the native dialog methods.
   dialog.showModal=()=>{dialog.open=true;};
   dialog.close=()=>{dialog.open=false;};
-  fireEvent.click(await screen.findByRole('button',{name:'Enlarge Uploaded Aadhaar image 1 preview'}));
+  fireEvent.click(await screen.findByRole('button',{name:format==='pdf'?'Enlarge Uploaded Aadhaar image 1 PDF preview':'Enlarge Uploaded Aadhaar image 1 preview'}));
   expect(screen.getByRole('dialog').hasAttribute('open')).toBe(true);
+  if(format==='pdf')expect(screen.getByLabelText('Enlarged PDF document').getAttribute('data')).toBe('blob:test');
   fireEvent.click(screen.getByRole('button',{name:'Close enlarged image'}));
   expect(screen.queryByRole('dialog')).toBeNull();
 });
