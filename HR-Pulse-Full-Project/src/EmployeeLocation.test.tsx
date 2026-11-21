@@ -426,7 +426,7 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Qualification 1'),{target:{value:'Other'}});
   expect((screen.getByLabelText('Qualification 1') as HTMLInputElement).placeholder).toBe('Enter qualification');
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Family Details/}));});
-  expect(screen.queryByLabelText('Marital Status')).toBeNull();
+  expect(screen.getByLabelText(/^Marital Status/)).toBeRequired();
   expect(screen.queryByLabelText('Dependent? (Y/N) 1')).toBeNull();
   expect(screen.getByLabelText('Family Member Name 1')).toBeTruthy();
   for(let row=1;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Wife','Spouse','Son','Daughter']);
@@ -569,7 +569,7 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Department',{exact:true,selector:'select:not([name])'}),{target:{value:'Operator'}});
   fireEvent.change(screen.getByLabelText('Sub-department',{exact:true,selector:'select:not([name])'}),{target:{value:'Drilling'}});
   fireEvent.change(screen.getByLabelText('Designation',{exact:true,selector:'select:not([name])'}),{target:{value:'Drill Operator'}});
-  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Marital Status':'Unmarried','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB'}))setField(field,value);
   for(const [field,value] of Object.entries({'Family Member Name 1':'Parent One','Relationship 1':'Mother','Aadhaar Number 1':'234500000001','Date of Birth 1':'1970-01-01','Contact No. 1':'9876543212','Occupation 1':'Home'}))setField(field,value);
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
   upload('Upload Candidate photo','photo.jpg','image/jpeg');
@@ -602,7 +602,7 @@ it('matches bulk file names to checklist documents',()=>{const names=['Candidate
 for(const group of ['Corporate / HO','OB / COAL'] as const)it(group+' requires family details and family Aadhaar number',()=>{
  render(<EmployeeLocation employeeGroup={group}/>);
  fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
- expect(screen.queryByLabelText(/^Marital Status/)).toBeNull();
+ expect(screen.getByLabelText(/^Marital Status/)).toBeRequired();
  fireEvent.click(screen.getByRole('button',{name:/Family Details/}));
  expect(screen.getByLabelText('Family Member Name 1')).toBeRequired();
  expect(screen.getByLabelText('Relationship 1')).toBeRequired();

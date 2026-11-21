@@ -43,7 +43,7 @@ export default function LocalEmployeeReviewForm({record,owner,onChange,readOnly=
  function repeated(label:string,index:number,value:string){const values=(form.office[label]||'').split(/\s*\|\s*/);while(values.length<=index)values.push('');values[index]=value;update(label,values.join(' | '));}
  function field(label:string,value:string,change:(value:string)=>void,accessible=label){
   if(readOnly||!editing)value=String(siteFieldValue(label,value));
-  const choices:Record<string,string[]>={'Marital Status':['Single','Married','Divorced'],Relationship:['Mother','Father','Spouse','Son','Daughter'],Gender:['Male','Female','Other'],'Employment Type':['Permanent','Fixed-term','Contract','Trainee','Consultant'],'BLOOD GROUP':['A+','A-','B+','B-','AB+','AB-','O+','O-']};
+  const choices:Record<string,string[]>={'Marital Status':['Unmarried','Married','Divorced'],Relationship:['Mother','Father','Spouse','Son','Daughter'],Gender:['Male','Female','Other'],'Employment Type':['Permanent','Fixed-term','Contract','Trainee','Consultant'],'BLOOD GROUP':['A+','A-','B+','B-','AB+','AB-','O+','O-']};
   if(choices[label])return <select aria-label={accessible} disabled={readOnly||!editing} value={value} onChange={event=>change(event.target.value)}><option value="">Select</option>{value&&!choices[label].includes(value)&&<option>{value}</option>}{choices[label].map(option=><option key={option}>{option}</option>)}</select>;
   if(/address|reason|remarks/i.test(label))return <textarea aria-label={accessible} readOnly={readOnly||!editing} value={value} onChange={event=>change(event.target.value)}/>;
   const date=/Date|Valid Upto/.test(label)&&(!value||/^\d{4}-\d{2}-\d{2}$/.test(value));

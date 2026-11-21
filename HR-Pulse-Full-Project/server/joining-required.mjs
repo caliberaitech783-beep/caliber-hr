@@ -12,7 +12,7 @@ const filled = value => typeof value==='string'&&Boolean(value.trim());
 export const requiredEmployeeDetail = label => requiredDetails.has(label);
 
 export function missingJoiningField(office = {}) {
-  if(!['Single','Married','Divorced'].includes(office['Marital Status']))return 'Marital Status';
+  if(!['Single','Unmarried','Married','Divorced'].includes(office['Marital Status']))return 'Marital Status';
   const required = [...requiredDetails,'Candidate photo','Aadhaar (masked display)'];
   const siteJoining = ['WCL','NCL'].includes(office['Joining Category *']);
   const driverOrOperator = ['Driver','Operator'].includes(office['Employee Category']);
