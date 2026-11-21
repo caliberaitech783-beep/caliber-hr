@@ -151,7 +151,7 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
 
   /* Leave at the Directors' step: Regional HR requests the OTP and enters it once a Director tells it (owner, 20 Nov 2026). */
   const otpStep=!!selected&&selected.state==='PENDING'&&!!stepsFor(selected)[selected.stage]?.otp;
-  /* New employees (owner, 21 Nov 2026): Site HR → Regional HR → Directors (OTP). Regional HR's approval sends the OTP;
+  /* New employees (owner, 21 Nov 2026): Site HR → Site PM → Office HR (OB / COAL) → Regional HR → Directors (OTP). Regional HR's approval sends the OTP;
      Regional HR enters it here and the employee becomes Active. */
   const newEmployeeOtp=selected?.kind==='employees';
   const otpEnterer=otpStep&&!!selected&&!!(stepsFor(selected)[selected.stage]?.otpBy||stepsFor(selected)[selected.stage+1]?.approvers||[]).includes(actor);

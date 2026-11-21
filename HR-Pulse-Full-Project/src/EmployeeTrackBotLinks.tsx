@@ -3,12 +3,12 @@ import {api} from './api';
 import {deliveryText,botName} from './TrialStatusBotLinks';
 
 /* Approval Master › Employee Track bot (owner, 21 Nov 2026). New employees go out on the CALIBER Employee Track bot, one step at a time:
-   Site HR initiates → Regional HR → Directors (approve by OTP) → employee Active. Everyone on the route is listed with a personal
+   Site HR initiates → Site PM → Office HR → Regional HR → Directors (approve, or OTP as backup) → employee Active (OB / COAL sites, owner 21 Nov 2026). Everyone on the route is listed with a personal
    join link: sent through an HR bot they already use, or copied to forward on WhatsApp. */
 type Delivery={state:'DELIVERED'|'WAITING'|'FAILED'|'FORWARD'|'EXPIRED';bot:string;at:string;error:string}|null;
 type Person={actor:string;name?:string;stage:string;roles:string[];connected:boolean;via:string;status?:string;url?:string;delivery?:Delivery};
 type Roster={people:Person[];botUsername:string;configured?:boolean};
-export const EMPLOYEE_TRACK_ROUTE=['Site HR','Regional HR','Directors (OTP)'];
+export const EMPLOYEE_TRACK_ROUTE=['Site HR','PM / HOD','Office HR','Regional HR','Directors (OTP)'];
 
 export default function EmployeeTrackBotLinks({grant}:{grant:string}){
  const[data,setData]=useState<Roster|null>(null),[sent,setSent]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[confirming,setConfirming]=useState(false);
@@ -32,7 +32,7 @@ export default function EmployeeTrackBotLinks({grant}:{grant:string}){
    :<button disabled={making===p.actor||data?.configured===false} onClick={()=>void forwardLink(p)}>{making===p.actor?'Making link…':'Copy link to forward'}</button>}</div></>;};
  return <section className="data-card" aria-label="Employee Track bot">
   <div className="data-heading"><div><h2>Employee Track bot{data?.botUsername?` · @${data.botUsername}`:''}</h2>
-   <p className="help-text">Site HR starts every new employee in HRMS › Employee Management. The form then goes on this bot to Regional HR with Approve / Reject buttons; when Regional HR approves, the Directors get an OTP here. Any one Director tells the OTP to Regional HR, who enters it in HRMS and the employee becomes Active. Site HR is told the result. Each person must open their own join link once and tap Start.</p></div>
+   <p className="help-text">Site HR starts every new employee in HRMS › Employee Management. At OB / COAL sites the form then goes on this bot to the Site PM, then Office HR, then Regional HR, each with Approve / Reject buttons (the two offices go straight to their HR Manager). When Regional HR approves, the Directors get Approve / Reject and an OTP here: any one Director approves directly, or, when out of station, tells the OTP to Regional HR, who enters it in HRMS. Either way the employee becomes Active and shows in Completed Form. Site HR is told the result. Each person must open their own join link once and tap Start.</p></div>
    <button disabled={busy} onClick={()=>void load()}>Refresh</button></div>
   <ol className="trial-route-strip" aria-label="New employee approval route">{EMPLOYEE_TRACK_ROUTE.map(step=><li key={step}>{step}</li>)}<li className="done">Active</li></ol>
   {error&&<p className="error" role="alert">{error}</p>}

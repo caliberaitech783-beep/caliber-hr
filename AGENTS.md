@@ -31,7 +31,8 @@ Set by the owner on 20 November 2026.
 
 Set by the owner on 21 November 2026. It replaces the joining routes of 20 November (Site HR → PM / HOD → Office HR → Regional HR → Directors, and office HR → office HR Manager → Directors) for every newly added employee: site staff, drivers / operators, Nagpur office and Chandrapur HO.
 
-- Route: Site HR initiates the form → Regional HR → Directors (approve by OTP) → the employee becomes Active. No PM / HOD, Driver Trainer or Office HR step.
+- Route: Site HR initiates the form → Regional HR → Directors (approve by OTP) → the employee becomes Active. No Driver Trainer step.
+- OB / COAL sites (owner, 21 Nov 2026, evening; replaces "No PM / HOD or Office HR step" for them): Site HR initiates → Site PM → Office HR → Regional HR → Directors. Site PM ("Project Manager") and Office HR come from the site's Approval Master › Hierarchy and approve normally (Approve / Reject, like the vehicle trial form). While either is not set, Submit Employee stops with "Set the Site PM (Project Manager) and Office HR for <site> in Approval Master › Hierarchy…" instead of a draft. The two offices keep office HR → office HR Manager → Directors. `missingTrackApprovers` and `employeeTrackSteps` in `server/employee-track.mjs` hold it.
 - Site HR is the site's "HR Manager" in Approval Master › Hierarchy; when that person submits, the submission is their step. Anyone else who submits still needs Site HR's approval first. For the two offices the office HR initiates and the office's HR Manager is Regional HR (Chandrapur HO: Virat Singh; Nagpur office: the saved HR Manager, default Vinod Pinjarkar).
 - Regional HR is fixed per region (`server/site-staff-routing.mjs`): NCL → Vinod Pinjarkar, WCL → Virat Singh. Directors (any one): Mohit, Manish, Rahul Chadda.
 - Directors approve two ways (owner, 21 Nov 2026): Regional HR's approval sends the Directors the form on the Employee Track bot with Approve / Reject buttons and an OTP. Any one Director taps Approve (or approves in HRMS › Approvals / the pop-up) and the employee becomes Active. The OTP is the backup when they are out of station: a Director tells it to Regional HR, who enters it in HRMS › Approvals (or the pop-up). 15 minutes, single use, five wrong tries, "Resend OTP".
@@ -93,6 +94,6 @@ Set by the owner on 21 November 2026.
 
 Set by the owner on 21 November 2026.
 
-- Submit Employee (Document Checklist) sends the new employee into approval whenever the site has a route: every NCL and WCL region site and the two offices use the fixed new employee route (Site HR → Regional HR → Directors) with or without a saved Approval Master hierarchy; any other site needs an enabled saved hierarchy, else it stays a draft.
+- Submit Employee (Document Checklist) sends the new employee into approval whenever the site has a route: every NCL and WCL region site and the two offices use the new employee route; NCL / WCL sites need their Site PM and Office HR saved in Approval Master › Hierarchy (a clear message says so), the offices need no saved hierarchy; any other site needs an enabled saved hierarchy, else it stays a draft.
 - A missing saved hierarchy never blocks a new employee on the fixed route (`employeeHierarchy(..., {optional:true})` in `server/joining-hierarchy.mjs`). Once the Directors approve, the form shows in Completed Form.
 - `importEmployees` in `HR-Pulse-Full-Project/server/service.mjs` holds it; `server/joining-submit-route.test.mjs` checks it.
