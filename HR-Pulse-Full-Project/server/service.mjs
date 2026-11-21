@@ -13,7 +13,7 @@ import {createEmployeeDocuments} from './employee-documents.mjs';
 import {createEmployeeMasterRegister} from './employee-master-register.mjs';
 import {validateTrialJoining} from './trial-joining.mjs';
 import {requireTrialRole} from './trial-access.mjs';
-import {missingJoiningField, requiredEmployeeDetail} from './joining-required.mjs';
+import {missingJoiningField, requiredEmployeeDetail, underageBirthDate} from './joining-required.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
@@ -351,6 +351,8 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
           if (submitForApproval||trialClearance) {
             const missing=missingJoiningField(officeData);
             if(missing)throw problem('Row '+(count+1)+': '+missing.replace(/\s*\*$/,'')+' is required');
+            const underage=underageBirthDate(officeData?.['Date of Birth']||input.dateOfBirth);
+            if(underage)throw problem('Row '+(count+1)+': '+underage);
           }
           if(trialClearance)await requireTrialRole(db,profile,'hr',trialClearance);
           if (trialClearance) {
