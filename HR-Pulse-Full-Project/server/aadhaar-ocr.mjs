@@ -1,4 +1,5 @@
 import {canWrite} from './modules.mjs';
+import {isProjectManager,PM_EMPLOYEE_WRITE_ERROR} from './pm-access.mjs';
 const problem=(message,status=400)=>Object.assign(new Error(message),{status});
 const fields=['name','dob','gender','uid','address','relationName','relationType'];
 const schema={type:'OBJECT',properties:Object.fromEntries(fields.map(key=>[key,{type:'STRING'}])),required:fields};
@@ -29,6 +30,7 @@ export function cleanDrivingLicenceResult(value){
 export function createAadhaarReader({apiKey=process.env.GEMINI_API_KEY,model=process.env.GEMINI_OCR_MODEL||'gemini-3.1-flash-lite',fetchImpl=fetch,now=Date.now}={}){
  const users=new Map();let running=0;
  return async(profile,input)=>{
+  if(isProjectManager(profile))throw problem(PM_EMPLOYEE_WRITE_ERROR,403);
   if(!canWrite(profile,'employees'))throw problem('Employee management access is required to scan Aadhaar',403);
   if(!apiKey)throw problem('The Aadhaar reader is not configured. (GEMINI_CONFIG)',503);
   const isDl=input?.document==='drivingLicence',images=isDl?input?.images:[{content:input?.content,mime:input?.mime}];

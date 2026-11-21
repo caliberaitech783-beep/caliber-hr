@@ -1,3 +1,4 @@
+import {isProjectManager} from './pm-access.mjs';
 import {managementModules, managementMenus} from './management-modules.mjs';
 import {leaveModules,requestFields,policyFields,prepareLeave,validateLeave} from './leave.mjs';
 import {gatePassTypes,validateGatePass} from './gate-pass.mjs';
@@ -69,7 +70,7 @@ export function canWrite(profile, kind) {
   if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu);
   if(kind==='calendarEvents')return granted.has('Calendar');
   if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return granted.has('Asset Management');
-  if (kind === 'employees') return granted.has('Employee Master') || granted.has('Employee Onboarding');
+  if (kind === 'employees') return !isProjectManager(profile) && (granted.has('Employee Master') || granted.has('Employee Onboarding'));
   if (['workflows','approvalRules'].includes(kind) && granted.has('Administration')) return true;
   return modules[kind] && granted.has(modules[kind].menu);
 }

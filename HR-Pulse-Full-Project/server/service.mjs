@@ -14,6 +14,7 @@ import {createEmployeeMasterRegister} from './employee-master-register.mjs';
 import {createReportingManagers} from './reporting-managers.mjs';
 import {validateTrialJoining} from './trial-joining.mjs';
 import {requireTrialRole} from './trial-access.mjs';
+import {isProjectManager,PM_EMPLOYEE_WRITE_ERROR} from './pm-access.mjs';
 import {missingJoiningField, requiredEmployeeDetail, siteProjectMismatch, underageBirthDate} from './joining-required.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
@@ -58,6 +59,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
   }
   function authorize(profile,kind,write=false) {
     if (!modules[kind]) throw problem('Module not found',404);
+    if (write&&kind==='employees'&&isProjectManager(profile)) throw problem(PM_EMPLOYEE_WRITE_ERROR,403);
     if (!(write?canWrite:canRead)(profile,kind)) throw problem('Your Pulse HR permissions do not allow this operation',403);
   }
   async function locationAccess(db,profile,kind,data,id){
