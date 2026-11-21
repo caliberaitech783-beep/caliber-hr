@@ -46,3 +46,7 @@ input:is([type=date],[type=datetime-local],[type=month]):enabled:not([readonly])
 .joining-table.experience-table th:nth-child(4),.joining-table.experience-table td:nth-child(4),.joining-table.experience-table th:nth-child(5),.joining-table.experience-table td:nth-child(5){min-width:0;max-width:none}
 .joining-table.experience-table input,.joining-table.experience-table textarea,.joining-table.experience-table select{background:#fff}
 .joining-table.experience-table textarea{min-width:0;width:100%;box-sizing:border-box;resize:vertical}
+.joining-table.family-details-table tr.nominee-row td{background:#f6f1ff}
+.joining-table.family-details-table .nominee-tag{display:block;margin-top:4px;font-size:10px;font-weight:700;line-height:1.2;color:#5b2bb5;text-transform:uppercase}
+.joining-table.family-details-table .nominee-tag .required-mark{color:#d92d20;margin-left:1px}
+.nominee-note{margin:0 0 10px;font-size:13px;color:#5b2bb5;font-weight:600}

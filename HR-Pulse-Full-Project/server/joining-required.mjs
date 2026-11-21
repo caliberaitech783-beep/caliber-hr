@@ -24,7 +24,6 @@ export function missingJoiningField(office = {}) {
     const aadhaar=String(office['Aadhaar Number']||'').split('|')[index]?.trim()||'';
     if(entered&&!/^\d{12}$/.test(aadhaar))return `Aadhaar Number ${index+1}`;
   }
-  if(siteJoining)required.push('A-Form No.');
   if(siteJoining)required.push('Identification mark');
   if(driverOrOperator){
     required.push('Driving licence');

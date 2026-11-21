@@ -79,6 +79,7 @@ describe('OTP approval and several Driver Trainers (owner, 20 Nov 2026)',()=>{
     input('#f_mobile','9876543210');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
+    input('[aria-label="Valid up to (TR)"]','2028-01-01');
     change('#d_medical','Yes');
     fireEvent.submit(el('#single'));
     change('#role','trainer');
@@ -206,6 +207,7 @@ describe('Trial workflow preview',()=>{
     input('#f_conducted','Trial Form Trainer');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
+    input('[aria-label="Valid up to (TR)"]','2028-01-01');
     change('#d_medical','Yes');
     fireEvent.submit(el('#single'));
     change('#role','trainer');
@@ -237,6 +239,53 @@ describe('Trial workflow preview',()=>{
     const stored=JSON.parse(localStorage.getItem('hrPulse.localTrialWorkflow.v1:'+JSON.stringify([scope.owner,scope.company,scope.site]))!);
     expect(stored[0].outcome.trainer).toBe('Trial Form Trainer');
   });
+  it('makes the DL valid up to date mandatory and lets HR type it when the scan did not read it',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    vi.spyOn(window,'fetch').mockImplementation(async url=>Response.json(String(url).endsWith('/trial-trainer')?hierarchyTrainer:{batchId:'',formNos:[],telegram:{message:'',recipients:1,connected:[]}}));
+    const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
+    click('[data-tab="hr"]');
+    input('#f_name','No Date Candidate');
+    input('#f_mobile','9876543210');
+    input('#f_conducted','Trial Form Trainer');
+    click('input[name="f_vehicle"][value="Excavator"]');
+    change('#d_dl','Yes');
+    change('#d_medical','Yes');
+    expect(el('#f_dlvalid_note').hidden).toBe(false);
+    expect(el('[aria-label="Valid up to (TR)"]')).not.toHaveAttribute('readonly');
+    fireEvent.submit(el('#single'));
+    expect(el('#toast').textContent).toContain('valid up to date');
+    expect(el('#bTrainer').hidden).toBe(true);
+    input('[aria-label="Valid up to (NT)"]','2031-05-06');
+    expect(el('#f_dlvalid_note').hidden).toBe(true);
+    fireEvent.submit(el('#single'));
+    expect(el('#bTrainer')).toHaveTextContent('1');
+  });
+  it('blocks an expired DL valid up to date',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    vi.spyOn(window,'fetch').mockImplementation(async url=>Response.json(String(url).endsWith('/trial-trainer')?hierarchyTrainer:{batchId:'',formNos:[],telegram:{message:'',recipients:1,connected:[]}}));
+    const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
+    click('[data-tab="hr"]');
+    input('#f_name','Expired Candidate');
+    input('#f_mobile','9876543210');
+    input('#f_conducted','Trial Form Trainer');
+    click('input[name="f_vehicle"][value="Excavator"]');
+    change('#d_dl','Yes');
+    change('#d_medical','Yes');
+    input('[aria-label="Valid up to (TR)"]','2020-03-04');
+    input('[aria-label="Valid up to (NT)"]','2031-05-06');
+    expect(el('[aria-label="Valid up to (TR)"]')).toHaveClass('dl-valid-expired');
+    expect(el('#f_dlvalid_note').hidden).toBe(false);
+    expect(el('#f_dlvalid_note').textContent).toContain('expired on 04-03-2020');
+    fireEvent.submit(el('#single'));
+    expect(el('#toast').textContent).toContain('expired licence');
+    expect(el('#bTrainer').hidden).toBe(true);
+    input('[aria-label="Valid up to (TR)"]','2030-03-04');
+    expect(el('#f_dlvalid_note').hidden).toBe(true);
+    fireEvent.submit(el('#single'));
+    expect(el('#bTrainer')).toHaveTextContent('1');
+  });
   it('compares Aadhaar numbers after removing printed spaces and separators',()=>{
     expect(sameDocumentAadhaarNumber('808138856642','8081 3885 6642')).toBe(true);
     expect(sameDocumentAadhaarNumber('8081-3885-6642','808138856642')).toBe(true);
@@ -253,6 +302,7 @@ describe('Trial workflow preview',()=>{
     input('#f_conducted','Trial Form Trainer');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
+    input('[aria-label="Valid up to (TR)"]','2028-01-01');
     change('#d_medical','Yes');
     fireEvent.submit(el('#single'));
     change('#role','trainer');
@@ -275,7 +325,7 @@ describe('Trial workflow preview',()=>{
       .mockResolvedValueOnce(Response.json({details:{name:'Different Name',dob:'2000-01-02',licenceNumber:'DL-123',classDetails:[
         {code:'HMV',issuedBy:'MH29',dateOfIssue:'2020-01-02',vehicleCategory:'TR',badgeNumber:'298/PSV/12',badgeIssuedDate:'2021-03-04',badgeIssuedBy:'MH29'},
         {code:'LMV',issuedBy:'MH29',dateOfIssue:'2020-02-03',vehicleCategory:'NT',badgeNumber:'',badgeIssuedDate:'',badgeIssuedBy:''},
-      ],issueDate:'2020-01-02',validUpto:['2027-01-02','2030-01-02']}}));
+      ],issueDate:'2020-01-02',validUpto:['2037-01-02','2030-01-02']}}));
     const {root,el,click,input,getByLabelText,getByRole,change} = setup();
     await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
     click('[data-tab="hr"]');
@@ -314,7 +364,7 @@ describe('Trial workflow preview',()=>{
     expect(getByLabelText('Uploaded front driving licence PDF preview')).toBeInTheDocument();
     expect(getByLabelText('Uploaded back driving licence PDF preview')).toBeInTheDocument();
     await waitFor(()=>expect(el('#f_dl')).toHaveValue('DL-123'));
-    expect(el<HTMLInputElement>('[aria-label="Valid up to (TR)"]')).toHaveValue('2027-01-02');
+    expect(el<HTMLInputElement>('[aria-label="Valid up to (TR)"]')).toHaveValue('2037-01-02');
     expect(el<HTMLInputElement>('[aria-label="Valid up to (NT)"]')).toHaveValue('2030-01-02');
     click('#aadhaarContinue');
     expect(el('#v-hr').hidden).toBe(false);
@@ -333,7 +383,7 @@ describe('Trial workflow preview',()=>{
     expect(root.querySelectorAll('[data-dl-class-row]')).toHaveLength(2);
     expect(el('[data-dl-class="code"]')).toHaveValue('HMV');
     expect(el('[data-dl-class="badgeNumber"]')).toHaveValue('298/PSV/12');
-    expect([...root.querySelectorAll<HTMLInputElement>('[data-dl-valid]')].map(input=>input.value)).toEqual(['2027-01-02','2030-01-02']);
+    expect([...root.querySelectorAll<HTMLInputElement>('[data-dl-valid]')].map(input=>input.value)).toEqual(['2037-01-02','2030-01-02']);
     click('[data-tab="aadhaar"]');
     expect(el('#f_aadhaar')).toHaveValue(details.uid);
     expect(el('#sSubmit')).toBeEnabled();
@@ -480,6 +530,7 @@ describe('Trial workflow preview',()=>{
     input('#f_conducted','Trial Form Trainer');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
+    input('[aria-label="Valid up to (TR)"]','2028-01-01');
     fireEvent.submit(el('#single'));
     expect(el('#toast').textContent).toContain('medical fitness certificate');
     expect(el('#bTrainer').hidden).toBe(true);

@@ -48,6 +48,7 @@ describe('Corporate / HO import headers',()=>{
   const uploaded=[officeHeaders[0],officeHeaders[2],officeHeaders[1],...officeHeaders.slice(3),'','',''];
   expect(validCorporateOfficeHeaders(uploaded)).toBe(true);
   expect(validCorporateOfficeHeaders(officeHeaders)).toBe(true);
+  expect(validCorporateOfficeHeaders(officeHeaders.map(header=>header==='Candidate E-mail *'?'Candidate E-mail':header))).toBe(true);
   expect(validCorporateOfficeHeaders([...uploaded,'Unexpected'])).toBe(false);
  });
  it('resolves master names and leaves unmatched optional references blank',()=>{
@@ -70,7 +71,7 @@ describe('Corporate / HO import headers',()=>{
  });
  it('exports the exact Update Existing Employee columns and displayed values',()=>{
   const grid=corporateOfficeExportGrid([{id:'1',kind:'employees',code:'EMP-1',name:'Employee One',data:{officeData:{'Sr. No.':1,'Joining Category *':'CORPORATE'}} as any,status:'DRAFT',version:1,updated_at:'2026-10-23'}]);
-  expect(grid[0]).toEqual(officeHeaders);
+  expect(grid[0]).toEqual(officeHeaders.map(header=>header==='Candidate E-mail *'?'Candidate E-mail':header));
   expect(grid[1][0]).toBe(1);
   expect(grid[1][1]).toBe('CORPORATE');
   expect(grid[1][2]).toBe('EMP-1');
@@ -205,29 +206,54 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd SCR JV'}});
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
   const site=screen.getByLabelText('Select site') as HTMLSelectElement;
-  const postingSite=document.querySelector('select[name="Site"]') as HTMLSelectElement;
+  const posting=()=>document.querySelector('select[name="Site"]') as HTMLSelectElement;
   const names=(select:HTMLSelectElement)=>Array.from(select.options,option=>option.text);
   expect(names(site)).toEqual(['Select site','Sasti OB']);
-  expect(names(postingSite)).toEqual(['Select','Sasti OB']);
+  expect(names(posting())).toEqual(['Select','Sasti OB']);
   fireEvent.change(site,{target:{value:'Sasti OB'}});
+  /* A site chosen at the top is filled into the form as text, not a dropdown. */
+  expect(posting()).toBeNull();
+  expect((document.querySelector('input[type="hidden"][name="Site"]') as HTMLInputElement).value).toBe('Sasti OB');
+  expect((screen.getByLabelText(/^Site\s*\*?$/,{selector:'input'}) as HTMLInputElement).readOnly).toBe(true);
   fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd'}});
   expect(site.value).toBe('');
+  const postingSite=posting();
   expect(postingSite.value).toBe('');
   expect(names(site)).toEqual(['Select site','Dhoptala OB 2nd','Majri OB','Gauri Pauni OB 2nd','Lalpeth OB']);
-  expect(names(postingSite)).toEqual(['Select','Dhoptala OB 2nd','Majri OB','Gauri Pauni OB 2nd','Lalpeth OB']);
+  expect(names(posting())).toEqual(['Select','Dhoptala OB 2nd','Majri OB','Gauri Pauni OB 2nd','Lalpeth OB']);
   fireEvent.change(site,{target:{value:'Dhoptala OB'}});
   fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd SCR JV'}});
   expect(site.value).toBe('');
-  expect(postingSite.value).toBe('');
+  expect(posting().value).toBe('');
   expect(names(site)).toEqual(['Select site','Sasti OB']);
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'NCL'}});
   expect(names(site)).toEqual(['Select site']);
-  expect(names(postingSite)).toEqual(['Select']);
-  expect(postingSite.required).toBe(false);
+  expect(names(posting())).toEqual(['Select']);
+  expect(posting().required).toBe(false);
   expect(site.value).toBe('');
   fireEvent.change(company,{target:{value:'Caliber Mining And Logistics Ltd'}});
   expect(names(site)).toEqual(['Select site','Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']);
-  expect(names(postingSite)).toEqual(['Select','Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']);
+  expect(names(posting())).toEqual(['Select','Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']);
+ });
+
+ it('offers only the regions and sites in the login site rights and fills a single site by itself',()=>{
+  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'',profile:{permissions:{site:'WCL-DHOPTALA|Majri OB',adminLevel:'Site'}}}));
+  try{
+   const view=render(<EmployeeLocation employeeGroup="OB / COAL"/>);
+   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
+   const region=screen.getByLabelText('Select region') as HTMLSelectElement;
+   expect(Array.from(region.options,option=>option.text)).toEqual(['Select region','WCL']);
+   expect(region.value).toBe('WCL');
+   const site=screen.getByLabelText('Select site') as HTMLSelectElement;
+   expect(Array.from(site.options,option=>option.text)).toEqual(['Select site','Dhoptala OB 2nd','Majri OB']);
+   expect(site.value).toBe('');
+   view.unmount();
+   sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'',profile:{permissions:{site:'WCL-DHOPTALA',adminLevel:'Site'}}}));
+   render(<EmployeeLocation employeeGroup="OB / COAL"/>);
+   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
+   expect((screen.getByLabelText('Select site') as HTMLSelectElement).value).toBe('Dhoptala OB');
+   expect((document.querySelector('input[type="hidden"][name="Site"]') as HTMLInputElement).value).toBe('Dhoptala OB');
+  }finally{sessionStorage.removeItem('hrPulseSession');}
  });
 
  it('loads only finally approved employees for Update Existing Employee',async()=>{
@@ -235,6 +261,21 @@ describe('Employee Master tabs',()=>{
   render(<EmployeeLocation grant="test-grant"/>);fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
   await waitFor(()=>expect(fetchMock).toHaveBeenCalled());
   expect(fetchMock.mock.calls.some(([url])=>String(url).includes('records/employees?page=1&search=&status=ACTIVE'))).toBe(true);
+ });
+ it('shows NCL Police verification and Self declaration as overdue after 20 days with an upload button',async()=>{
+  const ncl={id:'ncl',code:'NCL-01',name:'NCL Employee',status:'ACTIVE',version:1,data:{officeData:{'Joining Category *':'NCL','Site *':'Jayant OB East','Joining Date *':'2020-01-01','Resident':'LOCAL','Police verification':'police.pdf'}}};
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({rows:[ncl],total:1,pageSize:50})));
+  try{
+   render(<EmployeeLocation grant="test-grant"/>);
+   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
+   await screen.findByRole('button',{name:'Edit NCL Employee (NCL-01)'});
+   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+   const row=within(screen.getByRole('row',{name:/NCL-01/}));
+   expect(row.getByRole('button',{name:'police.pdf'})).toBeInTheDocument();
+   expect(row.getByText('Overdue – was due 21/01/2020')).toBeInTheDocument();
+   expect(row.getByLabelText('Upload Self declaration form for NCL-01')).toBeInTheDocument();
+   expect(row.queryByLabelText('Upload Police verification for NCL-01')).toBeNull();
+  }finally{vi.unstubAllGlobals();}
  });
  it('edits the selected employee on a later page and keeps changes after a failed save',async()=>{
   const first={id:'first',code:'EMP-01',name:'First Employee',status:'ACTIVE',version:2,data:{}};
@@ -282,7 +323,7 @@ describe('Employee Master tabs',()=>{
  });
  it('shows the requested tabs and the complete joining workflow',async()=>{
   const view=render(<EmployeeLocation/>);
-  const labels=['Add Temp. Employee','Rejoin Form','Update Existing Employee','Employee Verify','Completed Form','Reports'];
+  const labels=['Add Temp. Employee','Rejoining Form','Update Existing Employee','Employee Verify','Completed Form','Reports'];
   expect(labels.map(label=>screen.getByRole('button',{name:label}))).toHaveLength(labels.length);
   expect(screen.queryByRole('button',{name:'T to P C.Id'})).toBeNull();
   expect(screen.getByRole('button',{name:'Import'})).toBeTruthy();
@@ -353,17 +394,31 @@ describe('Employee Master tabs',()=>{
   expect(screen.getAllByRole('option',{name:'Manager'}).length).toBeGreaterThan(0);
   expect(screen.queryByRole('option',{name:'Technician'})).toBeNull();
   fireEvent.change(screen.getAllByLabelText('Designation').find(element=>!element.hasAttribute('name'))!,{target:{value:'Manager'}});
-  expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('CORPORATE');
-  expect((screen.getAllByLabelText(/^Site\s*\*?$/).at(-1) as HTMLSelectElement).value).toBe('Nagpur CO');
-  expect((screen.getAllByLabelText(/Department/).at(-1) as HTMLSelectElement).value).toBe('Production');
-  expect((screen.getAllByLabelText(/Sub-department/).at(-1) as HTMLSelectElement).value).toBe('Operations');
-  expect((document.querySelector('select[name="Designation"]') as HTMLSelectElement).value).toBe('Manager');
+  /* Region, site and department chosen at the top are filled into the form as read-only text, not dropdowns. */
+  const autoFilled=(name:string)=>document.querySelector(`input[type="hidden"][name="${name}"]`) as HTMLInputElement;
+  expect(autoFilled('Joining Category').value).toBe('CORPORATE');
+  expect(autoFilled('Site').value).toBe('Nagpur CO');
+  expect((screen.getAllByLabelText(/^Site\s*\*?$/).at(-1) as HTMLInputElement).value).toBe('Nagpur Corporate Office');
+  expect(autoFilled('Department').value).toBe('Production');
+  expect(autoFilled('Sub-department').value).toBe('Operations');
+  expect(autoFilled('Designation').value).toBe('Manager');
+  for(const name of ['Joining Category','Site','Department','Sub-department','Designation'])expect(document.querySelector(`select[name="${name}"]`)).toBeNull();
+  expect((screen.getByLabelText(/Joining Category/) as HTMLInputElement).readOnly).toBe(true);
   expect(screen.getByLabelText('UAN No.')).toBeTruthy();
   expect(screen.getByLabelText('ESIC')).toBeTruthy();
   expect((screen.getByLabelText(/Reference Name/) as HTMLInputElement).required).toBe(true);
   const referenceType=screen.getByLabelText(/Reference Type/);
   expect((referenceType as HTMLSelectElement).required).toBe(true);
   expect(within(referenceType).queryAllByRole('option').map(option=>option.textContent)).toEqual(['Select','Regional HR Manager','Supervisor','Driver','Others']);
+  const otherReference=screen.getByLabelText('Write the other reference type') as HTMLInputElement;
+  expect(otherReference.hidden).toBe(true);
+  fireEvent.change(referenceType,{target:{value:'Others'}});
+  expect(otherReference.hidden).toBe(false);
+  expect(otherReference.required).toBe(true);
+  expect(referenceType.closest('label')).toBe(otherReference.closest('label'));
+  fireEvent.change(referenceType,{target:{value:'Supervisor'}});
+  expect(otherReference.hidden).toBe(true);
+  expect(otherReference.required).toBe(false);
   expect((screen.getByLabelText(/Emergency Contact Name/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/Emergency Contact Number/) as HTMLInputElement).required).toBe(true);
   const salarySection=screen.getByRole('heading',{name:'Salary Details'}).closest('section')!;
@@ -383,10 +438,12 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Close'}));
   expect(screen.getByRole('heading',{name:'Job & Posting Details'})).toBeTruthy();
   expect(screen.getByRole('heading',{name:'Bank Details'})).toBeTruthy();
-  expect(screen.getByLabelText('Bank Name')).toBeTruthy();
-  expect(screen.getByLabelText('Account No')).toBeTruthy();
-  expect(screen.getByLabelText('IFSC Code')).toBeTruthy();
-  expect(screen.getByLabelText('Branch Name')).toBeTruthy();
+  expect(screen.getByLabelText(/^Bank Name/)).toBeRequired();
+  expect(screen.getByLabelText(/^Account No/)).toBeRequired();
+  expect(screen.getByLabelText('New Account No')).not.toBeRequired();
+  expect(screen.getByLabelText(/^IFSC Code/)).toBeRequired();
+  expect(screen.getByLabelText(/^Branch Name/)).toBeRequired();
+  expect(screen.getByLabelText(/^Payment Mode/)).toBeRequired();
   expect(screen.getAllByRole('option',{name:'CASH'}).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('option',{name:'BANK'}).length).toBeGreaterThan(0);
   expect(screen.getByLabelText(/Employment Type/)).toBeTruthy();
@@ -399,8 +456,8 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
   expect(screen.getAllByRole('option',{name:'Sasti OB'}).length).toBeGreaterThan(0);
   fireEvent.change(screen.getByLabelText('Select site'),{target:{value:'Sasti OB'}});
-  expect((screen.getByLabelText(/Joining Category/) as HTMLSelectElement).value).toBe('WCL');
-  expect((screen.getAllByLabelText(/^Site\s*\*?$/).at(-1) as HTMLSelectElement).value).toBe('Sasti OB');
+  expect((document.querySelector('input[type="hidden"][name="Joining Category"]') as HTMLInputElement).value).toBe('WCL');
+  expect((document.querySelector('input[type="hidden"][name="Site"]') as HTMLInputElement).value).toBe('Sasti OB');
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Employee Category'}));
   fireEvent.click(screen.getByRole('option',{name:'Staff'}));
@@ -412,7 +469,13 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Employee Category'}));
   fireEvent.click(within(screen.getByRole('listbox',{name:'Employee Category options'})).getByRole('option',{name:'Driver'}));
   expect(screen.getByRole('button',{name:'Employee Category'}).textContent).toContain('Driver');
-  expect((screen.getByLabelText(/A-Form No\./) as HTMLInputElement).required).toBe(true);
+  expect((screen.getByLabelText(/A-Form No\./) as HTMLInputElement).required).toBe(false);
+  const leaveAvailable=screen.getByLabelText(/Leave Available/) as HTMLInputElement;
+  expect(leaveAvailable.type).toBe('checkbox');
+  expect(leaveAvailable.checked).toBe(false);
+  fireEvent.click(leaveAvailable);
+  expect(leaveAvailable.checked).toBe(true);
+  expect(joiningOfficeData({'Leave Available':'Yes'})['Leave Available']).toBe('Yes');
   expect(screen.queryByRole('button',{name:/Mine Compliance/})).toBeNull();
   expect(screen.getByRole('heading',{name:/Mine Compliance/})).toBeTruthy();
   expect(screen.getByLabelText(/Medical Examination Date/)).toBeTruthy();
@@ -448,14 +511,15 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText(/^Marital Status/)).toBeRequired();
   expect(screen.queryByLabelText('Dependent? (Y/N) 1')).toBeNull();
   expect(screen.getByLabelText('Family Member Name 1')).toBeTruthy();
-  for(let row=1;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Wife','Husband','Son','Daughter']);
-  fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Husband'}});
-  expect((screen.getByLabelText('Relationship 1') as HTMLSelectElement).value).toBe('Husband');
-  expect(Array.from((screen.getByLabelText('Relationship 2') as HTMLSelectElement).options).find(option=>option.value==='Husband')).toMatchObject({hidden:true,disabled:true});
+  expect(Array.from((screen.getByLabelText('Relationship 1') as HTMLSelectElement).options,option=>option.text)).toEqual(['Select nominee','Father / Mother','Husband / Wife']);
+  for(let row=2;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Husband/Wife','Son','Daughter']);
+  fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Husband/Wife'}});
+  expect((screen.getByLabelText('Relationship 1') as HTMLSelectElement).value).toBe('Husband/Wife');
+  expect(Array.from((screen.getByLabelText('Relationship 2') as HTMLSelectElement).options).find(option=>option.value==='Husband/Wife')).toMatchObject({hidden:true,disabled:true});
   fireEvent.change(screen.getByLabelText('Relationship 2'),{target:{value:'Father'}});
   expect(Array.from((screen.getByLabelText('Relationship 3') as HTMLSelectElement).options).find(option=>option.value==='Father')).toMatchObject({hidden:true,disabled:true});
   fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:''}});
-  expect(Array.from((screen.getByLabelText('Relationship 3') as HTMLSelectElement).options).find(option=>option.value==='Husband')).toMatchObject({hidden:false,disabled:false});
+  expect(Array.from((screen.getByLabelText('Relationship 3') as HTMLSelectElement).options).find(option=>option.value==='Husband/Wife')).toMatchObject({hidden:false,disabled:false});
   expect(screen.getByLabelText('Contact No. 1')).toBeTruthy();
   expect(screen.getByRole('columnheader',{name:'Age'})).toBeTruthy();
   const familyDob=screen.getByLabelText('Date of Birth 1') as HTMLInputElement;
@@ -473,6 +537,11 @@ describe('Employee Master tabs',()=>{
   expect(new FormData(joiningForm).get('Date of Birth 1')).toBe('');
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));});
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
+  const fresher=screen.getByRole('button',{name:/Fresher/});
+  expect(fresher).toHaveClass('fresher-shortcut');
+  fireEvent.click(fresher);
+  expect(screen.getByRole('heading',{name:'Document Checklist',level:2})).toBeTruthy();
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));});
   expect((screen.getByLabelText('From Date 1') as HTMLInputElement).min).toBe('1000-01-01');
   for(let row=1;row<=5;row++)for(const label of ['From Date','To Date']){
    const input=screen.getByLabelText(label+' '+row) as HTMLInputElement;
@@ -583,6 +652,24 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('alert')).toHaveTextContent('Full Name as per Aadhaar');
   expect(screen.getByRole('heading',{name:'Joining & Personal Details',level:2})).toBeVisible();
  });
+ it('makes Police verification and Self declaration mandatory at joining for WCL and gives NCL 20 days',async()=>{
+  render(<EmployeeLocation employeeGroup="OB / COAL"/>);
+  fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
+  const checklist=()=>fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
+  fireEvent.change(document.querySelector('[name="Resident"]')!,{target:{value:'LOCAL'}});
+  await act(async()=>{checklist();});
+  for(const name of ['Police verification','Self declaration form']){expect(screen.getByLabelText(`Upload ${name}`)).toBeRequired();expect(screen.getByLabelText(`Upload ${name}`).closest('tr')).toHaveTextContent('Mandatory at joining (WCL)');}
+  for(const resident of ['CAMP','Non-local','']){
+   fireEvent.change(document.querySelector('[name="Resident"]')!,{target:{value:resident}});
+   expect(screen.getByLabelText('Upload Police verification')).toBeRequired();
+   expect(screen.getByLabelText('Upload Self declaration form')).not.toBeRequired();
+   expect(screen.getByLabelText('Upload Self declaration form').closest('tr')).toHaveTextContent('Optional – needed only for LOCAL resident');
+  }
+  fireEvent.change(document.querySelector('[name="Resident"]')!,{target:{value:'LOCAL'}});
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'NCL'}});
+  for(const name of ['Police verification','Self declaration form']){expect(screen.getByLabelText(`Upload ${name}`)).not.toBeRequired();expect(screen.getByLabelText(`Upload ${name}`).closest('tr')).toHaveTextContent('Within 20 days of joining (NCL)');}
+ });
  it('blocks a Corporate / HO operator submission without a driving licence upload',async()=>{
   const {container}=render(<EmployeeLocation/>);
   const setField=(name:string,value:string)=>fireEvent.change(container.querySelector(`[name="${name}"]`)!,{target:{value}});
@@ -593,14 +680,34 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Department',{exact:true,selector:'select:not([name])'}),{target:{value:'Operator'}});
   fireEvent.change(screen.getByLabelText('Sub-department',{exact:true,selector:'select:not([name])'}),{target:{value:'Drilling'}});
   fireEvent.change(screen.getByLabelText('Designation',{exact:true,selector:'select:not([name])'}),{target:{value:'Drill Operator'}});
-  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Marital Status':'Unmarried','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB'}))setField(field,value);
-  for(const [field,value] of Object.entries({'Family Member Name 1':'Parent One','Relationship 1':'Mother','Aadhaar Number 1':'234500000001','Date of Birth 1':'1970-01-01','Contact No. 1':'9876543212','Occupation 1':'Home'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Marital Status':'Unmarried','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB','Bank Name':'State Bank of India','Account No':'1234567890','IFSC Code':'SBIN0001234','Branch Name':'Nagpur','Payment Mode':'BANK'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Family Member Name 1':'Parent One','Relationship 1':'Father/Mother','Aadhaar Number 1':'234500000001','Date of Birth 1':'1970-01-01','Contact No. 1':'9876543212','Occupation 1':'Home'}))setField(field,value);
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
   upload('Upload Candidate photo','photo.jpg','image/jpeg');
   upload('Upload Aadhaar (masked display)','aadhaar.pdf','application/pdf');
   expect(screen.getByLabelText('Upload Driving licence')).toBeRequired();
   fireEvent.click(screen.getByRole('button',{name:'Submit Employee'}));
   expect(screen.getByRole('alert')).toHaveTextContent('Please upload the mandatory document: Driving licence.');
+ });
+ it('stops an unmarried employee whose row 1 nominee is a husband or wife',async()=>{
+  const {container}=render(<EmployeeLocation/>);
+  const setField=(name:string,value:string)=>fireEvent.change(container.querySelector(`[name="${name}"]`)!,{target:{value}});
+  const upload=(label:string,name:string,type:string)=>fireEvent.change(screen.getByLabelText(label),{target:{files:[new File(['document'],name,{type})]}});
+  await act(async()=>{upload('Choose Aadhaar card from gallery','aadhaar.pdf','application/pdf');});
+  fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'Nagpur Corporate Office'}});
+  fireEvent.change(screen.getByLabelText('Department',{exact:true,selector:'select:not([name])'}),{target:{value:'Operator'}});
+  fireEvent.change(screen.getByLabelText('Sub-department',{exact:true,selector:'select:not([name])'}),{target:{value:'Drilling'}});
+  fireEvent.change(screen.getByLabelText('Designation',{exact:true,selector:'select:not([name])'}),{target:{value:'Drill Operator'}});
+  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Marital Status':'Married','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB','Bank Name':'State Bank of India','Account No':'1234567890','IFSC Code':'SBIN0001234','Branch Name':'Nagpur','Payment Mode':'BANK'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Family Member Name 1':'Partner One','Relationship 1':'Husband/Wife','Aadhaar Number 1':'234500000001','Date of Birth 1':'1990-01-01','Contact No. 1':'9876543212','Occupation 1':'Home'}))setField(field,value);
+  setField('Marital Status','Unmarried');
+  fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+  upload('Upload Candidate photo','photo.jpg','image/jpeg');
+  upload('Upload Aadhaar (masked display)','aadhaar.pdf','application/pdf');
+  upload('Upload Driving licence','licence.pdf','application/pdf');
+  fireEvent.click(screen.getByRole('button',{name:'Submit Employee'}));
+  expect(screen.getByRole('alert')).toHaveTextContent('Row 1 is the nominee: select Father / Mother.');
  });
 });
 
@@ -622,6 +729,11 @@ describe('Aadhaar printed field positions',()=>{
 });
 
 it('matches bulk file names to checklist documents',()=>{const names=['Candidate photo','Aadhaar (masked display)','PAN','Education certificates','Bank proof / cancelled cheque'];expect(matchChecklistDocument('Rahul_PAN.pdf',names)).toBe('PAN');expect(matchChecklistDocument('aadhar-card.jpg',names)).toBe('Aadhaar (masked display)');expect(matchChecklistDocument('passport photo.png',names)).toBe('Candidate photo');expect(matchChecklistDocument('10th marksheet.pdf',names)).toBe('Education certificates');expect(matchChecklistDocument('cancelled cheque.jpg',names)).toBe('Bank proof / cancelled cheque');expect(matchChecklistDocument('company.pdf',names)).toBeUndefined();expect(matchChecklistDocument('driving licence.pdf',names)).toBeUndefined();});
+it('matches joined, numbered and camel-case bulk file names',()=>{const names=['Candidate photo','Aadhaar (masked display)','PAN','Bank proof / cancelled cheque','Address proof'];
+ for(const name of ['AadharCard.jpg','AADHAAR.pdf','aadhar1.jpg','e-aadhaar front.png','myaadhaarcopy.pdf','Adhar_back.jpeg'])expect(matchChecklistDocument(name,names),name).toBe('Aadhaar (masked display)');
+ for(const name of ['PANCARD.pdf','pan card.jpg','PanCard.png','pan1.jpg','Pan_No.pdf','PAN-front.jpeg'])expect(matchChecklistDocument(name,names),name).toBe('PAN');
+ expect(matchChecklistDocument('Passbook.pdf',names)).toBe('Bank proof / cancelled cheque');expect(matchChecklistDocument('PassportPhoto.jpg',names)).toBe('Candidate photo');
+ for(const name of ['company.pdf','panel.jpg','Japan trip.jpg','checklist.pdf','Ai-Camera-Plan.pdf','dudhichua east oc shift master.jpeg'])expect(matchChecklistDocument(name,names),name).toBeUndefined();});
 
 for(const group of ['Corporate / HO','OB / COAL'] as const)it(group+' requires family details and family Aadhaar number',()=>{
  render(<EmployeeLocation employeeGroup={group}/>);
@@ -632,7 +744,12 @@ for(const group of ['Corporate / HO','OB / COAL'] as const)it(group+' requires f
  expect(screen.getByLabelText('Relationship 1')).toBeRequired();
  expect(screen.getByLabelText('Aadhaar Number 1')).toBeRequired();
  expect(screen.queryByLabelText('Upload Family Aadhaar 1')).toBeNull();
- expect(within(screen.getByLabelText('Relationship 1')).getAllByRole('option').map(o=>o.textContent)).toContain('Wife');
+ const nomineeOptions=()=>within(screen.getByLabelText('Relationship 1')).getAllByRole('option').map(o=>o.textContent);
+ expect(screen.getByText('Nominee')).toBeTruthy();
+ expect(nomineeOptions()).toEqual(['Select nominee','Father / Mother']);
+ fireEvent.change(screen.getByLabelText(/^Marital Status/),{target:{value:'Married'}});
+ expect(nomineeOptions()).toEqual(['Select nominee','Father / Mother','Husband / Wife']);
+ expect(within(screen.getByLabelText('Relationship 2')).getAllByRole('option').map(o=>o.textContent)).toContain('Son');
  expect(screen.getAllByRole('heading',{name:'Family Details*'})).toHaveLength(2);
  expect(screen.queryByText('Family Details are mandatory.')).toBeNull();
  const aadhaar=screen.getByLabelText('Aadhaar Number 3');
