@@ -423,6 +423,18 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText('Qualification 1')).toBeTruthy();
   expect(screen.getAllByRole('option',{name:'10th Pass'}).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('option',{name:'12th Pass'}).length).toBeGreaterThan(0);
+  const educationRows=Array.from(document.querySelectorAll('.education-table tbody tr'));
+  expect(educationRows.map(row=>row.querySelector('.education-level')?.textContent)).toEqual(['10th / Matriculation','12th / Diploma','Graduation','Post Graduation','Other']);
+  const optionsOf=(row:number)=>Array.from((screen.getByLabelText('Qualification '+row) as HTMLSelectElement).options,option=>option.text);
+  expect(optionsOf(1)).toEqual(['Select','10th Pass','Other']);
+  expect(optionsOf(2)).toEqual(['Select','12th Pass','Diploma','ITI','Other']);
+  expect(optionsOf(3)).toContain('BTech – Bachelor of Technology');
+  expect(optionsOf(3)).not.toContain('MBA – Master of Business Administration');
+  expect(optionsOf(4)).toContain('MBA – Master of Business Administration');
+  expect(optionsOf(4)).not.toContain('MBBS – Bachelor of Medicine and Bachelor of Surgery');
+  expect((screen.getByLabelText('Qualification 5') as HTMLInputElement).tagName).toBe('INPUT');
+  for(const level of ['10th / Matriculation','12th / Diploma','Graduation','Post Graduation','Other']){const upload=screen.getByLabelText(`Upload ${level} certificate`) as HTMLInputElement;expect(upload.type).toBe('file');expect(upload.required).toBe(false);}
+  for(const control of Array.from(document.querySelectorAll<HTMLInputElement|HTMLSelectElement>('.education-table [name]')))expect(control.required).toBe(false);
   fireEvent.change(screen.getByLabelText('Qualification 1'),{target:{value:'Other'}});
   expect((screen.getByLabelText('Qualification 1') as HTMLInputElement).placeholder).toBe('Enter qualification');
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Family Details/}));});
