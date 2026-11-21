@@ -444,7 +444,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText(/^IFSC Code/)).toBeRequired();
   expect(screen.getByLabelText(/^Branch Name/)).toBeRequired();
   expect(screen.getByLabelText(/^Payment Mode/)).toBeRequired();
-  expect(screen.getAllByRole('option',{name:'CASH'}).length).toBeGreaterThan(0);
+  expect(screen.queryByRole('option',{name:'CASH'})).toBeNull();
   expect(screen.getAllByRole('option',{name:'BANK'}).length).toBeGreaterThan(0);
   expect(screen.getByLabelText(/Employment Type/)).toBeTruthy();
   expect(screen.queryByRole('heading',{name:/Mine Compliance/})).toBeNull();
