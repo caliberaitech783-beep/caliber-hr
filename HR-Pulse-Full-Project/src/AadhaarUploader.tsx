@@ -7,6 +7,7 @@ import { combineAadhaarSides } from './trial-workflow-preview/combineAadhaarSide
 
 type Props = {
   combineSides?: boolean;
+  singleDocument?: boolean;
   photo?: File;
   photo2?: File;
   onPhoto?: (file?: File) => void;
@@ -58,7 +59,7 @@ function ZoomablePreview({url, label, combined=false, pdf=false}: {url:string; l
 export default function AadhaarUploader({
   photo, photo2, onPhoto, onPhoto2, fillDetails, disabled, onBusy, showScanInstructions = true,
   primaryButtonLabel = 'Upload Aadhar Front Image', secondaryDocumentLabel, hideSecond = false,
-  combineSides = false, hidePrimary = false, openMenu, onMenuChange,
+  singleDocument = false, combineSides = false, hidePrimary = false, openMenu, onMenuChange,
 }: Props) {
   const [localMenuOpen, setLocalMenuOpen] = useState(false);
   const menuOpen=openMenu??localMenuOpen;
@@ -115,6 +116,7 @@ export default function AadhaarUploader({
     }
     setCombined(combineSides && sides.length === 2);
     (slot === 1 ? saveFirst : saveSecond)(file);
+    if (singleDocument && files[1]) saveSecond(undefined);
     setMenuOpen(false);
     if(slot===2&&secondaryDocumentLabel){
       setStatus(`${secondaryDocumentLabel} uploaded.`);
@@ -150,7 +152,7 @@ export default function AadhaarUploader({
   }
 
   return <section className="aadhaar-upload">
-    <p>{combineSides?'Choose the Aadhaar front and back photos together, front first, or upload the front and then add the back. You can also upload one image or PDF.':secondaryDocumentLabel?`Upload one Aadhaar image and one ${secondaryDocumentLabel} in JPG, JPEG, PNG, or PDF format.`:'Upload up to two Aadhaar images in JPG, JPEG, PNG, or PDF format.'}{showScanInstructions &&
+    <p>{singleDocument?'Upload a complete Aadhaar card as JPG, JPEG, PNG, or PDF. A two-page PDF stays together. For separate front and back photos, select both together, front first.':combineSides?'Choose the Aadhaar front and back photos together, front first, or upload the front and then add the back. You can also upload one image or PDF.':secondaryDocumentLabel?`Upload one Aadhaar image and one ${secondaryDocumentLabel} in JPG, JPEG, PNG, or PDF format.`:'Upload up to two Aadhaar images in JPG, JPEG, PNG, or PDF format.'}{showScanInstructions &&
       ' Images and PDFs are sent to Google Gemini to read the details. Use an unlocked PDF up to 1.3 MB. Verify the extracted fields before saving.'}</p>
     <div className="aadhaar-upload-actions">
       {!hidePrimary&&<button disabled={locked} type="button" className="employee-import" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><Upload/>{primaryButtonLabel}</button>}
@@ -161,7 +163,7 @@ export default function AadhaarUploader({
       {!hideSecond&&<button disabled={locked} type="button" className="employee-import" onClick={() => second.current?.click()}><Upload/>{secondaryDocumentLabel?`Upload ${secondaryDocumentLabel}`:'Upload Aadhar Back Image'}</button>}
       <input disabled={locked} ref={camera} className="employee-import-input" aria-label="Capture Aadhaar card" type="file" accept={imageTypes} capture="environment" onChange={event => void select(event, 1)}/>
       <input disabled={locked} ref={gallery} multiple={combineSides} className="employee-import-input" aria-label="Choose Aadhaar card from gallery" type="file" accept={documentTypes} onChange={event => void select(event, 1)}/>
-      {combineSides && files[0] && !combined && !/\.pdf$/i.test(files[0].name) && files[0].type !== 'application/pdf' && <>
+      {combineSides && !singleDocument && files[0] && !combined && !/\.pdf$/i.test(files[0].name) && files[0].type !== 'application/pdf' && <>
         <button type="button" disabled={locked} className="employee-import" onClick={()=>addBack.current?.click()}>Add Aadhaar back image</button>
         <input ref={addBack} disabled={locked} className="employee-import-input" aria-label="Choose Aadhaar back image" type="file" accept={imageTypes} onChange={event=>void select(event,1,true)}/>
       </>}
