@@ -95,38 +95,55 @@ export function approvalTable(records: Trial[], selected: Set<string>) {
       <td>${esc(dateTime(row.trialDate))}</td><td class="small">${last?esc(ROLES[last.role])+': '+esc(last.by):''}<div class="muted">${esc(dateTime(last?.at||''))}</div></td></tr>`;
   }).join(''));
 }
-export function detailView(row: Trial, role: Role, canOpenJoining = false, otpApproval = false) {
-  const item = (label: string,value: string) => `<div class="row"><div class="k">${label}</div><div class="v">${value||'<span class="muted">–</span>'}</div></div>`;
-  const section = (data: [string,string][])=>data.map(([label,value])=>item(label,esc(value))).join('');
-  const out=row.outcome;
+/* The form's values, shared by the form window and its Smart Print so both always show the same thing. */
+export const validPhoto = (row: Trial) => /^data:image\/jpeg;base64,[\w+/=]+$/.test(row.photo);
+export function candidateDetails(row: Trial): [string,string][] {
   const dlClasses=(row.dlClasses||[]).map(item=>[item.code,item.issuedBy,item.dateOfIssue&&date(item.dateOfIssue),item.vehicleCategory,item.badgeNumber,item.badgeIssuedDate&&date(item.badgeIssuedDate),item.badgeIssuedBy].filter(Boolean).join(' · ')).join('; ');
   const dlValidDates=(row.dlValidDates?.length?row.dlValidDates:row.dlValid.split(',')).map(value=>date(value.trim())).filter(Boolean).join('; ');
-  const photo=/^data:image\/jpeg;base64,[\w+/=]+$/.test(row.photo) ? `<img src="${esc(row.photo)}" alt="Photo of ${esc(row.name)}" style="width:120px;height:150px;object-fit:cover;border-radius:6px">` : '<span class="muted small">No photo</span>';
-  const signs = Object.entries(ROLES).map(([key,label])=>{
+  return [
+    ["Father's name",row.father],['Date of birth',date(row.dob)],['Mobile no.',row.mobile],['Aadhaar no.',row.aadhaar],['Address',row.address],
+    ['Post applied for',row.post],['Vehicle / equipment',equipment(row)],['Driving licence no.',row.dl],['Class details',dlClasses],['DL issue date',date(row.dlIssue||'')],['DL valid up to',dlValidDates],
+    ['Experience',row.experience?row.experience+' years':''],['Previous employer',row.employer],['Trial date & time',dateTime(row.trialDate)],['Referred by',row.referredBy],['Trial Conducted by',row.trialConductedBy||''],
+  ];
+}
+export function resultDetails(row: Trial): [string,string][] {
+  const out=row.outcome;
+  return [
+    ['If PASS – recommended for',out && row.result==='PASS'?[out.post,out.machine].filter(Boolean).join(' – '):''],['If FAIL – reason',out?.reason||''],
+    ['Trial conducted by',out?.trainer||''],...(out?.votes?.length?[['Trainer votes',votesText(out.votes)] as [string,string]]:[]),['Examiner remarks',out?.remarks||''],
+  ];
+}
+export type ApprovalSign = {key: string; label: string; cls: 'ok'|'no'|'wait'; action: string; by: string; on: string};
+export function approvalSigns(row: Trial): ApprovalSign[] {
+  const out=row.outcome;
+  return Object.entries(ROLES).map(([key,label])=>{
     const entry=[...row.history].reverse().find(h=>h.role===key)
       // A result saved before the trainer's step was recorded still names who conducted the trial.
       ||(key==='trainer'&&out&&row.result?{role:'trainer',action:'Trial result: '+row.result,by:out.trainer,at:out.at}:undefined);
     const cls=!entry?'wait':entry.action==='Rejected'||key==='trainer'&&row.result==='FAIL'?'no':'ok';
     const action=entry ? key==='trainer'?row.result:entry.action : row.stage===key?'Pending':'–';
-    return `<div class="sig ${cls}"><b>${label}</b><span class="st">${esc(action)}</span><span>${esc(entry?.by)}</span><span class="muted">${entry?.at?esc(date(indiaDay(new Date(entry.at)))):''}</span></div>`;
-  }).join('');
+    return {key,label,cls,action:action||'',by:entry?.by||'',on:entry?.at?date(indiaDay(new Date(entry.at))):''};
+  });
+}
+export function approvalNotes(row: Trial): [string,string][] {
+  return row.history.filter(h=>h.note).map(h=>[`${ROLES[h.role]} (${h.by})`,h.note||'']);
+}
+export function detailView(row: Trial, role: Role, canOpenJoining = false, otpApproval = false) {
+  const item = (label: string,value: string) => `<div class="row"><div class="k">${label}</div><div class="v">${value||'<span class="muted">–</span>'}</div></div>`;
+  const section = (data: [string,string][])=>data.map(([label,value])=>item(esc(label),esc(value))).join('');
+  const out=row.outcome;
+  const photo=validPhoto(row) ? `<img src="${esc(row.photo)}" alt="Photo of ${esc(row.name)}" style="width:120px;height:150px;object-fit:cover;border-radius:6px">` : '<span class="muted small">No photo</span>';
+  const signs = approvalSigns(row).map(sign=>`<div class="sig ${sign.cls}"><b>${sign.label}</b><span class="st">${esc(sign.action)}</span><span>${esc(sign.by)}</span><span class="muted">${esc(sign.on)}</span></div>`).join('');
   return `<div class="panel-head"><div><h2>${esc(row.name)}</h2><span class="mono muted small">${esc(row.formNo)}${row.batch?' · Batch '+esc(row.batch):''} · ${esc(row.site)}</span></div>
-      <div class="actions">${stagePill(row)}${canOpenJoining&&isClearedForJoining(row)?'<button type="button" class="btn pri sm" data-open-joining>Open Step 2</button>':''}${row.result==='PASS'?'<button type="button" class="btn tg sm" id="mTelegram">Telegram message</button>':''}<button type="button" class="btn sm" id="mClose">Close</button></div></div>
+      <div class="actions">${stagePill(row)}${canOpenJoining&&isClearedForJoining(row)?'<button type="button" class="btn pri sm" data-open-joining>Open Step 2</button>':''}${row.result==='PASS'?'<button type="button" class="btn tg sm" id="mTelegram">Telegram message</button>':''}<button type="button" class="btn sm" id="mSmartPrint">Smart Print</button><button type="button" class="btn sm" id="mClose">Close</button></div></div>
     <div class="secbar">Part 1 – Candidate details <em>Site HR</em></div>
-    <div class="grid-form"><div class="rows">${section([
-      ["Father's name",row.father],['Date of birth',date(row.dob)],['Mobile no.',row.mobile],['Aadhaar no.',row.aadhaar],['Address',row.address],
-      ['Post applied for',row.post],['Vehicle / equipment',equipment(row)],['Driving licence no.',row.dl],['Class details',dlClasses],['DL issue date',date(row.dlIssue||'')],['DL valid up to',dlValidDates],
-      ['Experience',row.experience?row.experience+' years':''],['Previous employer',row.employer],['Trial date &amp; time',dateTime(row.trialDate)],['Referred by',row.referredBy],['Trial Conducted by',row.trialConductedBy||''],
-    ])}</div><div class="photo">${photo}</div></div>
+    <div class="grid-form"><div class="rows">${section(candidateDetails(row))}</div><div class="photo">${photo}</div></div>
     <div class="secbar">Document check</div>
     ${table(['Document','Seen','Remarks'],DOCS.map(([key,label])=>`<tr><td>${label}</td><td>${esc(row.docs[key]?.seen)||'–'}</td><td>${esc(row.docs[key]?.remarks)}</td></tr>`).join(''),420)}
     <div class="secbar">Part 2 – Trial result <em>Driver Trainer</em></div>
-    <div class="rows" style="border:1px solid var(--line-strong)">${item('Result',resultPill(row))}${section([
-      ['If PASS – recommended for',out && row.result==='PASS'?[out.post,out.machine].filter(Boolean).join(' – '):''],['If FAIL – reason',out?.reason||''],
-      ['Trial conducted by',out?.trainer||''],...(out?.votes?.length?[['Trainer votes',votesText(out.votes)] as [string,string]]:[]),['Examiner remarks',out?.remarks||''],
-    ])}${out?.attachment ? item('Trial result file', `<button type="button" class="link trial-result-filename" data-download-result>Download ${esc(out.attachment.name)}</button>`) : ''}${out?.videoAttachment ? item('Driving video', `<button type="button" class="link trial-result-filename" data-download-driving-video>Download ${esc(out.videoAttachment.name)}</button>`) : ''}</div>
+    <div class="rows" style="border:1px solid var(--line-strong)">${item('Result',resultPill(row))}${section(resultDetails(row))}${out?.attachment ? item('Trial result file', `<button type="button" class="link trial-result-filename" data-download-result>Download ${esc(out.attachment.name)}</button>`) : ''}${out?.videoAttachment ? item('Driving video', `<button type="button" class="link trial-result-filename" data-download-driving-video>Download ${esc(out.videoAttachment.name)}</button>`) : ''}</div>
     <div class="secbar">Approvals</div><div class="sigs">${signs}</div>
-    ${row.history.filter(h=>h.note).map(h=>`<p class="note"><b>${esc(ROLES[h.role])} (${esc(h.by)}):</b> ${esc(h.note)}</p>`).join('')}
+    ${approvalNotes(row).map(([who,note])=>`<p class="note"><b>${esc(who)}:</b> ${esc(note)}</p>`).join('')}
     ${row.stage===role && ['pm','ohr','rhr','director'].includes(role) ? `<div class="actions"><input id="mNote" aria-label="Decision note" placeholder="Note (required to reject)"><button type="button" class="btn no" data-decide="reject">Reject</button><button type="button" class="btn ok" data-decide="approve">Approve as ${ROLES[role]}</button>${isOtpRole(role)&&otpApproval?'<span class="note">Out of station? Office HR can request an OTP on the CALIBER Trial Status bot.</span>':''}</div>`:''}`;
 }
 

@@ -14,6 +14,7 @@ import {findPreviousTrial} from './previousTrial';
 import type {TrialMatch} from '../TrialAadhaarHistory';
 import {optimizeDrivingVideo} from './optimizeDrivingVideo';
 import {trialRoute} from './routing';
+import {openFormSmartPrint} from './formSmartPrint';
 import type {TrialChecklistDocuments} from '../trialHandoff';
 
 type Tab = 'aadhaar' | 'hr' | 'trainer' | 'approve' | 'overview';
@@ -1038,6 +1039,10 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if(target.hasAttribute('data-download-driving-video')){
       const attachment=records.find(row=>row.id===detailId)?.outcome?.videoAttachment;
       if (attachment) void downloadTrialResult(attachment);
+    }
+    if(target.id==='mSmartPrint'){
+      const row=records.find(item=>item.id===detailId);
+      if (row) openFormSmartPrint(root,row);
     }
     if(target.id==='mTelegram'){
       const row=records.find(item=>item.id===detailId);
