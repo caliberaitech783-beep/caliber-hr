@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createTelegram,trialGroupMarkup,parseTrialCallback} from './telegram.mjs';
+import {createTelegram,trialGroupMarkup,parseTrialCallback,trialPreviewMarkup,sendTrialPicksPreview} from './telegram.mjs';
 
 /* Owner, 21 Nov 2026: in a batch on the CALIBER Trial Status bot every approver ticks Yes or No for each candidate, then taps Submit. */
 const CODE='TA-0123456789AB';
@@ -97,5 +97,28 @@ test('Submit with no ticks changed approves the whole batch; someone else cannot
   assert.equal(state.forms['TF/1'].data.pendingRole,'ohr');
   assert.equal(state.forms['TF/2'].data.pendingRole,'ohr');
   assert.equal(state.group.data.decision,'approved');
+ });
+});
+
+test('the TEST preview goes to everyone on the trial route; its taps only redraw and Submit saves nothing',async()=>{
+ await withBot(async calls=>{const {state,db}=fixture();
+  const out=await sendTrialPicksPreview(db);
+ 
+  for(const a of ['jayanttrainer','gulnawaz','apurvakopulwar','mohitchadda'])assert.ok(out.actors.includes(a),a+' gets the preview');
+  assert.ok(!out.actors.includes('amitsingh'),'Site HR does not approve, so no preview');
+  const sent=state.outbox.find(o=>o.actor==='gulnawaz');
+  assert.match(sent.message,/TEST ONLY/);
+  assert.equal(sent.markup.inline_keyboard[1][1].callback_data,'tp:2');
+  const before=JSON.stringify(state.forms);
+  const telegram=createTelegram({connect:async()=>db});
+  await tap(telegram,20,'tp:2');
+  const redraw=calls.filter(c=>c.url.endsWith('/editMessageReplyMarkup')).at(-1).body.reply_markup;
+  assert.deepEqual(redraw,trialPreviewMarkup(2));
+  assert.match(redraw.inline_keyboard[1][1].text,/❌ No/);
+  assert.equal(redraw.inline_keyboard[1][0].callback_data,'tp:0','tapping Yes again clears the No');
+  await tap(telegram,21,'tp:2:s');
+  assert.match(calls.filter(c=>c.url.endsWith('/answerCallbackQuery')).at(-1).body.text,/nothing saved.*2 Yes · 1 No/);
+  assert.equal(JSON.stringify(state.forms),before,'no trial form changes');
+  assert.equal(state.group.status,'PENDING');
  });
 });

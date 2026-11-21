@@ -360,12 +360,28 @@ export function trialOtpMessage({reviewer,forms,otp,requestedBy,site}){
    A single candidate keeps the plain Approve / Decline buttons; the old ta:<code>:a / :d buttons still act on the whole batch. */
 const PICK_LIMIT=45;   /* Telegram allows about 100 buttons on one message: a larger batch keeps Approve / Decline for all */
 const shortName=(name,max=22)=>{const s=String(name||'').trim()||'-';return s.length>max?s.slice(0,max-1)+'…':s;};
+function pickKeyboard(count,label,isNo,data){const no=Array.from({length:count},(_,i)=>isNo(i)).filter(Boolean).length;
+ return {inline_keyboard:[...Array.from({length:count},(_,i)=>{const yes=!isNo(i);
+   return [{text:`${yes?'✅':'⬜'} Yes – ${i+1}. ${shortName(label(i))}`,callback_data:data(i,'a')},{text:`${yes?'⬜':'❌'} No`,callback_data:data(i,'d')}];}),
+  [{text:`📨 Submit – ${count-no} Yes · ${no} No`,callback_data:data(null,'s')}]]};}
 export function trialGroupMarkup(code,formNos,names=[],picks={}){
  if(!Array.isArray(formNos)||formNos.length<2||formNos.length>PICK_LIMIT)return approvalMarkup(code);
- const no=formNos.filter(f=>picks[f]==='d').length;
- return {inline_keyboard:[...formNos.map((f,i)=>{const yes=picks[f]!=='d';
-   return [{text:`${yes?'✅':'⬜'} Yes – ${i+1}. ${shortName(names[i]||f)}`,callback_data:`ta:${code}:${i}:a`},{text:`${yes?'⬜':'❌'} No`,callback_data:`ta:${code}:${i}:d`}];}),
-  [{text:`📨 Submit – ${formNos.length-no} Yes · ${no} No`,callback_data:`ta:${code}:s`}]]};
+ return pickKeyboard(formNos.length,i=>names[i]||formNos[i],i=>picks[formNos[i]]==='d',(i,a)=>i===null?`ta:${code}:s`:`ta:${code}:${i}:${a}`);
+}
+/* Test preview (owner, 21 Nov 2026): a sample batch with the same Yes / No buttons sent to everyone on the trial route.
+   The ticks live in the button data itself (tp:<mask>, bit set = No), so taps only redraw and Submit saves nothing. */
+const PREVIEW_NAMES=['Vijay Kumar (TEST)','Rajendra Singh (TEST)','Suresh Yadav (TEST)'];
+export const trialPreviewMarkup=(mask=0)=>pickKeyboard(PREVIEW_NAMES.length,i=>PREVIEW_NAMES[i],i=>(mask>>i)&1,
+ (i,a)=>i===null?`tp:${mask}:s`:`tp:${a==='d'?mask|(1<<i):mask&~(1<<i)}`);
+export const trialPreviewMessage=()=>['🧪 TEST ONLY – new batch approval buttons','',
+ 'This is a sample batch to show how batch approvals now work. Nothing here is saved and no candidate is approved or rejected.','',
+ ...PREVIEW_NAMES.map((n,i)=>`${i+1}. ${n} – Driver – TF/TEST/000${i+1} – ✅ PASS`),'',
+ 'Tick ✅ Yes or ❌ No for each candidate below, then tap Submit.','Real batches from PM, Office HR, Regional HR and Directors use the same buttons.'].join('\n');
+export async function sendTrialPicksPreview(db){
+ const people=[];for(const stage of ['part1','result','ohr','rhr','director'])people.push(...(await hierarchyRecipients(db,stage)).map(recipientActor));
+ const actors=[...new Set(people)].filter(Boolean),key=`trial-picks-preview:${Date.now()}`;
+ await queueTelegram(db,key,actors,trialPreviewMessage(),trialBot(),trialPreviewMarkup(0));
+ return {key,actors};
 }
 export function parseTrialCallback(data){const m=String(data||'').match(/^ta:(TA-[0-9A-F]{12}):(?:(a|d)|(\d{1,3}):(a|d)|(s))$/);if(!m)return null;
  return m[2]?{code:m[1],kind:'all',approved:m[2]==='a'}:m[5]?{code:m[1],kind:'submit'}:{code:m[1],kind:'pick',index:Number(m[3]),approved:m[4]==='a'};}
@@ -1089,6 +1105,10 @@ export function createTelegram(pool){
      callback={bot,id:cb.id,text:action==='mt:trial'?'Your assigned vehicle trial results and approvals arrive in this chat.':'Your assigned joining requests and approvals arrive in this chat.'};return;
     }
    }
+   if(cb&&action.startsWith('tp:')&&(bot==='trial'||bot==='trial-status'||mt)){const m=action.match(/^tp:(\d{1,2})(:s)?$/);if(!m){callback={bot,id:cb.id,text:'Unknown action'};return;}
+    const mask=Number(m[1])&((1<<PREVIEW_NAMES.length)-1),no=PREVIEW_NAMES.filter((_,i)=>(mask>>i)&1).length;
+    if(cb.message)edit={bot,chat:cb.message.chat?.id,message:cb.message.message_id,markup:m[2]?null:trialPreviewMarkup(mask)};
+    callback={bot,id:cb.id,text:m[2]?`Test only – nothing saved. You chose ${PREVIEW_NAMES.length-no} Yes · ${no} No.`:'Test: choice changed'};return;}
    if(cb&&(bot==='trial'||bot==='trial-status'||(mt&&action.startsWith('ta:')))){const p=parseTrialCallback(action);if(!p||!cb.from?.id){callback={bot,id:cb.id,text:'Unknown action'};return;}
     const account=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 AND (trial_connected OR trial_status_connected OR $2)',[String(cb.from.id),mt])).rows[0];const actor=account?.actor?.replace(/^trial:/,'');
     const group=(await db.query("SELECT id,data,status FROM hr_records WHERE kind='trialApprovals' AND code=$1 FOR UPDATE",[p.code])).rows[0];
