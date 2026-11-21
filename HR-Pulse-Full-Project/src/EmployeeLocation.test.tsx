@@ -482,6 +482,11 @@ describe('Employee Master tabs',()=>{
   expect(new FormData(joiningForm).get('Date of Birth 1')).toBe('');
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));});
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
+  const fresher=screen.getByRole('button',{name:/Fresher/});
+  expect(fresher).toHaveClass('fresher-shortcut');
+  fireEvent.click(fresher);
+  expect(screen.getByRole('heading',{name:'Document Checklist',level:2})).toBeTruthy();
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));});
   expect((screen.getByLabelText('From Date 1') as HTMLInputElement).min).toBe('1000-01-01');
   for(let row=1;row<=5;row++)for(const label of ['From Date','To Date']){
    const input=screen.getByLabelText(label+' '+row) as HTMLInputElement;
