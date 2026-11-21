@@ -56,6 +56,7 @@ Set by the owner on 21 November 2026.
 - Once any Director approves (cleared to join) or rejects a candidate, that trial form is closed: nobody can change it, enter a new trial result or send it for approval again. The server refuses it with "The Directors have already given the final decision on this candidate."
 - A candidate the Directors rejected cannot be sent through a fresh trial either (same Aadhaar number), on the server and in Site HR's Part 1 form. A rejection at an earlier step (PM, Office HR, Regional HR) still allows a new trial.
 - `directorDecided` in `HR-Pulse-Full-Project/server/trial-review.mjs` and `src/trial-workflow-preview/records.ts` holds it; `server/trial-director-final.test.mjs` and `src/trial-workflow-preview/director-final.test.ts` check it.
+
 # Smart Print on the vehicle trial form
 
 Set by the owner on 21 November 2026: the trial form window (HRMS › Trial Status, a candidate's form) has a Smart Print button with the same features as Pulse's Smart Print.
