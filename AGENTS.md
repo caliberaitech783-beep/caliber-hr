@@ -105,3 +105,11 @@ Set by the owner on 21 November 2026.
 - On the joining form (Employee Master › Add Temp. Employee), the employee's own Date of Birth must give an age of at least 18 years as of today's date in India. A younger date, or a date after today, shows "Age must be at least 18 years as of today (born on or before DD/MM/YYYY)" under the box, blocks Next / Submit, and the calendar does not offer later dates.
 - The server refuses the same on Submit Employee and trial handoff ("Date of Birth: age must be at least 18 years…"). Drafts still save. Family members' dates of birth have no age rule.
 - `minimumAgeMessage` / `latestBirthDate` in `HR-Pulse-Full-Project/src/age.ts` (used through `minAge` on `FormInput`) and `underageBirthDate` in `server/joining-required.mjs` hold it; `src/dobMinimumAge.test.tsx` and `server/joining-min-age.test.mjs` check it.
+
+# PM logins see only approval menus
+
+Set by the owner on 21 November 2026.
+
+- A PM (Project Manager) login sees one HRMS menu, Approval Management, with Trial Approvals (Trial Status queue), Employee Verify (new employees at the Site PM step), Transfer Approvals and All Approvals. No Dashboard, Employee Master (Add Temp. Employee, Rejoining, Leave / OD / Gatepass, Employee Transfer forms), masters, payroll or reports, whatever menus Pulse assigned.
+- A login is a PM when its Pulse role is "PM" / "Project Manager", or every HR trial assignment it has is PM.
+- `isProjectManager` in `HR-Pulse-Full-Project/src/pmAccess.ts` and `pmOnly` in `src/Workspace.tsx` hold it; `src/pmAccess.test.tsx` checks it.

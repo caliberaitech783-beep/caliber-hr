@@ -20,6 +20,7 @@ import {Records,Approvals,Overview,Audit,AccessAdministration} from './Modules';
 import EmployeeLocation from './EmployeeLocation';
 import AdditionApprovalPopup from './AdditionApprovalPopup';
 import EmployeeMasterRegister from './EmployeeMasterRegister';
+import {PM_APPROVALS_PAGE,pmApprovalMenus,isProjectManager,type PmApprovalMenu} from './pmAccess';
 import type {JoiningDraft} from './joiningDrafts';
 import './modules.css';
 const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Attendance Management',Clock],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Approval Master',ShieldCheck],...managementSections,['Telegram Hierarchy',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Compliance & Statutory',ShieldCheck],['Reports & MIS',FileBarChart],['Audit Logs',FileBarChart],['Administration & Settings',Settings],['Others',Folder]] as const;
@@ -37,7 +38,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
   const navSearch=useRef<HTMLInputElement>(null);
   const[dashboardTab,setDashboardTab]=useState<DashboardTab>('HR Dashboard');
   const[masterMenu,setMasterMenu]=useState('Shift Master');
-  const[expandedMenu,setExpandedMenu]=useState(()=>decodeURIComponent(window.location.hash.slice(1))||'Employee Master');
+  const[expandedMenu,setExpandedMenu]=useState(()=>isProjectManager(initialConfig.profile)?PM_APPROVALS_PAGE:decodeURIComponent(window.location.hash.slice(1))||'Employee Master');
   const workflow=new URLSearchParams(window.location.search).get('hrWorkflow');
   const[employeeMenu,setEmployeeMenuState]=useState(()=>{
     if(workflow==='trial')return 'Trial Form';
@@ -52,6 +53,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
   const[selection,setSelection]=useState<TrialSelection>(()=>workflow==='trial'?{...loadSelection(),employeeGroup:'OB / COAL'}:loadSelection()),trialVisible=showsTrialForm(selection);
   useEffect(()=>{if(employeeMenu==='Trial Form'&&!trialVisible)setEmployeeMenu('Employee Management');},[trialVisible]);const updateSelection=(next:TrialSelection)=>{setSelection(next);saveSelection(next);};
   const[payrollMenu,setPayrollMenu]=useState('Salary Scheme');
+  const[approvalMenu,setApprovalMenu]=useState<PmApprovalMenu>('Trial Approvals');
   const[employeeGroup,setEmployeeGroup]=useState<'Corporate / HO'|'OB / COAL'>(workflow==='trial'?'OB / COAL':'Corporate / HO');
   const[trialDraft,setTrialDraft]=useState<JoiningDraft>();
   const draftOwner=profile.actor||profile.username||profile.email||'';
@@ -63,7 +65,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
     setTrialDraft(draft);
     setEmployeeMenu('Employee Management');
   }
-  const access=new Set(profile.permissions.hrDesktopAccess||[]);const permitted=navItems.filter(([name])=>access.has(name));
+  const pmOnly=isProjectManager(profile);const access=new Set(profile.permissions.hrDesktopAccess||[]);const permitted=(pmOnly?[[PM_APPROVALS_PAGE,ShieldCheck] as const]:navItems.filter(([name])=>access.has(name))) as readonly (readonly [string,typeof ShieldCheck])[];
   async function refreshConfig(){const started=performance.now();try{const value=await api<HRConfig>(session.grant,'config');setConfig(value.modules);setProfile(value.profile);setError('');setNotice(`Data loaded. Time taken: ${((performance.now()-started)/1000).toFixed(1)} sec.`);}catch(err){setError((err as Error).message);}}
   useEffect(()=>{const timer=setInterval(()=>void refreshConfig(),60000);return()=>clearInterval(timer);},[session.grant]);
   useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),5000);return()=>clearTimeout(timer);},[notice]);
@@ -75,9 +77,15 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
   const activeKind=employeePage?'employees':kind;
   const groups=masterGroups[group].kinds.filter(k=>config[k]);
   const initials=profile.name?.split(' ').map(x=>x[0]).slice(0,2).join('')||'HR';
-  const childrenFor=(name:string)=>name==='Dashboard'?[...dashboardTabs]:name==='Employee Master'?['Corporate / HO','OB / COAL',...(trialVisible?['Trial Form']:[]),'Employee Management','Leave / OD / Gatepass','Employee Transfer']:name==='Attendance Management'?attendanceViews:name==='Payroll Management'?['Salary Scheme','Payroll Processing','Loan and Advances','Expense Claims']:name==='Master Configuration'?['Employee Master']:[];
+  const childrenFor=(name:string):string[]=>pmOnly?(name===PM_APPROVALS_PAGE?[...pmApprovalMenus]:[]):name==='Dashboard'?[...dashboardTabs]:name==='Employee Master'?['Corporate / HO','OB / COAL',...(trialVisible?['Trial Form']:[]),'Employee Management','Leave / OD / Gatepass','Employee Transfer']:name==='Attendance Management'?attendanceViews:name==='Payroll Management'?['Salary Scheme','Payroll Processing','Loan and Advances','Expense Claims']:name==='Master Configuration'?['Employee Master']:[];
   const query=navQuery.trim().toLowerCase(),visibleMenus=permitted.filter(([name])=>!query||name.toLowerCase().includes(query)||childrenFor(name).some(item=>item.toLowerCase().includes(query)));
-  const currentArea=page==='Employee Master'?employeeMenu:page==='Attendance Management'?attendanceMenu:page||'Dashboard';
+  const currentArea=pmOnly?approvalMenu:page==='Employee Master'?employeeMenu:page==='Attendance Management'?attendanceMenu:page||'Dashboard';
+  /* PM logins (owner, 21 Nov 2026): approvals only. Trial approvals, new employees waiting at the Site PM step, transfers waiting at the PM step, and the full inbox. */
+  const actor=profile.actor||'';
+  const pmContent=approvalMenu==='Trial Approvals'?<TrialForm selection={{...selection,employeeGroup:'OB / COAL'}} profile={profile} owner={draftOwner} legacyOwner={legacyTrialOwner}/>
+    :approvalMenu==='Employee Verify'?<Approvals key="employees" grant={session.grant} actor={actor} notice={setNotice} kind="employees"/>
+    :approvalMenu==='Transfer Approvals'?<Approvals key="transfers" grant={session.grant} actor={actor} notice={setNotice} kind="employeeTransfers"/>
+    :<Approvals key="all" grant={session.grant} actor={actor} notice={setNotice}/>;
   return <div className={'app '+(collapsed?'collapsed ':'')+(autoHide?'auto-hide ':'')+(dayMode?'':'night-mode')}>
    <aside>
     <div className="side-head"><Logo/><button aria-label="Toggle navigation" onClick={()=>setCollapsed(!collapsed)}><Menu/></button></div>
@@ -88,7 +96,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
      </div>
      <label className="sidebar-search"><Search/><input ref={navSearch} value={navQuery} onChange={event=>setNavQuery(event.target.value)} placeholder="Smart search…" aria-label="Smart search navigation"/><kbd>Ctrl K</kbd></label>
     </div>
-    <nav>{visibleMenus.map(([name,Icon])=>{const children=childrenFor(name),selected=name==='Dashboard'?dashboardTab:name==='Employee Master'?employeeMenu:name==='Attendance Management'?attendanceMenu:name==='Master Configuration'?masterMenu:payrollMenu,showChildren=children.length>0&&(expandedMenu===name||Boolean(query));return <div className="nav-entry" key={name}><button className={page===name?'active':''} title={name} aria-expanded={children.length?showChildren:undefined} aria-controls={children.length?`submenu-${name.replaceAll(' ','-')}`:undefined} onClick={()=>{if(children.length){setExpandedMenu(expandedMenu===name?'':name);setCollapsed(false);}navigate(name);}}><Icon/><span>{name}</span>{children.length>0&&<ChevronDown className={'chev '+(showChildren?'expanded':'')}/>}</button>{showChildren&&<div id={`submenu-${name.replaceAll(' ','-')}`} className={"master-subnav "+(name==="Attendance Management"?"attendance-subnav":"employee-subnav")} aria-label={`${name} submenus`}>{children.filter(item=>!query||item.toLowerCase().includes(query)||name.toLowerCase().includes(query)).map((item,index,shown)=><Fragment key={item}>{name==='Attendance Management'&&attendanceGroup(item)!==attendanceGroup(shown[index-1]||'')&&<span className="subnav-group" role="presentation">{attendanceGroup(item)}</span>}<button className={page===name&&selected===item?'selected':''} aria-pressed={page===name&&selected===item} onClick={()=>{if(name==='Dashboard')setDashboardTab(item as DashboardTab);else if(name==='Employee Master')setEmployeeMenu(item);else if(name==='Attendance Management')setAttendanceMenu(item);else if(name==='Master Configuration')setMasterMenu(item);else setPayrollMenu(item);setNavQuery('');navigate(name);}}>{item}</button></Fragment>)}</div>}</div>;})}{query&&!visibleMenus.length&&<p className="sidebar-no-results">No matching menu</p>}</nav>
+    <nav>{visibleMenus.map(([name,Icon])=>{const children=childrenFor(name),selected=name===PM_APPROVALS_PAGE&&pmOnly?approvalMenu:name==='Dashboard'?dashboardTab:name==='Employee Master'?employeeMenu:name==='Attendance Management'?attendanceMenu:name==='Master Configuration'?masterMenu:payrollMenu,showChildren=children.length>0&&(expandedMenu===name||Boolean(query));return <div className="nav-entry" key={name}><button className={page===name?'active':''} title={name} aria-expanded={children.length?showChildren:undefined} aria-controls={children.length?`submenu-${name.replaceAll(' ','-')}`:undefined} onClick={()=>{if(children.length){setExpandedMenu(expandedMenu===name?'':name);setCollapsed(false);}navigate(name);}}><Icon/><span>{name}</span>{children.length>0&&<ChevronDown className={'chev '+(showChildren?'expanded':'')}/>}</button>{showChildren&&<div id={`submenu-${name.replaceAll(' ','-')}`} className={"master-subnav "+(name==="Attendance Management"?"attendance-subnav":"employee-subnav")} aria-label={`${name} submenus`}>{children.filter(item=>!query||item.toLowerCase().includes(query)||name.toLowerCase().includes(query)).map((item,index,shown)=><Fragment key={item}>{name==='Attendance Management'&&attendanceGroup(item)!==attendanceGroup(shown[index-1]||'')&&<span className="subnav-group" role="presentation">{attendanceGroup(item)}</span>}<button className={page===name&&selected===item?'selected':''} aria-pressed={page===name&&selected===item} onClick={()=>{if(name===PM_APPROVALS_PAGE&&pmOnly)setApprovalMenu(item as PmApprovalMenu);else if(name==='Dashboard')setDashboardTab(item as DashboardTab);else if(name==='Employee Master')setEmployeeMenu(item);else if(name==='Attendance Management')setAttendanceMenu(item);else if(name==='Master Configuration')setMasterMenu(item);else setPayrollMenu(item);setNavQuery('');navigate(name);}}>{item}</button></Fragment>)}</div>}</div>;})}{query&&!visibleMenus.length&&<p className="sidebar-no-results">No matching menu</p>}</nav>
     <div className="side-user"><div className="avatar">{initials}</div><div><strong>{profile.name}</strong><small>{profile.assignedRole}</small></div><button aria-label="Sign out" onClick={logout}><LogOut/></button></div>
    </aside>
    <main className="main">
@@ -108,7 +116,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
       <button type="button" aria-label="Notifications" onClick={()=>setNotice('No new notifications.')}><Bell/></button>
      </div>
     </header>
-    <div className="content">{page==='Master Configuration'&&<section className="master-configuration" aria-label="Master Configuration">
+    <div className="content">{pmOnly?pmContent:<>{page==='Master Configuration'&&<section className="master-configuration" aria-label="Master Configuration">
       <div className="module-tabs" aria-label="Master configuration menus">
         {['Shift Master','Holiday & Leave Master','Trial Hierarchy','Employee Master'].map(item=><button type="button" key={item} className={masterMenu===item?'selected':''} aria-pressed={masterMenu===item} onClick={()=>setMasterMenu(item)}>{item}</button>)}
       </div>
@@ -150,7 +158,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
       <SettingsRegisters key={page} page={page} grant={session.grant} profile={profile} modules={config} notice={setNotice}/>}
     {page==='Audit Logs'&&<Audit grant={session.grant}/>}
     {page==='Administration'&&<AccessAdministration grant={session.grant} profile={profile} modules={config} notice={setNotice}/>}
-    </>}</>}</div>{access.has('Approval Management')&&<AdditionApprovalPopup grant={session.grant} actor={profile.actor||''} onOpenApprovals={()=>setPage('Approval Management')}/>}{notice&&(page!=='Master Configuration'||masterMenu==='Holiday & Leave Master')&&<div className="toast" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}><X/></button></div>}</main></div>;
+    </>}</>}</>}</div>{access.has('Approval Management')&&<AdditionApprovalPopup grant={session.grant} actor={profile.actor||''} onOpenApprovals={()=>{if(pmOnly)setApprovalMenu('Employee Verify');navigate('Approval Management');}}/>}{notice&&(page!=='Master Configuration'||masterMenu==='Holiday & Leave Master')&&<div className="toast" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}><X/></button></div>}</main></div>;
 }
 
 function ModuleLanding({title}:{title:string}){return <section className="data-card"><h2>{title}</h2><div className="empty"><h3>Module setup pending</h3><p>This menu is ready. The management workflow is not yet configured.</p></div></section>;}
