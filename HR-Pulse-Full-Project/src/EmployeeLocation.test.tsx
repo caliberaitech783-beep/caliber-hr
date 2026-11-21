@@ -653,6 +653,24 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('alert')).toHaveTextContent('Full Name as per Aadhaar');
   expect(screen.getByRole('heading',{name:'Joining & Personal Details',level:2})).toBeVisible();
  });
+ it('lets the joining form pick Department, Sub-department and Designation when the top bar leaves them empty',async()=>{
+  render(<EmployeeLocation/>);
+  await act(async()=>{fireEvent.change(screen.getByLabelText('Choose Aadhaar card from gallery'),{target:{files:[new File(['aadhaar'],'aadhaar.pdf',{type:'application/pdf'})]}});});
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));});
+  const pick=(name:string)=>document.querySelector(`select[name="${name}"]`) as HTMLSelectElement;
+  expect(pick('Sub-department').disabled).toBe(true);
+  fireEvent.change(pick('Department'),{target:{value:'Maintenance'}});
+  expect(pick('Department').value).toBe('Maintenance');
+  expect(pick('Sub-department').disabled).toBe(false);
+  expect(Array.from(pick('Sub-department').options,option=>option.value)).toEqual(['','Preventive Maintenance','Breakdown Maintenance']);
+  fireEvent.change(pick('Sub-department'),{target:{value:'Breakdown Maintenance'}});
+  expect(pick('Sub-department').value).toBe('Breakdown Maintenance');
+  fireEvent.change(pick('Designation'),{target:{value:'Technician'}});
+  expect(pick('Designation').value).toBe('Technician');
+  fireEvent.change(pick('Department'),{target:{value:'Production'}});
+  expect(pick('Sub-department').value).toBe('');
+  expect(pick('Designation').disabled).toBe(true);
+ });
  it('makes Police verification and Self declaration mandatory at joining for WCL and gives NCL 20 days',async()=>{
   render(<EmployeeLocation employeeGroup="OB / COAL"/>);
   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
