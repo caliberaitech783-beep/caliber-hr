@@ -9,7 +9,7 @@ afterEach(()=>{vi.unstubAllGlobals();sessionStorage.clear();});
 describe('Reporting To (owner, 21 Nov 2026)',()=>{
  it('lists the Manager-and-above people of the chosen department and saves the choice under "Reporting To"',async()=>{
   sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
-  const fetch=vi.fn(async()=>Response.json({managers}));vi.stubGlobal('fetch',fetch);
+  const fetch=vi.fn(async(_input:RequestInfo|URL,_init?:RequestInit)=>Response.json({managers}));vi.stubGlobal('fetch',fetch);
   const {container}=render(<form><ReportingToField department="Maintenance" site="Majri OB"/></form>);
   const select=await screen.findByRole('combobox',{name:'Reporting To'});
   expect(String(fetch.mock.calls[0][0])).toContain('reporting-managers?department=Maintenance');
