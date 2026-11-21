@@ -357,6 +357,15 @@ describe('Employee Master tabs',()=>{
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));});
   expect((screen.getByLabelText(/^Full Name \*/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/Full Name as per Aadhaar/) as HTMLInputElement).required).toBe(true);
+  /* Owner, 21 Nov 2026: name boxes refuse numbers (an Aadhaar number typed there is dropped); Aadhaar No. stays 12 digits. */
+  for(const nameBox of [screen.getByLabelText(/Full Name as per Aadhaar/),screen.getByLabelText(/^Full Name \*/)] as HTMLInputElement[]){
+   fireEvent.input(nameBox,{target:{value:'3432442334242342344434423'}});expect(nameBox.value).toBe('');
+   fireEvent.input(nameBox,{target:{value:"Ram 12 Kumar D'Souza-Rao"}});expect(nameBox.value).toBe("Ram  Kumar D'Souza-Rao");
+   expect(nameBox.pattern).toBe('[^0-9]+');
+  }
+  const aadhaarNo=screen.getByLabelText(/^Aadhaar No\./) as HTMLInputElement;
+  fireEvent.input(aadhaarNo,{target:{value:'3432 4423 3424 2342'}});expect(aadhaarNo.value).toBe('343244233424');
+  expect(aadhaarNo.pattern).toBe('[0-9]{12}');
   const email=screen.getByLabelText('Candidate E-mail') as HTMLInputElement;
   expect(email.required).toBe(false);
   expect(email.checkValidity()).toBe(true);
