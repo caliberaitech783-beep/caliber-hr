@@ -406,6 +406,12 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(within(screen.getByRole('listbox',{name:'Employee Category options'})).getByRole('option',{name:'Driver'}));
   expect(screen.getByRole('button',{name:'Employee Category'}).textContent).toContain('Driver');
   expect((screen.getByLabelText(/A-Form No\./) as HTMLInputElement).required).toBe(true);
+  const leaveAvailable=screen.getByLabelText(/Leave Available/) as HTMLInputElement;
+  expect(leaveAvailable.type).toBe('checkbox');
+  expect(leaveAvailable.checked).toBe(false);
+  fireEvent.click(leaveAvailable);
+  expect(leaveAvailable.checked).toBe(true);
+  expect(joiningOfficeData({'Leave Available':'Yes'})['Leave Available']).toBe('Yes');
   expect(screen.queryByRole('button',{name:/Mine Compliance/})).toBeNull();
   expect(screen.getByRole('heading',{name:/Mine Compliance/})).toBeTruthy();
   expect(screen.getByLabelText(/Medical Examination Date/)).toBeTruthy();

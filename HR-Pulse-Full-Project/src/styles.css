@@ -136,3 +136,4 @@ nav button .chev{flex-shrink:0;transition:transform .2s}nav button .chev.expande
 .trial-route-strip li:not(:last-child)::after{content:'→';position:absolute;right:-12px;top:50%;transform:translateY(-50%);color:#8a8499;font-weight:400}
 .trial-route-strip li.done{background:#ecfdf5;border-color:#a7f3d0}
 .rejoin-doc-menu{display:grid;grid-template-columns:1fr;gap:2px}.rejoin-doc-menu label{display:flex;width:100%;align-items:center;gap:9px;padding:8px 6px;font-size:12px;box-sizing:border-box}.rejoin-doc-menu label:hover{background:#f7f3fa}
+.leave-available-box{display:flex;align-items:center;gap:8px;min-height:36px;padding:0 10px;border:1px solid #d9d4e6;border-radius:8px;font-size:13px;cursor:pointer}.leave-available-box input{width:16px;height:16px;margin:0;accent-color:#6d18d6}
