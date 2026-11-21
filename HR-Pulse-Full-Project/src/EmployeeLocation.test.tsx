@@ -441,7 +441,8 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText(/^Marital Status/)).toBeRequired();
   expect(screen.queryByLabelText('Dependent? (Y/N) 1')).toBeNull();
   expect(screen.getByLabelText('Family Member Name 1')).toBeTruthy();
-  for(let row=1;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Husband/Wife','Son','Daughter']);
+  expect(Array.from((screen.getByLabelText('Relationship 1') as HTMLSelectElement).options,option=>option.text)).toEqual(['Select nominee','Father','Mother','Husband/Wife']);
+  for(let row=2;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Husband/Wife','Son','Daughter']);
   fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Husband/Wife'}});
   expect((screen.getByLabelText('Relationship 1') as HTMLSelectElement).value).toBe('Husband/Wife');
   expect(Array.from((screen.getByLabelText('Relationship 2') as HTMLSelectElement).options).find(option=>option.value==='Husband/Wife')).toMatchObject({hidden:true,disabled:true});
@@ -595,6 +596,26 @@ describe('Employee Master tabs',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Submit Employee'}));
   expect(screen.getByRole('alert')).toHaveTextContent('Please upload the mandatory document: Driving licence.');
  });
+ it('stops an unmarried employee whose row 1 nominee is a husband or wife',async()=>{
+  const {container}=render(<EmployeeLocation/>);
+  const setField=(name:string,value:string)=>fireEvent.change(container.querySelector(`[name="${name}"]`)!,{target:{value}});
+  const upload=(label:string,name:string,type:string)=>fireEvent.change(screen.getByLabelText(label),{target:{files:[new File(['document'],name,{type})]}});
+  await act(async()=>{upload('Choose Aadhaar card from gallery','aadhaar.pdf','application/pdf');});
+  fireEvent.click(screen.getByRole('button',{name:/Joining & Personal Details/}));
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'Nagpur Corporate Office'}});
+  fireEvent.change(screen.getByLabelText('Department',{exact:true,selector:'select:not([name])'}),{target:{value:'Operator'}});
+  fireEvent.change(screen.getByLabelText('Sub-department',{exact:true,selector:'select:not([name])'}),{target:{value:'Drilling'}});
+  fireEvent.change(screen.getByLabelText('Designation',{exact:true,selector:'select:not([name])'}),{target:{value:'Drill Operator'}});
+  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Marital Status':'Married','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Family Member Name 1':'Partner One','Relationship 1':'Husband/Wife','Aadhaar Number 1':'234500000001','Date of Birth 1':'1990-01-01','Contact No. 1':'9876543212','Occupation 1':'Home'}))setField(field,value);
+  setField('Marital Status','Unmarried');
+  fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+  upload('Upload Candidate photo','photo.jpg','image/jpeg');
+  upload('Upload Aadhaar (masked display)','aadhaar.pdf','application/pdf');
+  upload('Upload Driving licence','licence.pdf','application/pdf');
+  fireEvent.click(screen.getByRole('button',{name:'Submit Employee'}));
+  expect(screen.getByRole('alert')).toHaveTextContent('Row 1 is the nominee: select Father or Mother.');
+ });
 });
 
 
@@ -625,7 +646,12 @@ for(const group of ['Corporate / HO','OB / COAL'] as const)it(group+' requires f
  expect(screen.getByLabelText('Relationship 1')).toBeRequired();
  expect(screen.getByLabelText('Aadhaar Number 1')).toBeRequired();
  expect(screen.queryByLabelText('Upload Family Aadhaar 1')).toBeNull();
- expect(within(screen.getByLabelText('Relationship 1')).getAllByRole('option').map(o=>o.textContent)).toContain('Husband/Wife');
+ const nomineeOptions=()=>within(screen.getByLabelText('Relationship 1')).getAllByRole('option').map(o=>o.textContent);
+ expect(screen.getByText('Nominee')).toBeTruthy();
+ expect(nomineeOptions()).toEqual(['Select nominee','Father','Mother']);
+ fireEvent.change(screen.getByLabelText(/^Marital Status/),{target:{value:'Married'}});
+ expect(nomineeOptions()).toEqual(['Select nominee','Father','Mother','Husband/Wife']);
+ expect(within(screen.getByLabelText('Relationship 2')).getAllByRole('option').map(o=>o.textContent)).toContain('Son');
  expect(screen.getAllByRole('heading',{name:'Family Details*'})).toHaveLength(2);
  expect(screen.queryByText('Family Details are mandatory.')).toBeNull();
  const aadhaar=screen.getByLabelText('Aadhaar Number 3');
