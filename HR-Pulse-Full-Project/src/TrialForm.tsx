@@ -10,6 +10,8 @@ import {prepareTrialJoining,saveTrialHandoff,type TrialChecklistDocuments,type T
 import type {JoiningDraft} from './joiningDrafts';
 import type {Trial} from './trial-workflow-preview/records';
 import {departmentStructure} from './joiningDepartments';
+import {pulseTrialSites,trialSitesByRegion} from './siteRights';
+export {pulseTrialSites};
 
 const TrialWorkflowPreview=lazy(()=>import('./trial-workflow-preview/TrialWorkflowPreview'));
 
@@ -26,20 +28,7 @@ export function upsertTrialDraft(draft:TrialDraft){writeTrialDrafts([draft,...li
 export function removeTrialDrafts(formNos:string[]){writeTrialDrafts(listTrialDrafts().filter(d=>!formNos.includes(d.formNo)));}
 const companyShort:Record<string,string>={'Caliber Mining And Logistics Ltd':'CMLL','Caliber Mining And Logistics Ltd SCR JV':'CMPL SCR JV','KSR FREIGHT CARRIERS':'KSR','CHADDA TRADING COMPANY':'CHADDA TRADING CO.'};
 const trialRegions=['WCL','NCL'];
-const trialSitesByRegion:Record<string,string[]>={WCL:['Sasti OB','Dhoptala OB','Majri OB','Gauri Pauni OB','Hindustan Lalpeth OC'],NCL:['Jayant OB East','Jayant OB West','Dudhichua OB East','Dudhichua OB West']};
-const trialSiteCodes:Record<string,string>={'Sasti OB':'WCL-SASTI','Dhoptala OB':'WCL-DHOPTALA','Majri OB':'WCL-MAJRI','Gauri Pauni OB':'WCL-GAURI','Hindustan Lalpeth OC':'WCL-LALPETH','Jayant OB East':'NCL-JAYANT','Jayant OB West':'NCL-JAYANT-W','Dudhichua OB East':'NCL-DUDE','Dudhichua OB West':'NCL-DUDW'};
 const trialDepartments=['Driver','Operator'];
-const scopeKey=(value:unknown)=>String(value||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'');
-export function pulseTrialSites(siteScope:unknown,adminLevel:unknown){
- const values=(Array.isArray(siteScope)?siteScope:[siteScope]).flatMap(value=>typeof value==='string'?value.split('|'):[]).map(value=>value.trim()).filter(Boolean);
- if(!values.length)return /site|location/i.test(String(adminLevel||''))?[]:null;
- if(values.some(value=>value==='*'||['all','allsites','alllocations'].includes(scopeKey(value))))return null;
- const assigned=new Set(values.map(scopeKey));
- return Object.entries(trialSitesByRegion).flatMap(([region,sites])=>sites.filter(site=>{
-  const keys=[site,trialSiteCodes[site],site.replace(/\s+(OB|OC)(\s+(East|West))?$/i,'')].map(scopeKey);
-  return keys.some(key=>assigned.has(key));
- }).map(site=>({region,site})));
-}
 export const emptySelection:TrialSelection={employeeGroup:'Corporate / HO',company:'',region:'',site:'',department:'',subdepartment:'',designation:''};
 export function loadSelection():TrialSelection{try{return {...emptySelection,...JSON.parse(localStorage.getItem(SELECTION_KEY)||sessionStorage.getItem(SELECTION_KEY)||'{}')};}catch{return emptySelection;}}
 export function saveSelection(selection:TrialSelection){try{localStorage.setItem(SELECTION_KEY,JSON.stringify(selection));}catch{/* storage unavailable */}}

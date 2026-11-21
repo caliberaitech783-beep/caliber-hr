@@ -80,3 +80,11 @@ Set by the owner on 21 November 2026.
 - Employee Master › Completed Form lists every fully approved employee form in the sites the user's Pulse login covers, whoever submitted or approved it (up to the latest 2000). It still needs Approval Management access.
 - Employee Verify lists only the user's own employee forms (submitted by them or waiting for them) that are not yet fully approved, so leave, OD and gate pass requests never push them out of its latest-200 list.
 - `completedEmployees` and `employeeApprovals` in `HR-Pulse-Full-Project/server/service.mjs` (`/api/approvals/completed-employees`, `/api/approvals/employees`) hold it; `server/completed-employees.test.mjs` and `src/ApprovalReview.test.tsx` check it.
+
+# Joining form takes region, site and department from the top selection
+
+Set by the owner on 21 November 2026.
+
+- On Employee Master › Add Temp. Employee, whatever is chosen in the top bar (region, site, department, sub-department, designation) is filled into the joining form as read-only text (Joining Category, Site, Department, Sub-department, Designation). The form shows a dropdown for one of these only while it is still empty at the top.
+- For OB / COAL the top bar offers only the regions and sites in the login's Pulse site rights (`/api/telegram/trial-scope`, falling back to the session's site permission); a login with one region or one site gets it filled in by itself.
+- `Field` (`locked`) and `permittedSites` in `HR-Pulse-Full-Project/src/EmployeeLocation.tsx` and `src/siteRights.ts` hold it; `src/EmployeeLocation.test.tsx` checks it.
