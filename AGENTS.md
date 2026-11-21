@@ -39,3 +39,12 @@ Set by the owner on 21 November 2026. It replaces the joining routes of 20 Novem
 - Approval Master › Employee Track bot lists everyone on the route and sends each a personal join link (through an HR bot they already use, or copied to forward on WhatsApp).
 - Forms already in progress keep the route they were submitted with.
 - `HR-Pulse-Full-Project/server/employee-track.mjs` holds the route; `server/employee-track.test.mjs` checks it.
+
+# Batch trial approvals: Yes / No per candidate on Telegram
+
+Set by the owner on 21 November 2026.
+
+- When a vehicle trial batch (two or more candidates) reaches the PM, Office HR, Regional HR or the Directors on the CALIBER Trial Status bot, each candidate has its own ✅ Yes / ❌ No buttons and the message ends with "Submit". Every candidate starts on Yes; Submit sends the Yes candidates to the next step and rejects the No candidates.
+- Each approver's ticks are kept apart, so two Directors ticking at once do not change each other's choice. One candidate keeps the plain Approve / Decline buttons, and batches above 45 candidates keep Approve / Decline for all (Telegram's button limit).
+- HRMS › Trial Status already lets each approver select forms before Approve / Reject, and the Driver Trainer marks PASS / FAIL per candidate there.
+- `trialGroupMarkup` and `parseTrialCallback` in `HR-Pulse-Full-Project/server/telegram.mjs` hold it; `server/trial-batch-picks.test.mjs` checks it.
