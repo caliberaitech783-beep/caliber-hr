@@ -1,5 +1,23 @@
-import {describe,expect,it} from 'vitest';
-import {classifyDocumentText} from './bulkDocuments';
+import {describe,expect,it,vi} from 'vitest';
+import {classifyDocumentText,sortBulkDocument} from './bulkDocuments';
+import {readPaddleText} from './paddleOcr';
+vi.mock('./paddleOcr',()=>({readPaddleText:vi.fn()}));
+
+describe('sortBulkDocument',()=>{
+ const listed=['Aadhaar (masked display)','PAN'];
+ it('files a recognised image whole under its checklist document',async()=>{
+  vi.mocked(readPaddleText).mockResolvedValueOnce('INCOME TAX DEPARTMENT\nPermanent Account Number');
+  const file=new File(['x'],'IMG_2041.jpg',{type:'image/jpeg'});
+  expect(await sortBulkDocument(file,listed)).toEqual({found:[['PAN',file]],rest:[]});
+ });
+ it('keeps an unrecognised image in bulk documents and reports a reading failure',async()=>{
+  const file=new File(['x'],'scan.jpg',{type:'image/jpeg'});
+  vi.mocked(readPaddleText).mockResolvedValueOnce('Shift master');
+  expect(await sortBulkDocument(file,listed)).toEqual({found:[],rest:[file]});
+  vi.mocked(readPaddleText).mockRejectedValueOnce(Error('OCR runtime download failed'));
+  await expect(sortBulkDocument(file,listed)).rejects.toThrow('OCR runtime');
+ });
+});
 
 const names=['Aadhaar (masked display)','PAN','Bank proof / cancelled cheque','UAN / PF details','Education certificates'];
 describe('classifyDocumentText',()=>{

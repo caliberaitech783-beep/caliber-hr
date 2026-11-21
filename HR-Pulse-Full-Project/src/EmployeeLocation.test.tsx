@@ -236,6 +236,21 @@ describe('Employee Master tabs',()=>{
   await waitFor(()=>expect(fetchMock).toHaveBeenCalled());
   expect(fetchMock.mock.calls.some(([url])=>String(url).includes('records/employees?page=1&search=&status=ACTIVE'))).toBe(true);
  });
+ it('shows NCL Police verification and Self declaration as overdue after 20 days with an upload button',async()=>{
+  const ncl={id:'ncl',code:'NCL-01',name:'NCL Employee',status:'ACTIVE',version:1,data:{officeData:{'Joining Category *':'NCL','Site *':'Jayant OB East','Joining Date *':'2020-01-01','Police verification':'police.pdf'}}};
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({rows:[ncl],total:1,pageSize:50})));
+  try{
+   render(<EmployeeLocation grant="test-grant"/>);
+   fireEvent.click(screen.getByRole('button',{name:'Update Existing Employee'}));
+   await screen.findByRole('button',{name:'Edit NCL Employee (NCL-01)'});
+   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+   const row=within(screen.getByRole('row',{name:/NCL-01/}));
+   expect(row.getByRole('button',{name:'police.pdf'})).toBeInTheDocument();
+   expect(row.getByText('Overdue – was due 21/01/2020')).toBeInTheDocument();
+   expect(row.getByLabelText('Upload Self declaration form for NCL-01')).toBeInTheDocument();
+   expect(row.queryByLabelText('Upload Police verification for NCL-01')).toBeNull();
+  }finally{vi.unstubAllGlobals();}
+ });
  it('edits the selected employee on a later page and keeps changes after a failed save',async()=>{
   const first={id:'first',code:'EMP-01',name:'First Employee',status:'ACTIVE',version:2,data:{}};
   const second={id:'second',code:'EMP-02',name:'Second Employee',status:'ACTIVE',version:4,data:{mobile:'9876543210',officeData:{Qualification:'B.Tech'}}};
@@ -473,6 +488,11 @@ describe('Employee Master tabs',()=>{
   expect(new FormData(joiningForm).get('Date of Birth 1')).toBe('');
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));});
   expect(screen.getByLabelText('Employer Name 1')).toBeTruthy();
+  const fresher=screen.getByRole('button',{name:/Fresher/});
+  expect(fresher).toHaveClass('fresher-shortcut');
+  fireEvent.click(fresher);
+  expect(screen.getByRole('heading',{name:'Document Checklist',level:2})).toBeTruthy();
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/Previous Work Experience/}));});
   expect((screen.getByLabelText('From Date 1') as HTMLInputElement).min).toBe('1000-01-01');
   for(let row=1;row<=5;row++)for(const label of ['From Date','To Date']){
    const input=screen.getByLabelText(label+' '+row) as HTMLInputElement;
@@ -583,6 +603,16 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByRole('alert')).toHaveTextContent('Full Name as per Aadhaar');
   expect(screen.getByRole('heading',{name:'Joining & Personal Details',level:2})).toBeVisible();
  });
+ it('makes Police verification and Self declaration mandatory at joining for WCL and gives NCL 20 days',async()=>{
+  render(<EmployeeLocation employeeGroup="OB / COAL"/>);
+  fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
+  const checklist=()=>fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
+  await act(async()=>{checklist();});
+  for(const name of ['Police verification','Self declaration form']){expect(screen.getByLabelText(`Upload ${name}`)).toBeRequired();expect(screen.getByLabelText(`Upload ${name}`).closest('tr')).toHaveTextContent('Mandatory at joining (WCL)');}
+  fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'NCL'}});
+  for(const name of ['Police verification','Self declaration form']){expect(screen.getByLabelText(`Upload ${name}`)).not.toBeRequired();expect(screen.getByLabelText(`Upload ${name}`).closest('tr')).toHaveTextContent('Within 20 days of joining (NCL)');}
+ });
  it('blocks a Corporate / HO operator submission without a driving licence upload',async()=>{
   const {container}=render(<EmployeeLocation/>);
   const setField=(name:string,value:string)=>fireEvent.change(container.querySelector(`[name="${name}"]`)!,{target:{value}});
@@ -642,6 +672,11 @@ describe('Aadhaar printed field positions',()=>{
 });
 
 it('matches bulk file names to checklist documents',()=>{const names=['Candidate photo','Aadhaar (masked display)','PAN','Education certificates','Bank proof / cancelled cheque'];expect(matchChecklistDocument('Rahul_PAN.pdf',names)).toBe('PAN');expect(matchChecklistDocument('aadhar-card.jpg',names)).toBe('Aadhaar (masked display)');expect(matchChecklistDocument('passport photo.png',names)).toBe('Candidate photo');expect(matchChecklistDocument('10th marksheet.pdf',names)).toBe('Education certificates');expect(matchChecklistDocument('cancelled cheque.jpg',names)).toBe('Bank proof / cancelled cheque');expect(matchChecklistDocument('company.pdf',names)).toBeUndefined();expect(matchChecklistDocument('driving licence.pdf',names)).toBeUndefined();});
+it('matches joined, numbered and camel-case bulk file names',()=>{const names=['Candidate photo','Aadhaar (masked display)','PAN','Bank proof / cancelled cheque','Address proof'];
+ for(const name of ['AadharCard.jpg','AADHAAR.pdf','aadhar1.jpg','e-aadhaar front.png','myaadhaarcopy.pdf','Adhar_back.jpeg'])expect(matchChecklistDocument(name,names),name).toBe('Aadhaar (masked display)');
+ for(const name of ['PANCARD.pdf','pan card.jpg','PanCard.png','pan1.jpg','Pan_No.pdf','PAN-front.jpeg'])expect(matchChecklistDocument(name,names),name).toBe('PAN');
+ expect(matchChecklistDocument('Passbook.pdf',names)).toBe('Bank proof / cancelled cheque');expect(matchChecklistDocument('PassportPhoto.jpg',names)).toBe('Candidate photo');
+ for(const name of ['company.pdf','panel.jpg','Japan trip.jpg','checklist.pdf','Ai-Camera-Plan.pdf','dudhichua east oc shift master.jpeg'])expect(matchChecklistDocument(name,names),name).toBeUndefined();});
 
 for(const group of ['Corporate / HO','OB / COAL'] as const)it(group+' requires family details and family Aadhaar number',()=>{
  render(<EmployeeLocation employeeGroup={group}/>);
