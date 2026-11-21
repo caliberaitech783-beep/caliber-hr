@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState, type ChangeEvent} from 'react';
-import {Camera, Images, Trash2, Upload} from 'lucide-react';
+import {Camera, Images, Trash2, Upload, X, ZoomIn} from 'lucide-react';
 import {savedSession} from './api';
 import {readGeminiAadhaar, type AadhaarDetails} from './geminiOcr';
 
@@ -34,6 +34,20 @@ function usePreview(file?: File) {
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [file]);
   return preview;
+}
+
+function ZoomableImage({url, label, combined}: {url:string; label:string; combined:boolean}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  return <>
+    <button type="button" className="aadhaar-zoom-trigger" aria-label={`Enlarge ${label}`} onClick={() => dialog.current?.showModal()}>
+      <img className="aadhaar-preview" src={url} alt={label} style={combined ? {maxHeight:'none'} : undefined}/>
+      <ZoomIn aria-hidden="true"/>
+    </button>
+    <dialog ref={dialog} className="aadhaar-zoom-dialog" aria-label={label}>
+      <button type="button" aria-label="Close enlarged image" onClick={() => dialog.current?.close()}><X/></button>
+      <div className="aadhaar-zoom-scroll"><img src={url} alt={`Enlarged ${label}`}/></div>
+    </dialog>
+  </>;
 }
 
 export default function AadhaarUploader({
@@ -151,7 +165,7 @@ export default function AadhaarUploader({
     {previews.map((preview, index) => preview && <div className="aadhaar-preview-row" key={index}>
       {files[index]?.type === 'application/pdf' || /\.pdf$/i.test(files[index]?.name || '')
         ? <object className="aadhaar-preview aadhaar-pdf-preview" data={preview} type="application/pdf" aria-label={index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} PDF preview`:`Uploaded Aadhaar image ${index + 1} PDF preview`}><span>{files[index]?.name}</span></object>
-        : <img className="aadhaar-preview" src={preview} style={combined?{maxHeight:"none"}:undefined} alt={combined?"Aadhaar front and back":index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} preview`:`Uploaded Aadhaar image ${index + 1} preview`}/>}
+        : <ZoomableImage url={preview} combined={combined} label={combined?"Aadhaar front and back":index===1&&secondaryDocumentLabel?`Uploaded ${secondaryDocumentLabel} preview`:`Uploaded Aadhaar image ${index + 1} preview`}/>}
       <button disabled={locked} type="button" className="aadhaar-remove" onClick={() => remove(index)}><Trash2/>{index===1&&secondaryDocumentLabel?`Remove ${secondaryDocumentLabel}`:`Remove Image ${index + 1}`}</button>
     </div>)}
     {status && <p className="aadhaar-status" role="status">{status}</p>}

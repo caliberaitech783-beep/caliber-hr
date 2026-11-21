@@ -30,14 +30,35 @@ it('stacks both Aadhaar photos into the single file shown in the preview',async(
   expect(URL.createObjectURL).toHaveBeenCalledWith(expect.objectContaining({name:'aadhaar-front-and-back.jpg'}));
 });
 
-it('scans a complete licence once and clears readiness when removed',async()=>{
-  const ready=vi.fn(),file=photo('complete.jpg');
+it.each(['jpg','pdf'])('scans a complete %s licence once and clears readiness when removed',async format=>{
+  const ready=vi.fn(),file=format==='pdf'?new File(['pdf'],'complete.pdf',{type:'application/pdf'}):photo('complete.jpg');
   render(<DrivingLicenceUploader allowComplete onBusy={vi.fn()} onReady={ready} onDetails={vi.fn()}/>);
-  fireEvent.change(screen.getByLabelText('Choose complete driving licence image'),{target:{files:[file]}});
-  await screen.findByAltText('Uploaded complete driving licence preview');
-  expect(screen.getAllByRole('img')).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText('Choose complete driving licence image or PDF'),{target:{files:[file]}});
+  if(format==='pdf') await screen.findByLabelText('Uploaded complete driving licence PDF preview');
+  else await screen.findByAltText('Uploaded complete driving licence preview');
   expect(readGeminiDrivingLicence).toHaveBeenCalledWith([file],'test');
   expect(ready).toHaveBeenLastCalledWith(true);
   fireEvent.click(screen.getByRole('button',{name:'Remove'}));
   await waitFor(()=>expect(ready).toHaveBeenLastCalledWith(false));
+});
+it('opens and closes the enlarged Aadhaar image',async()=>{
+  render(<AadhaarUploader photo={photo('front.jpg')} fillDetails={()=>'Read'}/>);
+  const dialog=document.querySelector('dialog')!;
+  // jsdom does not implement the native dialog methods.
+  dialog.showModal=()=>{dialog.open=true;};
+  dialog.close=()=>{dialog.open=false;};
+  fireEvent.click(await screen.findByRole('button',{name:'Enlarge Uploaded Aadhaar image 1 preview'}));
+  expect(screen.getByRole('dialog').hasAttribute('open')).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:'Close enlarged image'}));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('accepts one complete Aadhaar PDF on the trial form',async()=>{
+  const file=new File(['pdf'],'aadhaar.pdf',{type:'application/pdf'});
+  render(<AadhaarUploader combineSides hideSecond fillDetails={()=>'Read'}/>);
+  const input=screen.getByLabelText('Choose Aadhaar card from gallery');
+  expect(input.getAttribute('accept')).toContain('application/pdf');
+  fireEvent.change(input,{target:{files:[file]}});
+  await screen.findByLabelText('Uploaded Aadhaar image 1 PDF preview');
+  expect(URL.createObjectURL).toHaveBeenCalledWith(file);
 });
