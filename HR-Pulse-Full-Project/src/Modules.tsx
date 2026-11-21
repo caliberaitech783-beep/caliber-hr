@@ -122,7 +122,7 @@ function RecordEditor({grant,kind,module,row,lookups,writable,close,saved}:{gran
 
 }
 
-type ApprovalStep={stage:number;label:string;approvers:string[];otp?:boolean};
+type ApprovalStep={stage:number;label:string;approvers:string[];otp?:boolean;otpBy?:string[]};
 
 const stepsFor=(a:Approval):ApprovalStep[]=>a.approval_steps?.length?a.approval_steps:a.approvers.map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
 
@@ -151,11 +151,14 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
 
   /* Leave at the Directors' step: Regional HR requests the OTP and enters it once a Director tells it (owner, 20 Nov 2026). */
   const otpStep=!!selected&&selected.state==='PENDING'&&!!stepsFor(selected)[selected.stage]?.otp;
-  const otpEnterer=otpStep&&!!selected&&!!stepsFor(selected)[selected.stage+1]?.approvers.includes(actor);
-  async function requestOtp(){if(!selected)return;setBusy(true);setError('');try{const r=await api<{sentTo:string[]}>(grant,`approvals/${selected.id}/otp`,'POST',{});setOtpNote(r.sentTo.length?`OTP sent to the Directors on Telegram (${r.sentTo.join(' / ')}). Ask any one Director for it; it is valid for 15 minutes.`:'No Director could be sent the OTP. Check the leave flow in Approval Master.');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
-  async function verifyOtp(){if(!selected)return;setBusy(true);setError('');try{await api(grant,`approvals/${selected.id}/otp-verify`,'POST',{otp});setSelected(null);setOtp('');notice("Directors' approval recorded. The leave now waits for your final approval.");await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  /* New employees (owner, 21 Nov 2026): Site HR → Regional HR → Directors (OTP). Regional HR's approval sends the OTP;
+     Regional HR enters it here and the employee becomes Active. */
+  const newEmployeeOtp=selected?.kind==='employees';
+  const otpEnterer=otpStep&&!!selected&&!!(stepsFor(selected)[selected.stage]?.otpBy||stepsFor(selected)[selected.stage+1]?.approvers||[]).includes(actor);
+  async function requestOtp(){if(!selected)return;setBusy(true);setError('');try{const r=await api<{sentTo:string[]}>(grant,`approvals/${selected.id}/otp`,'POST',{});setOtpNote(r.sentTo.length?`OTP sent to the Directors on Telegram (${r.sentTo.join(' / ')}). Ask any one Director for it; it is valid for 15 minutes.`:`No Director could be sent the OTP. Check the ${newEmployeeOtp?'Employee Track bot':'leave flow'} in Approval Master.`);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function verifyOtp(){if(!selected)return;setBusy(true);setError('');try{await api(grant,`approvals/${selected.id}/otp-verify`,'POST',{otp});setSelected(null);setOtp('');notice(newEmployeeOtp?"Directors' approval recorded. The employee is now Active.":"Directors' approval recorded. The leave now waits for your final approval.");await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 
-  async function decide(decision:string){if(!selected)return;setBusy(true);try{await api(grant,`approvals/${selected.id}/decision`,'POST',{version:selected.version,decision,comments,chargeEmployeeId});setSelected(null);setComments('');notice('Approval decision saved');await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function decide(decision:string){if(!selected)return;setBusy(true);try{const r=await api<{otpSentTo?:string[]}>(grant,`approvals/${selected.id}/decision`,'POST',{version:selected.version,decision,comments,chargeEmployeeId});setSelected(null);setComments('');notice(r?.otpSentTo?`Approved. The Directors got the OTP on Telegram (${r.otpSentTo.join(' / ')||'none linked'}). Open this form again and enter the OTP a Director tells you.`:'Approval decision saved');await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 
   const canDecide=!!selected&&!(selected.kind==='employees'&&localReviewChanged)&&stepsFor(selected)[selected.stage]?.approvers.includes(actor)&&selected.requested_by!==actor;
 
@@ -209,8 +212,8 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
       {selected.state==='PENDING'&&<div className="approval-decision">
         <p>{canDecide?'Review the employee details, then approve this stage or reject with a reason.':selected.kind==='employees'&&localReviewChanged?'Local changes are saved only on this browser. Reset to the submitted form before making an approval decision.':`Awaiting approval from ${stepsFor(selected)[selected.stage]?.approvers.join(' / ')||'the assigned approver'}. Only the assigned approver can approve this stage.`}</p>
         {otpStep&&<div className="leave-otp" aria-label="Directors' OTP">
-          <p><b>Directors approve by OTP.</b> {otpEnterer?'Press Request OTP: the Directors get it on the Leave Request bot. Ask any one Director for the OTP and enter it here.':canDecide?'Regional HR requests the OTP; tell it to Regional HR to approve. To refuse, reject with a reason.':'Waiting for Regional HR to enter the OTP from a Director.'}</p>
-          {otpEnterer&&<div className="form-actions"><button disabled={busy} onClick={()=>void requestOtp()}>{otpNote?'Resend OTP':'Request OTP from Directors'}</button>
+          <p><b>Directors approve by OTP.</b> {otpEnterer?(newEmployeeOtp?'The Directors got the OTP on the Employee Track bot when you approved. Ask any one Director for it and enter it here: the employee becomes Active. Press Resend OTP if it expired.':'Press Request OTP: the Directors get it on the Leave Request bot. Ask any one Director for the OTP and enter it here.'):canDecide?'Regional HR requests the OTP; tell it to Regional HR to approve. To refuse, reject with a reason.':'Waiting for Regional HR to enter the OTP from a Director.'}</p>
+          {otpEnterer&&<div className="form-actions"><button disabled={busy} onClick={()=>void requestOtp()}>{otpNote||newEmployeeOtp?'Resend OTP':'Request OTP from Directors'}</button>
             <label>OTP from a Director<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={e=>setOtp(e.target.value.replace(/\D/g,''))}/></label>
             <button className="primary" disabled={busy||otp.length!==6} onClick={()=>void verifyOtp()}>{busy?'Checking…':'Enter OTP'}</button></div>}
           {otpNote&&<p role="status">{otpNote}</p>}

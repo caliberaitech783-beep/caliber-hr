@@ -47,5 +47,6 @@ export function roleTitle(label){
  if(/^Office HR/.test(label||''))return 'Office HR';
  if(label===REGIONAL_HR_LABEL)return 'Regional HR';
  if(label===DIRECTORS_LABEL)return 'Directors (final)';
+ if(/^Directors — approve by OTP/.test(label||''))return 'Directors (OTP)';
  return String(label||'').replace(/ — .*/,'');
 }

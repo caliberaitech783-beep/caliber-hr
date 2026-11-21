@@ -9,6 +9,7 @@ import {additionRoster,connectInviteMessage} from './addition-roster.mjs';
 import {withTrialRouting} from './trial-routing.mjs';
 import {trialAccess,requireTrialRole,canReadTrial,trialSite,assignedTrialSites} from './trial-access.mjs';
 import {trialStatusRoster,trialStatusInvite,TRIAL_STATUS_CONNECTED,TRIAL_STATUS_WELCOME} from './trial-status-bot.mjs';
+import {employeeTrackRoster,employeeTrackInvite,EMPLOYEE_TRACK_CONNECTED,EMPLOYEE_TRACK_ALREADY,EMPLOYEE_TRACK_WELCOME} from './employee-track.mjs';
 import {leaveSteps,leaveRequestRoster,leaveRequestInvite,leaveOtpNeededMessage,LEAVE_REQUEST_CONNECTED,LEAVE_REQUEST_ALREADY,LEAVE_REQUEST_WELCOME} from './leave-request-bot.mjs';
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -55,7 +56,7 @@ export async function registerBotWebhook(bot,fetchImpl=fetch,logger=console){
  const token=botToken(bot),secret=botSecret(bot),base=process.env.API_PUBLIC_URL||'https://hr-api-cmll-783.azurewebsites.net';
  if(!token||!secret)return {skipped:true};
  const workflowChat=workflowChatIds.includes(bot);
- try{const response=await fetchImpl(`https://api.telegram.org/bot${token}/setWebhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:`${base}/api/telegram/${bot}-webhook`,secret_token:secret,allowed_updates:workflowChat&&bot!=='trial-status'?['message']:['message','callback_query'],drop_pending_updates:bot!=='mt'&&!workflowChat}),signal:AbortSignal.timeout(10000)});
+ try{const response=await fetchImpl(`https://api.telegram.org/bot${token}/setWebhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:`${base}/api/telegram/${bot}-webhook`,secret_token:secret,allowed_updates:workflowChat&&bot!=='trial-status'&&bot!=='employee-track'?['message']:['message','callback_query'],drop_pending_updates:bot!=='mt'&&!workflowChat}),signal:AbortSignal.timeout(10000)});
   const result=await response.json();logger.log?.(`${botLabel(bot)} webhook: ${result.ok?'registered':'failed – '+result.description}`);return result;}
  catch(error){logger.error?.(`${botLabel(bot)} webhook registration failed`,error instanceof Error?error.message:error);return {ok:false};}
 }
@@ -234,7 +235,7 @@ const botSettings={leave:'TELEGRAM',trial:'TELEGRAM_TRIAL',joining:'TELEGRAM_JOI
 export const botToken=bot=>process.env[`${botSettings[bot]||botSettings.leave}_BOT_TOKEN`];
 export const botUsername=bot=>process.env[`${botSettings[bot]||botSettings.leave}_BOT_USERNAME`]||(bot==='nagpur'?'NagpurEmployeeAdditionBot':'');
 export const botSecret=bot=>process.env[`${botSettings[bot]||botSettings.leave}_WEBHOOK_SECRET`]||(bot==='mt'||workflowChatIds.includes(bot)?undefined:process.env.TELEGRAM_WEBHOOK_SECRET);
-export const botLabel=bot=>({'leave-request':'CALIBER Leave Request bot','trial-status':'CALIBER Trial Status bot',trial:'Vehicle Trial Result bot',joining:'Joining Approval bot',mt:'MT HR',nagpur:'Nagpur Employee Addition bot'})[bot]||'HR Pulse leave bot';
+export const botLabel=bot=>({'employee-track':'CALIBER Employee Track bot','leave-request':'CALIBER Leave Request bot','trial-status':'CALIBER Trial Status bot',trial:'Vehicle Trial Result bot',joining:'Joining Approval bot',mt:'MT HR',nagpur:'Nagpur Employee Addition bot'})[bot]||'HR Pulse leave bot';
 const mtEnabled=()=>Boolean(botToken('mt')&&botUsername('mt')&&botSecret('mt'));
 const hrmsUrl='https://hrpulse.cmll.in/';
 export const cmllHrEnabled=()=>mtEnabled()&&botUsername('mt').toLowerCase()==='cmllhrbot';
@@ -252,6 +253,14 @@ const trialStatusLink=async(db,actor)=>{const token=randomBytes(24).toString('ba
  await db.query("DELETE FROM hr_telegram_link_tokens WHERE (actor=$1 AND bot='trial-status') OR expires_at<now()",[actor]);
  await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'trial-status',now()+interval '7 days')",[hash(token),actor]);
  return `https://t.me/${botUsername('trial-status')}?start=${token}`;};
+/* New employee messages: CALIBER Employee Track bot once its token and username are set (owner, 21 Nov 2026);
+   before that the old Nagpur Employee Addition bot route. */
+export const employeeTrackReady=()=>Boolean(botToken('employee-track')&&botUsername('employee-track'));
+export const additionBot=()=>employeeTrackReady()?'employee-track':'nagpur';
+const employeeTrackLink=async(db,actor)=>{const token=randomBytes(24).toString('base64url');
+ await db.query("DELETE FROM hr_telegram_link_tokens WHERE expires_at<now()");   /* older links of the person keep working until used or 7 days pass */
+ await db.query("INSERT INTO hr_telegram_link_tokens(hash,actor,bot,expires_at) VALUES($1,$2,'employee-track',now()+interval '7 days')",[hash(token),actor]);
+ return `https://t.me/${botUsername('employee-track')}?start=${token}`;};
 /* Leave messages: CALIBER Leave Request bot (@CMLLLeaveRequestBot) once its token and username are set; before that the old leave route. */
 export const leaveRequestReady=()=>Boolean(botToken('leave-request')&&botUsername('leave-request'));
 export const leaveBot=()=>leaveRequestReady()?'leave-request':'leave';
@@ -501,6 +510,11 @@ export function createTelegram(pool){
    return {saved:true};
   }
   if(route==='addition-bot'&&method==='GET'){   /* Nagpur Employee Addition bot: is this user connected? */
+   if(employeeTrackReady()){   /* the Employee Track bot carries new employee approvals */
+    const connected=!!(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor=$1 AND employee_track_connected',[profile.actor])).rowCount;
+    const issue=(await pool.query("SELECT last_error FROM hr_telegram_outbox WHERE bot='employee-track' AND actor=$1 AND state<>'SENT' AND last_error IS NOT NULL ORDER BY id DESC LIMIT 1",[profile.actor])).rows[0]?.last_error||'';
+    return {connected,issue,botUsername:botUsername('employee-track'),configured:true};
+   }
    const connected=cmllHrEnabled()?!!(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor=$1 AND cmll_hr_connected',[profile.actor])).rowCount:!!(await pool.query('SELECT actor FROM hr_telegram_accounts WHERE actor=$1 AND nagpur_connected=true',[profile.actor])).rowCount||!!nagpurRecipients()[profile.actor];
    const issue=(await pool.query("SELECT last_error FROM hr_telegram_outbox WHERE bot='nagpur' AND actor=$1 AND state<>'SENT' AND last_error IS NOT NULL ORDER BY id DESC LIMIT 1",[profile.actor])).rows[0]?.last_error||'';
    return {connected,issue,botUsername:workflowUsername('nagpur'),configured:workflowConfigured('nagpur')};
@@ -633,7 +647,48 @@ export function createTelegram(pool){
    await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SEND_LEAVE_REQUEST_LINKS','telegram',NULL,$2)",[profile.actor,{sent:results.filter(r=>/^sent/.test(r.status)).map(r=>r.actor),manual:results.filter(r=>r.url).map(r=>r.actor)}]);});
    return {people:results,botUsername:leaveBotName,configured:ready};
   }
+  if(route==='employee-track-links'&&['GET','POST'].includes(method)||route==='employee-track-link'&&method==='POST'){   /* Approval Master › Employee Track bot */
+   if(!grantedMenus(profile).has('Approval Management')||assignedSites(profile)!==null)fail('Approval Management access without a site restriction is required',403);
+   const saved=(await pool.query("SELECT code,status,data FROM hr_records WHERE kind='joiningHierarchies'")).rows;
+   const roster=employeeTrackRoster({sites:hierarchyTemplates.map(t=>({code:t.code,name:t.name})),saved:saved.map(r=>({...r,data:r.code.startsWith("CMLL-")?r.data:withOfficeHr(withDriverTrainer(currentHierarchy(r.data)))}))});
+   const names=new Map((await pool.query("SELECT lower(COALESCE(NULLIF(data->>'pulseUsername',''),data->>'username')) AS actor,name FROM hr_records WHERE kind='employees' AND lower(COALESCE(NULLIF(data->>'pulseUsername',''),data->>'username')) = ANY($1)",[roster.map(p=>p.actor)])).rows.map(r=>[r.actor,r.name]));
+   const accounts=new Map((await pool.query(`SELECT actor,leave_connected,joining_connected,trial_connected,trial_status_connected,leave_request_connected,employee_track_connected,${mainBotConnectionColumn()} AS main_connected FROM hr_telegram_accounts WHERE actor = ANY($1)`,[roster.map(p=>p.actor)])).rows.map(r=>[r.actor,r]));
+   const viaOf=a=>a?.main_connected&&mtEnabled()?'mt':a?.leave_request_connected&&leaveRequestReady()?'leave-request':a?.trial_status_connected&&trialStatusReady()?'trial-status':a?.leave_connected?'leave':a?.joining_connected?'joining':a?.trial_connected?'trial':'';
+   const people=roster.map(p=>{const a=accounts.get(p.actor);return {...p,name:names.get(p.actor)||'',connected:!!a?.employee_track_connected,via:viaOf(a)};});
+   const ready=employeeTrackReady(),trackName=botUsername('employee-track');
+   if(route==='employee-track-link'){   /* one person's link, to forward on WhatsApp */
+    if(!ready)fail('Employee Track bot is not configured on the server (TELEGRAM_EMPLOYEE_TRACK_BOT_TOKEN)',503);
+    const person=people.find(p=>p.actor===String(input.actor||'').trim().toLowerCase());
+    if(!person)fail('This login is not on the new employee route',404);
+    return tx(async db=>{const url=await employeeTrackLink(db,person.actor);
+     await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'EMPLOYEE_TRACK_FORWARD_LINK','telegram',NULL,$2)",[profile.actor,{for:person.actor}]);
+     return {actor:person.actor,roles:person.roles,url,message:employeeTrackInvite({roles:person.roles,url,botUsername:trackName})};});
+   }
+   if(method==='GET'){
+    const actors=people.map(p=>p.actor);
+    const sent=new Map((await pool.query("SELECT DISTINCT ON (actor) actor,bot,state,last_error,sent_at FROM hr_telegram_outbox WHERE event_key LIKE 'employee-track-invite:%' AND actor = ANY($1) ORDER BY actor,id DESC",[actors])).rows.map(r=>[r.actor,r]));
+    const tokens=new Map((await pool.query("SELECT actor,max(expires_at) AS expires_at FROM hr_telegram_link_tokens WHERE bot='employee-track' AND actor = ANY($1) GROUP BY actor",[actors])).rows.map(r=>[r.actor,r]));
+    const deliveryOf=p=>{const o=sent.get(p.actor);
+     if(o)return {state:o.state==='SENT'?'DELIVERED':o.state==='FAILED'?'FAILED':'WAITING',bot:o.bot,at:o.sent_at||'',error:o.state==='SENT'?'':o.last_error||''};
+     const t=tokens.get(p.actor);if(t)return {state:new Date(t.expires_at)<new Date()?'EXPIRED':'FORWARD',bot:'',at:t.expires_at,error:''};
+     return null;};
+    return {people:people.map(p=>({...p,delivery:deliveryOf(p)})),botUsername:trackName,configured:ready};
+   }
+   if(!ready)fail('Employee Track bot is not configured on the server (TELEGRAM_EMPLOYEE_TRACK_BOT_TOKEN)',503);
+   const only=Array.isArray(input.actors)?new Set(input.actors.map(username)):null;
+   const batch=Date.now().toString(36),results=[];
+   await tx(async db=>{for(const p of people){
+    if(only&&!only.has(p.actor))continue;
+    if(p.connected){results.push({...p,status:'already connected'});continue;}
+    const url=await employeeTrackLink(db,p.actor);
+    if(p.via){await queueTelegram(db,`employee-track-invite:${batch}`,[p.actor],employeeTrackInvite({roles:p.roles,url,botUsername:trackName}),p.via);results.push({...p,status:`sent on ${botLabel(p.via)}`});}
+    else results.push({...p,status:'not on any HR bot – forward this link',url});
+   }
+   await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SEND_EMPLOYEE_TRACK_LINKS','telegram',NULL,$2)",[profile.actor,{sent:results.filter(r=>/^sent/.test(r.status)).map(r=>r.actor),manual:results.filter(r=>r.url).map(r=>r.actor)}]);});
+   return {people:results,botUsername:trackName,configured:ready};
+  }
   if(route==='addition-connect'&&method==='POST'){   /* connect link for the Nagpur Employee Addition bot (open it and tap Start) */
+   if(employeeTrackReady())return tx(async db=>({url:await employeeTrackLink(db,profile.actor),botUsername:botUsername('employee-track')}));   /* Employee Track bot is live */
    if(cmllHrEnabled())return cmllConnectLink(pool,profile.actor);
    if(!workflowConfigured('nagpur'))fail('Nagpur Employee Addition bot is not configured on the server (TELEGRAM_NAGPUR_BOT_TOKEN)',503);
    const token=randomBytes(24).toString('base64url');
@@ -979,7 +1034,7 @@ export function createTelegram(pool){
  async telegramWebhook(secret,update,bot='leave'){
   if(!webhookSecretValid(secret,botSecret(bot)))fail('Unauthorized webhook',403);
   if(!Number.isSafeInteger(update.update_id))fail('Invalid update');
-  if(workflowChatIds.includes(bot)&&bot!=='trial-status'&&bot!=='leave-request'){
+  if(workflowChatIds.includes(bot)&&bot!=='trial-status'&&bot!=='leave-request'&&bot!=='employee-track'){
    const message=update.message;
    if(message?.chat?.type==='private'&&message.from?.id===message.chat.id&&/^\/(start|help)(?:@\w+)?(?:\s|$)/.test(message.text||'')){
     const {title,workflow}=workflowChats[bot];
@@ -996,7 +1051,7 @@ export function createTelegram(pool){
   let callback=null;
   let menu=null,reply=null;
   await tx(async db=>{
-   const updates=mt?'hr_telegram_mt_updates':bot==='trial-status'?'hr_telegram_trial_status_updates':bot==='leave-request'?'hr_telegram_leave_request_updates':'hr_telegram_updates';
+   const updates=mt?'hr_telegram_mt_updates':bot==='trial-status'?'hr_telegram_trial_status_updates':bot==='leave-request'?'hr_telegram_leave_request_updates':bot==='employee-track'?'hr_telegram_employee_track_updates':'hr_telegram_updates';
    if(!(await db.query(`INSERT INTO ${updates}(id) VALUES($1) ON CONFLICT DO NOTHING RETURNING id`,[update.update_id])).rowCount)return;
    const cb=update.callback_query;
    const action=String(cb?.data||'');
@@ -1044,7 +1099,7 @@ export function createTelegram(pool){
     }
     return;
    }
-   if(!token){if(['leave','joining','trial','nagpur','trial-status','leave-request'].includes(bot)&&/^\/start/.test(String(msg.text||''))){const known=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(msg.from.id)])).rows[0];if(known){const column=bot==='leave-request'?'leave_request_connected':bot==='trial-status'?'trial_status_connected':bot==='nagpur'?'nagpur_connected':bot==='trial'?'trial_connected':bot==='joining'?'joining_connected':'leave_connected';await db.query(`UPDATE hr_telegram_accounts SET ${column}=true,linked_at=now() WHERE actor=$1`,[known.actor]);await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot=$2 AND state IN ('PENDING','FAILED')",[known.actor,bot]);await queueTelegram(db,`${bot}-start:`+update.update_id,[known.actor],bot==='leave-request'?LEAVE_REQUEST_CONNECTED:bot==='trial-status'?TRIAL_STATUS_CONNECTED:bot==='trial'?'Connected. Vehicle trial results from Caliber HR will appear here.':bot==='joining'?'Connected. Joining approval requests from Caliber HR will appear here.':bot==='nagpur'?'Connected. Employee addition approvals from Caliber HR will appear here with Approve / Reject buttons.':'Your Telegram account is connected to Caliber HR.',bot);}else if(bot==='trial-status')reply={chat:msg.chat.id,text:TRIAL_STATUS_WELCOME,bot};else if(bot==='leave-request')reply={chat:msg.chat.id,text:LEAVE_REQUEST_WELCOME,bot};}return;}
+   if(!token){if(['leave','joining','trial','nagpur','trial-status','leave-request','employee-track'].includes(bot)&&/^\/start/.test(String(msg.text||''))){const known=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(msg.from.id)])).rows[0];if(known){const column=bot==='employee-track'?'employee_track_connected':bot==='leave-request'?'leave_request_connected':bot==='trial-status'?'trial_status_connected':bot==='nagpur'?'nagpur_connected':bot==='trial'?'trial_connected':bot==='joining'?'joining_connected':'leave_connected';await db.query(`UPDATE hr_telegram_accounts SET ${column}=true,linked_at=now() WHERE actor=$1`,[known.actor]);await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot=$2 AND state IN ('PENDING','FAILED')",[known.actor,bot]);await queueTelegram(db,`${bot}-start:`+update.update_id,[known.actor],bot==='employee-track'?EMPLOYEE_TRACK_CONNECTED:bot==='leave-request'?LEAVE_REQUEST_CONNECTED:bot==='trial-status'?TRIAL_STATUS_CONNECTED:bot==='trial'?'Connected. Vehicle trial results from Caliber HR will appear here.':bot==='joining'?'Connected. Joining approval requests from Caliber HR will appear here.':bot==='nagpur'?'Connected. Employee addition approvals from Caliber HR will appear here with Approve / Reject buttons.':'Your Telegram account is connected to Caliber HR.',bot);}else if(bot==='trial-status')reply={chat:msg.chat.id,text:TRIAL_STATUS_WELCOME,bot};else if(bot==='leave-request')reply={chat:msg.chat.id,text:LEAVE_REQUEST_WELCOME,bot};else if(bot==='employee-track')reply={chat:msg.chat.id,text:EMPLOYEE_TRACK_WELCOME,bot};}return;}
    const link=(await db.query('DELETE FROM hr_telegram_link_tokens WHERE hash=$1 AND expires_at>now() RETURNING actor,bot',[hash(mt?(cmllHrEnabled()?'cmll:':'mt:')+token:token)])).rows[0];
    if((!link||link.bot!==bot)&&bot==='leave-request'){   /* a used, replaced or old link: a Telegram account HR already knows joins anyway */
     const known=(await db.query('SELECT actor,leave_request_connected FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(msg.from.id)])).rows[0];
@@ -1056,20 +1111,32 @@ export function createTelegram(pool){
      await queueTelegram(db,'leave-request-start:'+update.update_id,[known.actor],LEAVE_REQUEST_CONNECTED,bot);return;
     }
    }
-   if(!link||link.bot!==bot){if(bot==='trial-status'||bot==='leave-request')reply={chat:msg.chat.id,text:`This link has expired or was already used. Ask HR for a new ${bot==='leave-request'?'Leave Request':'Trial Status'} link.`,bot};if(mt)menu={chat:msg.chat.id,text:'This link has expired or was already used. Request a new link in HRMS.'};return;}
+   if((!link||link.bot!==bot)&&bot==='employee-track'){   /* a used, replaced or old link: a Telegram account HR already knows joins anyway */
+    const known=(await db.query('SELECT actor,employee_track_connected FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(msg.from.id)])).rows[0];
+    if(known?.employee_track_connected){reply={chat:msg.chat.id,text:EMPLOYEE_TRACK_ALREADY,bot};return;}
+    if(known){
+     await db.query('UPDATE hr_telegram_accounts SET employee_track_connected=true,linked_at=now() WHERE actor=$1',[known.actor]);
+     await db.query("DELETE FROM hr_telegram_link_tokens WHERE actor=$1 AND bot='employee-track'",[known.actor]);
+     await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot=$2 AND state IN ('PENDING','FAILED')",[known.actor,bot]);
+     await queueTelegram(db,'employee-track-start:'+update.update_id,[known.actor],EMPLOYEE_TRACK_CONNECTED,bot);return;
+    }
+   }
+   const workflowName=bot==='leave-request'?'Leave Request':bot==='employee-track'?'Employee Track':'Trial Status';
+   if(!link||link.bot!==bot){if(bot==='trial-status'||bot==='leave-request'||bot==='employee-track')reply={chat:msg.chat.id,text:`This link has expired or was already used. Ask HR for a new ${workflowName} link.`,bot};if(mt)menu={chat:msg.chat.id,text:'This link has expired or was already used. Request a new link in HRMS.'};return;}
    const taken=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 OR chat_id=$1',[String(msg.from.id)])).rows[0];
-   if(taken&&taken.actor!==link.actor){if(bot==='trial-status'||bot==='leave-request')reply={chat:msg.chat.id,text:'This Telegram account is already linked to another HRMS login.',bot};if(mt)menu={chat:msg.chat.id,text:'This Telegram account is already linked to another HRMS account.'};return;}
+   if(taken&&taken.actor!==link.actor){if(bot==='trial-status'||bot==='leave-request'||bot==='employee-track')reply={chat:msg.chat.id,text:'This Telegram account is already linked to another HRMS login.',bot};if(mt)menu={chat:msg.chat.id,text:'This Telegram account is already linked to another HRMS account.'};return;}
    if(mt){
     await db.query(`INSERT INTO hr_telegram_accounts(actor,chat_id,telegram_user_id,leave_connected,${connectedColumn}) VALUES($1,$2,$2,false,true) ON CONFLICT(actor) DO UPDATE SET chat_id=$2,telegram_user_id=$2,linked_at=now(),${connectedColumn}=true`,[link.actor,String(msg.from.id)]);
     await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND (bot IN ('leave','trial','joining','mt') OR ($2 AND bot='nagpur')) AND state IN ('PENDING','FAILED')",[link.actor,cmllHrEnabled()]);
     await queueTelegram(db,'mt-linked:'+update.update_id,[link.actor],`${name} is connected. Your HR notifications will appear here.`,'mt',mtMenu());
     return;
    }
-   const flags=[bot==='leave',bot==='trial',bot==='joining',bot==='nagpur',bot==='trial-status',bot==='leave-request'];
-   await db.query('INSERT INTO hr_telegram_accounts(actor,chat_id,telegram_user_id,leave_connected,trial_connected,joining_connected,nagpur_connected,trial_status_connected,leave_request_connected) VALUES($1,$2,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(actor) DO UPDATE SET chat_id=$2,telegram_user_id=$2,linked_at=now(),leave_request_connected=hr_telegram_accounts.leave_request_connected OR $8,leave_connected=hr_telegram_accounts.leave_connected OR $3,trial_connected=hr_telegram_accounts.trial_connected OR $4,joining_connected=hr_telegram_accounts.joining_connected OR $5,nagpur_connected=hr_telegram_accounts.nagpur_connected OR $6,trial_status_connected=hr_telegram_accounts.trial_status_connected OR $7,mt_hr_enabled=hr_telegram_accounts.telegram_user_id=$2 AND hr_telegram_accounts.mt_hr_enabled,cmll_hr_connected=hr_telegram_accounts.telegram_user_id=$2 AND hr_telegram_accounts.cmll_hr_connected',[link.actor,String(msg.from.id),...flags]);
+   const flags=[bot==='leave',bot==='trial',bot==='joining',bot==='nagpur',bot==='trial-status',bot==='leave-request',bot==='employee-track'];
+   await db.query('INSERT INTO hr_telegram_accounts(actor,chat_id,telegram_user_id,leave_connected,trial_connected,joining_connected,nagpur_connected,trial_status_connected,leave_request_connected,employee_track_connected) VALUES($1,$2,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(actor) DO UPDATE SET chat_id=$2,telegram_user_id=$2,linked_at=now(),employee_track_connected=hr_telegram_accounts.employee_track_connected OR $9,leave_request_connected=hr_telegram_accounts.leave_request_connected OR $8,leave_connected=hr_telegram_accounts.leave_connected OR $3,trial_connected=hr_telegram_accounts.trial_connected OR $4,joining_connected=hr_telegram_accounts.joining_connected OR $5,nagpur_connected=hr_telegram_accounts.nagpur_connected OR $6,trial_status_connected=hr_telegram_accounts.trial_status_connected OR $7,mt_hr_enabled=hr_telegram_accounts.telegram_user_id=$2 AND hr_telegram_accounts.mt_hr_enabled,cmll_hr_connected=hr_telegram_accounts.telegram_user_id=$2 AND hr_telegram_accounts.cmll_hr_connected',[link.actor,String(msg.from.id),...flags]);
    await db.query("UPDATE hr_telegram_outbox SET next_attempt=now(),state='PENDING',attempts=0,last_error=NULL WHERE actor=$1 AND bot=$2 AND state IN ('PENDING','FAILED')",[link.actor,bot]);
    if(bot==='leave-request')await db.query("DELETE FROM hr_telegram_link_tokens WHERE actor=$1 AND bot='leave-request'",[link.actor]);   /* joined: the person's other links are done */
-   await queueTelegram(db,'linked:'+update.update_id,[link.actor],bot==='leave-request'?LEAVE_REQUEST_CONNECTED:bot==='trial-status'?TRIAL_STATUS_CONNECTED:bot==='trial'?'Connected. Vehicle trial results from Caliber HR will appear here.':bot==='joining'?'Connected. Joining approval requests from Caliber HR will appear here.':'Your Telegram account is connected to Caliber HR. Leave notifications will appear here.',bot);
+   if(bot==='employee-track')await db.query("DELETE FROM hr_telegram_link_tokens WHERE actor=$1 AND bot='employee-track'",[link.actor]);
+   await queueTelegram(db,'linked:'+update.update_id,[link.actor],bot==='employee-track'?EMPLOYEE_TRACK_CONNECTED:bot==='leave-request'?LEAVE_REQUEST_CONNECTED:bot==='trial-status'?TRIAL_STATUS_CONNECTED:bot==='trial'?'Connected. Vehicle trial results from Caliber HR will appear here.':bot==='joining'?'Connected. Joining approval requests from Caliber HR will appear here.':'Your Telegram account is connected to Caliber HR. Leave notifications will appear here.',bot);
   });
   if(callback)await answerCallback(callback.bot,callback.id,callback.text);
   if(reply){try{await sendTelegram(reply.chat,reply.text,reply.bot||'trial-status');}catch{/* the person can tap Start again */}}
@@ -1099,11 +1166,11 @@ export async function deliverTelegram(pool,send=sendTelegram){
  const db=await pool.connect();try{
   await db.query('BEGIN');
   const connectedColumn=mainBotConnectionColumn();
-  const jobs=(await db.query(`SELECT o.*,a.${connectedColumn} AS mt_hr_enabled,CASE WHEN ($1 AND a.${connectedColumn} AND (o.bot IN ('leave','trial','joining','mt') OR ($2 AND o.bot='nagpur'))) OR (o.bot='trial' AND a.trial_connected) OR (o.bot='trial-status' AND a.trial_status_connected) OR (o.bot='leave-request' AND a.leave_request_connected) OR (o.bot='joining' AND a.joining_connected) OR (o.bot='leave' AND a.leave_connected) OR (o.bot='nagpur' AND a.nagpur_connected) THEN a.chat_id END AS chat_id FROM hr_telegram_outbox o LEFT JOIN hr_telegram_accounts a ON a.actor=o.actor WHERE o.state='PENDING' AND o.next_attempt<=now() ORDER BY o.id LIMIT ${DELIVERY_SCAN} FOR UPDATE OF o SKIP LOCKED`,[mtEnabled(),cmllHrEnabled()])).rows;
+  const jobs=(await db.query(`SELECT o.*,a.${connectedColumn} AS mt_hr_enabled,CASE WHEN ($1 AND a.${connectedColumn} AND (o.bot IN ('leave','trial','joining','mt') OR ($2 AND o.bot='nagpur'))) OR (o.bot='trial' AND a.trial_connected) OR (o.bot='trial-status' AND a.trial_status_connected) OR (o.bot='leave-request' AND a.leave_request_connected) OR (o.bot='employee-track' AND a.employee_track_connected) OR (o.bot='joining' AND a.joining_connected) OR (o.bot='leave' AND a.leave_connected) OR (o.bot='nagpur' AND a.nagpur_connected) THEN a.chat_id END AS chat_id FROM hr_telegram_outbox o LEFT JOIN hr_telegram_accounts a ON a.actor=o.actor WHERE o.state='PENDING' AND o.next_attempt<=now() ORDER BY o.id LIMIT ${DELIVERY_SCAN} FOR UPDATE OF o SKIP LOCKED`,[mtEnabled(),cmllHrEnabled()])).rows;
   let sends=0;
   for(const job of jobs){
    if(!job.chat_id&&job.bot==='nagpur')job.chat_id=nagpurRecipients()[job.actor]||null;
-   const bot=job.bot==='trial-status'||job.bot==='leave-request'?job.bot:(job.bot!=='nagpur'||cmllHrEnabled())&&job.mt_hr_enabled&&mtEnabled()?'mt':job.bot||'leave';
+   const bot=['trial-status','leave-request','employee-track'].includes(job.bot)?job.bot:(job.bot!=='nagpur'||cmllHrEnabled())&&job.mt_hr_enabled&&mtEnabled()?'mt':job.bot||'leave';
    if(!job.chat_id||(cmllHrEnabled()&&bot!=='mt'&&!botToken(bot))){await db.query("UPDATE hr_telegram_outbox SET next_attempt=now()+interval '5 minutes',last_error='Recipient has not connected Telegram' WHERE id=$1",[job.id]);continue;}
    if(sends>=DELIVERY_SENDS)continue;   /* stays due: the next sweep sends it */
    sends++;
