@@ -39,7 +39,6 @@ test('individual employee edits reject stale, inactive, out-of-scope and read-on
  await assert.rejects(service.updateEmployeeDetails({...profile,permissions:{...profile.permissions,site:'other-site'}},employeeId,input),error=>error.status===403);
  await assert.rejects(service.updateEmployeeDetails({...profile,permissions:{hrDesktopAccess:['Employee Directory']}},employeeId,input),error=>error.status===403);
  await assert.rejects(service.updateEmployeeDetails(profile,employeeId,{...input,officeData:{'Site *':'Other site'}}),error=>error.status===400);
- await assert.rejects(service.updateEmployeeDetails(profile,employeeId,{...input,officeData:{'Candidate E-mail *':'  '}}),/Candidate E-mail is required/);
  record.status='PENDING';
  await assert.rejects(service.updateEmployeeDetails(profile,employeeId,input),error=>error.status===409);
  assert.ok(!calls.some(call=>call.sql.startsWith('UPDATE')));
@@ -60,4 +59,10 @@ test('new account number saves separately without changing the frozen original',
  assert.equal(saved.data.officeData['Bank Account No'],'00123456789');
  assert.equal(saved.data.officeData['New Account No'],'00987654321');
  for(const value of ['abc','1234567890123456789'])await assert.rejects(service.updateEmployeeDetails(profile,employeeId,{version:4,officeData:{'New Account No':value}}),/up to 18 digits/);
+});
+
+test('candidate e-mail is optional in the joining form',async()=>{
+ const {service}=fixture();
+ const saved=await service.updateEmployeeDetails(profile,employeeId,{version:4,officeData:{'Candidate E-mail *':''}});
+ assert.equal(saved.data.officeData['Candidate E-mail *'],'');
 });
