@@ -373,6 +373,15 @@ describe('Employee Master tabs',()=>{
   const referenceType=screen.getByLabelText(/Reference Type/);
   expect((referenceType as HTMLSelectElement).required).toBe(true);
   expect(within(referenceType).queryAllByRole('option').map(option=>option.textContent)).toEqual(['Select','Regional HR Manager','Supervisor','Driver','Others']);
+  const otherReference=screen.getByLabelText('Write the other reference type') as HTMLInputElement;
+  expect(otherReference.hidden).toBe(true);
+  fireEvent.change(referenceType,{target:{value:'Others'}});
+  expect(otherReference.hidden).toBe(false);
+  expect(otherReference.required).toBe(true);
+  expect(referenceType.closest('label')).toBe(otherReference.closest('label'));
+  fireEvent.change(referenceType,{target:{value:'Supervisor'}});
+  expect(otherReference.hidden).toBe(true);
+  expect(otherReference.required).toBe(false);
   expect((screen.getByLabelText(/Emergency Contact Name/) as HTMLInputElement).required).toBe(true);
   expect((screen.getByLabelText(/Emergency Contact Number/) as HTMLInputElement).required).toBe(true);
   const salarySection=screen.getByRole('heading',{name:'Salary Details'}).closest('section')!;
