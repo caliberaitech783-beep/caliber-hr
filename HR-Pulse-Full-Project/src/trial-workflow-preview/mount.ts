@@ -1201,7 +1201,9 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
             if(local.result==='PASS'&&local.name===remote.name&&local.mobile===remote.mobile){
               // Keep browser attachments, while the server supplies shared review decisions.
               if(Date.parse(remote.outcome!.at)<Date.parse(local.outcome?.at||''))continue;
-              const history=[...local.history.filter(h=>!canApprove(h.role)),...remote.history];
+              // Site HR / Driver Trainer steps: the browser's own, else the server's; approvals always from the server.
+              const own=local.history.filter(h=>!canApprove(h.role));
+              const history=[...own,...remote.history.filter(h=>!canApprove(h.role)&&!own.some(o=>o.role===h.role)),...remote.history.filter(h=>canApprove(h.role))];
               merged[index]=normalizeTrialApproval({...local,history});
             }
           }
