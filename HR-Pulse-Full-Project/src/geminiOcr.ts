@@ -30,9 +30,9 @@ export async function readGeminiAadhaar(file:File,grant:string):Promise<AadhaarD
  if(!result.details||['name','dob','gender','uid','address','relationName'].some(key=>typeof result.details[key]!=='string'))throw new Error('The reader returned an invalid result. Please retry.');
  return result.details;
 }
-export async function readGeminiDrivingLicence(files:[File,File],grant:string):Promise<DrivingLicenceDetails>{
+export async function readGeminiDrivingLicence(files:[File] | [File,File],grant:string):Promise<DrivingLicenceDetails>{
  const images=await Promise.all(files.map(async file=>{const image=await prepareImage(file),content=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Could not read image'));reader.readAsDataURL(image);});return {mime:image.type,content};}));
- let response:Response;try{response=await fetch(API+'/api/aadhaar/scan',{method:'POST',headers:{Authorization:'Bearer '+grant,'Content-Type':'application/json'},body:JSON.stringify({document:'drivingLicence',images}),signal:AbortSignal.timeout(60000)});}catch{throw new Error('The driving licence scan could not finish. Check your connection and retry.');}
+ let response:Response;try{response=await fetch(API+'/api/aadhaar/scan',{method:'POST',headers:{Authorization:'Bearer '+grant,'Content-Type':'application/json'},body:JSON.stringify({document:'drivingLicence',complete:files.length===1,images}),signal:AbortSignal.timeout(60000)});}catch{throw new Error('The driving licence scan could not finish. Check your connection and retry.');}
  const result=await response.json();if(!response.ok)throw new Error(result.error||'The driving licence scan failed. Please retry.');
  const details=result.details;if(!details||typeof details.name!=='string'||typeof details.dob!=='string'||typeof details.licenceNumber!=='string'||!Array.isArray(details.classDetails)||typeof details.issueDate!=='string'||!Array.isArray(details.validUpto))throw new Error('The reader returned an invalid driving licence result. Please retry.');
  return details;
