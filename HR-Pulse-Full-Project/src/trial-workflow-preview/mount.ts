@@ -219,7 +219,6 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       all.indeterminate = count>0&&count<rows.length;
     }
     for (const selector of ['#apApprove','#apReject']) $<HTMLButtonElement>(selector).disabled = !selected.size;
-    if (isOtpRole(role)&&otpApproval()) $<HTMLButtonElement>('#apApprove').disabled = true;
   }
   function renderApprovals() {
     const allowed = canApprove(role)&&canAct(role), rows = approvals();
@@ -227,7 +226,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     const byOtp = allowed&&isOtpRole(role)&&otpApproval();
     $('#apRoleWarn').hidden = allowed&&!byOtp;
     $('#apRoleWarn').textContent = byOtp
-      ? 'You approve by OTP: when Office HR requests it, the OTP comes on the CALIBER Trial Status bot – tell it to Office HR. You can still reject here.'
+      ? 'Approve or reject here, or tap Approve on the CALIBER Trial Status bot. Out of station? Office HR can request an OTP on the bot – tell it to Office HR.'
       : 'Approvals go PM → Office HR → Regional HR → Directors. Switch “Working as” to one of them to approve.';
     $<HTMLInputElement>('#apNote').disabled = !allowed;
     for (const id of selected) if (!rows.some(row=>row.id===id)) selected.delete(id);
@@ -905,7 +904,6 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if(submittingApproval)return false;
     const reviewer=role;
     if (!canApprove(reviewer)||!canAct(reviewer)) return false;
-    if (approved&&isOtpRole(reviewer)&&otpApproval()) {toast(`${ROLES[reviewer]} approves by OTP: tell the OTP to Office HR when they request it.`);return false;}
     const name=signer();
     if (!name) return false;
     if (!ids.length) {toast('Select at least one form.');return false;}

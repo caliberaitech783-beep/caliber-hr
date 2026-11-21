@@ -117,7 +117,7 @@ export function detailView(row: Trial, role: Role, canOpenJoining = false, otpAp
     ])}${out?.attachment ? item('Trial result file', `<button type="button" class="link trial-result-filename" data-download-result>Download ${esc(out.attachment.name)}</button>`) : ''}${out?.videoAttachment ? item('Driving video', `<button type="button" class="link trial-result-filename" data-download-driving-video>Download ${esc(out.videoAttachment.name)}</button>`) : ''}</div>
     <div class="secbar">Approvals</div><div class="sigs">${signs}</div>
     ${row.history.filter(h=>h.note).map(h=>`<p class="note"><b>${esc(ROLES[h.role])} (${esc(h.by)}):</b> ${esc(h.note)}</p>`).join('')}
-    ${row.stage===role && ['pm','ohr','rhr','director'].includes(role) ? `<div class="actions"><input id="mNote" aria-label="Decision note" placeholder="Note (required to reject)"><button type="button" class="btn no" data-decide="reject">Reject</button>${isOtpRole(role)&&otpApproval?'<span class="note">You approve by OTP: when Office HR requests it, tell them the OTP from the CALIBER Trial Status bot.</span>':`<button type="button" class="btn ok" data-decide="approve">Approve as ${ROLES[role]}</button>`}</div>`:''}`;
+    ${row.stage===role && ['pm','ohr','rhr','director'].includes(role) ? `<div class="actions"><input id="mNote" aria-label="Decision note" placeholder="Note (required to reject)"><button type="button" class="btn no" data-decide="reject">Reject</button><button type="button" class="btn ok" data-decide="approve">Approve as ${ROLES[role]}</button>${isOtpRole(role)&&otpApproval?'<span class="note">Out of station? Office HR can request an OTP on the CALIBER Trial Status bot.</span>':''}</div>`:''}`;
 }
 
 /* Office HR: forms waiting for the PM's or Directors' OTP, one OTP per batch. */
@@ -126,7 +126,7 @@ export function otpPanel(groups: OtpGroup[]) {
   if (!groups.length) return '';
   const who = (g: OtpGroup) => g.reviewer==='pm' ? 'PM' : 'Directors';
   return `<div class="otp-panel"><h3>OTP approvals – Directors</h3>
-    <p class="note">Press Request OTP: the OTP goes on the CALIBER Trial Status bot to the PM (or to all three Directors). Ask them for it, type it here and press Verify. Valid 15 minutes, single use.</p>
+    <p class="note">Backup for when the Directors are out of station: they can also approve directly in HRMS or on Telegram. Press Request OTP: the OTP goes on the CALIBER Trial Status bot to all three Directors. Ask them for it, type it here and press Verify. Valid 15 minutes, single use.</p>
     ${table(['Approval of','Candidates','OTP'],groups.map(g=>`<tr data-otp="${esc(g.key)}"><td><b>${g.reviewer==='pm'?'PM':'Directors (final)'}</b></td>
       <td>${g.rows.map(r=>`${candidateLink(r)} <span class="mono muted small">${esc(r.formNo)}</span>`).join('<br>')}</td>
       <td>${g.expires

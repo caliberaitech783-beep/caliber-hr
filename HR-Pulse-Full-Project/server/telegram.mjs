@@ -330,18 +330,19 @@ async function answerCallback(bot,id,text){const token=botToken(bot);if(!token)r
 const STAGE_ROLE={result:'pm',ohr:'ohr',rhr:'rhr',director:'director'};   /* hierarchy step key → reviewer role */
 const ROLE_STEP={pm:'result',ohr:'ohr',rhr:'rhr',director:'director'};
 const NEXT_ROLE={pm:'ohr',ohr:'rhr',rhr:'director',director:'done'};
-/* Owner, 20 Nov 2026: Directors approve by OTP. Office HR requests it, they tell it to Office HR, who enters it.
-   Owner, 21 Nov 2026: the PM approves directly (Approve / Decline in HRMS or on Telegram), like the Driver Trainer, at every site. */
+/* Owner, 21 Nov 2026: the PM approves directly (Approve / Decline in HRMS or on Telegram), like the Driver Trainer, at every site.
+   Directors approve two ways: directly (Approve in HRMS or on Telegram), or, when a Director is out of station, by OTP as the
+   backup: Office HR requests it, the Director tells it to Office HR, who enters it. OTP_ROLES lists who has the OTP backup. */
 export const OTP_ROLES=['director'];
 const TRIAL_OTP_MINUTES=15,TRIAL_OTP_ATTEMPTS=5;
-const approvalMarkup=(code,role)=>({inline_keyboard:[OTP_ROLES.includes(role)?[{text:'❌ Decline',callback_data:`ta:${code}:d`}]:[{text:'✅ Approve',callback_data:`ta:${code}:a`},{text:'❌ Decline',callback_data:`ta:${code}:d`}]]});
+const approvalMarkup=code=>({inline_keyboard:[[{text:'✅ Approve',callback_data:`ta:${code}:a`},{text:'❌ Decline',callback_data:`ta:${code}:d`}]]});
 export function trialOtpMessage({reviewer,forms,otp,requestedBy,site}){
  return [`🔐 OTP FOR ${reviewer==='pm'?'PM APPROVAL':'FINAL APPROVAL – DIRECTORS'}`,'',
   ...forms.map((f,i)=>`${forms.length>1?(i+1)+'. ':''}${dash(f.fields?.['Name of candidate'])} – ${f.formNo} – ✅ PASS`),
   reviewer==='director'?'Approved so far: PM, Office HR, Regional HR':null,
   `Requested by: Office HR (${dash(requestedBy)})`,'',
   `OTP: ${otp} (valid ${TRIAL_OTP_MINUTES} min)`,
-  `Tell this OTP to Office HR to ${reviewer==='pm'?'approve':'give final approval'}. Tap Decline below to refuse.`,
+  `Tell this OTP to Office HR to ${reviewer==='pm'?'approve':'give final approval'}, or tap Approve below. Tap Decline to refuse.`,
   `Site: ${dash(site)}`].filter(line=>line!==null).join('\n');
 }
 async function openApprovalGroup(db,{role,formNos,target,batchId,actor}){
@@ -357,7 +358,7 @@ async function applyTrialStage(pool,db,{rows,reviewer,decision,target,batchId,xl
  const stageStatus=!decision.approved?`Rejected by ${ROLE_TITLE[reviewer]}`:stage==='final'?'Cleared to join':NEXT_STATUS[reviewer];
  const nextRecipients=stage==='reject'?[...await hierarchyRecipients(db,'siteHr',target),...await hierarchyRecipients(db,'part1',target),...await hierarchyRecipients(db,'result',target)]
    :stage==='final'?[...await hierarchyRecipients(db,'all',target),...scopedRecipients(await trialRecipients(db,'result'),target)]
-   :stage==='director'?await hierarchyRecipients(db,'ohr',target)   /* Office HR requests the Directors' OTP */
+   :stage==='director'?await hierarchyRecipients(db,'director',target)   /* Directors approve directly; Office HR is told below for the OTP backup */
    :await hierarchyRecipients(db,stage,target);
  const recipients=[...new Set(nextRecipients.map(recipientActor))].filter(notSender(actor));
  const messages=[];
@@ -376,7 +377,7 @@ async function applyTrialStage(pool,db,{rows,reviewer,decision,target,batchId,xl
  /* the reviewer's own pending group is closed whichever way the decision came in */
  await db.query("UPDATE hr_records SET status='CLOSED',updated_at=now() WHERE kind='trialApprovals' AND status='PENDING' AND data->>'role'=$1 AND data->'formNos' ?| $2::text[]",[reviewer,rows.map(r=>r.formNo)]);
  if(!recipients.length)return {stage,messages,recipients};
- const markup=stage==='reject'||stage==='final'||stage==='director'?null:await openApprovalGroup(db,{role:stage,formNos:rows.map(r=>r.formNo),target,batchId,actor});
+ const markup=stage==='reject'||stage==='final'?null:await openApprovalGroup(db,{role:stage,formNos:rows.map(r=>r.formNo),target,batchId,actor});
  /* Only the form PDF travels with the message – photos / uploaded images are not sent as separate files. */
  const files=r=>[{name:`${r.formNo.replace(/\//g,'-')}_${stage==='final'?'Joining_Approval':'Trial_Form'}.pdf`,mime:'application/pdf',data:trialFormPdf(r,stage==='final'?'Joining approval':'Trial joining form'),caption:stage==='final'?'Joining approval':'Trial joining form'}];
  const key=`trial-approval:${reviewer}:${batchId||rows[0].formNo}:${Date.now()}`;
@@ -386,6 +387,11 @@ async function applyTrialStage(pool,db,{rows,reviewer,decision,target,batchId,xl
   const m=[header,'',`Site: ${dash(target.site)}`,`${decision.approved?'Approved':'Rejected'} by: ${ROLE_TITLE[reviewer]} · ${fmtDateTime(decision.at)}`,decision.note?`Remark: ${decision.note}`:'',`Status: ${stage==='final'?'✅ CLEARED TO JOIN':stageStatus}`,'',...rows.map((r,i)=>`${i+1}. ${dash(r.fields['Name of candidate'])} – ${dash(r.fields['If PASS – recommended for']||r.fields['Post applied for']||r.department)} – ${r.formNo} – ${r.fields.Result==='PASS'?'✅ PASS':'❌ FAIL'}`),markup?'\nTap Approve / Decline below to act on all candidates in this batch.':''].filter(l=>l!=='').join('\n');
   messages.push(m);await queueTelegram(db,key,recipients,m,trialBot(),markup,stage==='reject'?[]:rows.flatMap(files));
   if(stage==='final'){const j=bulkJoiningApprovedMessage(batchId||'-',rows);messages.push(j);await queueTelegram(db,key+':join',recipients,j,trialBot(),null,xlsx?[{name:`${batchId||'batch'}_Joining_List.xlsx`,mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',data:xlsx,caption:`${rows.length} candidates, joining columns pending`}]:[]);}}
+ /* Office HR is told too, without buttons: if no Director can open HRMS (out of station), Office HR requests the OTP. */
+ if(stage==='director'){const backup=[...new Set((await hierarchyRecipients(db,'ohr',target)).map(recipientActor))].filter(notSender(actor)).filter(a=>!recipients.includes(a));
+  if(backup.length)await queueTelegram(db,key+':ohr',backup,`${messages[0]}
+
+Waiting for the Directors' final approval. If no Director can approve in HRMS or on Telegram (out of station), open HRMS › Trial Status › Approvals and press "Request OTP from Directors".`,trialBot());}
  return {stage,messages,recipients};}
 export function createTelegram(pool){
  const admin=p=>{if(!grantedMenus(p).has('Master Configuration')||assignedSites(p)!==null)fail('Unrestricted Master Configuration access required',403);};
@@ -813,7 +819,9 @@ export function createTelegram(pool){
      await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'trialOtps',$1,$2,$3,'PENDING',$4,$4) ON CONFLICT(kind,code) DO UPDATE SET data=$3,name=$2,status='PENDING',updated_by=$4,updated_at=now()",[code,`${ROLE_TITLE[reviewer]} OTP – ${formNos[0]}`,data,profile.actor]);
      const to=[...new Set((await hierarchyRecipients(db,ROLE_STEP[reviewer],target)).map(recipientActor))];
      if(!to.length)fail(`No ${ROLE_TITLE[reviewer]} is set for this site in Trial Hierarchy.`,409);
-     const markup=await openApprovalGroup(db,{role:reviewer,formNos,target,batchId:forms[0].data?.batchId||'',actor:profile.actor});
+     /* the Directors' Approve buttons already sent stay valid: an OTP request reuses their open approval */
+     const open=(await db.query("SELECT code FROM hr_records WHERE kind='trialApprovals' AND status='PENDING' AND data->>'role'=$1 AND data->'formNos' @> $2::jsonb AND $2::jsonb @> data->'formNos'",[reviewer,JSON.stringify(formNos)])).rows[0];
+     const markup=open?approvalMarkup(open.code):await openApprovalGroup(db,{role:reviewer,formNos,target,batchId:forms[0].data?.batchId||'',actor:profile.actor});
      await queueTelegram(db,`trial-otp:${code}:${data.resends}`,to,trialOtpMessage({reviewer,forms:forms.map(f=>({...f.data,formNo:f.code})),otp,requestedBy:name,site:target.site}),trialBot(),markup);
      await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'TRIAL_OTP_REQUEST','trialForms',NULL,$2)",[profile.actor,{reviewer,formNos}]);
      return to;});
@@ -844,7 +852,6 @@ export function createTelegram(pool){
   if(route==='trial-approval'&&method==='POST'){
    if(!grantedMenus(profile).has('Employee Master'))fail('Employee Master permission required',403);
    const reviewer=String(input.reviewer||'');if(!ROLE_TITLE[reviewer])fail('Unknown reviewer stage');
-   if(input.approved&&OTP_ROLES.includes(reviewer))fail(`${ROLE_TITLE[reviewer]} approve by OTP: Office HR requests the OTP and enters it.`,409);
    const decision={approved:!!input.approved,note:String(input.note||'').slice(0,300),at:input.at&&!Number.isNaN(new Date(input.at).valueOf())?input.at:new Date().toISOString(),by:String(input.by||profile.name||profile.actor).slice(0,80),via:'web'};
    const target={site:String(input.site||'').slice(0,80),region:String(input.region||'').slice(0,80),company:String(input.company||'').slice(0,120),group:String(input.group||'').slice(0,80)};
    const batchId=String(input.batchId||'').slice(0,40);
@@ -1052,7 +1059,6 @@ export function createTelegram(pool){
     if(!group){callback={bot,id:cb.id,text:'This approval request was not found'};return;}
     if(group.status!=='PENDING'){callback={bot,id:cb.id,text:`Already ${group.data.decision||'handled'}${group.data.decidedBy?' by '+group.data.decidedBy:''}`};return;}
     const g=group.data,role=g.role,target=g.target||{};
-    if(m[2]==='a'&&OTP_ROLES.includes(role)){callback={bot,id:cb.id,text:'Approval is by OTP – tell the OTP to Office HR'};return;}
     const allowed=(await hierarchyRecipients(db,ROLE_STEP[role],target)).map(r=>r.actor);
     if(!actor||!allowed.includes(actor)){callback={bot,id:cb.id,text:`Only the ${ROLE_TITLE[role]} for ${target.site||'this site'} can act on this`};return;}
     const approved=m[2]==='a',at=new Date().toISOString(),name=(await db.query("SELECT name FROM hr_records WHERE kind='employees' AND lower(code)=$1",[actor])).rows[0]?.name||cb.from.first_name||actor;
