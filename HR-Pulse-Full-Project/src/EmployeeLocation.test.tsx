@@ -603,6 +603,11 @@ describe('Aadhaar printed field positions',()=>{
 });
 
 it('matches bulk file names to checklist documents',()=>{const names=['Candidate photo','Aadhaar (masked display)','PAN','Education certificates','Bank proof / cancelled cheque'];expect(matchChecklistDocument('Rahul_PAN.pdf',names)).toBe('PAN');expect(matchChecklistDocument('aadhar-card.jpg',names)).toBe('Aadhaar (masked display)');expect(matchChecklistDocument('passport photo.png',names)).toBe('Candidate photo');expect(matchChecklistDocument('10th marksheet.pdf',names)).toBe('Education certificates');expect(matchChecklistDocument('cancelled cheque.jpg',names)).toBe('Bank proof / cancelled cheque');expect(matchChecklistDocument('company.pdf',names)).toBeUndefined();expect(matchChecklistDocument('driving licence.pdf',names)).toBeUndefined();});
+it('matches joined, numbered and camel-case bulk file names',()=>{const names=['Candidate photo','Aadhaar (masked display)','PAN','Bank proof / cancelled cheque','Address proof'];
+ for(const name of ['AadharCard.jpg','AADHAAR.pdf','aadhar1.jpg','e-aadhaar front.png','myaadhaarcopy.pdf','Adhar_back.jpeg'])expect(matchChecklistDocument(name,names),name).toBe('Aadhaar (masked display)');
+ for(const name of ['PANCARD.pdf','pan card.jpg','PanCard.png','pan1.jpg','Pan_No.pdf','PAN-front.jpeg'])expect(matchChecklistDocument(name,names),name).toBe('PAN');
+ expect(matchChecklistDocument('Passbook.pdf',names)).toBe('Bank proof / cancelled cheque');expect(matchChecklistDocument('PassportPhoto.jpg',names)).toBe('Candidate photo');
+ for(const name of ['company.pdf','panel.jpg','Japan trip.jpg','checklist.pdf','Ai-Camera-Plan.pdf','dudhichua east oc shift master.jpeg'])expect(matchChecklistDocument(name,names),name).toBeUndefined();});
 
 for(const group of ['Corporate / HO','OB / COAL'] as const)it(group+' requires family details and family Aadhaar number',()=>{
  render(<EmployeeLocation employeeGroup={group}/>);

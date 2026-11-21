@@ -24,13 +24,15 @@ function toJpeg(canvas:HTMLCanvasElement,quality:number){return new Promise<Blob
 async function pdfPages(file:File){
  const pdfjs=await import('pdfjs-dist');
  pdfjs.GlobalWorkerOptions.workerSrc=(await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
- const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,pages:Blob[]=[];
+ const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,pages:{image:Blob;text:string}[]=[];
  try{
   for(let number=1;number<=Math.min(pdf.numPages,maxPages);number++){
    const page=await pdf.getPage(number),size=page.getViewport({scale:1}),viewport=page.getViewport({scale:Math.min(3,1800/Math.max(size.width,size.height))}),canvas=document.createElement('canvas');
+   // Digital PDFs (e-Aadhaar, e-PAN, bank statements) carry their own text, which is read without OCR.
+   let text='';try{text=(await page.getTextContent()).items.map(item=>'str' in item?item.str:'').join(' ');}catch{/* Scanned page: OCR reads it. */}
    canvas.width=Math.round(viewport.width);canvas.height=Math.round(viewport.height);
    // Print intent renders without animation frames, which pause while the tab is in the background.
-   await page.render({canvas,viewport,intent:'print'}).promise;pages.push(await toJpeg(canvas,.85));
+   await page.render({canvas,viewport,intent:'print'}).promise;pages.push({image:await toJpeg(canvas,.85),text});
   }
  }finally{await pdf.destroy();}
  return pages;
@@ -50,10 +52,16 @@ async function jpegFile(blobs:Blob[],name:string){
 
 export async function sortBulkDocument(file:File,names:string[]){
  const pdf=file.type==='application/pdf'||/\.pdf$/i.test(file.name),base=file.name.replace(/\.[^.]+$/,'');
- const pages:Blob[]=pdf?await pdfPages(file):[file],groups=new Map<string,Blob[]>(),unknown:number[]=[];
- for(const [index,page] of pages.entries()){const name=classifyDocumentText(await readPaddleText(page),names);if(name)groups.set(name,[...(groups.get(name)||[]),page]);else unknown.push(index);}
- if(!groups.size)return {found:[] as [string,File][],rest:[file]};
- if(!pdf)return {found:[[[...groups.keys()][0],file]] as [string,File][],rest:[]};
+ const read=pdf?await pdfPages(file):[{image:file as Blob,text:''}],pages=read.map(page=>page.image),groups=new Map<string,Blob[]>(),unknown:number[]=[],failures:unknown[]=[];
+ for(const [index,page] of read.entries()){
+  let name=classifyDocumentText(page.text,names);
+  // One page the on-device reader cannot read stays in bulk documents; the other pages are still sorted.
+  if(!name)try{name=classifyDocumentText(await readPaddleText(page.image),names);}catch(error){failures.push(error);}
+  if(name)groups.set(name,[...(groups.get(name)||[]),page.image]);else unknown.push(index);
+ }
+ if(!groups.size){if(failures.length)throw failures[0];return {found:[] as [string,File][],rest:[file]};}
+ // A file that is one document whole is filed as it was uploaded.
+ if(!pdf||groups.size===1&&!unknown.length)return {found:[[[...groups.keys()][0],file]] as [string,File][],rest:[]};
  const found:[string,File][]=[];
  for(const [name,blobs] of groups)found.push([name,await jpegFile(blobs,`${base} - ${name.replace(/[^A-Za-z0-9]+/g,' ').trim()}.jpg`)]);
  const rest=await Promise.all(unknown.map(index=>jpegFile([pages[index]],`${base} - page ${index+1}.jpg`)));
