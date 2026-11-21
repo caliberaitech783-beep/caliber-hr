@@ -144,7 +144,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         const data={status:'PENDING',approvalId:approval.id,stage,otpHash:otpHash(approval.id,otp),expires,attempts:0,requestedBy:requester.actor,requestedAt:new Date().toISOString(),resends};
         await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'leaveOtps',$1,$2,$3,'PENDING',$4,$4) ON CONFLICT(kind,code) DO UPDATE SET data=$3,name=$2,status='PENDING',updated_by=$4,updated_at=now()",[code,"Directors' OTP – "+record.code,data,requester.actor]);
         const to=steps[stage].approvers.filter(notSender(requester.actor));
-        if(record.kind==='employees')await queueTelegram(db,`employee-otp:${approval.id}:${resends}`,to,trackOtpMessage({record:approval.record_snapshot||record,siteName,otp,requestedBy:requester.name||requester.actor,minutes:LEAVE_OTP_MINUTES}),additionBot(),trackMarkup(approval.id,stage,true));
+        if(record.kind==='employees')await queueTelegram(db,`employee-otp:${approval.id}:${resends}`,to,trackOtpMessage({record:approval.record_snapshot||record,siteName,otp,requestedBy:requester.name||requester.actor,minutes:LEAVE_OTP_MINUTES}),additionBot(),trackMarkup(approval.id,stage));
         else await queueTelegram(db,`leave-otp:${approval.id}:${resends}`,to,leaveOtpMessage({record,siteName,otp,requestedBy:requester.name||requester.actor}),leaveBot());
         await audit(db,requester.actor,record.kind==='employees'?'EMPLOYEE_OTP_REQUEST':'LEAVE_OTP_REQUEST',record.kind,record.id,{stage:stage+1,sentTo:to});
         return {status:'OTP_SENT',expires,sentTo:to};
@@ -445,7 +445,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         if(!trusted)await locationAccess(db,profile,record.kind,record.data,record.id);
         if(trusted&&(record.kind!=='employees'||Number(input.stage)!==approval.stage))throw problem('This request has already moved on.',409);
         const flow=approval.record_snapshot?.telegramFlow;
-        if(input.decision==='APPROVED'&&approvalSteps(approval)[approval.stage]?.otp)throw problem(`Directors approve ${record.kind==='employees'?'a new employee':'leave'} by OTP: tell the OTP to Regional HR, who enters it in HRMS. To refuse, reject with a reason.`,409);
+        /* Owner, 21 Nov 2026: at the Directors' step a Director may approve directly; the OTP through Regional HR is the backup. */
         let handoverActor='';
         if(flow&&input.decision==='APPROVED'&&next.state==='APPROVED'){
           if(!uuid(input.chargeEmployeeId)||input.chargeEmployeeId===record.data.employeeId)throw problem('Select another active employee to take charge',422);
@@ -482,7 +482,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         }
         await audit(db,profile.actor,input.decision,record.kind,record.id,{stage:approval.stage+1,comments,...(handoverActor?{chargeEmployeeId:record.data.chargeEmployeeId}:{})});
         if(record.kind==='employees'&&isEmployeeTrack(approvalSteps(approval))){
-          /* Site HR → Regional HR → Directors (OTP): Regional HR's approval sends the Directors their OTP at once. */
+          /* Site HR → Regional HR → Directors: Regional HR's approval sends the Directors Approve / Reject buttons with the backup OTP. */
           const steps=approvalSteps(approval),siteName=await siteNameOf(db,approval,record),decidedAt=new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});
           if(state==='PENDING'&&steps[stage]?.otp){
             const after={...approval,stage,history};

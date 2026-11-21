@@ -304,14 +304,17 @@ export function leaveMessage(record,status,details={}){
  lines.push('',`📊 Status: ${status}`);
  return lines.join('\n');
 }
-/* Leave route (HOD → Directors by OTP → Regional HR): tell only the people of the step the leave now waits on, never the sender.
-   At the Directors' step the OTP is requested by Regional HR, so Regional HR is told to request it. */
+/* Leave route (HOD → Directors → Regional HR): tell only the people of the step the leave now waits on, never the sender.
+   At the Directors' step (owner, 21 Nov 2026) the Directors are asked to approve in HRMS, and Regional HR is told it can request
+   the Directors' OTP as the backup when they are out of station. */
 export async function queueLeaveStep(db,{key,record,steps,stage,siteName,sender,decision={}}){
  const step=steps[stage];if(!step)return [];
  const roleOf=s=>String(s?.label||'').replace(/ — .*/,'');
  if(step.otp){
-  const to=(steps[stage+1]?.approvers||[]).filter(notSender(sender));
-  await queueTelegram(db,key,to,leaveOtpNeededMessage({record,siteName,hod:decision.name||decision.actor}),leaveBot());return to;
+  const directors=step.approvers.filter(notSender(sender));
+  await queueTelegram(db,key+':directors',directors,leaveMessage(record,'PENDING',{siteName,firstRole:roleOf(steps[0]),stageRole:roleOf(steps[stage-1]),nextRole:'Directors (approve in HRMS › Approvals)',...decision}),leaveBot());
+  const to=(steps[stage+1]?.approvers||[]).filter(notSender(sender)).filter(a=>!directors.includes(a));
+  await queueTelegram(db,key,to,leaveOtpNeededMessage({record,siteName,hod:decision.name||decision.actor}),leaveBot());return [...directors,...to];
  }
  const to=step.approvers.filter(notSender(sender));
  await queueTelegram(db,key,to,leaveMessage(record,stage?'PENDING':'SUBMITTED',{siteName,firstRole:roleOf(steps[0]),stageRole:roleOf(steps[stage-1]),nextRole:roleOf(step),...decision}),leaveBot());

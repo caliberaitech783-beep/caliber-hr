@@ -1,12 +1,12 @@
 /* CALIBER Employee Track bot (@ its TELEGRAM_EMPLOYEE_TRACK_BOT_USERNAME), owner, 21 Nov 2026.
    One route for every newly added employee (site staff, drivers / operators, Nagpur office and Chandrapur HO):
-     Site HR initiates the form → Regional HR → Directors (approve by OTP) → the employee becomes Active.
+     Site HR initiates the form → Regional HR → Directors → the employee becomes Active.
    - Site HR is the site's "HR Manager" step in Approval Master › Hierarchy (office HR for the two offices).
      When that Site HR submits, the submission is their step. Anyone else who submits still needs Site HR's approval.
    - Regional HR is fixed per region (site-staff-routing.mjs); for the offices it is that office's HR Manager.
-   - Directors approve by OTP only: when Regional HR approves, the OTP goes to the Directors on this bot;
-     any one Director tells it to Regional HR, who enters it in HRMS. 15 minutes, single use, five wrong tries.
-     Directors can still reject (HRMS or the Reject button on the bot).
+   - Directors approve two ways (owner, 21 Nov 2026): when Regional HR approves, the Directors get the form on this bot with
+     Approve / Reject and an OTP. Any one Director taps Approve (or approves in HRMS). The OTP is the backup when they are out
+     of station: a Director tells it to Regional HR, who enters it in HRMS. 15 minutes, single use, five wrong tries.
    - Each message goes only to the people of the next step, never to the sender; Site HR hears the final result. */
 import {SITE_HR_LABEL,REGIONAL_HR_LABEL,SITE_STAFF_DIRECTORS,siteStaffRegionalHr,roleTitle} from './site-staff-routing.mjs';
 import {OFFICE_SITES} from './office-staff-routing.mjs';
@@ -55,22 +55,22 @@ export function trackApprovalMessage({record,siteName,steps,stage,requestedBy,pr
  const step=steps[stage]||{};
  return ['🆕 NEW EMPLOYEE — APPROVAL REQUIRED',`Step ${stage+1} of ${steps.length}: ${roleTitle(step.label)}`,'',...head(record,siteName),`✍️ Initiated by: ${clean(requestedBy)}`,
   ...(previous?[`✅ Approved by: ${previous}`]:[]),'',routeLine(steps),
-  steps[stage+1]?.otp?"After you approve, the Directors get an OTP on this bot. Ask any one Director for it and enter it in HRMS › Approvals: that makes the employee Active.":'',
+  steps[stage+1]?.otp?"After you approve, the Directors get Approve / Reject on this bot. If no Director can approve (out of station), ask one for the OTP sent with it and enter it in HRMS › Approvals.":'',
   'Tap Approve or Reject below, or open Caliber HR.'].filter(line=>line!=='').join('\n');
 }
 export function trackOtpMessage({record,siteName,otp,requestedBy,minutes}){
  return ["🔐 OTP FOR NEW EMPLOYEE — DIRECTORS",'',...head(record,siteName),`✅ Approved by Regional HR: ${clean(requestedBy)}`,'',
-  `OTP: ${otp} (valid ${minutes} min)`,'Tell this OTP to Regional HR to approve: the employee becomes Active. To refuse, tap Reject below or reject in HRMS.'].join('\n');
+  `OTP: ${otp} (valid ${minutes} min)`,'Tap Approve below (or approve in HRMS) to make the employee Active. Out of station? Tell this OTP to Regional HR instead, who enters it. To refuse, tap Reject.'].join('\n');
 }
 export function trackResultMessage({record,siteName,state,actor,comments,steps,at}){
  const approved=state==='APPROVED',office=(steps||[]).find(step=>step?.office)?.office;
  const lines=[approved?'✅ NEW EMPLOYEE APPROVED — NOW ACTIVE':'❌ NEW EMPLOYEE REJECTED','',...head(record,siteName),
-  `${approved?"Directors' OTP entered by":'Rejected by'}: ${clean(actor)}`];
+  `${approved?'Final approval by':'Rejected by'}: ${clean(actor)}`];
  if(!approved)lines.push(`📝 Reason: ${clean(comments)}`,`The form goes back to ${office?office+' HR':'Site HR'} for correction.`);
  lines.push(`📅 ${clean(at)}`);
  return lines.join('\n');
 }
-/* Approve / Reject at an ordinary step; at the Directors' OTP step only Reject (approval is by OTP). */
+/* Approve / Reject buttons; since 21 Nov 2026 the Directors' step has both too (otp=true keeps only Reject, no longer used). */
 export const trackMarkup=(approvalId,stage,otp=false)=>({inline_keyboard:[
  otp?[{text:'❌ Reject',callback_data:`ea:${approvalId}:${stage}:r`}]
   :[{text:'✅ Approve',callback_data:`ea:${approvalId}:${stage}:a`},{text:'❌ Reject',callback_data:`ea:${approvalId}:${stage}:r`}],
