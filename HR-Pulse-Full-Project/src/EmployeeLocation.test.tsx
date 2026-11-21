@@ -372,6 +372,7 @@ describe('Employee Master tabs',()=>{
   expect(mobile.getAttribute('minlength')).toBe('10');
   expect(mobile.getAttribute('maxlength')).toBe('10');
   expect((screen.getByLabelText(/Employment Type/) as HTMLSelectElement).required).toBe(true);
+  expect(Array.from((screen.getByLabelText(/Employment Type/) as HTMLSelectElement).options,option=>option.textContent)).toEqual(['Select','Permanent','Fixed-term','Contract','Trainee','Temporary','Probation']);
   expect(screen.getByRole('button',{name:'Employee Category'}).getAttribute('aria-required')).toBe('true');
   const employeeCategory=screen.getByRole('button',{name:'Employee Category'});
   fireEvent.click(employeeCategory);
