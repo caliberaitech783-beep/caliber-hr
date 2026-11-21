@@ -126,7 +126,7 @@ type ApprovalStep={stage:number;label:string;approvers:string[];otp?:boolean;otp
 
 const stepsFor=(a:Approval):ApprovalStep[]=>a.approval_steps?.length?a.approval_steps:a.approvers.map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
 
-type Approval={telegram_flow?:boolean;approval_steps?:ApprovalStep[];designation?:string;id:string;code:string;name:string;kind:string;data:Record<string,unknown>;state:string;stage:number;approvers:string[];requested_by:string;version:number;history:{actor:string;stage:number;decision:string;comments:string;at:string}[]};
+type Approval={telegram_flow?:boolean;can_permanent_delete?:boolean;approval_steps?:ApprovalStep[];designation?:string;id:string;code:string;name:string;kind:string;data:Record<string,unknown>;state:string;stage:number;approvers:string[];requested_by:string;version:number;history:{actor:string;stage:number;decision:string;comments:string;at:string}[]};
 
 function ReviewFields({data}:{data:Record<string,unknown>}){
 
@@ -140,7 +140,7 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
 
   const[localReviewChanged,setLocalReviewChanged]=useState(false);
   const[chargeEmployeeId,setChargeEmployeeId]=useState(''),[chargeEmployees,setChargeEmployees]=useState<Lookup[]>([]);
-  const[rows,setRows]=useState<Approval[]>([]),[error,setError]=useState(''),[loading,setLoading]=useState(true),[selected,setSelected]=useState<Approval|null>(null),[letter,setLetter]=useState<{employee:Approval;kind:EmployeeLetterKind;serial:number}|null>(null),[comments,setComments]=useState(''),[busy,setBusy]=useState(false);
+  const[rows,setRows]=useState<Approval[]>([]),[error,setError]=useState(''),[loading,setLoading]=useState(true),[selected,setSelected]=useState<Approval|null>(null),[deleteEmployee,setDeleteEmployee]=useState<Approval|null>(null),[deleteText,setDeleteText]=useState(''),[letter,setLetter]=useState<{employee:Approval;kind:EmployeeLetterKind;serial:number}|null>(null),[comments,setComments]=useState(''),[busy,setBusy]=useState(false);
 
   async function load(){setLoading(true);try{const result=await api<Approval[]>(grant,kind==='employees'?(completed?'approvals/completed-employees':completed===false?'approvals/employees':'approvals'):'approvals');setRows(result.filter(row=>(!kind||row.kind===kind)&&(completed===undefined||(completed?row.state==='APPROVED':row.state!=='APPROVED'))));setError('');}catch(e){setError((e as Error).message);}finally{setLoading(false);}}
 
@@ -159,11 +159,13 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
   async function verifyOtp(){if(!selected)return;setBusy(true);setError('');try{await api(grant,`approvals/${selected.id}/otp-verify`,'POST',{otp});setSelected(null);setOtp('');notice(newEmployeeOtp?"Directors' approval recorded. The employee is now Active.":"Directors' approval recorded. The leave now waits for your final approval.");await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 
   async function decide(decision:string){if(!selected)return;setBusy(true);try{const r=await api<{otpSentTo?:string[]}>(grant,`approvals/${selected.id}/decision`,'POST',{version:selected.version,decision,comments,chargeEmployeeId});setSelected(null);setComments('');notice(r?.otpSentTo?`Approved. The Directors got the OTP on Telegram (${r.otpSentTo.join(' / ')||'none linked'}). Open this form again and enter the OTP a Director tells you.`:'Approval decision saved');await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  async function permanentlyDeleteEmployee(){if(!deleteEmployee||deleteText!=='DELETE')return;setBusy(true);setError('');try{await api(grant,`approvals/completed-employees/${deleteEmployee.id}/permanent-delete`,'POST',{});notice(`${deleteEmployee.code} · ${deleteEmployee.name} deleted permanently`);setDeleteEmployee(null);setDeleteText('');await load();}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
 
   const canDecide=!!selected&&!(selected.kind==='employees'&&localReviewChanged)&&stepsFor(selected)[selected.stage]?.approvers.includes(actor)&&selected.requested_by!==actor;
 
   const employeeApprovals=kind==='employees';
   const transferApprovals=kind==='employeeTransfers';
+  const canPermanentDelete=!!completed&&rows.some(row=>row.can_permanent_delete);
   return <section className={employeeApprovals?'data-card employee-approvals':'data-card'}>
     <div className="data-heading">
       <div><h2>{completed?'Completed employee forms':employeeApprovals?'Employee Verify':transferApprovals?'Transfer approvals':'Your approval inbox'}</h2><p>{completed&&kind==='employees'?'Every fully approved employee in your sites, whoever submitted or approved the form.':'Requests assigned to you or submitted by you. Latest 200 requests.'}</p></div>
@@ -175,7 +177,7 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
         <table className={completed?'approval-table completed-approval-table':'approval-table'}>
           <thead><tr>
             <th scope="col">Record</th><th scope="col">Module</th><th scope="col">Status</th><th scope="col">Stage / approver</th><th scope="col">{transferApprovals?'To designation':'Designation'}</th><th scope="col">Action</th>
-            {completed&&<><th scope="col">Appointment Letter</th><th scope="col">Confirmation Letter</th></>}
+            {completed&&<><th scope="col">Appointment Letter</th><th scope="col">Confirmation Letter</th>{canPermanentDelete&&<th scope="col">Delete Permanently</th>}</>}
           </tr></thead>
           <tbody>{rows.map((row,index)=>{
             const steps=stepsFor(row);
@@ -190,6 +192,7 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
               {completed&&<>
                 <td><button onClick={()=>setLetter({employee:row,kind:'appointment',serial:rows.length-index})}>View Appointment Letter</button></td>
                 <td></td>
+                {canPermanentDelete&&<td>{row.can_permanent_delete&&<button className="danger" onClick={()=>{setDeleteText('');setDeleteEmployee(row);}}>Delete Permanently</button>}</td>}
               </>}
             </tr>;
           })}</tbody>
@@ -223,6 +226,7 @@ export function Approvals({grant,actor,notice,kind,completed}:{grant:string;acto
         <div className="form-actions">{canDecide&&<button disabled={busy||!comments.trim()} onClick={()=>void decide('REJECTED')}>Reject</button>}{(!otpStep||canDecide)&&<button className="primary" disabled={busy||!canDecide} onClick={()=>void decide('APPROVED')}>{busy?'Saving…':approvalActionLabel(selected)}</button>}</div>
       </div>}
     </section></div>}
+    {deleteEmployee&&<div className="modal-backdrop"><section className="modal small-modal" role="dialog" aria-modal="true" aria-labelledby="completed-delete-title"><h2 id="completed-delete-title">Delete employee permanently?</h2><p><b>{deleteEmployee.code} · {deleteEmployee.name}</b></p><p>This permanently deletes only this employee’s database entries and cannot be undone.</p><label>Type DELETE to confirm<input aria-label="Type DELETE to confirm" value={deleteText} onChange={event=>setDeleteText(event.target.value)}/></label><div className="form-actions"><button disabled={busy} onClick={()=>setDeleteEmployee(null)}>Cancel</button><button className="danger" disabled={busy||deleteText!=='DELETE'} onClick={()=>void permanentlyDeleteEmployee()}>{busy?'Deleting…':'Delete Permanently'}</button></div></section></div>}
     {letter&&<EmployeeLetter employee={letter.employee} kind={letter.kind} serial={letter.serial} close={()=>setLetter(null)}/>}
   </section>;
 

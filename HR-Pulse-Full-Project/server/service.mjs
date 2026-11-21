@@ -408,7 +408,24 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     /* Completed Form: every fully approved employee in the user's Pulse sites, whoever submitted or approved it
        (owner, 21 Nov 2026). */
     async completedEmployees(profile) {
-      return approvalRows(profile,{mine:false,filter:"r.kind='employees' AND a.state='APPROVED'",limit:2000});
+      const rows=await approvalRows(profile,{mine:false,filter:"r.kind='employees' AND a.state='APPROVED'",limit:2000});
+      const canPermanentDelete=assignedSites(profile)===null;
+      return rows.map(row=>({...row,can_permanent_delete:canPermanentDelete}));
+    },
+    async permanentDeleteCompletedEmployee(profile,id) {
+      if(!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
+      if(assignedSites(profile)!==null)throw problem('Permanent employee deletion requires access to all sites',403);
+      if(!uuid(id))throw problem('Invalid employee',400);
+      return transaction(async db=>{
+        const row=(await db.query("SELECT r.*,a.state AS approval_state FROM hr_records r JOIN hr_approvals a ON a.record_id=r.id WHERE r.id=$1 AND r.kind='employees' FOR UPDATE",[id])).rows[0];
+        if(!row||row.approval_state!=='APPROVED')throw problem('Completed employee not found',404);
+        await audit(db,profile.actor,'PERMANENT_DELETE','employees',row.id,{code:row.code,name:row.name});
+        await db.query('DELETE FROM hr_salary_structure WHERE employee_id=$1',[row.id]);
+        await db.query('DELETE FROM hr_payroll_period WHERE employee_id=$1',[row.id]);
+        await db.query('DELETE FROM hr_approvals WHERE record_id=$1',[row.id]);
+        await db.query("DELETE FROM hr_records WHERE id=$1 AND kind='employees'",[row.id]);
+        return {deleted:1,id:row.id};
+      });
     },
     /* Leave at the Directors' step: Regional HR requests the OTP (sent to the Directors on the Leave Request bot),
        a Director tells it to Regional HR, who enters it here. 15 minutes, single use, five wrong tries. */

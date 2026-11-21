@@ -20,7 +20,7 @@ const listQuery=calls=>calls.find(call=>call.sql.startsWith('SELECT a.*'));
 
 test('Completed Form lists every approved employee in the user sites, not only their own',async()=>{
  const {service,calls}=fixture();
- assert.deepEqual(await service.completedEmployees(profile),[{id:'a1',kind:'employees',state:'APPROVED'}]);
+ assert.deepEqual(await service.completedEmployees(profile),[{id:'a1',kind:'employees',state:'APPROVED',can_permanent_delete:false}]);
  const {sql,args}=listQuery(calls);
  assert.match(sql,/r\.kind='employees' AND a\.state='APPROVED'/);
  assert.doesNotMatch(sql,/a\.approvers \?|requested_by=/);
@@ -50,4 +50,20 @@ test('every employee approval list still needs Approval Management',async()=>{
  const {service}=fixture();
  const noApprovals={...profile,permissions:{...profile.permissions,hrDesktopAccess:['Employee Master']}};
  for(const list of ['approvals','employeeApprovals','completedEmployees'])await assert.rejects(service[list](noApprovals),{status:403});
+});
+
+test('all-sites admin permanently deletes only the selected completed employee',async()=>{
+ const id='11111111-1111-4111-8111-111111111111',queries=[];
+ const db={async query(sql,args=[]){queries.push({sql,args});if(sql.startsWith('SELECT r.*,a.state'))return {rows:[{id,code:'CMLL001',name:'Selected Employee',approval_state:'APPROVED'}],rowCount:1};return {rows:[],rowCount:1};},release(){}};
+ const service=createService({connect:async()=>db});
+ const admin={actor:'admin',permissions:{application:'HR',site:'All Sites',hrDesktopAccess:['Approval Management','Employee Master']}};
+ assert.deepEqual(await service.permanentDeleteCompletedEmployee(admin,id),{deleted:1,id});
+ assert.deepEqual(queries.find(call=>call.sql.startsWith("DELETE FROM hr_records WHERE id="))?.args,[id]);
+ assert.ok(queries.some(call=>call.sql.startsWith('DELETE FROM hr_approvals WHERE record_id=')));
+ assert.equal(queries.at(-1).sql,'COMMIT');
+});
+
+test('site-restricted users cannot permanently delete completed employees',async()=>{
+ const service=createService({connect:async()=>{throw Error('must not connect');}});
+ await assert.rejects(service.permanentDeleteCompletedEmployee(profile,'11111111-1111-4111-8111-111111111111'),{status:403});
 });
