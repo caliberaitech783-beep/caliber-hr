@@ -93,6 +93,11 @@ it('opens a completed operator trial at step two and saves it on the sixth step 
  fireEvent.change(screen.getByLabelText(/^Mess Plan/),{target:{value:'NO'}});
  fireEvent.input(screen.getByLabelText('Date of Birth 1'),{target:{value:'15032000'}});
  for(let index=0;index<4;index++){
+  const relationship=screen.queryByLabelText('Relationship 1');
+  if(relationship){
+   fireEvent.change(screen.getByLabelText('Family Member Name 1'),{target:{value:'Sample Wife'}});
+   fireEvent.change(relationship,{target:{value:'Wife'}});
+  }
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'Save & Continue'}));});
   expect(screen.queryByRole('alert')?.textContent).toBeUndefined();
  }
