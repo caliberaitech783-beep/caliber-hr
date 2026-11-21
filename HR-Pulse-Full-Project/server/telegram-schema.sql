@@ -15,3 +15,5 @@ ALTER TABLE hr_telegram_accounts ADD COLUMN IF NOT EXISTS trial_status_connected
 CREATE TABLE IF NOT EXISTS hr_telegram_trial_status_updates(id bigint PRIMARY KEY);
 ALTER TABLE hr_telegram_accounts ADD COLUMN IF NOT EXISTS leave_request_connected boolean NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS hr_telegram_leave_request_updates(id bigint PRIMARY KEY);
+ALTER TABLE hr_telegram_accounts ADD COLUMN IF NOT EXISTS employee_track_connected boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS hr_telegram_employee_track_updates(id bigint PRIMARY KEY);

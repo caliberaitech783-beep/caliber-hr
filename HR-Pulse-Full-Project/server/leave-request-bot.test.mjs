@@ -67,7 +67,7 @@ test('a personal join link connects that login on the Leave Request bot',async()
    if(s.startsWith('SELECT actor'))return {rows:[]};return {rows:[],rowCount:1};}};
   await createTelegram({connect:async()=>db}).telegramWebhook('lr-secret',{update_id:9,message:{chat:{type:'private',id:321},from:{id:321},text:'/start '+'d'.repeat(32)}},'leave-request');
   const binding=writes.find(([s])=>s.startsWith('INSERT INTO hr_telegram_accounts'));
-  assert.deepEqual(binding[1],['ravi.k','321',false,false,false,false,false,true]);
+  assert.deepEqual(binding[1],['ravi.k','321',false,false,false,false,false,true,false]);
   assert.ok(writes.some(([s,v])=>s.startsWith('UPDATE hr_telegram_outbox')&&v[1]==='leave-request'),'waiting leave messages are retried at once');
   assert.ok(writes.some(([s,v])=>s.startsWith("DELETE FROM hr_telegram_link_tokens WHERE actor=$1 AND bot='leave-request'")&&v[0]==='ravi.k'),'once joined, the other links of the person are cleared');
   assert.ok(writes.some(([s,v])=>s.startsWith('INSERT INTO hr_telegram_outbox')&&v[3]==='leave-request'&&/Connected to CALIBER Leave Request/.test(v[2])));

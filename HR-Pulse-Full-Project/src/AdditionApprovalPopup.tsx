@@ -5,13 +5,15 @@ import './addition-popup.css';
 /* Owner, 20 Nov 2026: whoever's turn it is on an employee addition (Site HR → PM / HOD → Office HR → Regional HR →
    Directors) gets this pop-up when they open Caliber HR, can Approve / Reject here, and is offered the
    @NagpurEmployeeAdditionBot link so the same request reaches them on Telegram with buttons. */
-type Step={stage:number;label:string;approvers:string[]};
+type Step={stage:number;label:string;approvers:string[];otp?:boolean;otpBy?:string[]};
 export type AdditionApproval={id:string;code:string;name:string;kind:string;state:string;stage:number;version:number;approvers:string[];requested_by:string;approval_steps?:Step[];designation?:string;data:Record<string,unknown>};
 type BotState={connected:boolean;configured:boolean;botUsername:string;issue?:string};
 const POLL_MS=120_000;
-export const roleTitle=(label='')=>label==='HR Manager'?'Site HR':label==='Project Manager'?'PM / HOD':/^Office HR/.test(label)?'Office HR':label==='HR Manager — either one'?'Regional HR':label==='Final approval — any one'?'Directors (final)':label.replace(/ — .*/,'');
+export const roleTitle=(label='')=>label==='HR Manager'?'Site HR':label==='Project Manager'?'PM / HOD':/^Office HR/.test(label)?'Office HR':label==='HR Manager — either one'?'Regional HR':label==='Final approval — any one'?'Directors (final)':/^Directors — approve by OTP/.test(label)?'Directors (OTP)':label.replace(/ — .*/,'');
 const stepsOf=(row:AdditionApproval):Step[]=>row.approval_steps?.length?row.approval_steps:row.approvers.map(actor=>({stage:1,label:'Approval',approvers:[actor]}));
-export const myTurn=(row:AdditionApproval,actor:string)=>row.kind==='employees'&&row.state==='PENDING'&&row.requested_by!==actor&&!!stepsOf(row)[row.stage]?.approvers.includes(actor);
+/* At the Directors' OTP step it is Regional HR's turn (they enter the OTP); a Director can only reject there. */
+export const otpTurn=(row:AdditionApproval,actor:string)=>row.kind==='employees'&&row.state==='PENDING'&&!!stepsOf(row)[row.stage]?.otp&&!!stepsOf(row)[row.stage]?.otpBy?.includes(actor);
+export const myTurn=(row:AdditionApproval,actor:string)=>otpTurn(row,actor)||row.kind==='employees'&&row.state==='PENDING'&&row.requested_by!==actor&&!!stepsOf(row)[row.stage]?.approvers.includes(actor);
 const site=(row:AdditionApproval)=>String(row.data?.siteId||'').replace(/^[^·]*·\s*/,'')||'—';
 const seenKey='hr-addition-popup-seen';
 const readSeen=():string[]=>{try{return JSON.parse(sessionStorage.getItem(seenKey)||'[]');}catch{return [];}};
@@ -19,6 +21,7 @@ const writeSeen=(ids:string[])=>{try{sessionStorage.setItem(seenKey,JSON.stringi
 
 export default function AdditionApprovalPopup({grant,actor,onOpenApprovals}:{grant:string;actor:string;onOpenApprovals?:()=>void}){
  const[rows,setRows]=useState<AdditionApproval[]>([]),[open,setOpen]=useState(false),[bot,setBot]=useState<BotState|null>(null);
+ const[otp,setOtp]=useState<Record<string,string>>({});
  const[reason,setReason]=useState<Record<string,string>>({}),[rejecting,setRejecting]=useState(''),[busy,setBusy]=useState(''),[error,setError]=useState(''),[done,setDone]=useState('');
  async function load(){
   if(!actor)return;
@@ -36,10 +39,18 @@ export default function AdditionApprovalPopup({grant,actor,onOpenApprovals}:{gra
   if(decision==='REJECTED'&&!comments){setRejecting(row.id);setError('Write the reason for rejecting, then press Reject again.');return;}
   setBusy(row.id);setError('');
   try{
-   await api(grant,`approvals/${row.id}/decision`,'POST',{version:row.version,decision,comments});
+   const r=await api<{otpSentTo?:string[]}>(grant,`approvals/${row.id}/decision`,'POST',{version:row.version,decision,comments});
    const steps=stepsOf(row),next=steps[row.stage+1];
-   setDone(decision==='REJECTED'?`${row.name}: rejected, sent back to Site HR.`:next?`${row.name}: approved, sent to ${roleTitle(next.label)}.`:`${row.name}: final approval given, employee is now Active.`);
+   setDone(decision==='REJECTED'?`${row.name}: rejected, sent back to Site HR.`:r?.otpSentTo?`${row.name}: approved. The Directors got the OTP on Telegram; ask one of them and enter it below.`:next?`${row.name}: approved, sent to ${roleTitle(next.label)}.`:`${row.name}: final approval given, employee is now Active.`);
    setRejecting('');await load();
+  }catch(e){setError((e as Error).message);}finally{setBusy('');}
+ }
+ async function sendOtp(row:AdditionApproval,verify:boolean){
+  setBusy(row.id);setError('');
+  try{
+   if(verify){await api(grant,`approvals/${row.id}/otp-verify`,'POST',{otp:otp[row.id]||''});setDone(`${row.name}: Directors' OTP accepted, employee is now Active.`);}
+   else{const r=await api<{sentTo:string[]}>(grant,`approvals/${row.id}/otp`,'POST',{});setDone(`${row.name}: new OTP sent to the Directors (${r.sentTo.join(' / ')||'none linked'}).`);}
+   await load();
   }catch(e){setError((e as Error).message);}finally{setBusy('');}
  }
  async function connect(){try{const r=await api<{url:string}>(grant,'telegram/addition-connect','POST',{});window.open(r.url,'_blank','noopener');}catch(e){setError((e as Error).message);}}
@@ -54,9 +65,15 @@ export default function AdditionApprovalPopup({grant,actor,onOpenApprovals}:{gra
    <header><strong>{row.name}</strong><span>{row.code}</span></header>
    <p>{site(row)}{row.designation?` · ${row.designation}`:''} · initiated by {row.requested_by}</p>
    <ol className="addition-route" aria-label="Approval route">{steps.map((step,index)=><li key={index} className={index<row.stage?'done':index===row.stage?'current':''}>{roleTitle(step.label)}</li>)}</ol>
-   <p className="addition-popup-step">Step {row.stage+1} of {steps.length}: <b>{roleTitle(steps[row.stage]?.label)}</b> (you){row.stage+1===steps.length?' — final approval makes the employee Active':''}</p>
+   {otpTurn(row,actor)?<>
+    <p className="addition-popup-step">Step {row.stage+1} of {steps.length}: <b>Directors (OTP)</b> — ask any one Director for the OTP sent to them on Telegram and enter it: the employee becomes Active.</p>
+    <div className="addition-popup-actions"><label>OTP from a Director<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp[row.id]||''} onChange={e=>{const v=e.target.value.replace(/\D/g,'');setOtp(o=>({...o,[row.id]:v}));}}/></label>
+     <button className="primary" disabled={!!busy||(otp[row.id]||'').length!==6} onClick={()=>void sendOtp(row,true)}>{busy===row.id?'Checking…':'Enter OTP'}</button><button disabled={!!busy} onClick={()=>void sendOtp(row,false)}>Resend OTP</button></div>
+   </>:<>
+   <p className="addition-popup-step">Step {row.stage+1} of {steps.length}: <b>{roleTitle(steps[row.stage]?.label)}</b> (you){row.stage+1===steps.length?' — final approval makes the employee Active':steps[row.stage+1]?.otp?" — your approval sends the Directors' OTP":''}</p>
    {rejecting===row.id&&<label>Reason for rejecting<textarea value={reason[row.id]||''} maxLength={2000} onChange={e=>setReason(r=>({...r,[row.id]:e.target.value}))}/></label>}
-   <div className="addition-popup-actions"><button className="primary" disabled={!!busy} onClick={()=>void decide(row,'APPROVED')}>{busy===row.id?'Saving…':'✅ Approve'}</button><button disabled={!!busy} onClick={()=>rejecting===row.id?void decide(row,'REJECTED'):(setRejecting(row.id),setError(''))}>❌ Reject</button></div>
+   <div className="addition-popup-actions">{!steps[row.stage]?.otp&&<button className="primary" disabled={!!busy} onClick={()=>void decide(row,'APPROVED')}>{busy===row.id?'Saving…':'✅ Approve'}</button>}<button disabled={!!busy} onClick={()=>rejecting===row.id?void decide(row,'REJECTED'):(setRejecting(row.id),setError(''))}>❌ Reject</button></div>
+   </>}
   </article>;})}
   <footer className="addition-popup-footer">
    {bot?.configured&&!bot.connected&&<button onClick={()=>void connect()}>Get these on Telegram (@{bot.botUsername})</button>}

@@ -52,7 +52,7 @@ test('a personal Trial Status link connects that login on the Trial Status bot',
    if(s.startsWith('SELECT actor'))return {rows:[]};return {rows:[],rowCount:1};}};
   await createTelegram({connect:async()=>db}).telegramWebhook('ts-secret',{update_id:7,message:{chat:{type:'private',id:789},from:{id:789},text:'/start '+'c'.repeat(32)}},'trial-status');
   const binding=writes.find(([s])=>s.startsWith('INSERT INTO hr_telegram_accounts'));
-  assert.deepEqual(binding[1],['jayanttrainer','789',false,false,false,false,true,false]);
+  assert.deepEqual(binding[1],['jayanttrainer','789',false,false,false,false,true,false,false]);
   assert.ok(writes.some(([s,v])=>s.startsWith('UPDATE hr_telegram_outbox')&&v[1]==='trial-status'),'waiting trial messages are retried at once');
   assert.ok(!writes.some(([s])=>s.startsWith('INSERT INTO hr_telegram_updates')),'Trial Status updates are kept apart from the other bots');
  });
