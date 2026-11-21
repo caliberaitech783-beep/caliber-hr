@@ -55,14 +55,14 @@ export const LEAVE_REQUEST_WELCOME='Welcome to CALIBER Leave Request. Ask HR for
 
 const fmt=value=>value?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'Asia/Kolkata'}).format(new Date(value)):'–';
 const leaveLines=(record,siteName)=>[`🏢 Site: ${siteName||'–'}`,`🆔 Request ID: ${record.code}`,`👤 Employee: ${record.data?.employeeName||record.name||'–'}`,`📅 Leave: ${fmt(record.data?.fromDate)} to ${fmt(record.data?.toDate)} (${record.data?.days??'–'} day${Number(record.data?.days)===1?'':'s'})`,`📝 Reason: ${record.data?.name||record.name||'–'}`];
-/* To Regional HR when the HOD approves: request the Directors' OTP. */
+/* To Regional HR when the HOD approves: the Directors approve in HRMS; the OTP is the backup when they are out of station. */
 export function leaveOtpNeededMessage({record,siteName,hod}){
  return ['🔔 DIRECTORS\' OTP NEEDED – LEAVE REQUEST','',...leaveLines(record,siteName),`✅ Approved by HOD: ${hod||'–'}`,'',
-  'Open HRMS › Approvals, open this leave and press "Request OTP from Directors". A Director gets the OTP on this bot; ask for it and enter it in HRMS, then give final approval.'].join('\n');
+  'The Directors have been asked to approve it in HRMS › Approvals. If no Director can (out of station), open this leave in HRMS › Approvals and press "Request OTP from Directors": a Director gets the OTP on this bot; ask for it and enter it, then give final approval.'].join('\n');
 }
 /* To the Directors when Regional HR requests the OTP. */
 export function leaveOtpMessage({record,siteName,otp,requestedBy}){
  return ['🔐 OTP FOR LEAVE APPROVAL – DIRECTORS','',...leaveLines(record,siteName),`Requested by: ${requestedBy||'Regional HR'} (Regional HR)`,'',
-  `OTP: ${otp} (valid ${LEAVE_OTP_MINUTES} min)`,'Tell this OTP to Regional HR to approve the leave. To refuse, decline it in HRMS › Approvals.'].join('\n');
+  `OTP: ${otp} (valid ${LEAVE_OTP_MINUTES} min)`,'Approve it yourself in HRMS › Approvals, or tell this OTP to Regional HR to approve it. To refuse, decline it in HRMS › Approvals.'].join('\n');
 }
 export const LEAVE_REQUEST_ALREADY="You're already connected to CALIBER Leave Request. Your leave status, and leave waiting for your approval, will arrive here.";

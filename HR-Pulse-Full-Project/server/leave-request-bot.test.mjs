@@ -91,9 +91,13 @@ test('each step is told only to the next people: HOD on submit, Regional HR to r
   assert.match(out[0].message,/LEAVE REQUEST SUBMITTED[\s\S]*Awaiting HOD \(concerned\) approval/);
   assert.equal(out[0].bot,'leave-request');
   out.length=0;
-  assert.deepEqual(await queueLeaveStep(db,{key:'a:1',record,steps,stage:1,siteName:'Jayant OB',sender:'ops.hod',decision:{actor:'ops.hod',name:'Ops Head',at:'2026-11-20T10:00:00Z'}}),['vinodpinjarkar'],'the Directors get nothing until the OTP is requested');
-  assert.match(out[0].message,/DIRECTORS' OTP NEEDED[\s\S]*Approved by HOD: Ops Head[\s\S]*Request OTP from Directors/);
-  assert.match(leaveOtpMessage({record,siteName:'Jayant OB',otp:'123456',requestedBy:'Vinod'}),/OTP: 123456 \(valid 15 min\)[\s\S]*Tell this OTP to Regional HR/);
+  /* Owner, 21 Nov 2026: the Directors are asked to approve in HRMS; Regional HR is told about the OTP backup. */
+  assert.deepEqual((await queueLeaveStep(db,{key:'a:1',record,steps,stage:1,siteName:'Jayant OB',sender:'ops.hod',decision:{actor:'ops.hod',name:'Ops Head',at:'2026-11-20T10:00:00Z'}})).sort(),['manishchadda','mohitchadda','rahulchadda','vinodpinjarkar']);
+  const toDirectors=out.filter(o=>o.actor!=='vinodpinjarkar'),toRhr=out.filter(o=>o.actor==='vinodpinjarkar');
+  assert.equal(toDirectors.length,3);
+  assert.match(toDirectors[0].message,/Awaiting Directors \(approve in HRMS › Approvals\) approval/);
+  assert.match(toRhr[0].message,/DIRECTORS' OTP NEEDED[\s\S]*Approved by HOD: Ops Head[\s\S]*out of station[\s\S]*Request OTP from Directors/);
+  assert.match(leaveOtpMessage({record,siteName:'Jayant OB',otp:'123456',requestedBy:'Vinod'}),/OTP: 123456 \(valid 15 min\)[\s\S]*Approve it yourself in HRMS[\s\S]*tell this OTP to Regional HR/);
   assert.match(leaveOtpNeededMessage({record,siteName:'Jayant OB',hod:'Ops Head'}),/Leave: 25 Nov 2026 to 26 Nov 2026 \(2 days\)/);
  });
 });
@@ -129,9 +133,13 @@ test('Regional HR requests the Directors\' OTP and enters it; a wrong OTP is ref
  assert.match(JSON.parse(history).at(-1).comments,/Directors' OTP entered by Vinod/);
  assert.equal(state.otp.otpHash,null,'single use');
 });
-test('Directors cannot approve leave directly – only by OTP; they can still reject',async()=>{
- const {service}=otpDb();
- await assert.rejects(service.decide({actor:'mohitchadda',permissions:{hrDesktopAccess:['Approval Management']}},approvalId,{decision:'APPROVED',version:3}),/approve leave by OTP/);
+/* Owner, 21 Nov 2026: Directors approve leave directly too; the OTP through Regional HR is the backup. */
+test('a Director approves leave directly and it moves to Regional HR',async()=>{
+ const {state,service}=otpDb();
+ const out=await service.decide({actor:'mohitchadda',name:'Mohit',permissions:{hrDesktopAccess:['Approval Management']}},approvalId,{decision:'APPROVED',version:3});
+ assert.equal(out.state,'PENDING');
+ const [stage]=state.updates[0];assert.equal(stage,2);
+ assert.ok(state.outbox.some(o=>o.actor==='vinodpinjarkar'),'Regional HR is told for the final approval');
 });
 
 /* Owner, 20 Nov 2026: an old, used or replaced join link must not leave someone stuck on "link expired". */

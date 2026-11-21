@@ -66,13 +66,13 @@ export default function AdditionApprovalPopup({grant,actor,onOpenApprovals}:{gra
    <p>{site(row)}{row.designation?` · ${row.designation}`:''} · initiated by {row.requested_by}</p>
    <ol className="addition-route" aria-label="Approval route">{steps.map((step,index)=><li key={index} className={index<row.stage?'done':index===row.stage?'current':''}>{roleTitle(step.label)}</li>)}</ol>
    {otpTurn(row,actor)?<>
-    <p className="addition-popup-step">Step {row.stage+1} of {steps.length}: <b>Directors (OTP)</b> — ask any one Director for the OTP sent to them on Telegram and enter it: the employee becomes Active.</p>
+    <p className="addition-popup-step">Step {row.stage+1} of {steps.length}: <b>Directors</b> — a Director can approve directly. If none can (out of station), ask one for the OTP sent to them on Telegram and enter it: the employee becomes Active.</p>
     <div className="addition-popup-actions"><label>OTP from a Director<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp[row.id]||''} onChange={e=>{const v=e.target.value.replace(/\D/g,'');setOtp(o=>({...o,[row.id]:v}));}}/></label>
      <button className="primary" disabled={!!busy||(otp[row.id]||'').length!==6} onClick={()=>void sendOtp(row,true)}>{busy===row.id?'Checking…':'Enter OTP'}</button><button disabled={!!busy} onClick={()=>void sendOtp(row,false)}>Resend OTP</button></div>
    </>:<>
-   <p className="addition-popup-step">Step {row.stage+1} of {steps.length}: <b>{roleTitle(steps[row.stage]?.label)}</b> (you){row.stage+1===steps.length?' — final approval makes the employee Active':steps[row.stage+1]?.otp?" — your approval sends the Directors' OTP":''}</p>
+   <p className="addition-popup-step">Step {row.stage+1} of {steps.length}: <b>{roleTitle(steps[row.stage]?.label)}</b> (you){row.stage+1===steps.length?' — final approval makes the employee Active':steps[row.stage+1]?.otp?" — your approval sends the Directors Approve / Reject with a backup OTP":steps[row.stage]?.otp?' — approve to make the employee Active':''}</p>
    {rejecting===row.id&&<label>Reason for rejecting<textarea value={reason[row.id]||''} maxLength={2000} onChange={e=>setReason(r=>({...r,[row.id]:e.target.value}))}/></label>}
-   <div className="addition-popup-actions">{!steps[row.stage]?.otp&&<button className="primary" disabled={!!busy} onClick={()=>void decide(row,'APPROVED')}>{busy===row.id?'Saving…':'✅ Approve'}</button>}<button disabled={!!busy} onClick={()=>rejecting===row.id?void decide(row,'REJECTED'):(setRejecting(row.id),setError(''))}>❌ Reject</button></div>
+   <div className="addition-popup-actions">{<button className="primary" disabled={!!busy} onClick={()=>void decide(row,'APPROVED')}>{busy===row.id?'Saving…':'✅ Approve'}</button>}<button disabled={!!busy} onClick={()=>rejecting===row.id?void decide(row,'REJECTED'):(setRejecting(row.id),setError(''))}>❌ Reject</button></div>
    </>}
   </article>;})}
   <footer className="addition-popup-footer">

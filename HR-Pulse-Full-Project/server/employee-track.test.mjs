@@ -62,7 +62,7 @@ test('each step is told only to the next people; Site HR hears the result',async
  out.length=0;
  assert.deepEqual(await queueTrackStep(db,queue,'employee-track',{key:'k',approvalId:'id',record,siteName:'Jayant OB',steps,stage:2,state:'PENDING',requestedBy:'hr.exec',sender:'vinodpinjarkar'}),[],'the OTP step is sent by the OTP issuer, not here');
  assert.deepEqual(await queueTrackStep(db,queue,'employee-track',{key:'k',approvalId:'id',record,siteName:'Jayant OB',steps,stage:3,state:'APPROVED',requestedBy:'hr.exec',sender:'vinodpinjarkar',actor:'Vinod'}),['hr.exec']);
- assert.match(out[0].message,/NOW ACTIVE[\s\S]*Directors' OTP entered by: Vinod/);
+ assert.match(out[0].message,/NOW ACTIVE[\s\S]*Final approval by: Vinod/);
  out.length=0;
  assert.deepEqual(await queueTrackStep(db,queue,'employee-track',{key:'k',approvalId:'id',record,siteName:'Jayant OB',steps,stage:3,state:'REJECTED',requestedBy:'hr.exec',sender:'mohitchadda',actor:'Mohit',comments:'Documents missing'}),['hr.exec','amitsingh','vinodpinjarkar']);
  assert.match(out[0].message,/REJECTED[\s\S]*Documents missing[\s\S]*back to Site HR/);
@@ -134,9 +134,9 @@ test('Regional HR\'s approval sends the Directors the OTP; the right OTP makes t
   assert.equal(state.approval.stage,1);assert.equal(state.approval.state,'PENDING');
   const msg=state.outbox.at(-1);
   assert.equal(msg.bot,'employee-track');
-  assert.deepEqual(msg.markup.inline_keyboard[0].map(b=>b.text),['❌ Reject'],'Directors approve by OTP, so only Reject is a button');
+  assert.deepEqual(msg.markup.inline_keyboard[0].map(b=>b.text),['✅ Approve','❌ Reject'],'Directors can approve directly; the OTP is the backup');
+  assert.match(msg.message,/Tap Approve below[\s\S]*Out of station\? Tell this OTP to Regional HR/);
   const otp=msg.message.match(/OTP: (\d{6})/)[1];
-  await assert.rejects(service.decide({actor:'mohitchadda',...perms},approvalId,{decision:'APPROVED',version:state.approval.version}),/approve a new employee by OTP/);
   await assert.rejects(service.leaveOtp({actor:'amitsingh',...perms},approvalId,{otp},true),e=>e.status===403,'only Regional HR enters it');
   await assert.rejects(service.leaveOtp(rhr,approvalId,{otp:otp==='000000'?'111111':'000000'},true),/Wrong OTP \(4 attempts left\)/);
   state.outbox.length=0;
@@ -147,5 +147,17 @@ test('Regional HR\'s approval sends the Directors the OTP; the right OTP makes t
   assert.deepEqual(state.outbox.map(o=>o.actor),['amitsingh'],'Site HR hears the result; the sender does not');
   assert.match(state.outbox[0].message,/NOW ACTIVE/);
   assert.equal(state.otp.otpHash,null,'single use');
+ });
+});
+/* Owner, 21 Nov 2026: a Director may also approve directly (HRMS or the Approve button) – no OTP needed. */
+test('a Director approves a new employee directly and the employee becomes Active',async()=>{
+ await withEnv(botEnv,async()=>{
+  const {state,service}=trackDb();
+  await service.decide(rhr,approvalId,{decision:'APPROVED',version:1});
+  state.outbox.length=0;
+  const done=await service.decide({actor:'mohitchadda',name:'Mohit',...perms},approvalId,{decision:'APPROVED',version:state.approval.version});
+  assert.equal(done.state,'APPROVED');
+  assert.equal(state.approval.state,'APPROVED');assert.equal(state.record.status,'ACTIVE');
+  assert.ok(state.outbox.some(o=>o.actor==='amitsingh'&&/NOW ACTIVE[\s\S]*Final approval by: Mohit/.test(o.message)),'Site HR hears the result');
  });
 });

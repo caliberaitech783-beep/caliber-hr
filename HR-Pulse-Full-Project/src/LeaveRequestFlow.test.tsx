@@ -28,14 +28,22 @@ it('Regional HR requests the Directors\' OTP and enters it at the Directors\' st
  expect(calls.find(c=>c.url.endsWith('/otp-verify'))?.body).toEqual({otp:'123456'});
 });
 
-it('a Director sees no Approve button, only the OTP note and Reject',async()=>{
+/* Owner, 21 Nov 2026: Directors approve directly; the OTP through Regional HR is the backup when they are out of station. */
+it('a Director can approve directly or reject; the OTP note is the backup',async()=>{
  vi.stubGlobal('fetch',async()=>new Response(JSON.stringify([leave])));
  render(<Approvals grant="test" actor="mohitchadda" notice={()=>{}}/>);
  fireEvent.click(await screen.findByRole('button',{name:'Review'}));
- expect(screen.queryByRole('button',{name:'Approve'})).toBeNull();
+ expect(screen.getByRole('button',{name:'Approve'})).toBeTruthy();
  expect(screen.getByRole('button',{name:'Reject'})).toBeTruthy();
- expect(screen.getByText(/tell it to Regional HR to approve/)).toBeTruthy();
+ expect(screen.getByText(/Out of station\? Tell Regional HR the OTP/)).toBeTruthy();
  expect(screen.queryByLabelText('OTP from a Director')).toBeNull();
+});
+it('Regional HR at the Directors\' step gets the OTP backup, not an Approve button',async()=>{
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify([leave])));
+ render(<Approvals grant="test" actor="vinodpinjarkar" notice={()=>{}}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'Review'}));
+ expect(screen.queryByRole('button',{name:'Approve'})).toBeNull();
+ expect(screen.getByLabelText('OTP from a Director')).toBeTruthy();
 });
 
 it('Regional HR picks who takes charge only at the final step',async()=>{
