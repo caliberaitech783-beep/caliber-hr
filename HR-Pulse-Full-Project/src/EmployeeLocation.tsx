@@ -14,7 +14,6 @@ import SalaryFields from './SalaryFields';
 import {clearTrialHandoff,loadTrialHandoff,trialHandoffPhotos,type TrialClearance,type TrialHandoff} from './trialHandoff';
 import {approvalStage} from './trial-workflow-preview/records';
 import {Approvals} from './Modules';
-import {JoiningApprovalGate,clearJoiningApproval,joiningApprovalRequired,loadJoiningApproval,type JoiningApprovalState} from './JoiningApproval';
 import {sortBulkDocument} from './bulkDocuments';
 import {discardJoiningDraft,captureJoiningFiles,restoreJoiningFiles,captureJoiningFields,restoreJoiningFields,saveJoiningDraft,listJoiningDrafts,removeJoiningDraft,saveEmployeeDocuments,getEmployeeDocument,bulkDocumentsInput,documentEntries,type JoiningDraft} from './joiningDrafts';
 import {useEffect,useRef,useState,type ChangeEvent,type FormEvent,type ReactNode,type RefObject} from 'react';
@@ -495,9 +494,6 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
   setSaveError('');
   return true;
  }
- /* Joining approval is requested after the final validation. */
- const[approval,setApproval]=useState<JoiningApprovalState>(()=>loadJoiningApproval(draftId.current)),[gate,setGate]=useState(false),[approvalNeeded,setApprovalNeeded]=useState<boolean|null>(null);
- useEffect(()=>{if(trial)return;let live=true;void joiningApprovalRequired().then(v=>{if(live)setApprovalNeeded(v);});return()=>{live=false;};},[trial]);
  const fieldValue=(name:string)=>{const el=formRef.current?.elements.namedItem(name) as HTMLInputElement|HTMLSelectElement|null;return el&&'value' in el?el.value:'';};
  /* Auto employee code (CMLL001, CMLL002 …): fetched when Joining & Personal Details opens with a scanned Aadhaar and an empty code. */
  const codeAsked=useRef('');
@@ -506,7 +502,6 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
   const grant=savedSession()?.grant;if(!grant)return;
   void api<{code:string}>(grant,'employee-code/next','POST',{aadhaar,company:defaults.company||''}).then(r=>{if(!codeEl.value.trim()){codeEl.value=r.code;codeEl.dispatchEvent(new Event('input',{bubbles:true}));codeEl.dispatchEvent(new Event('change',{bubbles:true}));}}).catch(()=>{codeAsked.current='';});
  },[activeStep,defaults.company]);
- function approvalInfo(){return {candidate:fieldValue('Full Name'),post:fieldValue('Designation')||employeeCategory||fieldValue('Department'),site:fieldValue('Site')||defaults.site||'',company:fieldValue('Joining Category')||defaults.company||''};}
  async function submitEmployee(formEl:HTMLFormElement){
   if(!onSave||saving||!validateSteps(allStepIndices))return;
   const values:Record<string,string>={};
@@ -519,7 +514,7 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
    await onSave(values,directTrial);
    const grant=savedSession()?.grant;
    if(grant)await uploadEmployeeDocuments(grant,values['Employee Code'],submittedFiles);
-   finished.current=true;clearJoiningApproval(draftId.current);
+   finished.current=true;
    await queue.current;
    await removeJoiningDraft(draftId.current);
    onDraftSaved?.();
@@ -529,12 +524,9 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
  }
  function moveToStep(target:number){setSaveError('');setStep(Math.max(firstStep,Math.min(target,activeSteps.length-1)));}
  function continueJoining(){if(!saving&&validateSteps([step]))setStep(step+1);}
- /* Submit Employee (Document Checklist) runs `go` at once unless joining approval (OTP / Approve on Telegram) is required and not yet given. */
- function gated(go:()=>void){if(directTrial||approval.status==='APPROVED'){go();return;}if(approvalNeeded===true){setGate(true);return;}if(approvalNeeded===false||!savedSession()?.grant){go();return;}void joiningApprovalRequired().then(v=>{setApprovalNeeded(v);if(v)setGate(true);else go();});}
- function approved(state:JoiningApprovalState){setApproval(state);setGate(false);const el=formRef.current?.elements.namedItem('Joining Approval') as HTMLInputElement|null;if(el){el.value=state.approvedBy?`${state.approvedBy} · ${state.approvedAt?new Date(state.approvedAt).toLocaleString():''}`:'Approved';el.dispatchEvent(new Event('change',{bubbles:true}));}if(formRef.current)submitEmployee(formRef.current);}
  const clearance=trial||handoff?.clearance;
  if(clearance&&(clearance.result!=='PASS'||clearance.stage!=='done'||approvalStage(clearance.history)!=='done'))return <p role="alert">Joining details are locked until PM, Office HR, Regional HR and Director approvals are complete. Open Trial Form to continue the pending approval process. Your saved draft is preserved.</p>;
- return <form ref={formRef} className="joining-form" noValidate autoComplete="off" onKeyDown={event=>{if(event.key!=='Enter'||event.shiftKey)return;const target=event.target as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement;if(target.tagName==='TEXTAREA'||target.tagName==='BUTTON'||target.type==='file'||target.tagName==='SELECT'&&!target.value)return;const controls=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('input:not([type="hidden"]):not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])')).filter(control=>control.tabIndex>=0&&!control.closest('[hidden]')&&!control.classList.contains('employee-import-input'));const index=controls.indexOf(target);if(index<0||index===controls.length-1)return;event.preventDefault();controls[index+1].focus();}} onSubmit={event=>{event.preventDefault();if(step!==activeSteps.length-1||saving||gate||!onSave)return;if(!validateSteps(allStepIndices))return;const formEl=event.currentTarget;gated(()=>submitEmployee(formEl));}}>
+ return <form ref={formRef} className="joining-form" noValidate autoComplete="off" onKeyDown={event=>{if(event.key!=='Enter'||event.shiftKey)return;const target=event.target as HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement;if(target.tagName==='TEXTAREA'||target.tagName==='BUTTON'||target.type==='file'||target.tagName==='SELECT'&&!target.value)return;const controls=Array.from(event.currentTarget.querySelectorAll<HTMLElement>('input:not([type="hidden"]):not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])')).filter(control=>control.tabIndex>=0&&!control.closest('[hidden]')&&!control.classList.contains('employee-import-input'));const index=controls.indexOf(target);if(index<0||index===controls.length-1)return;event.preventDefault();controls[index+1].focus();}} onSubmit={event=>{event.preventDefault();if(step!==activeSteps.length-1||saving||!onSave)return;if(!validateSteps(allStepIndices))return;const formEl=event.currentTarget;void submitEmployee(formEl);   /* owner, 21 Nov 2026: no joining OTP – the employee follows the saved hierarchy route */}}>
   <p className="joining-draft-status" role="status">{draftStatus}</p>
   <div className="joining-steps" aria-label="Employee joining steps" style={{gridTemplateColumns:`repeat(${activeSteps.length-(handoff?1:0)},minmax(0,1fr))`}}>{activeSteps.map((label,index)=><button type="button" key={label} hidden={Boolean(handoff)&&index===0} className={step===index?'active':''} onClick={()=>moveToStep(index)}><i>{index+1}</i><span>{label}</span></button>)}</div>
   <div className="joining-card">
@@ -542,9 +534,6 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
    <div data-joining-step="0" hidden={activeStep!=='Upload Aadhaar Card'}><AadhaarUpload form={formRef} photo={photo} photo2={photo2} onPhoto={file=>{dirty.current=true;setPhoto(file);}} onPhoto2={file=>{dirty.current=true;setPhoto2(file);}}/></div>
    {activeSteps.filter(section=>section!=='Upload Aadhaar Card').map(section=>{const index=activeSteps.indexOf(section);return <div key={section} data-joining-step={index} hidden={section!==activeStep}><JoiningStep activeStep={section} employeeGroup={employeeGroup} employeeCategory={employeeCategory} setEmployeeCategory={setEmployeeCategory} visibleDocuments={visibleDocuments} defaults={formDefaults} subdepartments={subdepartments} designations={designations} sourceFiles={{candidatePhoto,aadhaar:photo||draft?.files?.['Upload Aadhaar (masked display)']?.[0],drivingLicence:draft?.files?.['Upload Driving licence']?.[0]}} onCandidatePhotoChange={setCandidatePhoto} onPhotoRemoveReady={remove=>{candidatePhotoRemover.current=remove;}}/></div>})}
    <input type="hidden" name={AADHAAR_LOCK_FIELD} defaultValue=""/>
-   <input type="hidden" name="Joining Approval" defaultValue={approval.status==='APPROVED'?`${approval.approvedBy||'Approved'}${approval.approvedAt?' · '+new Date(approval.approvedAt).toLocaleString():''}`:''}/>
-   {approval.status==='APPROVED'&&activeStep==='Document Checklist'&&<p className="employee-import-status">Joining approved – {approval.approvedBy}{approval.approvedAt?' · '+new Date(approval.approvedAt).toLocaleString():''}</p>}
-   {gate&&<JoiningApprovalGate draftId={draftId.current} info={approvalInfo()} onApproved={approved} onClose={()=>setGate(false)}/>}
    {saveError&&<p className="employee-import-error" role="alert">{saveError}</p>}<div className="joining-actions"><button type="button" disabled={step===firstStep||saving} onClick={()=>moveToStep(step-1)}>Previous</button>{step<activeSteps.length-1?<button type="button" className="next" onClick={continueJoining}>Save & Continue</button>:<button type="submit" className="next" disabled={saving}>{saving?'Saving…':directTrial?'Save Employee':'Submit Employee'}</button>}</div>
   </div>
  </form>;

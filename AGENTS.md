@@ -65,3 +65,10 @@ Set by the owner on 21 November 2026: the trial form window (HRMS › Trial Stat
 - Print asks the page size (A4 / A3, portrait or landscape), then pages, sides and copies. Print/Export downloads a PDF (page size asked) or Excel. Pages never cut a line in half.
 - The printer is chosen in the browser's print window (HR has no print helper); copies and the page selection are applied to the pages sent there.
 - `HR-Pulse-Full-Project/src/trial-workflow-preview/formSmartPrint.ts` holds it and reads the form's values from `views.ts` (`candidateDetails`, `resultDetails`, `approvalSigns`), so the print always matches the form; `formSmartPrint.test.ts` checks it.
+
+# No separate joining OTP on Submit Employee
+
+Set by the owner on 21 November 2026.
+
+- Submit Employee (Document Checklist) saves the employee straight into the saved hierarchy route (Approval Master › Trial Hierarchy, Employee Track bot). It never opens the "Joining approval – Telegram" OTP pop-up.
+- Approval Master has no "Joining Approval" tab; `joiningApprovers` in `HR-Pulse-Full-Project/server/telegram.mjs` always reports it switched off, whatever the old setting says.
