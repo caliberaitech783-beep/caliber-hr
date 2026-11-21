@@ -79,6 +79,7 @@ describe('OTP approval and several Driver Trainers (owner, 20 Nov 2026)',()=>{
     input('#f_mobile','9876543210');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
+    input('[aria-label="Valid up to (TR)"]','2028-01-01');
     change('#d_medical','Yes');
     fireEvent.submit(el('#single'));
     change('#role','trainer');
@@ -206,6 +207,7 @@ describe('Trial workflow preview',()=>{
     input('#f_conducted','Trial Form Trainer');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
+    input('[aria-label="Valid up to (TR)"]','2028-01-01');
     change('#d_medical','Yes');
     fireEvent.submit(el('#single'));
     change('#role','trainer');
@@ -237,6 +239,28 @@ describe('Trial workflow preview',()=>{
     const stored=JSON.parse(localStorage.getItem('hrPulse.localTrialWorkflow.v1:'+JSON.stringify([scope.owner,scope.company,scope.site]))!);
     expect(stored[0].outcome.trainer).toBe('Trial Form Trainer');
   });
+  it('makes the DL valid up to date mandatory and lets HR type it when the scan did not read it',async()=>{
+    sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
+    vi.spyOn(window,'fetch').mockImplementation(async url=>Response.json(String(url).endsWith('/trial-trainer')?hierarchyTrainer:{batchId:'',formNos:[],telegram:{message:'',recipients:1,connected:[]}}));
+    const {el,click,input,change}=setup();
+    await waitFor(()=>expect(el('#v-aadhaar').hidden).toBe(false));
+    click('[data-tab="hr"]');
+    input('#f_name','No Date Candidate');
+    input('#f_mobile','9876543210');
+    input('#f_conducted','Trial Form Trainer');
+    click('input[name="f_vehicle"][value="Excavator"]');
+    change('#d_dl','Yes');
+    change('#d_medical','Yes');
+    expect(el('#f_dlvalid_note').hidden).toBe(false);
+    expect(el('[aria-label="Valid up to (TR)"]')).not.toHaveAttribute('readonly');
+    fireEvent.submit(el('#single'));
+    expect(el('#toast').textContent).toContain('valid up to date');
+    expect(el('#bTrainer').hidden).toBe(true);
+    input('[aria-label="Valid up to (NT)"]','2031-05-06');
+    expect(el('#f_dlvalid_note').hidden).toBe(true);
+    fireEvent.submit(el('#single'));
+    expect(el('#bTrainer')).toHaveTextContent('1');
+  });
   it('compares Aadhaar numbers after removing printed spaces and separators',()=>{
     expect(sameDocumentAadhaarNumber('808138856642','8081 3885 6642')).toBe(true);
     expect(sameDocumentAadhaarNumber('8081-3885-6642','808138856642')).toBe(true);
@@ -253,6 +277,7 @@ describe('Trial workflow preview',()=>{
     input('#f_conducted','Trial Form Trainer');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
+    input('[aria-label="Valid up to (TR)"]','2028-01-01');
     change('#d_medical','Yes');
     fireEvent.submit(el('#single'));
     change('#role','trainer');
@@ -480,6 +505,7 @@ describe('Trial workflow preview',()=>{
     input('#f_conducted','Trial Form Trainer');
     click('input[name="f_vehicle"][value="Excavator"]');
     change('#d_dl','Yes');
+    input('[aria-label="Valid up to (TR)"]','2028-01-01');
     fireEvent.submit(el('#single'));
     expect(el('#toast').textContent).toContain('medical fitness certificate');
     expect(el('#bTrainer').hidden).toBe(true);
