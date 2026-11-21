@@ -95,8 +95,8 @@ it('opens a completed operator trial at step two and saves it on the sixth step 
  for(let index=0;index<4;index++){
   const relationship=screen.queryByLabelText('Relationship 1');
   if(relationship){
-   fireEvent.change(screen.getByLabelText('Family Member Name 1'),{target:{value:'Sample Wife'}});
-   fireEvent.change(relationship,{target:{value:'Wife'}});
+   fireEvent.change(screen.getByLabelText('Family Member Name 1'),{target:{value:'Sample Partner'}});
+   fireEvent.change(relationship,{target:{value:'Husband/Wife'}});
   }
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'Save & Continue'}));});
   expect(screen.queryByRole('alert')?.textContent).toBeUndefined();
