@@ -61,3 +61,14 @@ test('new account number saves separately without changing the frozen original',
  assert.equal(saved.data.officeData['New Account No'],'00987654321');
  for(const value of ['abc','1234567890123456789'])await assert.rejects(service.updateEmployeeDetails(profile,employeeId,{version:4,officeData:{'New Account No':value}}),/up to 18 digits/);
 });
+
+test('candidate e-mail is optional in the joining form',async()=>{
+ const {service}=fixture();
+ const saved=await service.updateEmployeeDetails(profile,employeeId,{version:4,officeData:{'Candidate E-mail *':''}});
+ assert.equal(saved.data.officeData['Candidate E-mail *'],'');
+});
+
+test('A-Form No. is optional for site joining',async()=>{
+ const {missingJoiningField}=await import('./joining-required.mjs');
+ assert.notEqual(missingJoiningField({'Joining Category *':'WCL','A-Form No.':''}),'A-Form No.');
+});
