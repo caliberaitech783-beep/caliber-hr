@@ -51,12 +51,12 @@ test('Pulse Trial assignments freeze a user to only their assigned sites',()=>{
  assert.equal(assignedTrialSites({permissions:{hrAccountStatus:'Active',hrTrialAssignments:[{role:'Trial Admin',allSites:true,sites:[]}]}}),null);
  assert.deepEqual(assignedTrialSites({...profile,permissions:{...profile.permissions,hrAccountStatus:'Inactive'}}),[]);
 });
-test('only the assigned current-stage user sees a review queue; admin sees a read-only overview',async()=>{
+test('an assigned user sees forms that reached their step (later decisions stay visible); admin sees a read-only overview',async()=>{
  const records=[{id:'pm',data:{site:'Jayant OB East',pendingRole:'pm',stage:'RESULT'}},{id:'office',data:{site:'Jayant OB East',pendingRole:'ohr',stage:'APPROVAL'}},{id:'trainer',data:{site:'Jayant OB East',stage:'PART1'}}];
  const pool={query:async sql=>sql.includes("kind='joiningHierarchies'")?{rows:[{code:'NCL-JAYANT',data:{group:'NCL',steps:[{label:'Project Manager',approvers:['pm']}]}}]}:{rows:records}};
  const service=createTelegram(pool),target={site:'Jayant OB East',region:'NCL'};
  const assigned={actor:'pm',permissions:{site:'NCL-JAYANT',hrDesktopAccess:['Employee Master']}};
- assert.deepEqual((await service.telegramApi(assigned,'trial-review-queue','POST',target)).rows.map(row=>row.id),['pm']);
+ assert.deepEqual((await service.telegramApi(assigned,'trial-review-queue','POST',target)).rows.map(row=>row.id),['pm','office']);
  assert.deepEqual((await service.telegramApi({...assigned,actor:'unassigned'},'trial-review-queue','POST',target)).rows,[]);
  const admin={actor:'admin',permissions:{hrDesktopAccess:['Employee Master','Master Configuration']}};
  assert.deepEqual((await service.telegramApi(admin,'trial-review-queue','POST',target)).rows.map(row=>row.id),['pm','office','trainer']);
