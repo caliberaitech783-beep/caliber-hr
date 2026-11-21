@@ -395,10 +395,18 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     markDrivingLicenceValidity();
   }
   /* Owner, 21 Nov 2026: the DL valid up to date is mandatory. When the scan does not read it, HR types it in. */
+  /* Owner, 21 Nov 2026: an expired licence date blocks the trial. Today still counts as valid. */
+  function localToday(){const now=new Date();return [now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');}
+  function showDate(value:string){const [y,m,d]=value.split('-');return d&&m&&y?`${d}-${m}-${y}`:value;}
+  function expiredDrivingLicenceDates(){const today=localToday();return drivingLicenceValidDates().filter(value=>value<today);}
+  function expiredDrivingLicenceMessage(){const expired=expiredDrivingLicenceDates();return expired.length?`Driving licence expired on ${expired.map(showDate).join(' / ')}. A candidate with an expired licence cannot be sent for trial.`:'';}
   function markDrivingLicenceValidity(){
-    const missing=!drivingLicenceValidDates().length;
-    $$<HTMLInputElement>('[data-dl-valid]').forEach(input=>input.classList.toggle('dl-valid-missing',missing&&!input.readOnly));
-    const note=frame.querySelector<HTMLElement>('#f_dlvalid_note');if(note)note.hidden=!missing;
+    const missing=!drivingLicenceValidDates().length,today=localToday();
+    $$<HTMLInputElement>('[data-dl-valid]').forEach(input=>{input.classList.toggle('dl-valid-missing',missing&&!input.readOnly);input.classList.toggle('dl-valid-expired',Boolean(input.value)&&input.value<today);});
+    const note=frame.querySelector<HTMLElement>('#f_dlvalid_note');if(!note)return;
+    const expired=expiredDrivingLicenceMessage();
+    note.textContent=missing?'Enter at least one valid up to date (TR or NT) from the licence. It is mandatory.':expired;
+    note.hidden=!missing&&!expired;
   }
   function drivingLicenceClasses(){
     return $$<HTMLTableRowElement>('[data-dl-class-row]').map(row=>Object.fromEntries(dlClassFields.map(field=>[field,row.querySelector<HTMLInputElement>(`[data-dl-class="${field}"]`)?.value.trim()||''])) as DrivingLicenceClass).filter(row=>Object.values(row).some(Boolean));
@@ -420,6 +428,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     [licenceNumber,issueDate,...$$<HTMLInputElement>('[data-dl-class],[data-dl-valid]')].forEach(lockDrivingLicenceScanned);
     markDrivingLicenceValidity();
     if(!drivingLicenceValidDates().length)toast('The valid up to date was not read from the driving licence. Enter it by hand before submitting.');
+    else if(expiredDrivingLicenceDates().length)toast(expiredDrivingLicenceMessage());
     drivingLicenceReady=true;updateSingleActions();
   }
   /* Values read from the Aadhaar card are locked: HR cannot retype them, only a new scan can replace them. */
@@ -562,6 +571,11 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
       markDrivingLicenceValidity();
       toast('Enter the driving licence valid up to date (TR or NT). It was not read from the scan and is mandatory.');
       $$<HTMLInputElement>('[data-dl-valid]').find(input=>!input.readOnly)?.focus();
+      return;
+    }
+    if (expiredDrivingLicenceDates().length) {
+      markDrivingLicenceValidity();
+      toast(expiredDrivingLicenceMessage());
       return;
     }
     if (createCandidates([{
