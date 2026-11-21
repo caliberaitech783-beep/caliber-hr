@@ -1,6 +1,7 @@
 /* Police verification and Self declaration form (owner, 21 Nov 2026):
    - WCL sites (Sasti, Majri, Dhoptala, Gauri Pauni …): both are mandatory at joining; the form cannot be submitted without them.
-   - NCL sites (Jayant East / West, Dudhichua East / West): both are mandatory but may be uploaded within 20 days of the joining date. */
+   - NCL sites (Jayant East / West, Dudhichua East / West): both are mandatory but may be uploaded within 20 days of the joining date.
+   Owner, 21 Nov 2026: the Self declaration form is needed only when Resident is LOCAL; for CAMP, Non-local or no Resident chosen it is optional. */
 export const POLICE_VERIFICATION='Police verification';
 export const SELF_DECLARATION='Self declaration form';
 export const regionalDocuments=[POLICE_VERIFICATION,SELF_DECLARATION];
@@ -14,8 +15,12 @@ export function documentRegion(...values:unknown[]):'WCL'|'NCL'|''{
  for(const value of values){const text=String(value??'');if(wclSites.test(text))return 'WCL';if(nclSites.test(text))return 'NCL';}
  return '';
 }
+export const SELF_DECLARATION_OPTIONAL='Optional – needed only for LOCAL resident';
+/* Self declaration form applies only to a LOCAL resident. */
+export const regionalDocumentApplies=(name:string,resident:unknown)=>name!==SELF_DECLARATION||String(resident??'').trim().toUpperCase()==='LOCAL';
 /* Rule text shown in the checklist; a rule starting with "Mandatory" makes the upload required at submit. */
-export function regionalDocumentRule(region:string){
+export function regionalDocumentRule(region:string,name='',resident:unknown='LOCAL'){
+ if(!regionalDocumentApplies(name,resident))return SELF_DECLARATION_OPTIONAL;
  if(region==='WCL')return 'Mandatory at joining (WCL)';
  if(region==='NCL')return `Within ${NCL_GRACE_DAYS} days of joining (NCL)`;
  return 'As per policy';
@@ -28,10 +33,11 @@ function parseDate(value:unknown){
  return null;
 }
 const ddmmyyyy=(date:Date)=>`${String(date.getUTCDate()).padStart(2,'0')}/${String(date.getUTCMonth()+1).padStart(2,'0')}/${date.getUTCFullYear()}`;
-export type RegionalDocumentStatus={state:'uploaded'|'due'|'overdue'|'missing';label:string;due?:string};
+export type RegionalDocumentStatus={state:'uploaded'|'due'|'overdue'|'missing'|'optional';label:string;due?:string};
 /* Status of one regional document for a saved employee. */
-export function regionalDocumentStatus({region,joiningDate,uploaded,today=new Date()}:{region:string;joiningDate:unknown;uploaded:unknown;today?:Date}):RegionalDocumentStatus{
+export function regionalDocumentStatus({region,joiningDate,uploaded,today=new Date(),name='',resident='LOCAL'}:{region:string;joiningDate:unknown;uploaded:unknown;today?:Date;name?:string;resident?:unknown}):RegionalDocumentStatus{
  if(String(uploaded??'').trim())return {state:'uploaded',label:String(uploaded).trim()};
+ if(!regionalDocumentApplies(name,resident))return {state:'optional',label:'Not required – not a LOCAL resident'};
  if(region==='WCL')return {state:'missing',label:'Missing – mandatory at joining (WCL)'};
  if(region!=='NCL')return {state:'missing',label:''};
  const joined=parseDate(joiningDate);

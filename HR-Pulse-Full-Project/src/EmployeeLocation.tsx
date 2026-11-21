@@ -321,7 +321,7 @@ function ExistingEmployees({rows,loading,error,employeeGroup,type,setType,action
       <tbody>{rows.map(row=><tr key={row.id}>
        {group.columns.map(header=>{
         const value=String(corporateOfficeValue(row,header));
-        if(regionalDocuments.includes(header)&&!value){const status=regionalDocumentStatus({region:documentRegion(corporateOfficeValue(row,'Joining Category *'),corporateOfficeValue(row,'Site *'),row.data.siteId),joiningDate:corporateOfficeValue(row,'Joining Date *')||row.data.joiningDate,uploaded:value});return <td key={header}><span className={`regional-document-status ${status.state}`}>{status.label||'—'}</span>{save&&<label className="regional-document-upload">{uploading===`${row.id}|${header}`?'Uploading…':'Upload'}<input type="file" aria-label={`Upload ${header} for ${row.code}`} disabled={Boolean(uploading)} accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={event=>void uploadRegionalDocument(row,header,event)}/></label>}</td>;}
+        if(regionalDocuments.includes(header)&&!value){const status=regionalDocumentStatus({region:documentRegion(corporateOfficeValue(row,'Joining Category *'),corporateOfficeValue(row,'Site *'),row.data.siteId),joiningDate:corporateOfficeValue(row,'Joining Date *')||row.data.joiningDate,uploaded:value,name:header,resident:corporateOfficeValue(row,'Resident')});return <td key={header}><span className={`regional-document-status ${status.state}`}>{status.label||'—'}</span>{save&&<label className="regional-document-upload">{uploading===`${row.id}|${header}`?'Uploading…':'Upload'}<input type="file" aria-label={`Upload ${header} for ${row.code}`} disabled={Boolean(uploading)} accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" onChange={event=>void uploadRegionalDocument(row,header,event)}/></label>}</td>;}
         return <td key={header}>{documentColumns.has(header)&&value?<button type="button" className="existing-document-link" onClick={()=>void showDocument(row,header)}>{value}</button>:value||<span className="employee-table-empty-value">—</span>}</td>;
        })}
        {save&&<td className="employee-table-actions"><button type="button" className="employee-import employee-edit-button" aria-label={`Edit ${row.name} (${row.code})`} onClick={()=>{closePreview();setEditing(row);}}><Pencil/>Edit</button></td>}
@@ -483,9 +483,12 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
  const activeSteps=joiningSteps,activeStep=activeSteps[step];
  const requiresDrivingLicence=employeeCategory==='Driver'||employeeCategory==='Operator';
  const region=documentRegion(defaults.region,defaults.joiningCategory,defaults.site);
+ /* Self declaration form follows the Resident chosen in Joining & Personal Details (owner, 21 Nov 2026). */
+ const[resident,setResident]=useState('');
+ useEffect(()=>{const form=formRef.current;if(!form)return;const sync=()=>{const control=form.elements.namedItem('Resident') as HTMLSelectElement|null;setResident(control?.value||'');};sync();form.addEventListener('input',sync);form.addEventListener('change',sync);return()=>{form.removeEventListener('input',sync);form.removeEventListener('change',sync);};},[]);
  const visibleDocuments=documents
   .filter(([name])=>!conditionalDocuments.has(name)||showMineCompliance||(name==='Driving licence'&&requiresDrivingLicence))
-  .map(([name,rule])=>[name,name==='Driving licence'&&requiresDrivingLicence?'Mandatory':regionalDocuments.includes(name)?regionalDocumentRule(region):rule]);
+  .map(([name,rule])=>[name,name==='Driving licence'&&requiresDrivingLicence?'Mandatory':regionalDocuments.includes(name)?regionalDocumentRule(region,name,resident):rule]);
  function stepIssue(index:number):{message:string;control?:HTMLElement}|undefined{
   if(index===0&&!photo?.size&&!photo2?.size&&!handoff&&!directTrial){
    return {message:'Please upload the Aadhaar document before continuing.',control:formRef.current?.querySelector<HTMLButtonElement>('.aadhaar-upload-actions button')??undefined};
