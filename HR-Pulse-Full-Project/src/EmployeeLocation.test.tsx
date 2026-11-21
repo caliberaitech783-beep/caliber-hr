@@ -462,7 +462,7 @@ describe('Employee Master tabs',()=>{
   expect(screen.getByLabelText(/^Marital Status/)).toBeRequired();
   expect(screen.queryByLabelText('Dependent? (Y/N) 1')).toBeNull();
   expect(screen.getByLabelText('Family Member Name 1')).toBeTruthy();
-  expect(Array.from((screen.getByLabelText('Relationship 1') as HTMLSelectElement).options,option=>option.text)).toEqual(['Select nominee','Father','Mother','Husband/Wife']);
+  expect(Array.from((screen.getByLabelText('Relationship 1') as HTMLSelectElement).options,option=>option.text)).toEqual(['Select nominee','Father / Mother','Husband / Wife']);
   for(let row=2;row<=5;row++)expect(Array.from((screen.getByLabelText('Relationship '+row) as HTMLSelectElement).options,option=>option.text)).toEqual(['Select relationship','Mother','Father','Husband/Wife','Son','Daughter']);
   fireEvent.change(screen.getByLabelText('Relationship 1'),{target:{value:'Husband/Wife'}});
   expect((screen.getByLabelText('Relationship 1') as HTMLSelectElement).value).toBe('Husband/Wife');
@@ -624,7 +624,7 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Sub-department',{exact:true,selector:'select:not([name])'}),{target:{value:'Drilling'}});
   fireEvent.change(screen.getByLabelText('Designation',{exact:true,selector:'select:not([name])'}),{target:{value:'Drill Operator'}});
   for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Marital Status':'Unmarried','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Majri OB'}))setField(field,value);
-  for(const [field,value] of Object.entries({'Family Member Name 1':'Parent One','Relationship 1':'Mother','Aadhaar Number 1':'234500000001','Date of Birth 1':'1970-01-01','Contact No. 1':'9876543212','Occupation 1':'Home'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Family Member Name 1':'Parent One','Relationship 1':'Father/Mother','Aadhaar Number 1':'234500000001','Date of Birth 1':'1970-01-01','Contact No. 1':'9876543212','Occupation 1':'Home'}))setField(field,value);
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
   upload('Upload Candidate photo','photo.jpg','image/jpeg');
   upload('Upload Aadhaar (masked display)','aadhaar.pdf','application/pdf');
@@ -650,7 +650,7 @@ describe('Employee Master tabs',()=>{
   upload('Upload Aadhaar (masked display)','aadhaar.pdf','application/pdf');
   upload('Upload Driving licence','licence.pdf','application/pdf');
   fireEvent.click(screen.getByRole('button',{name:'Submit Employee'}));
-  expect(screen.getByRole('alert')).toHaveTextContent('Row 1 is the nominee: select Father or Mother.');
+  expect(screen.getByRole('alert')).toHaveTextContent('Row 1 is the nominee: select Father / Mother.');
  });
 });
 
@@ -689,9 +689,9 @@ for(const group of ['Corporate / HO','OB / COAL'] as const)it(group+' requires f
  expect(screen.queryByLabelText('Upload Family Aadhaar 1')).toBeNull();
  const nomineeOptions=()=>within(screen.getByLabelText('Relationship 1')).getAllByRole('option').map(o=>o.textContent);
  expect(screen.getByText('Nominee')).toBeTruthy();
- expect(nomineeOptions()).toEqual(['Select nominee','Father','Mother']);
+ expect(nomineeOptions()).toEqual(['Select nominee','Father / Mother']);
  fireEvent.change(screen.getByLabelText(/^Marital Status/),{target:{value:'Married'}});
- expect(nomineeOptions()).toEqual(['Select nominee','Father','Mother','Husband/Wife']);
+ expect(nomineeOptions()).toEqual(['Select nominee','Father / Mother','Husband / Wife']);
  expect(within(screen.getByLabelText('Relationship 2')).getAllByRole('option').map(o=>o.textContent)).toContain('Son');
  expect(screen.getAllByRole('heading',{name:'Family Details*'})).toHaveLength(2);
  expect(screen.queryByText('Family Details are mandatory.')).toBeNull();
