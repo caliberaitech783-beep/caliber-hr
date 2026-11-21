@@ -94,10 +94,14 @@ export function licenceDate(value: string) {
   const parsed = new Date(iso);
   return Number.isFinite(+parsed)&&parsed.toISOString().slice(0,10)===iso ? iso : '';
 }
+/** The Directors' decision (cleared to join, or rejected) is final: the form is closed for good (owner, 21 Nov 2026). */
+export const directorDecided = (row: Pick<Trial,'history'>) => row.history.some(h => h.role === 'director' && (h.action === 'Approved' || h.action === 'Rejected'));
 export function candidateProblem(candidate: Candidate, records: Trial[]) {
   if (!candidate.name) return 'Enter the candidate name.';
   if (!/^\d{10}$/.test(candidate.mobile)) return 'Mobile number must be 10 digits.';
   if (candidate.aadhaar && !/^\d{12}$/.test(candidate.aadhaar)) return 'Enter a 12-digit Aadhaar number or leave it blank.';
+  if (candidate.aadhaar && records.some(row => row.aadhaar === candidate.aadhaar && directorDecided(row) && row.stage === 'rejected'))
+    return 'The Directors rejected this candidate. A new trial cannot be sent for approval.';
   if (candidate.aadhaar && records.some(row => row.aadhaar === candidate.aadhaar && row.stage !== 'rejected' && row.result !== 'FAIL'))
     return 'This Aadhaar already has a pending or passed trial.';
   if (!candidate.vehicles.length || candidate.vehicles.includes('Other') && !candidate.otherVehicle) return 'Choose the vehicle or enter the other equipment.';

@@ -28,3 +28,10 @@ export async function trialStepNames(db,rows){
  const found=(await db.query("SELECT lower(COALESCE(NULLIF(data->>'pulseUsername',''),data->>'username')) AS actor,name FROM hr_records WHERE kind='employees' AND lower(COALESCE(NULLIF(data->>'pulseUsername',''),data->>'username')) = ANY($1) ORDER BY updated_at",[logins])).rows;
  return new Map(found.filter(r=>r.name).map(r=>[r.actor,r.name]));
 }
+/* Once a Director gives the final decision (cleared to join, or rejected) the form is closed for good:
+   nobody may change it, enter a new result or send it for approval again (owner, 21 Nov 2026). */
+export const DIRECTOR_FINAL_MESSAGE='The Directors have already given the final decision on this candidate. The form cannot be changed or sent for approval again.';
+export const DIRECTOR_REJECTED_MESSAGE='The Directors rejected this candidate. A new trial cannot be sent for approval.';
+export const directorDecided=data=>!!data&&(data.stage==='CLEARED'
+ ||Array.isArray(data.history)&&data.history.some(h=>h?.role==='director'&&['Approved','Rejected'].includes(h.action))
+ ||data.stage==='REJECTED'&&data.lastDecision?.reviewer==='director');
