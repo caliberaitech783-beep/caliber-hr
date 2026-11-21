@@ -13,6 +13,7 @@ Set by the owner on 20 November 2026: Site HR → Driver Trainer → PM → Offi
 
 - Regional HR is fixed per region: NCL (Jayant, Dudhichua East, Dudhichua West) → Vinod Pinjarkar (CMPL3399); WCL (Sasti, Majri, Dhuptala, Gauri Pauni) → Virat Singh (CMPL18114). Directors (any one): Mohit, Manish, Rahul Chadda.
 - `HR-Pulse-Full-Project/server/trial-routing.mjs` holds it for vehicle trials only; leave and joining approvals keep the saved site hierarchy.
+- Owner, 21 Nov 2026: the PM approves directly, like the Driver Trainer, at every site: Approve / Reject in HRMS › Trial Status or Approve / Decline on the CALIBER Trial Status bot. There is no PM OTP and Office HR is not asked to request one. Only the Directors' final approval stays on OTP (`OTP_ROLES` in `server/telegram.mjs` and `src/trial-workflow-preview/records.ts`); `server/trial-status-bot.test.mjs` and `src/trial-workflow-preview/workflow.test.ts` check it.
 
 # Leave approval route and the CALIBER Leave Request bot
 

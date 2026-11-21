@@ -44,36 +44,29 @@ describe('OTP approval and several Driver Trainers (owner, 20 Nov 2026)',()=>{
   const signedIn=()=>sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43)}));
   const passed=()=>reviewTrial({id:'otp-trial',formNo:'TF/2026-27/0042',site:scope.site,resultAt:'2026-11-19T12:00:00Z',
     fields:{Result:'PASS','Name of candidate':'Otp Candidate','Mobile no.':'9876543210'}})!;
-  it('PM cannot approve directly; Office HR requests the PM OTP, enters it and the form moves to Office HR',async()=>{
+  /* Owner, 21 Nov 2026: the PM approves directly like the Driver Trainer; only Directors approve by OTP. */
+  it('PM approves directly (no OTP) and Office HR is not asked for a PM OTP',async()=>{
     signedIn();
     const request=vi.spyOn(window,'fetch').mockImplementation(async url=>{
       const path=String(url);
-      if(path.endsWith('/trial-otp'))return Response.json({expires:'2026-11-20T12:15:00Z',sentTo:['gulnawaz'],telegram:{message:'',recipients:1,connected:['gulnawaz']}});
-      if(path.endsWith('/trial-otp-verify'))return Response.json({approved:true,at:'2026-11-20T12:05:00Z',by:'PM Sir (OTP entered by Sample Signer)',stage:'ohr',rows:[],telegram:{message:'',recipients:1,connected:['apurvakopulwar']}});
+      if(path.endsWith('/trial-approval'))return Response.json({saved:true,stage:'ohr',telegram:{message:'',recipients:1,connected:['apurvakopulwar']}});
       return Response.json({...hierarchyTrainer,roles:['pm','ohr']});
     });
     vi.mocked(telegramSend.fetchReviewQueue).mockResolvedValueOnce([passed()]);
-    const {el,click,input,change}=setup();
+    const {el,click,change}=setup();
     await waitFor(()=>expect(el('#apList')).toHaveTextContent('Otp Candidate'));
+    change('#role','ohr');
+    expect(root(el).querySelector('#apList .otp-panel')).toBeNull();
     change('#role','pm');
     await waitFor(()=>expect(el('#apTitle')).toHaveTextContent('PM approval queue'));
-    await waitFor(()=>expect(el('#apRoleWarn')).toHaveTextContent('You approve by OTP'));
+    expect(el('#apRoleWarn').hidden).toBe(true);
     click('#apAll');
-    await waitFor(()=>expect(el('#apApprove')).toBeDisabled());
+    await waitFor(()=>expect(el('#apApprove')).not.toBeDisabled());
     click('#apApprove');
-    expect(request.mock.calls.some(([url])=>String(url).endsWith('/trial-approval'))).toBe(false);
-    change('#role','ohr');
-    expect(el('#apList .otp-panel')).toHaveTextContent('Otp Candidate');
-    click('[data-otp-request]');
-    await waitFor(()=>expect(el('[data-otp-code]')).toBeInTheDocument());
-    const sent=request.mock.calls.find(([url])=>String(url).endsWith('/trial-otp'));
-    expect(JSON.parse(String(sent![1]?.body))).toMatchObject({reviewer:'pm',formNos:['TF/2026-27/0042'],site:scope.site});
-    input('[data-otp-code]','482913');
-    click('[data-otp-verify]');
-    await waitFor(()=>expect(root(el).querySelector('#apList .otp-panel')).toBeNull());
-    expect(el('#apList')).toHaveTextContent('Otp Candidate');
-    const verify=request.mock.calls.find(([url])=>String(url).endsWith('/trial-otp-verify'));
-    expect(JSON.parse(String(verify![1]?.body))).toMatchObject({reviewer:'pm',otp:'482913'});
+    await waitFor(()=>expect(request.mock.calls.some(([url])=>String(url).endsWith('/trial-approval'))).toBe(true));
+    const sent=request.mock.calls.find(([url])=>String(url).endsWith('/trial-approval'));
+    expect(JSON.parse(String(sent![1]?.body))).toMatchObject({reviewer:'pm',approved:true});
+    expect(request.mock.calls.some(([url])=>String(url).includes('/trial-otp'))).toBe(false);
   });
   it('a site with three Driver Trainers ticks Yes / No for each; one No makes it FAIL',async()=>{
     signedIn();

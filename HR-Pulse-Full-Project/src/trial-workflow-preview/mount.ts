@@ -180,7 +180,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
   }
   const waiting = () => sorted(records.filter(row=>row.stage==='trainer')).reverse();
   const approvals = () => canApprove(role) ? sorted(records.filter(row=>row.stage===role)) : [];
-  const otpRows = () => records.filter(row=>row.result==='PASS'&&(row.stage==='pm'||row.stage==='director'));
+  const otpRows = () => records.filter(row=>row.result==='PASS'&&row.stage==='director');
   function otpGroups(): OtpGroup[] {
     if (role!=='ohr'||!canAct('ohr')||!otpApproval()) return [];
     const groups = new Map<string,OtpGroup>();

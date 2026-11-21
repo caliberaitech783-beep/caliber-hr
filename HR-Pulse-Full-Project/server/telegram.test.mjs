@@ -82,7 +82,9 @@ test('web approval keeps the authenticated Pulse PM role and site assignment',as
  const db={release(){},async query(sql){if(sql.includes("SELECT id,data FROM hr_records WHERE kind='trialForms'"))return {rows:[stored]};return {rows:[],rowCount:1};}};
  const profile={actor:'sanskarmanoHare'.toLowerCase(),name:'Sanskar Manohare',permissions:{hrDesktopAccess:['Employee Master'],hrAccountStatus:'Active',hrTrialAssignments:[{role:'PM',allSites:false,sites:[{code:'NCL-DUDE',name:'Dudhichua East OC'}]}]}};
  const service=createTelegram({query:db.query,connect:async()=>db}),input={reviewer:'pm',approved:true,site:'Dudhichua OB East',region:'NCL',rows:[{formNo:'TF/2026-27/0010',fields:{Result:'PASS'}}]};
- await assert.rejects(service.telegramApi(profile,'trial-approval','POST',input),{status:409},'PM approval is by OTP through Office HR');
+ const approved=await service.telegramApi(profile,'trial-approval','POST',input);
+ assert.equal(approved.saved,true);assert.equal(approved.stage,'ohr','the PM approves directly, no OTP (owner, 21 Nov 2026)');
+ stored.data.history=[];
  const out=await service.telegramApi(profile,'trial-approval','POST',{...input,approved:false,note:'Licence doubtful'});
  assert.equal(out.saved,true);assert.equal(out.stage,'reject');
 });
