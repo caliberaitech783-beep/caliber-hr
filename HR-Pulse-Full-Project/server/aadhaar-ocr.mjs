@@ -32,7 +32,7 @@ export function createAadhaarReader({apiKey=process.env.GEMINI_API_KEY,model=pro
   if(!canWrite(profile,'employees'))throw problem('Employee management access is required to scan Aadhaar',403);
   if(!apiKey)throw problem('The Aadhaar reader is not configured. (GEMINI_CONFIG)',503);
   const isDl=input?.document==='drivingLicence',images=isDl?input?.images:[{content:input?.content,mime:input?.mime}];
-  if(!Array.isArray(images)||images.length!==(isDl?2:1))throw problem(isDl?'Upload both front and back driving licence images':'Use a JPG, PNG or PDF up to 1.3 MB after image resizing');
+  if(!Array.isArray(images)||images.length!==(isDl && input.complete!==true?2:1))throw problem(isDl?'Upload both front and back driving licence images':'Use a JPG, PNG or PDF up to 1.3 MB after image resizing');
   for(const {content,mime} of images){
    if(!['image/jpeg','image/png','application/pdf'].includes(mime)||typeof content!=='string'||!content.length||content.length>1_800_000||content.length%4!==0||!/^[A-Za-z0-9+/]+={0,2}$/.test(content))throw problem('Use JPG, PNG or PDF files up to 1.3 MB after image resizing');
    const bytes=Buffer.from(content,'base64'),valid=mime==='application/pdf'?bytes.subarray(0,5).toString()==='%PDF-':mime==='image/jpeg'?bytes.subarray(0,3).equals(Buffer.from([255,216,255])):bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));

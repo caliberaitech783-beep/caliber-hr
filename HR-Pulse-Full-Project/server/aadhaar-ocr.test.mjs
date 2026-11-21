@@ -51,3 +51,11 @@ test('rejects truncated or invalid model output',async()=>{
  const read=createAadhaarReader({apiKey:'test',fetchImpl:async()=>new Response(JSON.stringify({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'{}'}]}}]}))});
  await assert.rejects(read(profile,input),{status:502});
 });
+test('accepts a single combined licence only when marked complete',async()=>{
+ const read=createAadhaarReader({apiKey:'test',fetchImpl:async(url,options)=>{
+  assert.equal(JSON.parse(options.body).contents[0].parts.length,1);
+  return success();
+ }});
+ await assert.rejects(read(profile,{document:'drivingLicence',images:[input]}),{status:400});
+ await read(profile,{document:'drivingLicence',complete:true,images:[input]});
+});
