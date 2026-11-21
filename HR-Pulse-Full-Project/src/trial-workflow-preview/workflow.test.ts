@@ -501,8 +501,6 @@ describe('Trial workflow preview',()=>{
     click('#trSubmit');
     expect(el('#toast')).toHaveTextContent('Upload the trial result file for Sample Pass');
     fireEvent.change(el('[data-result-file]'),{target:{files:[file]}});
-    click('#trSubmit');
-    expect(el('#toast')).toHaveTextContent('Upload the driving video for Sample Pass');
     fireEvent.change(el('[data-driving-video]'),{target:{files:[video]}});
     expect(el('#trList')).toHaveTextContent(file.name);
     await waitFor(()=>expect(el('#trList')).toHaveTextContent(video.name));

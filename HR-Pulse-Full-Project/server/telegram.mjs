@@ -208,7 +208,6 @@ const cleanAttachments=list=>(Array.isArray(list)?list:[]).slice(0,8).map(a=>({n
 export const keepTrialDocuments=(oldList,nextList)=>{const next=cleanAttachments(nextList),old=cleanAttachments(oldList);for(const kind of ['aadhaar','drivingLicence'])if(!next.some(file=>file.kind===kind)){const file=old.find(item=>item.kind===kind);if(file)next.push(file);}return next;};
 export function requireTrialUploads(attachments){
  if(!attachments.some(file=>file.kind==='trialResult'))fail('Upload the trial result file before submitting.');
- if(!attachments.some(file=>file.kind==='drivingVideo'))fail('Upload the driving video before submitting.');
 }
 const recipientIssues=async(pool,recipients)=>{const connected=(await pool.query(`SELECT actor FROM hr_telegram_accounts WHERE ${trialConnectedSql()} AND actor = ANY($2)`,[mtEnabled(),recipients])).rows.map(r=>r.actor.replace(/^trial:/,''));const pendingNote=(await pool.query("SELECT actor,last_error FROM hr_telegram_outbox WHERE bot IN ('trial','trial-status') AND state<>'SENT' AND last_error IS NOT NULL AND actor = ANY($1) ORDER BY id DESC LIMIT 5",[recipients])).rows;return {recipients:recipients.length,connected,bot:trialUsername(),configured:trialConfigured(),issues:pendingNote.map(r=>`${r.actor.replace(/^trial:/,'')}: ${r.last_error}`)};};
 /* Telegram text for a saved trial form – matches the agreed format. */

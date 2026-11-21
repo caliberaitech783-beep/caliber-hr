@@ -712,8 +712,6 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
     if(missingResult)return toast(`Upload the trial result file for ${missingResult.name}.`);
     const optimizingVideo=rows.find(row=>optimizingVideos.has(row.id));
     if(optimizingVideo)return toast(`Wait for the driving video optimization for ${optimizingVideo.name}.`);
-    const missingVideo=rows.find(row=>!draftVideos.has(row.id));
-    if(missingVideo)return toast(`Upload the driving video for ${missingVideo.name}.`);
     if(savedSession()?.grant){
       submittingResults=true;
       try{

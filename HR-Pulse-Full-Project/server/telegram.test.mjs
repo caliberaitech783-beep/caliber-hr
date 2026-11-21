@@ -314,11 +314,11 @@ test('trial approvals use the active Driver & Operator steps for the form group 
  assert.deepEqual(await actors('part1',{...east,site:''}),[]);
 });
 
-test('trial trainer comes from the active site hierarchy and both result uploads are required',async()=>{
+test('trial trainer comes from the active site hierarchy and only the trial result file is required',async()=>{
  const queries=[];const db={query:async(sql,args)=>{queries.push([sql,args]);if(sql.includes("kind='joiningHierarchies'"))return {rows:[{code:'NCL-JAYANT',data:{group:'NCL',steps:[{label:'Driver Trainer',approvers:['sajadali']}]}}]};if(sql.includes("kind='employees'"))return {rows:[{name:'Sajad Ali'}]};return {rows:[]};}};
  assert.deepEqual(await trialTrainerFor(db,{site:'Jayant OB East',region:'NCL',group:'OB / COAL'}),{actor:'sajadali',name:'Sajad Ali',site:'Jayant OB East',trainers:[{actor:'sajadali',name:'Sajad Ali'}]});
  assert.equal(queries.at(-1)[1][0],'sajadali');
  assert.throws(()=>requireTrialUploads([]),/trial result file/);
- assert.throws(()=>requireTrialUploads([{kind:'trialResult'}]),/driving video/);
+ assert.doesNotThrow(()=>requireTrialUploads([{kind:'trialResult'}]));
  assert.doesNotThrow(()=>requireTrialUploads([{kind:'trialResult'},{kind:'drivingVideo'}]));
 });
