@@ -1,4 +1,6 @@
 import {date, dateTime, DOCS, equipment, indiaDay, indiaTime, isClearedForJoining, isOtpRole, ROLES, status, votesText, type Outcome, type Role, type Trial} from './records';
+import {regionalHrFor} from './routing';
+import {siteDisplayName} from '../siteNames';
 
 const escapes: Record<string,string> = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 export const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g,char=>escapes[char]);
@@ -9,10 +11,16 @@ const candidateLink = (row: Trial) => `<button type="button" class="link" data-o
 export function table(headers: string[], rows: string, width?: number) {
   return `<div class="scroll"><table class="t"${width ? ` style="min-width:${width}px"` : ''}><thead><tr>${headers.map(item=>`<th scope="col">${item}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
+/* Site name column, with the site's region (NCL / WCL) under it (owner, 21 Nov 2026). */
+const siteCell = (site: string) => {
+  if (!site) return '<span class="muted">–</span>';
+  const region = regionalHrFor(site)?.region;
+  return `${esc(siteDisplayName(site))}${region ? `<div class="muted small">${esc(region)}</div>` : ''}`;
+};
 export function overviewTable(records: Trial[], canOpenJoining = false) {
-  return table(['Form no.','Candidate','Post','Vehicle','Exp','Referred by','Trial date','Result','Status'], records.map(row=>`
+  return table(['Form no.','Candidate','Site name','Post','Vehicle','Exp','Referred by','Trial date','Result','Status'], records.map(row=>`
     <tr><td class="mono">${esc(row.formNo)}</td><td>${candidateLink(row)}<div class="muted small">${esc(row.mobile)}</div></td>
-    <td>${esc(row.post)}</td><td>${esc(equipment(row))}</td><td>${esc(row.experience)}${row.experience?' yrs':''}</td>
+    <td>${siteCell(row.site)}</td><td>${esc(row.post)}</td><td>${esc(equipment(row))}</td><td>${esc(row.experience)}${row.experience?' yrs':''}</td>
     <td>${esc(row.referredBy)}</td><td>${esc(dateTime(row.trialDate))}</td><td>${resultPill(row)}</td><td>${stagePill(row)}${canOpenJoining&&isClearedForJoining(row)?` <button type="button" class="btn pri sm" data-join-trial="${esc(row.id)}" aria-label="Open Step 2 for ${esc(row.name)}">Open Step 2</button>`:''}</td></tr>`).join(''));
 }
 /* Two or more Driver Trainers: a Yes / No tick for every trainer; PASS only when all say Yes (owner, 20 Nov 2026). */
