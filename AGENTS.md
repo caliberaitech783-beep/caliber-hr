@@ -97,3 +97,11 @@ Set by the owner on 21 November 2026.
 - Submit Employee (Document Checklist) sends the new employee into approval whenever the site has a route: every NCL and WCL region site and the two offices use the new employee route; NCL / WCL sites need their Site PM and Office HR saved in Approval Master › Hierarchy (a clear message says so), the offices need no saved hierarchy; any other site needs an enabled saved hierarchy, else it stays a draft.
 - A missing saved hierarchy never blocks a new employee on the fixed route (`employeeHierarchy(..., {optional:true})` in `server/joining-hierarchy.mjs`). Once the Directors approve, the form shows in Completed Form.
 - `importEmployees` in `HR-Pulse-Full-Project/server/service.mjs` holds it; `server/joining-submit-route.test.mjs` checks it.
+
+# Employee must be at least 18 years old
+
+Set by the owner on 21 November 2026.
+
+- On the joining form (Employee Master › Add Temp. Employee), the employee's own Date of Birth must give an age of at least 18 years as of today's date in India. A younger date, or a date after today, shows "Age must be at least 18 years as of today (born on or before DD/MM/YYYY)" under the box, blocks Next / Submit, and the calendar does not offer later dates.
+- The server refuses the same on Submit Employee and trial handoff ("Date of Birth: age must be at least 18 years…"). Drafts still save. Family members' dates of birth have no age rule.
+- `minimumAgeMessage` / `latestBirthDate` in `HR-Pulse-Full-Project/src/age.ts` (used through `minAge` on `FormInput`) and `underageBirthDate` in `server/joining-required.mjs` hold it; `src/dobMinimumAge.test.tsx` and `server/joining-min-age.test.mjs` check it.

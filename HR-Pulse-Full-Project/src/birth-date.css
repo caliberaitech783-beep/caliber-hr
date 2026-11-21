@@ -50,3 +50,5 @@ input:is([type=date],[type=datetime-local],[type=month]):enabled:not([readonly])
 .joining-table.family-details-table .nominee-tag{display:block;margin-top:4px;font-size:10px;font-weight:700;line-height:1.2;color:#5b2bb5;text-transform:uppercase}
 .joining-table.family-details-table .nominee-tag .required-mark{color:#d92d20;margin-left:1px}
 .nominee-note{margin:0 0 10px;font-size:13px;color:#5b2bb5;font-weight:600}
+.birth-date-error{font-size:11.5px;line-height:1.35;color:#b42318;font-weight:600}
+.birth-date-control>input[aria-invalid=true]{border-color:#d92d20}
