@@ -338,7 +338,9 @@ export function webhookSecretValid(actual,expected){if(!expected||typeof actual!
 
 /* ---- Joining approval (Employee Management › Joining & Personal Details): OTP on Telegram + Approve / Reject buttons ---- */
 const JOINING_OTP_MINUTES=15,JOINING_OTP_ATTEMPTS=5;
-export async function joiningApprovers(db){const row=(await db.query("SELECT data FROM hr_records WHERE kind='joiningApprovals' AND code='SETTINGS'")).rows[0];const d=row?.data||{};return {approvers:String(d.approvers||'').split(',').map(a=>a.trim().toLowerCase()).filter(Boolean),enabled:!!d.enabled};}
+/* Owner, 21 Nov 2026: Submit Employee never asks for a separate joining OTP; the new employee follows the saved hierarchy route
+   (Approval Master › Trial Hierarchy / Employee Track bot). The old "Joining approval" setting is ignored. */
+export async function joiningApprovers(db){const row=(await db.query("SELECT data FROM hr_records WHERE kind='joiningApprovals' AND code='SETTINGS'")).rows[0];const d=row?.data||{};return {approvers:String(d.approvers||'').split(',').map(a=>a.trim().toLowerCase()).filter(Boolean),enabled:false};}
 export function joiningApprovalMessage(d,otp){return `Joining approval request\nCandidate: ${d.candidate||'-'}\nPost: ${d.post||'-'}\nSite: ${d.site||'-'}\nCompany: ${d.company||'-'}\nSubmitted by: ${d.submittedBy||'-'}\n\nOTP: ${otp} (valid ${JOINING_OTP_MINUTES} min)\nTell the OTP to HR, or tap Approve / Reject below.`;}
 const joiningMarkup=code=>({inline_keyboard:[[{text:'✅ Approve',callback_data:`ja:${code}:approve`},{text:'❌ Reject',callback_data:`ja:${code}:reject`}]]});
 async function answerCallback(bot,id,text){const token=botToken(bot);if(!token)return;try{await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({callback_query_id:id,text,show_alert:false}),signal:AbortSignal.timeout(8000)});}catch{/* best effort */}}
