@@ -9,6 +9,7 @@ import {approvalTable, detailView, esc, otpPanel, overviewTable, trainerForms, t
 import {getTrialResultFile, removeTrialResultFiles, saveTrialResultFiles} from './trialResultFiles';
 import {deliveryStatus, fetchReviewQueue, fetchTrialTrainer, requestOtp, sendApproval, sendPart1, sendResults, verifyOtp, type Delivery, type TrialScope} from './telegramSend';
 import {siteDisplayName} from '../siteNames';
+import {mergeReviewed} from './reviewQueue';
 import {findPreviousTrial} from './previousTrial';
 import type {TrialMatch} from '../TrialAadhaarHistory';
 import {optimizeDrivingVideo} from './optimizeDrivingVideo';
@@ -1196,17 +1197,7 @@ export function mountTrialPreview(root: ShadowRoot, scope: Scope, aadhaar: {
         for(const remote of queue){
           const index=merged.findIndex(row=>row.formNo===remote.formNo);
           if(index<0)merged.push(remote);
-          else{
-            const local=merged[index];
-            if(local.result==='PASS'&&local.name===remote.name&&local.mobile===remote.mobile){
-              // Keep browser attachments, while the server supplies shared review decisions.
-              if(Date.parse(remote.outcome!.at)<Date.parse(local.outcome?.at||''))continue;
-              // Site HR / Driver Trainer steps: the browser's own, else the server's; approvals always from the server.
-              const own=local.history.filter(h=>!canApprove(h.role));
-              const history=[...own,...remote.history.filter(h=>!canApprove(h.role)&&!own.some(o=>o.role===h.role)),...remote.history.filter(h=>canApprove(h.role))];
-              merged[index]=normalizeTrialApproval({...local,history});
-            }
-          }
+          else merged[index]=mergeReviewed(merged[index],remote);
         }
         return merged;
       });

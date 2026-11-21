@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import {approvalStage,isClearedForJoining,normalizeTrialApproval,type History} from './records';
-import {reviewTrial,type ReviewRecord} from './reviewQueue';
+import {mergeReviewed,reviewTrial,type ReviewRecord} from './reviewQueue';
 const record:ReviewRecord={id:'trial-id',formNo:'TF/2026-27/0001',site:'Jayant OB East',resultAt:'2026-11-19T12:00:00Z',
  fields:{Result:'PASS','Name of candidate':'Vishal','Mobile no.':'9876543210','If PASS – recommended for':'Driver'}};
 const history=(roles:string[]):History[]=>roles.map(role=>({role:role as History['role'],action:'Approved',by:'Reviewer',at:'2026-11-19T12:01:00Z'}));
@@ -30,4 +30,18 @@ it('names the Site HR and Driver Trainer in the approvals of a form from the ser
  const sigs=box.querySelector('.sigs')!.textContent!;
  expect(sigs).toContain('Site HRSubmitted Part 1AMIT SINGH19-11-2026');
  expect(sigs).toContain('Driver TrainerPASSSANTOSH KUMAR MOHANTA19-11-2026');
+});
+it('clears a form for Site HR when the trainer entered PASS on another device',()=>{
+ const remote=reviewTrial({...record,history:history(['pm','ohr','rhr','director'])})!;
+ const local={...reviewTrial({...record,stage:'PART1',fields:{...record.fields,Result:''}})!,photo:'local-photo',
+  history:[{role:'hr' as const,action:'Submitted',by:'Site HR',at:'2026-11-19T11:00:00Z'}]};
+ expect(local.stage).toBe('trainer');
+ const merged=mergeReviewed(local,remote);
+ expect(merged.stage).toBe('done');
+ expect(merged.result).toBe('PASS');
+ expect(merged.photo).toBe('local-photo');
+ expect(merged.history.map(h=>h.role)).toEqual(['hr','pm','ohr','rhr','director']);
+ expect(isClearedForJoining(merged)).toBe(true);
+ expect(mergeReviewed(local,reviewTrial({...record,stage:'PART1',fields:{...record.fields,Result:''}})!)).toBe(local);
+ expect(mergeReviewed({...local,stage:'rejected'},remote).stage).toBe('rejected');
 });

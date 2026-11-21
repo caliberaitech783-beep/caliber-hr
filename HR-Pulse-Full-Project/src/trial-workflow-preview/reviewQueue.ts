@@ -1,4 +1,21 @@
-import {DOCS,normalizeTrialApproval,type History,type Trial} from './records';
+import {canApprove,DOCS,normalizeTrialApproval,type History,type Trial} from './records';
+
+/** Merges a server record into this browser's copy of the same form. The server holds the trainer's result and every
+    approval, so a form whose result was entered on another device (the Driver Trainer's phone) still moves on here
+    instead of staying "Trial pending" for Site HR. */
+export function mergeReviewed(local:Trial,remote:Trial):Trial{
+ if(!remote.result||!remote.outcome||local.name!==remote.name||local.mobile!==remote.mobile)return local;
+ // Site HR / Driver Trainer steps: the browser's own, else the server's; approvals always from the server.
+ const own=local.history.filter(h=>!canApprove(h.role));
+ const history=[...own,...remote.history.filter(h=>!canApprove(h.role)&&!own.some(o=>o.role===h.role)),...remote.history.filter(h=>canApprove(h.role))];
+ if(local.result!=='PASS'||!local.outcome){
+  if(local.stage==='rejected'||local.outcome&&Date.parse(remote.outcome.at)<Date.parse(local.outcome.at))return local;
+  return normalizeTrialApproval({...local,result:remote.result,outcome:remote.outcome,stage:remote.stage,history});
+ }
+ // Keep browser attachments, while the server supplies shared review decisions.
+ if(Date.parse(remote.outcome.at)<Date.parse(local.outcome.at||''))return local;
+ return normalizeTrialApproval({...local,history});
+}
 
 export type ReviewRecord={id:string;formNo:string;site:string;fields:Record<string,string>;history?:History[];resultAt?:string;savedAt?:string;batchId?:string;stage?:string;pendingRole?:string;trialBy?:string;docs?:Record<string,string>};
 export function reviewTrial(record:ReviewRecord):Trial|null{
