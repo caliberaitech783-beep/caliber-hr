@@ -48,6 +48,7 @@ describe('Corporate / HO import headers',()=>{
   const uploaded=[officeHeaders[0],officeHeaders[2],officeHeaders[1],...officeHeaders.slice(3),'','',''];
   expect(validCorporateOfficeHeaders(uploaded)).toBe(true);
   expect(validCorporateOfficeHeaders(officeHeaders)).toBe(true);
+  expect(validCorporateOfficeHeaders(officeHeaders.map(header=>header==='Candidate E-mail *'?'Candidate E-mail':header))).toBe(true);
   expect(validCorporateOfficeHeaders([...uploaded,'Unexpected'])).toBe(false);
  });
  it('resolves master names and leaves unmatched optional references blank',()=>{
@@ -70,7 +71,7 @@ describe('Corporate / HO import headers',()=>{
  });
  it('exports the exact Update Existing Employee columns and displayed values',()=>{
   const grid=corporateOfficeExportGrid([{id:'1',kind:'employees',code:'EMP-1',name:'Employee One',data:{officeData:{'Sr. No.':1,'Joining Category *':'CORPORATE'}} as any,status:'DRAFT',version:1,updated_at:'2026-10-23'}]);
-  expect(grid[0]).toEqual(officeHeaders);
+  expect(grid[0]).toEqual(officeHeaders.map(header=>header==='Candidate E-mail *'?'Candidate E-mail':header));
   expect(grid[1][0]).toBe(1);
   expect(grid[1][1]).toBe('CORPORATE');
   expect(grid[1][2]).toBe('EMP-1');
