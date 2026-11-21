@@ -136,3 +136,7 @@ nav button .chev{flex-shrink:0;transition:transform .2s}nav button .chev.expande
 .trial-route-strip li:not(:last-child)::after{content:'→';position:absolute;right:-12px;top:50%;transform:translateY(-50%);color:#8a8499;font-weight:400}
 .trial-route-strip li.done{background:#ecfdf5;border-color:#a7f3d0}
 .rejoin-doc-menu{display:grid;grid-template-columns:1fr;gap:2px}.rejoin-doc-menu label{display:flex;width:100%;align-items:center;gap:9px;padding:8px 6px;font-size:12px;box-sizing:border-box}.rejoin-doc-menu label:hover{background:#f7f3fa}
+/* Police verification / Self declaration form: region rule note and pending status (owner, 21 Nov 2026). */
+.documents-table .document-rule{display:block;margin-top:3px;color:#8a5a00;font-size:12px;font-weight:600}
+.regional-document-status{display:block;font-size:12px;font-weight:700}.regional-document-status.due{color:#8a5a00}.regional-document-status.overdue,.regional-document-status.missing{color:#c0263f}
+.regional-document-upload{display:inline-flex;align-items:center;margin-top:4px;border:1px solid #d8cce3;border-radius:7px;background:#fff;color:#5b2d91;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer}.regional-document-upload input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}

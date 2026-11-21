@@ -5,6 +5,8 @@ import {readPaddleText} from './paddleOcr';
 // PAN, PF, ESIC and bank documents often print the linked Aadhaar number, so
 // they are checked before Aadhaar.
 const textRules:[string,RegExp][]=[
+ ['Police verification',/police\s*(?:verification|clearance)|character\s*certificate|antecedent/i],
+ ['Self declaration form',/self[\s-]*declaration/i],
  ['PAN',/income\s*tax|permanent\s*account|\b[A-Z]{5}\d{4}[A-Z]\b/i],
  ['Driving licence',/driving\s*licen[cs]e|\bDL\s*No\b/i],
  ['UAN / PF details',/\bUAN\b|provident\s*fund|\bEPFO?\b/i],
