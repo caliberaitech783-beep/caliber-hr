@@ -263,7 +263,7 @@ describe('Employee Master tabs',()=>{
   expect(fetchMock.mock.calls.some(([url])=>String(url).includes('records/employees?page=1&search=&status=ACTIVE'))).toBe(true);
  });
  it('shows NCL Police verification and Self declaration as overdue after 20 days with an upload button',async()=>{
-  const ncl={id:'ncl',code:'NCL-01',name:'NCL Employee',status:'ACTIVE',version:1,data:{officeData:{'Joining Category *':'NCL','Site *':'Jayant OB East','Joining Date *':'2020-01-01','Police verification':'police.pdf'}}};
+  const ncl={id:'ncl',code:'NCL-01',name:'NCL Employee',status:'ACTIVE',version:1,data:{officeData:{'Joining Category *':'NCL','Site *':'Jayant OB East','Joining Date *':'2020-01-01','Resident':'LOCAL','Police verification':'police.pdf'}}};
   vi.stubGlobal('fetch',vi.fn(async()=>Response.json({rows:[ncl],total:1,pageSize:50})));
   try{
    render(<EmployeeLocation grant="test-grant"/>);
@@ -650,8 +650,16 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Select company'),{target:{value:'Caliber Mining And Logistics Ltd'}});
   const checklist=()=>fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'WCL'}});
+  fireEvent.change(document.querySelector('[name="Resident"]')!,{target:{value:'LOCAL'}});
   await act(async()=>{checklist();});
   for(const name of ['Police verification','Self declaration form']){expect(screen.getByLabelText(`Upload ${name}`)).toBeRequired();expect(screen.getByLabelText(`Upload ${name}`).closest('tr')).toHaveTextContent('Mandatory at joining (WCL)');}
+  for(const resident of ['CAMP','Non-local','']){
+   fireEvent.change(document.querySelector('[name="Resident"]')!,{target:{value:resident}});
+   expect(screen.getByLabelText('Upload Police verification')).toBeRequired();
+   expect(screen.getByLabelText('Upload Self declaration form')).not.toBeRequired();
+   expect(screen.getByLabelText('Upload Self declaration form').closest('tr')).toHaveTextContent('Optional – needed only for LOCAL resident');
+  }
+  fireEvent.change(document.querySelector('[name="Resident"]')!,{target:{value:'LOCAL'}});
   fireEvent.change(screen.getByLabelText('Select region'),{target:{value:'NCL'}});
   for(const name of ['Police verification','Self declaration form']){expect(screen.getByLabelText(`Upload ${name}`)).not.toBeRequired();expect(screen.getByLabelText(`Upload ${name}`).closest('tr')).toHaveTextContent('Within 20 days of joining (NCL)');}
  });
