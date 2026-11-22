@@ -122,3 +122,11 @@ Set by the owner on 22 November 2026.
 - A login whose site rights cover only OB / COAL sites (HR at Majri, Sasti and the other NCL / WCL sites) sees only OB / COAL under Employee Master. The Corporate / HO button is not shown and the page stays on OB / COAL.
 - Admin, "All sites" logins and any login with an office (Head Office, Corporate Office, HO, CO) in its site rights still see both.
 - `siteOnlyLogin` in `HR-Pulse-Full-Project/src/siteRights.ts` (used by `src/Workspace.tsx`, with `/api/telegram/trial-scope`) holds it; `src/siteOnlyCorporate.test.tsx` checks it.
+# Site HR sees only OB / COAL and Trial Form
+
+Set by the owner on 22 November 2026.
+
+- Every HR who works at a site (site HR, the site's HR Manager, HR executives at Majri, Sasti and the other OB / COAL sites) sees one HRMS menu, Employee Master, with only OB / COAL and Trial Form, whatever menus Pulse assigned. Under OB / COAL only the Add Temp. Employee tab shows (no Rejoining Form, Update Existing Employee, Employee Verify, Completed Form or Reports; `addTempOnly` in `src/EmployeeLocation.tsx`). A saved menu or a direct link to another page opens OB / COAL instead. The site HR Manager no longer gets the trial-only screen; they get the same two menus.
+- HR at the Head Office, the Nagpur office or a regional office keeps every assigned menu: any login with an office in its site rights, "All sites" or admin, a role naming Regional / Office / Corporate / HO, an Office HR, Regional HR, Director or Trial Admin trial assignment, and the fixed Regional HR (Vinod Pinjarkar, Virat Singh) even when their site rights list only sites.
+- PM logins keep their approvals-only menu.
+- `siteHrOnly` in `HR-Pulse-Full-Project/src/siteHrAccess.ts` (used by `src/Workspace.tsx`) holds it; `src/siteHrMenus.test.tsx` checks it.
