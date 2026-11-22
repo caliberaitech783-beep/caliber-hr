@@ -3,6 +3,7 @@ import { problem } from './service.mjs';
 import {sendMail} from './mail.mjs';
 import {createAadhaarReader} from './aadhaar-ocr.mjs';
 import {workflowChatIds} from './telegram.mjs';
+const MACHINE_BODY_LIMIT=2_000_000; // biometric machine uploads (attendance-direct.mjs)
 async function body(req,limit=2_000_000) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw problem('JSON content type required',415);
   let size=0; const chunks=[];
@@ -12,6 +13,23 @@ async function body(req,limit=2_000_000) {
 }
 export function createApi({ query, service, authenticate=async()=>null, allowedOrigin='https://hrpulse.cmll.in', readAadhaar=createAadhaarReader(), release='2026-10-22-modules-v1' }) {
   return createServer(async(req,res)=>{
+    // Biometric machines pushing straight to HR Pulse (attendance-direct.mjs): plain text, no sign-in, and plain
+    // HTTP allowed because many machines cannot do HTTPS. Everything else must arrive over HTTPS.
+    if(/^\/iclock\//.test(req.url||'')){
+      const reply=(status,text)=>res.writeHead(status,{'Content-Type':'text/plain','Cache-Control':'no-store'}).end(text);
+      try{
+        const url=new URL(req.url,'http://localhost');
+        if(!service?.attendanceMachine)return reply(503,'Unavailable');
+        let size=0;const chunks=[];
+        if(req.method==='POST')for await(const chunk of req){size+=chunk.length;if(size>MACHINE_BODY_LIMIT)return reply(413,'Too large');chunks.push(chunk);}
+        const out=await service.attendanceMachine(req.method,url.pathname,url.searchParams,Buffer.concat(chunks).toString('utf8'));
+        return reply(200,out.text);
+      }catch(error){console.error('biometric machine request failed',error?.message);return reply(500,'ERROR');}
+    }
+    if(req.headers['x-forwarded-proto']==='http'){
+      const host=String(req.headers.host||'').replace(/[^A-Za-z0-9.:-]/g,'');
+      return res.writeHead(301,{Location:`https://${host}${req.url}`}).end();
+    }
     const send=(status,data)=>res.writeHead(status).end(JSON.stringify(data));
     res.setHeader('Cache-Control','no-store'); res.setHeader('Content-Type','application/json');
     res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Vary','Origin');

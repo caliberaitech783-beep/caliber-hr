@@ -9,15 +9,21 @@ import BridgePcs,{type BridgePc} from './BridgePcs';
    a site and change their site, location or name. */
 export type Machine={serial:string;name:string;location:string;siteId:string|null;siteName:string;online:boolean;lastContact:string|null;lastSeen:string|null;logsToday:number;lastPunch:string|null;
  /** Owner, 22 Nov 2026: the machine's IP address (records only) and the bridge PC it reports to (null = main bridge PC). */
- ipAddress?:string;bridgeId?:string|null;bridgeName?:string};
+ ipAddress?:string;bridgeId?:string|null;bridgeName?:string;
+ /** Owner, 22 Nov 2026: the machine pushes straight to HR Pulse, with no bridge PC. */
+ direct?:boolean};
 export type MachineStatus='Online'|'Offline'|'Awaiting contact';
 export const ALL_SITES='',UNASSIGNED='unassigned';
 const OCTET='(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
 /** IPv4 address: four numbers 0-255 separated by dots (the server checks it again). */
 export const IP_PATTERN=`(${OCTET}\\.){3}${OCTET}`;
+/** Where a machine without a bridge PC sends its punches (Cloud Server Setting / ADMS). */
+export const DIRECT_SERVER='hr-api-cmll-783.azurewebsites.net';
 
-/** Whether the bridge PC a machine reports to is in touch (one bridge PC per site); without the list, the one bridge PC. */
-export const bridgeOnlineFor=(machine:Pick<Machine,'bridgeId'|'bridgeName'>,bridges:BridgePc[]|undefined,fallback:boolean)=>{
+/** Whether the bridge PC a machine reports to is in touch (one bridge PC per site); without the list, the one bridge PC.
+    A machine that pushes straight to HR Pulse has no bridge PC in between. */
+export const bridgeOnlineFor=(machine:Pick<Machine,'bridgeId'|'bridgeName'|'direct'>,bridges:BridgePc[]|undefined,fallback:boolean)=>{
+ if(machine.direct)return true;
  if(!bridges?.length)return fallback;
  const bridge=bridges.find(b=>machine.bridgeId?b.id===machine.bridgeId:b.main);
  return Boolean(bridge?.online);
@@ -54,7 +60,7 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
    await api(grant,'attendance/'+route,'POST',body);
    setAdding(false);setEditing('');
    if(route==='devices/register'&&body.siteId)setSite(body.siteId);
-   await onSaved(route==='devices/register'?`Machine ${body.serial} added. Its status shows once the bridge PC reaches it.`:`Machine ${body.serial} updated.`);
+   await onSaved(route==='devices/register'?`Machine ${body.serial} added. Its status shows once the machine contacts HR Pulse.`:`Machine ${body.serial} updated.`);
   }catch(e){onError((e as Error).message);}finally{setBusy(false);}
  }
  const siteSelect=(value:string,label:string)=><select name="siteId" aria-label={label} defaultValue={value} required disabled={busy}>
@@ -66,7 +72,13 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
  return <>{bridges&&<BridgePcs grant={grant} bridges={bridges} sites={options.map(s=>({id:s.id,name:s.name,kind:'sites'} as Lookup))} canManage={canManage} onSaved={onSaved} onError={onError}/>}
  <div className="data-card biometric-machines">
   <h2>Biometric machines</h2>
-  <p className="help-text">Every fingerprint / face machine on each site. {canManage?'Add a machine to its site with the serial number printed on it; the bridge PC at that site then reports its status and logs.':'Machines of your sites.'}</p>
+  <p className="help-text">Every fingerprint / face machine on each site. {canManage?'Add a machine to its site with the serial number printed on it; the machine then reports its status and logs, straight to HR Pulse or through the bridge PC at that site.':'Machines of your sites.'}</p>
+  {canManage&&<details className="help-text machine-direct-help"><summary>Connect a machine without a bridge PC</summary><ol>
+   <li>Connect the machine to a network with internet. In Menu › Comm. › Ethernet give it a gateway and DNS (for example 8.8.8.8), or turn DHCP on.</li>
+   <li>Menu › Comm. › Cloud Server Setting (ADMS): Enable Domain Name ON, Server Address <code>{DIRECT_SERVER}</code>, Server Port 443 with HTTPS ON (a machine without an HTTPS option: port 80), Proxy Server OFF.</li>
+   <li>Add the machine here with the serial number on its label (Menu › System Info › Device Info). A machine not added here is ignored.</li>
+   <li>Restart the machine. Within a minute its status turns Online, Bridge PC shows "Direct to HR Pulse", and its stored punches are sent.</li>
+  </ol></details>}
   <div className="attendance-filters">
    <label>Site<select value={site} disabled={busy} onChange={e=>{setSite(e.target.value);setAdding(false);setEditing('');}}>
     <option value={ALL_SITES}>All sites</option>{options.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
@@ -107,12 +119,12 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
       <td>{m.name||'—'}</td>
       <td className="machine-serial">{m.serial}</td>
       <td className="machine-serial">{m.ipAddress||'—'}</td>
-      <td>{m.bridgeName||<span className="attendance-unlinked">No bridge PC yet</span>}</td>
+      <td>{m.bridgeName||<span className="attendance-unlinked">Not connected yet</span>}</td>
       <td><span className={'machine-status '+status.split(' ')[0].toLowerCase()}>{status}</span></td>
       <td>{formatContact(m.lastContact)}</td>
       <td><strong>{m.logsToday}</strong> today{m.lastPunch&&<small className="machine-last-punch">Last punch {formatLastPunch(m.lastPunch)}</small>}</td>
       <td className="machine-actions">
-       <button type="button" disabled={fetching||!configured||status!=='Online'} onClick={()=>onFetch(m.serial)}><RefreshCw/>Fetch log</button>
+       <button type="button" disabled={fetching||(!configured&&!m.direct)||status!=='Online'} onClick={()=>onFetch(m.serial)}><RefreshCw/>Fetch log</button>
        {canManage&&<button type="button" disabled={busy} aria-label={`Edit machine ${m.serial}`} onClick={()=>{setEditing(m.serial);setAdding(false);onError('');}}><Pencil/>Edit</button>}
       </td>
      </tr>;

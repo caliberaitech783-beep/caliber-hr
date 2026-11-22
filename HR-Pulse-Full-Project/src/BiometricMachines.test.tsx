@@ -1,7 +1,7 @@
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {api} from './api';
-import BiometricMachines,{machineStatus,machinesForSite,siteOptions,type Machine} from './BiometricMachines';
+import BiometricMachines,{bridgeOnlineFor,DIRECT_SERVER,machineStatus,machinesForSite,siteOptions,type Machine} from './BiometricMachines';
 
 vi.mock('./api',async()=>({...await vi.importActual('./api'),api:vi.fn()}));
 beforeEach(()=>{vi.mocked(api).mockResolvedValue({} as never);});
@@ -65,4 +65,17 @@ it('edits a machine site, location and name; site users get no add or edit',asyn
  render(<BiometricMachines {...props} canManage={false}/>);
  expect(screen.queryByRole('button',{name:'Add machine'})).toBeNull();
  expect(screen.queryByRole('button',{name:/Edit machine/})).toBeNull();
+});
+
+it('a machine pushing straight to HR Pulse is online with no bridge PC, and Fetch log works for it',()=>{
+ const direct:Machine={serial:'CEXJ232460322',name:'OFFICE STAFF 2',location:'OFFICE',siteId:'s1',siteName:'Sasti OC',online:true,lastContact:'2026-11-22T12:00:00Z',lastSeen:null,logsToday:0,lastPunch:null,bridgeId:null,bridgeName:'Direct to HR Pulse',direct:true};
+ expect(bridgeOnlineFor(direct,[],false)).toBe(true);
+ expect(machineStatus(direct,bridgeOnlineFor(direct,[],false))).toBe('Online');
+ render(<BiometricMachines grant="g" machines={[direct]} sites={[]} bridgeOnline={false} configured={false} canManage fetching={false} onFetch={vi.fn()} onSaved={vi.fn()} onError={vi.fn()}/>);
+ const row=screen.getByText('CEXJ232460322').closest('tr')!;
+ expect(within(row).getByText('Online')).toBeTruthy();
+ expect(within(row).getByText('Direct to HR Pulse')).toBeTruthy();
+ expect((within(row).getByRole('button',{name:/Fetch log/}) as HTMLButtonElement).disabled).toBe(false);
+ expect(screen.getByText('Connect a machine without a bridge PC')).toBeTruthy();
+ expect(screen.getByText(DIRECT_SERVER)).toBeTruthy();
 });

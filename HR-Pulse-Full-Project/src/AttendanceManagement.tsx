@@ -38,7 +38,7 @@ export const legacyModuleUrl=(view:string,policy?:AttendancePolicy)=>hrAsset('at
    Excel exports and the biometric vs trip card comparison. */
 export type Punch={id:string;deviceSerial:string;deviceName:string;siteName:string;biometricId:string;date:string;time:string;verify:string;punchType:string;employeeId:string;employeeCode:string;employeeName:string;machineName:string};
 export type FetchRequest={id:string;state:'PENDING'|'RUNNING'|'DONE'|'FAILED';punchesReceived:number;newPunches:number;error:string;requestedAt:string;completedAt:string|null};
-type Status={configured:boolean;bridgeOnline:boolean;bridgeLastSeen:string|null;devices:Machine[];bridges?:BridgePc[];lastFetch:FetchRequest|null;canLink:boolean;canManageDevices:boolean};
+type Status={configured:boolean;directMachines?:number;bridgeOnline:boolean;bridgeLastSeen:string|null;devices:Machine[];bridges?:BridgePc[];lastFetch:FetchRequest|null;canLink:boolean;canManageDevices:boolean};
 type Unlinked={deviceSerial:string;biometricId:string;punches:number;lastPunch:string;machineName:string;siteName:string};
 type PunchList={from:string;to:string;truncated:boolean;rows:Punch[]};
 
@@ -169,13 +169,14 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
 
  const employees=lookups.filter(x=>x.kind==='employees'),sites=lookups.filter(x=>x.kind==='sites');
  const rows=punches?.rows||[];
- const bridge=!status?'':!status.configured?'Bridge not set up':status.bridgeOnline?'Bridge PC online':status.bridgeLastSeen?`Bridge PC offline · last seen ${new Date(status.bridgeLastSeen).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}`:'Bridge PC has not connected yet';
+ const direct=Number(status?.directMachines)||0;
+ const bridge=!status?'':direct&&!status.bridgeOnline?`${direct} machine${direct===1?'':'s'} direct to HR Pulse`:!status.configured?'Bridge not set up':status.bridgeOnline?'Bridge PC online':status.bridgeLastSeen?`Bridge PC offline · last seen ${new Date(status.bridgeLastSeen).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}`:'Bridge PC has not connected yet';
 
  return <>
   <div className="attendance-head">
    <p className="help-text">Punches from the ESSL fingerprint / face machines, collected by the bridge PC at each site. Link each machine ID to an employee once; the attendance register then rates their days with the HR policy.</p>
    <div className="attendance-actions">
-    {status&&<span className={'attendance-bridge '+(status.bridgeOnline?'online':'offline')} role="status">{bridge}</span>}
+    {status&&<span className={'attendance-bridge '+(status.bridgeOnline||direct?'online':'offline')} role="status">{bridge}</span>}
     <button className="primary" disabled={fetching||loading||!status?.configured} onClick={()=>void fetchAttendance()}><RefreshCw className={fetching?'spin':''}/>{fetching?'Fetching…':'Fetch attendance'}</button>
    </div>
   </div>

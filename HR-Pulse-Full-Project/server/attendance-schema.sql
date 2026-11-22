@@ -132,3 +132,5 @@ CREATE TABLE IF NOT EXISTS hr_attendance_bridges(
 ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS bridge_id uuid;
 -- The bridge PC that must pick up a fetch request (NULL = the main bridge PC).
 ALTER TABLE hr_attendance_fetch_requests ADD COLUMN IF NOT EXISTS bridge_id uuid;
+-- Last time the machine pushed straight to HR Pulse without a bridge PC (attendance-direct.mjs, owner 22 Nov 2026).
+ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS direct_contact timestamptz;

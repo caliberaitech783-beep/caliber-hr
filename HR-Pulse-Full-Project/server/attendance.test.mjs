@@ -108,7 +108,7 @@ test('machine status lists every site with location, contact and today\'s logs',
   if(sql.includes('FROM hr_attendance_devices d'))return {rows:[{serial:'JNP1',name:'K90',location:'Main gate',ip_address:'192.168.1.201',site_id:SITE,site_name:'Amlohri',last_seen:null,last_contact:'2026-11-20T05:00:00Z',online:true,logs_today:12,last_punch:'2026-11-20 10:31'}]};
  });
  const status=await createAttendance(pool,{bridgeKey:KEY}).attendanceApi(admin,'status','GET',{},new URLSearchParams());
- assert.deepEqual(status.devices[0],{serial:'JNP1',name:'K90',location:'Main gate',ipAddress:'192.168.1.201',siteId:SITE,siteName:'Amlohri',lastContact:'2026-11-20T05:00:00Z',online:true,lastSeen:null,logsToday:12,lastPunch:'2026-11-20 10:31',bridgeId:null,bridgeName:'Main bridge PC'});
+ assert.deepEqual(status.devices[0],{serial:'JNP1',name:'K90',location:'Main gate',ipAddress:'192.168.1.201',siteId:SITE,siteName:'Amlohri',lastContact:'2026-11-20T05:00:00Z',online:true,lastSeen:null,logsToday:12,lastPunch:'2026-11-20 10:31',bridgeId:null,direct:false,bridgeName:'Main bridge PC'});
  assert.deepEqual(status.bridges.map(b=>[b.name,b.main,b.machines]),[['Main bridge PC',true,['JNP1']]]);
  assert.equal(status.canManageDevices,true);
  const [sql,params]=pool.calls.find(([q])=>q.includes('FROM hr_attendance_devices d'));
@@ -160,7 +160,7 @@ test('each site bridge PC signs in with its own key and picks up only its own fe
 test('a fetch for a machine goes to its bridge PC; Fetch attendance asks every bridge PC',async()=>{
  const inserts=[];
  const pool=fakePool((sql,params)=>{
-  if(sql.includes('SELECT bridge_id FROM hr_attendance_devices'))return {rows:[{bridge_id:'bridge-sasti'}]};
+  if(sql.includes('SELECT bridge_id'))return {rows:[{bridge_id:'bridge-sasti'}]};
   if(sql.includes('SELECT id FROM hr_attendance_bridges'))return {rows:[{id:'bridge-sasti'},{id:'bridge-dhuptala'}]};
   if(sql.includes('INSERT INTO hr_attendance_fetch_requests')){inserts.push(params[3]);return {rows:[{id:params[0],state:'PENDING',punches_received:0,new_punches:0}]};}
  });
