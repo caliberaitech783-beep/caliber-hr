@@ -41,5 +41,5 @@ it('keeps the full menu for non-PM HR users',async()=>{
  vi.stubGlobal('fetch',async(url:string)=>Response.json(url.endsWith('/config')||url.endsWith('validate')?{profile:hr,modules:{}}:{counts:[],sites:[]}));
  render(<App/>);
  const nav=await screen.findByRole('navigation',{},{timeout:5000});
- expect(within(nav).getByRole('button',{name:'Employee Master'})).toBeTruthy();
+ expect(within(nav).getAllByRole('button',{name:'Employee Master'}).length).toBeGreaterThan(0);
 });

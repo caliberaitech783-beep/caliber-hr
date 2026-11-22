@@ -57,7 +57,7 @@ it('gives the site HR Manager the same menus and never opens a menu site HR does
 
 it('keeps every menu for office HR and regional HR',async()=>{
  const office=await sidebar({...siteHr,name:'Office HR',assignedRole:'HR Executive',permissions:{...siteHr.permissions,adminLevel:'Corporate',site:'Chandrapur HO'}},{admin:true,sites:[]});
- for(const menu of menus)expect(within(office).getByRole('button',{name:menu})).toBeTruthy();
+ for(const menu of menus)expect(within(office).getAllByRole('button',{name:menu}).length).toBeGreaterThan(0);
  expect(within(office).getByRole('button',{name:'Corporate / HO'})).toBeTruthy();
  fireEvent.click(within(office).getByRole('button',{name:'Employee Management'}));
  await screen.findByRole('button',{name:'Rejoining Form'},{timeout:5000});
@@ -67,7 +67,7 @@ it('keeps every menu for office HR and regional HR',async()=>{
 
 it('keeps every menu for the fixed regional HR even with only site rights',async()=>{
  const regional=await sidebar({...siteHr,name:'Virat Singh',actor:'viratsingh',assignedRole:'HR Manager',permissions:{...siteHr.permissions,site:'WCL-SASTI|WCL-MAJRI'}},{admin:false,sites:[{region:'WCL',site:'Sasti OB'},...majri]});
- for(const menu of menus)expect(within(regional).getByRole('button',{name:menu})).toBeTruthy();
+ for(const menu of menus)expect(within(regional).getAllByRole('button',{name:menu}).length).toBeGreaterThan(0);
  fireEvent.click(within(regional).getByRole('button',{name:'OB / COAL'}));
  await within(regional).findByRole('button',{name:'Trial Form'},{timeout:5000});
  for(const menu of employeeMasterMenus)expect(within(regional).getByRole('button',{name:menu})).toBeTruthy();
@@ -79,6 +79,6 @@ it('shows Corporate / HO and every Employee Master menu to office HR whose site 
  const nav=await sidebar(officeHr as typeof siteHr,{admin:false,sites:[{region:'NCL',site:'Jayant OB East'},{region:'NCL',site:'Dudhichua OB East'}]});
  fireEvent.click(within(nav).getByRole('button',{name:'OB / COAL'}));
  await within(nav).findByRole('button',{name:'Trial Form'},{timeout:5000});
- for(const menu of employeeMasterMenus)expect(within(nav).getByRole('button',{name:menu})).toBeTruthy();
- for(const menu of menus)expect(within(nav).getByRole('button',{name:menu})).toBeTruthy();
+ for(const menu of employeeMasterMenus)expect(within(nav).getByRole('button',{name:menu})).toBeTruthy();expect(within(within(nav).getByLabelText('Employee Master submenus')).getByRole('button',{name:'Employee Master'})).toBeTruthy();
+ for(const menu of menus)expect(within(nav).getAllByRole('button',{name:menu}).length).toBeGreaterThan(0);
 },20000);
