@@ -1,6 +1,6 @@
 import {approvalSteps} from './joining-hierarchy.mjs';
 
-export const progressKinds=['leaveRequests','outDutyRequests','gatePasses'];
+export const progressKinds=['leaveRequests','outDutyRequests','gatePasses','employeeTransfers'];
 
 // Short step name for the progress bar: "Directors — final approval (any one)" -> "Directors".
 export const stepLabel=label=>String(label||'Approval').split(/\s+[—–-]\s+/)[0].trim()||'Approval';

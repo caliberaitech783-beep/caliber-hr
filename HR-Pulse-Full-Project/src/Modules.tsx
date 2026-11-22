@@ -52,7 +52,7 @@ export function Records({columns,filters,actionLabel,grant,kind,module,readOnly=
 
   const assetKind=['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind);
   const requestKind=['leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind);
-  const progressKind=['leaveRequests','outDutyRequests','gatePasses'].includes(kind);
+  const progressKind=['leaveRequests','outDutyRequests','gatePasses','employeeTransfers'].includes(kind);
 
   const writable=module.canWrite&&!readOnly;
 

@@ -37,3 +37,14 @@ it('transfer form fills the current posting, hides the reference and never offer
  expect(screen.getByText('This transfer will go to:')).toBeTruthy();expect(screen.getByText('Regional HR Head')).toBeTruthy();
  expect(screen.getByRole('button',{name:'Submit for approval'})).toBeTruthy();
 });
+
+// Owner, 23 Nov 2026: transfers show the same step bar as leave requests.
+it('draws transfers as cards with the approval step bar',async()=>{
+ const row={id:'t1',kind:'employeeTransfers',code:'TR0007/24-11-2026/CMLL00012',name:'New project',status:'PENDING',version:2,updated_at:'2026-11-23T07:00:00Z',data:{employeeId:'employee',transferDate:'2026-11-24',fromSiteId:'home',toSiteId:'far',toDesignation:'Supervisor'},progress:{state:'PENDING',stage:1,steps:[{label:'Site HR',at:'2026-11-23T07:20:00Z'},{label:'PM'},{label:'Office HR'},{label:'Regional HR Head'},{label:'Director'}]}};
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>new Response(JSON.stringify(url.endsWith('/lookups')?lookups:{rows:[row],total:1,page:1,pageSize:50}))));
+ render(<Records grant="t" kind="employeeTransfers" module={transferModule} notice={()=>{}} actionLabel="Create transfer"/>);
+ expect(await screen.findByText('Pending · step 3 of 6')).toBeTruthy();
+ expect(screen.getByText(/Sasti OC → Pauni OC/)).toBeTruthy();
+ for(const step of ['Submitted','Site HR','PM','Office HR','Regional HR Head','Director'])expect(screen.getByText(step)).toBeTruthy();
+ expect(screen.queryByRole('table')).toBeNull();
+});
