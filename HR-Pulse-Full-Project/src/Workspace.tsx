@@ -90,7 +90,8 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
   const activeKind=employeePage?'employees':kind;
   const groups=masterGroups[group].kinds.filter(k=>config[k]);
   const initials=profile.name?.split(' ').map(x=>x[0]).slice(0,2).join('')||'HR';
-  const childrenFor=(name:string):string[]=>pmOnly?(name===PM_APPROVALS_PAGE?[...pmApprovalMenus]:[]):siteHr?(name===SITE_HR_PAGE?[...siteHrMenus]:[]):name==='Dashboard'?[...dashboardTabs]:name==='Employee Master'?[...(hideCorporate?[]:['Corporate / HO']),'OB / COAL',...(trialVisible?['Trial Form']:[]),'Employee Management','Leave / OD / Gatepass','Employee Transfer']:name==='Attendance Management'?attendanceViews:name==='Payroll Management'?['Salary Scheme','Payroll Processing','Loan and Advances','Expense Claims']:name==='Master Configuration'?['Employee Master']:[];
+  const registerVisible=access.has('Master Configuration')&&access.has('Employee Master');useEffect(()=>{if(employeeMenu==='Employee Master'&&!registerVisible)setEmployeeMenuState('Employee Management');},[registerVisible,employeeMenu]);
+  const childrenFor=(name:string):string[]=>pmOnly?(name===PM_APPROVALS_PAGE?[...pmApprovalMenus]:[]):siteHr?(name===SITE_HR_PAGE?[...siteHrMenus]:[]):name==='Dashboard'?[...dashboardTabs]:name==='Employee Master'?[...(hideCorporate?[]:['Corporate / HO']),'OB / COAL',...(trialVisible?['Trial Form']:[]),'Employee Management','Leave / OD / Gatepass','Employee Transfer',...(registerVisible?['Employee Master']:[])]:name==='Attendance Management'?attendanceViews:name==='Payroll Management'?['Salary Scheme','Payroll Processing','Loan and Advances','Expense Claims']:[];
   const query=navQuery.trim().toLowerCase(),visibleMenus=permitted.filter(([name])=>!query||name.toLowerCase().includes(query)||childrenFor(name).some(item=>item.toLowerCase().includes(query)));
   const siteHrMenu=employeeMenu==='Employee Management'?'OB / COAL':employeeMenu;
   const currentArea=pmOnly?approvalMenu:siteHr?siteHrMenu:page==='Employee Master'?employeeMenu:page==='Attendance Management'?attendanceMenu:page||'Dashboard';
@@ -133,15 +134,13 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
     </header>
     <div className="content">{pmOnly?pmContent:<>{page==='Master Configuration'&&<section className="master-configuration" aria-label="Master Configuration">
       <div className="module-tabs" aria-label="Master configuration menus">
-        {['Shift Master','Holiday & Leave Master','Trial Hierarchy','Employee Master'].map(item=><button type="button" key={item} className={masterMenu===item?'selected':''} aria-pressed={masterMenu===item} onClick={()=>setMasterMenu(item)}>{item}</button>)}
+        {['Shift Master','Holiday & Leave Master','Trial Hierarchy'].map(item=><button type="button" key={item} className={masterMenu===item?'selected':''} aria-pressed={masterMenu===item} onClick={()=>setMasterMenu(item)}>{item}</button>)}
       </div>
       {masterMenu==='Shift Master'?<ShiftMaster grant={session.grant} module={config.shifts}/>
         :masterMenu==='Trial Hierarchy'?<HierarchyMaster grant={session.grant}/>
         :masterMenu==='Holiday & Leave Master'?<LeaveMaster grant={session.grant} config={config} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>
-        :masterMenu==='Employee Master'&&access.has('Master Configuration')&&access.has('Employee Master')
-          ?<EmployeeMasterRegister grant={session.grant}/>
-          :null}
-    </section>} {page==='Employee Master'&&<>{employeeMenu==='Leave / OD / Gatepass'&&<LeaveRequests grant={session.grant} module={config.leaveRequests} odModule={config.outDutyRequests} gateModule={config.gatePasses} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>} {employeeMenu==='Employee Transfer'&&<section className="transfer-management" aria-labelledby="employee-transfer-title">
+        :null}
+    </section>} {page==='Employee Master'&&<>{employeeMenu==='Employee Master'&&registerVisible&&<EmployeeMasterRegister grant={session.grant}/>}{employeeMenu==='Leave / OD / Gatepass'&&<LeaveRequests grant={session.grant} module={config.leaveRequests} odModule={config.outDutyRequests} gateModule={config.gatePasses} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>} {employeeMenu==='Employee Transfer'&&<section className="transfer-management" aria-labelledby="employee-transfer-title">
       <div className="page-title"><div>
         <h1 id="employee-transfer-title">Employee Transfer</h1>
         <p>Enter the employee's current and destination details, save the draft, then submit it for approval.</p>

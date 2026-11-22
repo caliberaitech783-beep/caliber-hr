@@ -170,9 +170,9 @@ it('shows only explicitly assigned desktop privileges',async()=>{
  window.location.hash='';
 });
 
-it.each([true,false])('loads only the HR employee register when the configuration tab is permitted (%s)',async(hasEmployeeAccess)=>{
- const profile={name:'HR administrator',actor:'test',permissions:{application:'HR',hrDesktopAccess:hasEmployeeAccess?['Master Configuration','Employee Master']:['Master Configuration']}};
- window.location.hash='Master%20Configuration';
+it.each([true,false])('shows the HR employee register under the Employee Master menu (%s)',async(hasConfigurationAccess)=>{
+ const profile={name:'HR administrator',actor:'test',permissions:{application:'HR',hrDesktopAccess:hasConfigurationAccess?['Master Configuration','Employee Master']:['Employee Master']}};
+ window.location.hash='Employee%20Master';
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
  const request=vi.fn(async(url:string)=>Response.json(url.endsWith('/config')?{profile,modules:{}}:url.endsWith('/lookups')?[]:url.endsWith('/employee-master-register/local-1')?{
   name:'Imported Employee',sources:[{label:'Test workbook',fields:[['Designation','Operator']]}],
@@ -182,18 +182,14 @@ it.each([true,false])('loads only the HR employee register when the configuratio
  }));
  vi.stubGlobal('fetch',request);
  render(<App/>);
- const configuration=await screen.findByRole('region',{name:'Master Configuration'});
- const employeeTab=within(configuration).getByRole('button',{name:'Employee Master'});
- const sidebar=screen.getByRole('complementary');
- const masterConfiguration=within(sidebar).getByRole('button',{name:'Master Configuration'});
- expect(masterConfiguration).toHaveAttribute('aria-expanded','true');
- const configurationSubmenu=within(sidebar).getByLabelText('Master Configuration submenus');
- const employeeLink=within(configurationSubmenu).getByRole('button',{name:'Employee Master'});
- fireEvent.click(employeeLink);
- expect(employeeTab).toHaveAttribute('aria-pressed','true');
- expect(employeeLink).toHaveAttribute('aria-pressed','true');
- if(hasEmployeeAccess){
-  const table=await within(configuration).findByRole('table');
+ const sidebar=await screen.findByRole('complementary');
+ const employeeSubmenu=await within(sidebar).findByLabelText('Employee Master submenus');
+ expect(within(sidebar).queryByLabelText('Master Configuration submenus')).toBeNull();
+ if(hasConfigurationAccess){
+  const registerLink=within(employeeSubmenu).getByRole('button',{name:'Employee Master'});
+  fireEvent.click(registerLink);
+  expect(registerLink).toHaveAttribute('aria-pressed','true');
+  const table=await screen.findByRole('table');
   expect(within(table).getByRole('columnheader',{name:'EMPLOYEE ID'})).toBeVisible();
   expect(within(table).getByText('Imported Employee')).toBeVisible();
   fireEvent.click(within(table).getByRole('button',{name:'View details for Imported Employee'}));
@@ -202,10 +198,13 @@ it.each([true,false])('loads only the HR employee register when the configuratio
   expect(within(details).getByText('Operator')).toBeVisible();
   fireEvent.click(within(details).getByRole('button',{name:'Close details'}));
   expect(screen.queryByRole('dialog',{name:'Imported Employee'})).toBeNull();
+  fireEvent.click(within(sidebar).getByRole('button',{name:'Master Configuration'}));
+  const configuration=await screen.findByRole('region',{name:'Master Configuration'});
+  expect(within(configuration).queryByRole('button',{name:'Employee Master'})).toBeNull();
  }else{
-  expect([...configuration.children]).toEqual([within(configuration).getByLabelText('Master configuration menus')]);
+  expect(within(employeeSubmenu).queryByRole('button',{name:'Employee Master'})).toBeNull();
  }
- expect(request.mock.calls.some(([url])=>url.includes('/employee-master-register?'))).toBe(hasEmployeeAccess);
+ expect(request.mock.calls.some(([url])=>url.includes('/employee-master-register?'))).toBe(hasConfigurationAccess);
  expect(request.mock.calls.every(([url])=>url.startsWith('https://hr-api-cmll-783.azurewebsites.net/'))).toBe(true);
  window.location.hash='';
 });
