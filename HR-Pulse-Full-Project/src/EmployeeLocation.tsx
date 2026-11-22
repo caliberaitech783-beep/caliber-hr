@@ -620,10 +620,10 @@ function JoiningForm({employeeGroup,onSave,onTrialSaved,defaults,subdepartments,
  </form>;
 }
 
-export default function EmployeeLocation({title='Employee Master',grant,module,notice,employeeGroup='Corporate / HO',onEmployeeGroupChange,onSelectionChange,draftOwner='',canApprove=false,initialTrialDraft,onTrialDraftOpened,addTempOnly=false}:{addTempOnly?:boolean;initialTrialDraft?:JoiningDraft;onTrialDraftOpened?:()=>void;canApprove?:boolean;draftOwner?:string;title?:string;grant?:string;module?:Module;notice?:(message:string)=>void;employeeGroup?:'Corporate / HO'|'OB / COAL';onEmployeeGroupChange?:(value:'Corporate / HO'|'OB / COAL')=>void;onSelectionChange?:(selection:{employeeGroup:'Corporate / HO'|'OB / COAL';company:string;region:string;site:string;department:string;subdepartment:string;designation:string})=>void}){
+export default function EmployeeLocation({title='Employee Master',grant,module,notice,employeeGroup='Corporate / HO',onEmployeeGroupChange,onSelectionChange,draftOwner='',canApprove=false,initialTrialDraft,onTrialDraftOpened}:{initialTrialDraft?:JoiningDraft;onTrialDraftOpened?:()=>void;canApprove?:boolean;draftOwner?:string;title?:string;grant?:string;module?:Module;notice?:(message:string)=>void;employeeGroup?:'Corporate / HO'|'OB / COAL';onEmployeeGroupChange?:(value:'Corporate / HO'|'OB / COAL')=>void;onSelectionChange?:(selection:{employeeGroup:'Corporate / HO'|'OB / COAL';company:string;region:string;site:string;department:string;subdepartment:string;designation:string})=>void}){
  const[chosenTab,setTab]=useState('Add Temp. Employee');
  /* Owner, 22 Nov 2026: site HR sees only Add Temp. Employee under OB / COAL. */
- const tab=addTempOnly?'Add Temp. Employee':chosenTab,shownTabs=addTempOnly?['Add Temp. Employee']:tabs;
+ const tab=chosenTab,shownTabs=tabs;
  useEffect(()=>{
   if(tab!=='Rejoining Form'||!grant)return;
   const owner=document.querySelector('.employee-master');if(!owner)return;

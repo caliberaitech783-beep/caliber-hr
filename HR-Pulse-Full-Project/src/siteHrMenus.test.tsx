@@ -3,7 +3,7 @@ import {afterEach,expect,it,vi} from 'vitest';
 import App from './App';
 import {isSiteHRManager,siteHrOnly} from './siteHrAccess';
 
-/* Owner, 22 Nov 2026: site HR sees only Employee Master › OB / COAL and Trial Form; office and regional HR see every menu. */
+/* Owner, 22 Nov 2026: site HR sees only Employee Master › OB / COAL (every tab), Trial Form, Leave / OD / Gatepass and Employee Transfer; office and regional HR see every menu. */
 afterEach(()=>{vi.unstubAllGlobals();sessionStorage.clear();localStorage.clear();window.location.hash='';});
 const menus=['Dashboard','Employee Master','Attendance Management','Payroll Management','Master Configuration','Approval Master','Reports & MIS'];
 const siteHr={name:'Majri HR',actor:'majrihr',assignedRole:'HR Executive',permissions:{application:'HR',adminLevel:'Site',site:'WCL-MAJRI',hrDesktopAccess:menus}};
@@ -44,7 +44,7 @@ it('shows a site HR login only OB / COAL, Trial Form, Leave / OD / Gatepass and 
  fireEvent.click(within(nav).getByRole('button',{name:'OB / COAL'}));
  expect(within(nav).getByRole('button',{name:'OB / COAL'})).toHaveAttribute('aria-pressed','true');
  const tabs=document.querySelector('.employee-tabs') as HTMLElement;
- expect(within(tabs).getAllByRole('button').map(button=>button.textContent)).toEqual(['Add Temp. Employee']);
+ expect(within(tabs).getAllByRole('button').map(button=>button.textContent)).toEqual(['Add Temp. Employee','Rejoining Form','Update Existing Employee','Employee Verify','Completed Form','Reports']);
 },20000);
 
 it('gives the site HR Manager the same menus and never opens a menu site HR does not have',async()=>{
