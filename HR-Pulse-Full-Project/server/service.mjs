@@ -13,6 +13,7 @@ import {createEmployeeDocuments} from './employee-documents.mjs';
 import {createEmployeeMasterRegister} from './employee-master-register.mjs';
 import {createMisEmployeeSync} from './mis-employee-sync.mjs';
 import {createReportingManagers} from './reporting-managers.mjs';
+import {createTransferOptions} from './transfer-options.mjs';
 import {validateTrialJoining} from './trial-joining.mjs';
 import {requireTrialRole} from './trial-access.mjs';
 import {isProjectManager,PM_EMPLOYEE_WRITE_ERROR} from './pm-access.mjs';
@@ -223,6 +224,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     ...createEmployeeMasterRegister(pool),
     ...createMisEmployeeSync(pool),
     ...createReportingManagers(pool),
+    ...createTransferOptions(pool),
     async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests','gatePasses'].includes(kind))}]))}; },
     async list(profile,kind,params) {
       authorize(profile,kind);
@@ -267,7 +269,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       const kinds=[...new Set(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).flatMap(([,config])=>config.fields.filter(x=>x.type==='reference').map(x=>x.reference)))];
       if(grantedMenus(profile).has('Approval Management')&&!kinds.includes('employees'))kinds.push('employees');
       if(canRead(profile,'outDutyRequests')||canRead(profile,'gatePasses')||canRead(profile,'employeeTransfers'))for(const kind of ['departments','designations','sites'])if(!kinds.includes(kind))kinds.push(kind);
-      const result=await pool.query("SELECT r.id,r.kind,r.code,r.name,CASE WHEN r.kind='designations' THEN r.data->>'departmentId' END AS department_id,r.data->>'actor' AS actor FROM hr_records r WHERE r.kind=ANY($1) AND r.status IN ('ACTIVE','APPROVED') AND "+scopeSql('r','$2')+" ORDER BY r.name LIMIT 10000",[kinds,await siteIds(pool,profile)]);
+      const result=await pool.query("SELECT r.id,r.kind,r.code,r.name,CASE WHEN r.kind='designations' THEN r.data->>'departmentId' END AS department_id,CASE WHEN r.kind='employees' THEN r.data->>'siteId' END AS site_id,r.data->>'actor' AS actor FROM hr_records r WHERE r.kind=ANY($1) AND r.status IN ('ACTIVE','APPROVED') AND "+scopeSql('r','$2')+" ORDER BY r.name LIMIT 10000",[kinds,await siteIds(pool,profile)]);
       if(profile.permissions?.leaveOnly){
         const normalized=value=>String(value||'').trim().toLowerCase().replace(/&/g,'and').replace(/\bltd\b/g,'limited').replace(/[^a-z0-9]/g,'');
         const employeeName=normalized(profile.name),employeeLogin=normalized(profile.actor||profile.login||profile.username);

@@ -57,3 +57,4 @@
 .request-card-waiting{margin-right:auto;font-size:12px;color:#8a7d95;align-self:center}
 /* Employee transfer: the reason box spans the form like the leave reason. */
 .rfs-field:has(.transfer-reason){grid-column:1/-1}.record-form .transfer-reason{display:block;box-sizing:border-box;width:100%;min-height:90px;margin-top:7px;padding:11px;border:1px solid #dcd1e3;border-radius:8px;background:#fff;color:#30223e;font:inherit;line-height:1.5;resize:vertical}
+.record-form .transfer-other{margin-top:8px}
