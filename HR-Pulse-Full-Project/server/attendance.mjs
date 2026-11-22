@@ -10,6 +10,7 @@ import {grantedMenus,canWrite} from './modules.mjs';
 import {createMisAttendance} from './mis-attendance.mjs';
 import {createTripCardStore} from './trip-card-store.mjs';
 import {createBridges,looksLikeSiteKey} from './attendance-bridges.mjs';
+import {createDirectMachines} from './attendance-direct.mjs';
 import {loadRegister,loadSiteRegister,readPolicy,savePolicy} from './attendance-register.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
@@ -20,6 +21,9 @@ const validDay=value=>DAY.test(value)&&Number.isFinite(Date.parse(value))&&new D
 export const MAX_PUNCHES_PER_UPLOAD=2000,MAX_RANGE_DAYS=62,MAX_ROWS=5000;
 // A request nobody picked up or finished within this window is reported as failed.
 const STALE="interval '90 seconds'";
+/** A machine pushing straight to HR Pulse (attendance-direct.mjs): its latest contact came without a bridge PC. */
+const DIRECT="(direct_contact IS NOT NULL AND direct_contact>=coalesce(last_contact,direct_contact)-interval '5 minutes')";
+export const DIRECT_NAME='Direct to HR Pulse';
 const NO_BRIDGE='The bridge PC did not respond. Check that it is switched on, connected to the internet and running the bridge program.';
 
 export function keyMatches(expected,supplied){
@@ -158,12 +162,19 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    // every site bridge PC of the user's sites (owner, 22 Nov 2026: one bridge PC per site).
    let targets=[null];
    if(serial){
-    const device=SERIAL.test(serial)?(await db.query("SELECT bridge_id FROM hr_attendance_devices WHERE serial=$1 AND ($2::text[] IS NULL OR site_id::text=ANY($2))",[serial,allowed])).rows[0]:null;
+    const device=SERIAL.test(serial)?(await db.query(`SELECT bridge_id,${DIRECT} AS direct FROM hr_attendance_devices WHERE serial=$1 AND ($2::text[] IS NULL OR site_id::text=ANY($2))`,[serial,allowed])).rows[0]:null;
     if(!device)fail("Machine not available",404);
-    targets=[device.bridge_id||null];
+    targets=device.direct?[]:[device.bridge_id||null];
    }else{
     const scoped=(await db.query("SELECT id FROM hr_attendance_bridges WHERE removed_at IS NULL AND ($1::text[] IS NULL OR site_id::text=ANY($1)) ORDER BY created_at",[allowed])).rows.map(r=>r.id);
-    targets=[...(mainConfigured||!scoped.length?[null]:[]),...scoped];
+    const direct=!mainConfigured&&!scoped.length&&(await db.query(`SELECT 1 FROM hr_attendance_devices WHERE ${DIRECT} AND ($1::text[] IS NULL OR site_id::text=ANY($1)) LIMIT 1`,[allowed])).rowCount>0;
+    targets=[...(mainConfigured||(!scoped.length&&!direct)?[null]:[]),...scoped];
+   }
+   // A machine that pushes straight to HR Pulse has already sent its punches: nothing to wait for.
+   if(!targets.length){
+    const row=(await db.query("INSERT INTO hr_attendance_fetch_requests(id,requested_by,device_serial,bridge_id,state,completed_at) VALUES($1,$2,$3,NULL,'DONE',now()) RETURNING *",[randomUUID(),profile.actor,serial])).rows[0];
+    await audit(db,profile.actor,'FETCH_ATTENDANCE',{requestId:row.id,direct:true});
+    return view(row);
    }
    const views=[];
    for(const target of targets){
@@ -186,7 +197,8 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    // Active logs: punches the machine recorded today (India date) and its latest
    // punch in the last 31 days, both read through the punched_at index.
    const devices=(await pool.query(`SELECT d.serial,d.name,d.location,d.site_id,s.name AS site_name,d.last_seen,d.last_contact,d.last_contact>now()-interval '2 minutes' AS online,
-    coalesce(a.today,0)::int AS logs_today,to_char(a.last_punch,'YYYY-MM-DD HH24:MI') AS last_punch,d.ip_address,d.bridge_id,b.name AS bridge_name
+    coalesce(a.today,0)::int AS logs_today,to_char(a.last_punch,'YYYY-MM-DD HH24:MI') AS last_punch,d.ip_address,d.bridge_id,b.name AS bridge_name,
+    (d.direct_contact IS NOT NULL AND d.direct_contact>=coalesce(d.last_contact,d.direct_contact)-interval '5 minutes') AS direct
     FROM hr_attendance_devices d LEFT JOIN hr_records s ON s.id=d.site_id LEFT JOIN hr_attendance_bridges b ON b.id=d.bridge_id AND b.removed_at IS NULL
     LEFT JOIN (SELECT device_serial,count(*) FILTER (WHERE punched_at>=$2::date) AS today,max(punched_at) AS last_punch FROM hr_attendance_punches WHERE punched_at>=$2::date-30 GROUP BY device_serial) a ON a.device_serial=d.serial
     WHERE $1::text[] IS NULL OR d.site_id::text=ANY($1) ORDER BY s.name NULLS LAST,d.location,d.serial`,[sites,indiaDay()])).rows;
@@ -194,12 +206,13 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const siteBridges=await bridges.list(pool);
    const scope=sites?new Set(sites.map(String)):null;
    const listed=d=>({serial:d.serial,name:d.name,location:d.location||'',siteId:d.site_id,siteName:d.site_name||'',lastContact:d.last_contact,online:Boolean(d.online),lastSeen:d.last_seen,logsToday:Number(d.logs_today)||0,lastPunch:d.last_punch||null,
-    ipAddress:d.ip_address||'',bridgeId:d.bridge_id||null,bridgeName:d.bridge_name||(d.bridge_id||!(d.last_contact||d.last_seen)?'':'Main bridge PC')});
+    ipAddress:d.ip_address||'',bridgeId:d.direct?null:d.bridge_id||null,direct:Boolean(d.direct),
+    bridgeName:d.direct?DIRECT_NAME:d.bridge_name||(d.bridge_id||!(d.last_contact||d.last_seen)?'':'Main bridge PC')});
    const shown=devices.map(listed);
    // Bridge PCs: the main one (ATTENDANCE_BRIDGE_KEY) and one per site (attendance-bridges.mjs); site users see their sites'.
    const bridgeList=[...(mainConfigured?[{id:'main',name:'Main bridge PC',siteId:null,siteName:'',keyHint:'',lastSeen:seen?.last_seen||null,online:Boolean(seen?.online),main:true,
-    machines:shown.filter(d=>!d.bridgeId&&d.bridgeName).map(d=>d.serial)}]:[]),...siteBridges.filter(b=>!scope||scope.has(String(b.siteId)))];
-   return {configured:mainConfigured||siteBridges.length>0,bridgeOnline:Boolean(seen?.online)||siteBridges.some(b=>b.online),bridgeLastSeen:seen?.last_seen||null,
+    machines:shown.filter(d=>!d.bridgeId&&!d.direct&&d.bridgeName).map(d=>d.serial)}]:[]),...siteBridges.filter(b=>!scope||scope.has(String(b.siteId)))];
+   return {configured:mainConfigured||siteBridges.length>0||shown.some(d=>d.direct),directMachines:shown.filter(d=>d.direct).length,bridgeOnline:Boolean(seen?.online)||siteBridges.some(b=>b.online),bridgeLastSeen:seen?.last_seen||null,
     bridges:bridgeList,devices:shown,lastFetch:view(last)||null,
     canLink:canWrite(profile,'employees'),canManageDevices:assignedSites(profile)===null&&canWrite(profile,'employees')};
   }
@@ -303,5 +316,5 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   }
   fail('Not found',404);
  }
- return {attendanceBridge:bridge,attendanceApi:api};
+ return {attendanceBridge:bridge,attendanceApi:api,attendanceMachine:createDirectMachines(pool)};
 }

@@ -2,6 +2,26 @@
 
 Connects an eSSL / ZKTeco fingerprint or face machine to HR Pulse.
 
+## Without a bridge PC (machine with internet)
+
+Since 22 Nov 2026 a machine whose network has internet can push straight to
+HR Pulse; no bridge PC or key is needed (`server/attendance-direct.mjs`).
+
+1. Give the machine internet: Menu → Comm. → Ethernet with a gateway and DNS
+   (for example 8.8.8.8), or DHCP on.
+2. Menu → Comm. → Cloud Server Setting (ADMS): Enable Domain Name ON, Server
+   Address `hr-api-cmll-783.azurewebsites.net`, Server Port 443 with HTTPS ON,
+   Proxy Server OFF. A machine without an HTTPS option uses port 80; that works
+   only after "HTTPS Only" is turned off on the App Service `hr-api-cmll-783`
+   (the API itself still sends every browser call to HTTPS).
+3. Add the machine in Biometric machines with its serial number. Serials not
+   added to a site are ignored.
+4. Restart the machine. Its status turns Online and Bridge PC shows
+   "Direct to HR Pulse"; stored punches arrive within a minute, new ones at once.
+
+The rest of this page is the bridge PC, for sites without internet on the
+machine's network.
+
 HR Pulse runs on Azure and cannot reach a machine on a site network. This
 program runs on a PC at the site and sits between the two:
 
