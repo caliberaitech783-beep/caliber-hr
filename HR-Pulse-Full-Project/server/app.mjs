@@ -11,7 +11,7 @@ async function body(req,limit=2_000_000) {
   try { const value=JSON.parse(Buffer.concat(chunks).toString()); if(!value||typeof value!=='object'||Array.isArray(value))throw new Error(); return value; }
   catch { throw problem('A valid JSON object is required'); }
 }
-export function createApi({ query, service, authenticate=async()=>null, allowedOrigin='https://hrpulse.cmll.in', readAadhaar=createAadhaarReader(), release='2026-10-22-modules-v1' }) {
+export function createApi({ query, service, authenticate=async()=>null, allowedOrigin='https://hrpulse.cmll.in', readAadhaar=createAadhaarReader(), release='2026-10-22-modules-v1', behindAzure=Boolean(process.env.WEBSITE_SITE_NAME) }) {
   return createServer(async(req,res)=>{
     // Biometric machines pushing straight to HR Pulse (attendance-direct.mjs): plain text, no sign-in, and plain
     // HTTP allowed because many machines cannot do HTTPS. Everything else must arrive over HTTPS.
@@ -26,7 +26,12 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         return reply(200,out.text);
       }catch(error){console.error('biometric machine request failed',error?.message);return reply(500,'ERROR');}
     }
-    if(req.headers['x-forwarded-proto']==='http'){
+    // Azure App Service overwrites X-Forwarded-Proto with "https" on every HTTPS call but sends plain-HTTP calls
+    // with no such header (seen 22 Nov 2026 once "HTTPS Only" was turned off for the machines). So behind Azure
+    // anything not marked https is plain HTTP, except Azure's own health probe, which comes from inside.
+    const proto=String(req.headers['x-forwarded-proto']||'').split(',')[0].trim().toLowerCase();
+    const healthProbe=!proto&&req.method==='GET'&&(req.url||'').split('?')[0]==='/api/health';
+    if(proto==='http'||(behindAzure&&proto!=='https'&&!healthProbe)){
       const host=String(req.headers.host||'').replace(/[^A-Za-z0-9.:-]/g,'');
       return res.writeHead(301,{Location:`https://${host}${req.url}`}).end();
     }
