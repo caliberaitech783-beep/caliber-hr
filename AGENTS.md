@@ -115,19 +115,12 @@ Set by the owner on 21 November 2026.
 - `isProjectManager` in `HR-Pulse-Full-Project/src/pmAccess.ts` and `pmOnly` in `src/Workspace.tsx` hold it; `src/pmAccess.test.tsx` checks it.
 - The server refuses employee creation, import, edits, submission, deletion and Aadhaar scanning from a PM login (403, "A PM login can only approve employees…"), whatever menus Pulse assigned; approvals need only Approval Management and stay open. `isProjectManager` in `HR-Pulse-Full-Project/server/pm-access.mjs` (used by `canWrite` in `server/modules.mjs`) holds it; `server/pm-employee-write.test.mjs` checks it.
 
-# Site logins never see Corporate / HO
+# Every HR login sees every HRMS menu
 
-Set by the owner on 22 November 2026.
+Set by the owner on 22 November 2026 (latest), while the HRMS is still being built. It replaces that day's earlier rules "Site logins never see Corporate / HO" and "Site HR sees only OB / COAL, Trial Form, Leave / OD / Gatepass and Employee Transfer".
 
-- A login whose site rights cover only OB / COAL sites (HR at Majri, Sasti and the other NCL / WCL sites) sees only OB / COAL under Employee Master. The Corporate / HO button is not shown and the page stays on OB / COAL.
-- Admin, "All sites" logins and any login with an office (Head Office, Corporate Office, HO, CO) in its site rights still see both.
-- Owner, 22 Nov 2026 (later): office HR and regional HR (`officeOrRegionalHr` in `src/siteHrAccess.ts`) always see Corporate / HO and every Employee Master menu, even when their site rights list only OB / COAL sites. Only site HR and other site logins lose it (`hideCorporate` in `src/Workspace.tsx`); `src/siteHrMenus.test.tsx` checks it.
-- `siteOnlyLogin` in `HR-Pulse-Full-Project/src/siteRights.ts` (used by `src/Workspace.tsx`, with `/api/telegram/trial-scope`) holds it; `src/siteOnlyCorporate.test.tsx` checks it.
-# Site HR sees only OB / COAL, Trial Form, Leave / OD / Gatepass and Employee Transfer
-
-Set by the owner on 22 November 2026.
-
-- Every HR who works at a site (site HR, the site's HR Manager, HR executives at Majri, Sasti and the other OB / COAL sites) sees one HRMS menu, Employee Master, with only OB / COAL, Trial Form, Leave / OD / Gatepass and Employee Transfer (the last two added by the owner later on 22 Nov 2026), whatever menus Pulse assigned. Under OB / COAL site HR gets every tab, like office and regional HR: Add Temp. Employee, Rejoining Form, Update Existing Employee, Employee Verify, Completed Form and Reports, with Import and Print / Export (owner, 22 Nov 2026, later; before that only Add Temp. Employee). Employee Verify and Completed Form still need Approval Management in the login's Pulse menus, as for everyone. A saved menu or a direct link to another page opens OB / COAL instead. The site HR Manager no longer gets the trial-only screen; they get the same two menus.
-- HR at the Head Office, the Nagpur office or a regional office keeps every assigned menu: any login with an office in its site rights, "All sites" or admin, a role naming Regional / Office / Corporate / HO, an Office HR, Regional HR, Director or Trial Admin trial assignment, and the fixed Regional HR (Vinod Pinjarkar, Virat Singh) even when their site rights list only sites.
-- PM logins keep their approvals-only menu.
-- `siteHrOnly` in `HR-Pulse-Full-Project/src/siteHrAccess.ts` (used by `src/Workspace.tsx`) holds it; `src/siteHrMenus.test.tsx` checks it.
+- Every HR login (site HR, the site's HR Manager, HR executives at the OB / COAL sites, office HR, regional HR) sees every HRMS menu and sub menu, whatever menus Pulse assigned: Dashboard, Employee Master with Corporate / HO, OB / COAL, Trial Form, Employee Management, Leave / OD / Gatepass and Employee Transfer, Attendance, Payroll, Master Configuration, Approval Master and the rest. A saved menu is kept; nothing forces OB / COAL.
+- The server gives these logins every desktop menu at sign-in (`withAllHrMenus` in `HR-Pulse-Full-Project/server/hr-staff-access.mjs`, used by `server/auth.mjs`), so the pages work as well as show. Site rights are unchanged: a site login still sees only its sites' records, and edits that need unrestricted site access still need it.
+- An HR login is any HRMS login that is not a PM, not leave-only, and has a Pulse HR menu other than Leave / OD / Gatepass, a role naming HR, or a Site HR / Office HR / Regional HR / HR Manager / Trial Admin trial assignment.
+- PM logins keep their approvals-only menu. Leave-only logins and employees whose only Pulse menu is Leave / OD / Gatepass keep only their own request forms (`leaveMenuOnly` in `server/modules.mjs`).
+- `server/hr-staff-access.test.mjs`, `src/siteHrMenus.test.tsx` and `src/siteOnlyCorporate.test.tsx` check it. `siteHrOnly` / `officeOrRegionalHr` in `src/siteHrAccess.ts` and `siteOnlyLogin` in `src/siteRights.ts` are no longer used by the sidebar; they stay for when the owner narrows site HR again.
