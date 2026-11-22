@@ -55,13 +55,21 @@ export function validateUpload(input){
 
 /** Machine name or location as typed: one line, at most 80 characters. */
 export const cleanText=value=>String(value??'').replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().slice(0,80);
-/** A biometric machine added to a site (register) or changed (site, name, location). */
+/** IPv4 address as typed ('' when left empty): four numbers 0-255 without leading zeros. */
+export function cleanIp(value){
+ const ip=String(value??'').trim();
+ if(!ip)return '';
+ const parts=ip.split('.');
+ if(parts.length!==4||!parts.every(p=>/^(0|[1-9]\d{0,2})$/.test(p)&&Number(p)<=255))fail('Enter a valid IP address, e.g. 192.168.1.201');
+ return ip;
+}
+/** A biometric machine added to a site (register) or changed (site, name, location, IP address). */
 export function validateDevice(input,register){
  const serial=String(input?.serial||'').trim(),siteId=String(input?.siteId||'');
  if(register&&!siteId)fail('Choose a site');
  if(!SERIAL.test(serial))fail('Enter a valid machine serial number (letters, numbers, - or _)');
  if(siteId&&!uuid(siteId))fail('Choose a site');
- return {serial,siteId,name:cleanText(input?.name),location:input?.location===undefined?null:cleanText(input.location)};
+ return {serial,siteId,name:cleanText(input?.name),location:input?.location===undefined?null:cleanText(input.location),ipAddress:input?.ipAddress===undefined?null:cleanIp(input.ipAddress)};
 }
 
 const indiaDay=()=>new Date(Date.now()+5.5*3600_000).toISOString().slice(0,10);
@@ -149,14 +157,14 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const seen=(await pool.query("SELECT last_seen,last_seen>now()-interval '30 seconds' AS online FROM hr_attendance_bridge")).rows[0];
    // Active logs: punches the machine recorded today (India date) and its latest
    // punch in the last 31 days, both read through the punched_at index.
-   const devices=(await pool.query(`SELECT d.serial,d.name,d.location,d.site_id,s.name AS site_name,d.last_seen,d.last_contact,d.last_contact>now()-interval '2 minutes' AS online,
+   const devices=(await pool.query(`SELECT d.serial,d.name,d.location,d.ip_address,d.site_id,s.name AS site_name,d.last_seen,d.last_contact,d.last_contact>now()-interval '2 minutes' AS online,
     coalesce(a.today,0)::int AS logs_today,to_char(a.last_punch,'YYYY-MM-DD HH24:MI') AS last_punch
     FROM hr_attendance_devices d LEFT JOIN hr_records s ON s.id=d.site_id
     LEFT JOIN (SELECT device_serial,count(*) FILTER (WHERE punched_at>=$2::date) AS today,max(punched_at) AS last_punch FROM hr_attendance_punches WHERE punched_at>=$2::date-30 GROUP BY device_serial) a ON a.device_serial=d.serial
     WHERE $1::text[] IS NULL OR d.site_id::text=ANY($1) ORDER BY s.name NULLS LAST,d.location,d.serial`,[sites,indiaDay()])).rows;
    const last=(await pool.query('SELECT * FROM hr_attendance_fetch_requests ORDER BY requested_at DESC LIMIT 1')).rows[0];
    return {configured:typeof bridgeKey==='string'&&bridgeKey.length>=32,bridgeOnline:Boolean(seen?.online),bridgeLastSeen:seen?.last_seen||null,
-    devices:devices.map(d=>({serial:d.serial,name:d.name,location:d.location||'',siteId:d.site_id,siteName:d.site_name||'',lastContact:d.last_contact,online:Boolean(d.online),lastSeen:d.last_seen,logsToday:Number(d.logs_today)||0,lastPunch:d.last_punch||null})),lastFetch:view(last)||null,
+    devices:devices.map(d=>({serial:d.serial,name:d.name,location:d.location||'',ipAddress:d.ip_address||'',siteId:d.site_id,siteName:d.site_name||'',lastContact:d.last_contact,online:Boolean(d.online),lastSeen:d.last_seen,logsToday:Number(d.logs_today)||0,lastPunch:d.last_punch||null})),lastFetch:view(last)||null,
     canLink:canWrite(profile,'employees'),canManageDevices:assignedSites(profile)===null&&canWrite(profile,'employees')};
   }
   if(route==='policy'&&method==='GET')return {...await readPolicy(pool),canEdit:assignedSites(profile)===null&&canWrite(profile,'employees')};
@@ -233,18 +241,19 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   if((route==='devices'||route==='devices/register')&&method==='POST'){
    if(assignedSites(profile)!==null||!canWrite(profile,'employees'))fail('Only an HR administrator without site restrictions can assign devices',403);
    const register=route==='devices/register';
-   const {serial,siteId,name,location}=validateDevice(input,register);
+   const {serial,siteId,name,location,ipAddress}=validateDevice(input,register);
    return tx(async db=>{
     if(siteId&&!(await db.query("SELECT 1 FROM hr_records WHERE id=$1 AND kind='sites'",[siteId])).rowCount)fail('Site not found',404);
-    // An update that leaves out the location keeps the one already saved.
+    // An update that leaves out the location or IP address keeps the one already saved.
     const statement=register
-     ? "INSERT INTO hr_attendance_devices(serial,site_id,name,location) VALUES($1,$2,$3,coalesce($4,'')) ON CONFLICT(serial) DO NOTHING RETURNING serial,location"
-     : 'UPDATE hr_attendance_devices SET site_id=$2,name=$3,location=coalesce($4,location) WHERE serial=$1 RETURNING serial,location';
-    const row=(await db.query(statement,[serial,siteId||null,name,location])).rows[0];
+     ? "INSERT INTO hr_attendance_devices(serial,site_id,name,location,ip_address) VALUES($1,$2,$3,coalesce($4,''),coalesce($5,'')) ON CONFLICT(serial) DO NOTHING RETURNING serial,location,ip_address"
+     : 'UPDATE hr_attendance_devices SET site_id=$2,name=$3,location=coalesce($4,location),ip_address=coalesce($5,ip_address) WHERE serial=$1 RETURNING serial,location,ip_address';
+    const row=(await db.query(statement,[serial,siteId||null,name,location,ipAddress])).rows[0];
     if(!row&&register)fail('This serial number is already listed. Use its existing row to assign the site.',409);
     if(!row)fail('Device not found',404);
-    await audit(db,profile.actor,register?'REGISTER_ATTENDANCE_DEVICE':'ASSIGN_ATTENDANCE_DEVICE',{serial,siteId,name,location:row.location});
-    return {serial,siteId,name,location:row.location};
+    const saved={serial,siteId,name,location:row.location,ipAddress:row.ip_address||''};
+    await audit(db,profile.actor,register?'REGISTER_ATTENDANCE_DEVICE':'ASSIGN_ATTENDANCE_DEVICE',saved);
+    return saved;
    });
   }
   fail('Not found',404);

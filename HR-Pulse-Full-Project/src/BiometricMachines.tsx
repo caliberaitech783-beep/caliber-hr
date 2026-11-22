@@ -3,12 +3,15 @@ import {Pencil,Plus,RefreshCw} from 'lucide-react';
 import {api,type Lookup} from './api';
 
 /* Biometric machines register: every ESSL machine on every site, with where it
-   stands, its name, serial number, status, last contact and the logs it has
+   stands, its name, serial number, IP address, status, last contact and the logs it has
    recorded today. HR administrators without a site restriction add machines to
    a site and change their site, location or name. */
-export type Machine={serial:string;name:string;location:string;siteId:string|null;siteName:string;online:boolean;lastContact:string|null;lastSeen:string|null;logsToday:number;lastPunch:string|null};
+export type Machine={serial:string;name:string;location:string;ipAddress?:string;siteId:string|null;siteName:string;online:boolean;lastContact:string|null;lastSeen:string|null;logsToday:number;lastPunch:string|null};
 export type MachineStatus='Online'|'Offline'|'Awaiting contact';
 export const ALL_SITES='',UNASSIGNED='unassigned';
+const OCTET='(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+/** IPv4 address: four numbers 0-255 separated by dots (the server checks it again). */
+export const IP_PATTERN=`(${OCTET}\\.){3}${OCTET}`;
 
 /** Online only while both the machine and the bridge PC are in touch. */
 export const machineStatus=(machine:Pick<Machine,'online'|'lastContact'>,bridgeOnline:boolean):MachineStatus=>machine.online&&bridgeOnline?'Online':machine.lastContact?'Offline':'Awaiting contact';
@@ -35,7 +38,7 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
  async function save(event:FormEvent<HTMLFormElement>,route:'devices'|'devices/register',serial?:string){
   event.preventDefault();if(busy)return;
   const fields=new FormData(event.currentTarget);
-  const body={serial:serial??String(fields.get('serial')||'').trim(),siteId:String(fields.get('siteId')||''),name:String(fields.get('name')||''),location:String(fields.get('location')||'')};
+  const body={serial:serial??String(fields.get('serial')||'').trim(),siteId:String(fields.get('siteId')||''),name:String(fields.get('name')||''),location:String(fields.get('location')||''),ipAddress:String(fields.get('ipAddress')||'').trim()};
   setBusy(true);onError('');
   try{
    await api(grant,'attendance/'+route,'POST',body);
@@ -47,6 +50,8 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
  const siteSelect=(value:string,label:string)=><select name="siteId" aria-label={label} defaultValue={value} required disabled={busy}>
   <option value="">Choose site…</option>{options.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
  </select>;
+ const ipInput=(value:string)=><input name="ipAddress" defaultValue={value} maxLength={15} inputMode="decimal" placeholder="e.g. 192.168.1.201"
+  pattern={IP_PATTERN} title="Four numbers 0-255 separated by dots, e.g. 192.168.1.201"/>;
 
  return <div className="data-card biometric-machines">
   <h2>Biometric machines</h2>
@@ -64,21 +69,23 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
    <label>Machine location<input name="location" maxLength={80} placeholder="e.g. Main gate, Workshop"/></label>
    <label>Machine name<input name="name" maxLength={80} placeholder="e.g. ESSL K90 gate"/></label>
    <label>Serial no.<input name="serial" required maxLength={40} pattern="[A-Za-z0-9_\-]{1,40}" title="Letters, numbers, - or _" placeholder="Printed on the machine"/></label>
+   <label>IP address{ipInput('')}</label>
    <button className="primary" disabled={busy}>{busy?'Saving…':'Save machine'}</button>
    <button type="button" disabled={busy} onClick={()=>setAdding(false)}>Cancel</button>
   </form>}
   <div className="attendance-table"><table>
-   <thead><tr>{['Site','Machine location','Machine name','Serial no.','Status','Last contact','Active logs','Action'].map(x=><th key={x}>{x}</th>)}</tr></thead>
+   <thead><tr>{['Site','Machine location','Machine name','Serial no.','IP address','Status','Last contact','Active logs','Action'].map(x=><th key={x}>{x}</th>)}</tr></thead>
    <tbody>
-    {!rows.length&&<tr><td colSpan={8} className="attendance-empty">{site===ALL_SITES?'No machines yet.':'No machines on this site yet.'}{canManage?' Click Add machine to add one.':''}</td></tr>}
+    {!rows.length&&<tr><td colSpan={9} className="attendance-empty">{site===ALL_SITES?'No machines yet.':'No machines on this site yet.'}{canManage?' Click Add machine to add one.':''}</td></tr>}
     {rows.map(m=>{
      const status=machineStatus(m,bridgeOnline);
-     if(editing===m.serial)return <tr key={m.serial}><td colSpan={8}>
+     if(editing===m.serial)return <tr key={m.serial}><td colSpan={9}>
       <form className="attendance-filters machine-form" aria-label={`Edit machine ${m.serial}`} onSubmit={e=>void save(e,'devices',m.serial)}>
        <label>Site{siteSelect(m.siteId||'',`Site for machine ${m.serial}`)}</label>
        <label>Machine location<input name="location" maxLength={80} defaultValue={m.location}/></label>
        <label>Machine name<input name="name" maxLength={80} defaultValue={m.name}/></label>
        <label>Serial no.<input value={m.serial} readOnly/></label>
+       <label>IP address{ipInput(m.ipAddress||'')}</label>
        <button className="primary" disabled={busy}>{busy?'Saving…':'Save'}</button>
        <button type="button" disabled={busy} onClick={()=>setEditing('')}>Cancel</button>
       </form>
@@ -88,6 +95,7 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
       <td>{m.location||'—'}</td>
       <td>{m.name||'—'}</td>
       <td className="machine-serial">{m.serial}</td>
+      <td className="machine-serial">{m.ipAddress||'—'}</td>
       <td><span className={'machine-status '+status.split(' ')[0].toLowerCase()}>{status}</span></td>
       <td>{formatContact(m.lastContact)}</td>
       <td><strong>{m.logsToday}</strong> today{m.lastPunch&&<small className="machine-last-punch">Last punch {formatLastPunch(m.lastPunch)}</small>}</td>
