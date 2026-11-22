@@ -70,20 +70,54 @@ it('writes the coloured roster workbook with both lines and a Differences sheet'
  expect(wb.getWorksheet('Differences')!.rowCount).toBe(3);
 });
 
-it('opens the roster from the Attendance roster tab after Biometric vs trip card',async()=>{
+
+it('splits trip card requests into weeks and matches HR and MIS site names',async()=>{
+ const {weekPieces,sameSite}=await import('./rosterModel');
+ expect(weekPieces('2026-11-01','2026-11-22')).toEqual([{from:'2026-11-01',to:'2026-11-07'},{from:'2026-11-08',to:'2026-11-14'},{from:'2026-11-15',to:'2026-11-21'},{from:'2026-11-22',to:'2026-11-22'}]);
+ expect([sameSite('Jayant','Jayant OB'),sameSite('Jayant OB','jayant-ob'),sameSite('Gevra','Dipka'),sameSite('Majri','Majri Coal')]).toEqual([true,true,false,true]);
+});
+
+const misReport=()=>({attendanceEquipment:[],attendanceShifts:trips.map(t=>({siteKey:'Gevra',date:t.date,shift:'S1',state:t.verified?'closed':'open',batch:'B1'})),
+ otDuties:[...trips.map(t=>({date:t.date,site:'Gevra',siteKey:'Gevra',shift:'S1',employeeId:'D-77',employeeKey:'k1',employeeName:'Ramesh Kumar',caliberCode:'CMPL101',doors:'DT-12',equipment:'Dumper',category:'Dumper',logBooks:['VLB'],books:'',trips:14})),
+  {date:'2026-11-02',site:'Dipka',siteKey:'Dipka',shift:'S1',employeeId:'D-90',employeeKey:'k9',employeeName:'Other Site',caliberCode:'CMPL909',doors:'DZ-1',equipment:'Dozer',category:'Dozer',logBooks:['ELB'],books:'',trips:null}],
+ ot:[],performance:trips.map(t=>({date:t.date,site:'Gevra',siteKey:'Gevra',shift:'S1',employeeId:'D-77',employeeName:'Ramesh Kumar',start:t.window!.start,end:t.window!.end,km:null})),details:[],exceptions:[],corrections:[],canEdit:true});
+
+it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometric reads the punches',async()=>{
  const {default:AttendanceManagement}=await import('./AttendanceManagement');
- vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams;
+ const calls:string[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{calls.push(url);const q=new URL(url,'https://x').searchParams;
   if(url.includes('attendance/status'))return Response.json({configured:true,bridgeOnline:false,bridgeLastSeen:null,devices:[],lastFetch:null,canLink:false,canManageDevices:false});
   if(url.includes('attendance/punches'))return Response.json({rows:[]});
   if(url.includes('attendance/unlinked'))return Response.json([]);
   if(url.includes('attendance/policy'))return Response.json({policy:DEFAULT_POLICY,version:1,canEdit:false});
-  if(url.includes('attendance/mis'))return Response.json({attendanceEquipment:[],attendanceShifts:[],otDuties:[],ot:[],performance:[],details:[],exceptions:[],corrections:[],canEdit:true});
-  if(url.includes('attendance/register'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,rows:[bio]});
+  if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'GV',name:'Gevra'},{id:'s2',kind:'sites',code:'DP',name:'Dipka'},{id:'d1',kind:'departments',code:'OP',name:'Operations'}]);
+  if(url.includes('attendance/mis'))return Response.json(misReport());
+  if(url.includes('attendance/register'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,rows:[bio,{...bio,id:'e2',code:'CMPL555',name:'Dipka Person',site:'Dipka'}]});
   return Response.json({rows:[],total:0});}));
  render(<AttendanceManagement grant={'a'.repeat(43)} view="Biometric integration"/>);
  const tabs=document.querySelector('[aria-label="Biometric views"]')!.querySelectorAll('button');
  expect([...tabs].map(b=>b.textContent).slice(-2)).toEqual(['Biometric vs trip card','Attendance roster']);
  fireEvent.click(screen.getByRole('button',{name:'Attendance roster'}));
+ const trip=await screen.findByRole('button',{name:'Trip card (VLB · ELB · LMV)'});
+ expect(trip).toBeDisabled();
+ expect(screen.getByText('Select a site first.')).toBeTruthy();
+ const site=screen.getByLabelText('Site');
+ await waitFor(()=>expect(within(site).getByRole('option',{name:'Gevra'})).toBeTruthy());
+ fireEvent.change(site,{target:{value:'Gevra'}});
+ fireEvent.change(screen.getByLabelText('From'),{target:{value:'2026-11-01'}});
+ fireEvent.change(screen.getByLabelText('To'),{target:{value:'2026-11-10'}});
+ expect(calls.some(u=>u.includes('attendance/mis')||u.includes('attendance/register'))).toBe(false);
+ fireEvent.click(trip);
  const table=await screen.findByRole('table',{name:'Attendance roster'});
  await waitFor(()=>expect(within(table).getByText('Ramesh Kumar')).toBeTruthy());
+ expect(within(table).queryByText('Other Site')).toBeNull();
+ expect(within(table).getByText(/VLB \d/)).toBeTruthy();
+ expect(calls.filter(u=>u.includes('attendance/mis')).map(u=>new URL(u,'https://x').searchParams.get('from'))).toEqual(['2026-11-01','2026-11-08']);
+ await waitFor(()=>expect(within(table).getByText('Operations')).toBeTruthy());
+ fireEvent.click(screen.getByRole('button',{name:'Biometric'}));
+ await waitFor(()=>expect(within(screen.getByRole('table',{name:'Attendance roster'})).getByText('Ramesh Kumar')).toBeTruthy());
+ expect(screen.queryByText('Dipka Person')).toBeNull();
+ expect(calls.some(u=>u.includes('attendance/register'))).toBe(true);
+ fireEvent.click(screen.getByRole('button',{name:'Trip card vs Biometric'}));
+ expect(await screen.findByRole('button',{name:/days differ for Ramesh Kumar/})).toBeTruthy();
 });
