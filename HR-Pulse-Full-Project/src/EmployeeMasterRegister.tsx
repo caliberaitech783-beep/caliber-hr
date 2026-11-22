@@ -208,12 +208,27 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
     setError('');
     setMessage('');
     try {
-      const payload = JSON.parse(await file.text());
+      let skipped = 0;
+      let payload;
+      if (/\.xlsx?$/i.test(file.name)) {
+        const {employeeWorkbook} = await import('./employeeWorkbook');
+        const existing = await api<{complete:boolean;rows:Employee[]}>(grant,'employee-master-register?export=1');
+        if (!existing.complete || !data) throw new Error('Could not verify the current register. Please retry.');
+        const parsed = await employeeWorkbook(await file.arrayBuffer(),data.sites,columns,existing.rows);
+        skipped = parsed.skipped;
+        if (!parsed.rows.length) {
+          setMessage(`0 entries added. ${skipped.toLocaleString('en-IN')} already imported.`);
+          return;
+        }
+        payload = {format:'hr-employee-master-v1',rows:parsed.rows};
+      } else {
+        payload = JSON.parse(await file.text());
+      }
       if (payload.format !== 'hr-employee-master-v1' || !Array.isArray(payload.rows) || !payload.rows.length) {
         throw new Error('Choose a prepared HR employee import file.');
       }
       const result = await api<{inserted:number;alreadyImported:number}>(grant,'employee-master-register','POST',payload);
-      setMessage(`${result.inserted.toLocaleString('en-IN')} entries added. ${result.alreadyImported.toLocaleString('en-IN')} already imported.`);
+      setMessage(`${result.inserted.toLocaleString('en-IN')} entries added. ${(result.alreadyImported+skipped).toLocaleString('en-IN')} already imported.`);
       setPage(1);
       setRevision(value=>value+1);
     } catch (error) {
@@ -251,7 +266,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       } else {
         const records = rows.map((row,index)=>({...row,serial:index+1}));
         if (popup) {
-          if (popup.closed) throw new Error('The PDF window was closed. Choose PDF from the Download menu again.');
+          if (popup.closed) throw new Error('The PDF window was closed. Choose PDF from the Export menu again.');
           popup.document.open();
           popup.document.write(assetPrintHtml('Employee Master',exportColumns,records));
           popup.document.close();
@@ -299,7 +314,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
         <button ref={downloadButton} type="button" className="employee-import" disabled={!canDownload}
           aria-expanded={downloadOpen&&canDownload} aria-controls="hr-register-download-formats"
           onClick={()=>setDownloadOpen(open=>!open)}>
-          <Download aria-hidden="true"/>{exporting?'Preparing…':'Download'}<ChevronDown aria-hidden="true"/>
+          <Download aria-hidden="true"/>{exporting?'Preparing…':'Export'}<ChevronDown aria-hidden="true"/>
         </button>
         <div id="hr-register-download-formats" className="employee-export-menu" role="group" aria-label="Download format"
           hidden={!downloadOpen||!canDownload}>
@@ -310,8 +325,8 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
           }}>{label}</button>)}
         </div>
       </div>
-      {data?.canImport && <label className="file-label">Import HR employee data
-        <input aria-label="Import HR employee data" type="file" accept=".json" disabled={importing||loading} onChange={event=>{
+      {data?.canImport && <label className="file-label">Import Excel
+        <input aria-label="Import HR employee data" type="file" accept=".xlsx,.xls,.json" disabled={importing||loading} onChange={event=>{
           const file = event.target.files?.[0];
           event.target.value = '';
           if (file) void importData(file);
