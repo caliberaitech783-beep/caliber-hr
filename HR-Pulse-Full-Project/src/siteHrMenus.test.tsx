@@ -61,4 +61,17 @@ it('keeps every menu for office HR and regional HR',async()=>{
 it('keeps every menu for the fixed regional HR even with only site rights',async()=>{
  const regional=await sidebar({...siteHr,name:'Virat Singh',actor:'viratsingh',assignedRole:'HR Manager',permissions:{...siteHr.permissions,site:'WCL-SASTI|WCL-MAJRI'}},{admin:false,sites:[{region:'WCL',site:'Sasti OB'},...majri]});
  for(const menu of menus)expect(within(regional).getByRole('button',{name:menu})).toBeTruthy();
+ fireEvent.click(within(regional).getByRole('button',{name:'OB / COAL'}));
+ await within(regional).findByRole('button',{name:'Trial Form'},{timeout:5000});
+ for(const menu of employeeMasterMenus)expect(within(regional).getByRole('button',{name:menu})).toBeTruthy();
+},20000);
+
+const employeeMasterMenus=['Corporate / HO','OB / COAL','Trial Form','Employee Management','Leave / OD / Gatepass','Employee Transfer'];
+it('shows Corporate / HO and every Employee Master menu to office HR whose site rights list only sites',async()=>{
+ const officeHr={...siteHr,name:'Apurva Kopulwar',actor:'apurvakopulwar',assignedRole:'HR Executive',permissions:{...siteHr.permissions,site:'NCL-JAYANT|NCL-DUDE',hrTrialAssignments:[{role:'Office HR',sites:[{code:'NCL-JAYANT'},{code:'NCL-DUDE'}]}]}};
+ const nav=await sidebar(officeHr as typeof siteHr,{admin:false,sites:[{region:'NCL',site:'Jayant OB East'},{region:'NCL',site:'Dudhichua OB East'}]});
+ fireEvent.click(within(nav).getByRole('button',{name:'OB / COAL'}));
+ await within(nav).findByRole('button',{name:'Trial Form'},{timeout:5000});
+ for(const menu of employeeMasterMenus)expect(within(nav).getByRole('button',{name:menu})).toBeTruthy();
+ for(const menu of menus)expect(within(nav).getByRole('button',{name:menu})).toBeTruthy();
 },20000);

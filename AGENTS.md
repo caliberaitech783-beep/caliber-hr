@@ -121,6 +121,7 @@ Set by the owner on 22 November 2026.
 
 - A login whose site rights cover only OB / COAL sites (HR at Majri, Sasti and the other NCL / WCL sites) sees only OB / COAL under Employee Master. The Corporate / HO button is not shown and the page stays on OB / COAL.
 - Admin, "All sites" logins and any login with an office (Head Office, Corporate Office, HO, CO) in its site rights still see both.
+- Owner, 22 Nov 2026 (later): office HR and regional HR (`officeOrRegionalHr` in `src/siteHrAccess.ts`) always see Corporate / HO and every Employee Master menu, even when their site rights list only OB / COAL sites. Only site HR and other site logins lose it (`hideCorporate` in `src/Workspace.tsx`); `src/siteHrMenus.test.tsx` checks it.
 - `siteOnlyLogin` in `HR-Pulse-Full-Project/src/siteRights.ts` (used by `src/Workspace.tsx`, with `/api/telegram/trial-scope`) holds it; `src/siteOnlyCorporate.test.tsx` checks it.
 # Site HR sees only OB / COAL and Trial Form
 
