@@ -1,9 +1,9 @@
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
-import {Download,RefreshCw} from 'lucide-react';
+import {Download,RefreshCw,Save} from 'lucide-react';
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,fetchBiometric,fetchTripCards,streamTripCards,tripDays,type DayState,type DayUpdate} from './rosterData';
+import {FIRST_TRIP_DATE,fetchBiometric,fetchTripCards,readSavedTripCards,saveTripCards,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo} from './rosterData';
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 
@@ -38,7 +38,9 @@ export const diffText=(group:RosterGroup,tripsLoaded:boolean)=>!tripsLoaded?'—
 export const viewGroups=(groups:RosterGroup[],view:RosterView)=>groups.filter(g=>view==='trip'?g.hasTripCards:view==='bio'?Boolean(g.bio):true);
 
 /** rows: the trip cards read so far (shown while the other days are still being read); days: each day's reading state. */
-export type TripState={status:'idle'|'loading'|'ready'|'error';message:string;rows:AttendanceRow[]|null;failed?:string[];misSites?:string[];days?:Record<string,DayState>;errors?:Record<string,string>;onRetry?:(days:string[])=>void};
+export type TripState={status:'idle'|'loading'|'ready'|'error';message:string;rows:AttendanceRow[]|null;failed?:string[];misSites?:string[];days?:Record<string,DayState>;errors?:Record<string,string>;onRetry?:(days:string[])=>void;
+ /** Save trip cards: the button's text, whether it can be pressed, and the note on what is saved. */
+ onSave?:()=>void;saveLabel?:string;canSave?:boolean;savedNote?:string;saveError?:string;saved?:Record<string,SavedInfo>};
 const DAY_STATE:Record<DayState,string>={queued:'Waiting to be read from MIS',loading:'Reading from MIS…',retrying:'MIS was busy · trying again…',done:'Read from MIS',failed:'Could not be read from MIS'};
 type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripState;monthly:boolean;from:string;to:string;loading?:boolean;error?:string;emptyText?:string};
 
@@ -82,14 +84,17 @@ export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=fals
   {view!=='bio'&&trip.status==='ready'&&(trip.failed?.length||0)>0&&<div className="roster-warn" role="alert">Trip cards could not be read from MIS for {trip.failed!.map(show).join(', ')}, even after trying each day again{trip.errors?` (MIS: ${[...new Set(trip.failed!.map(d=>trip.errors![d]).filter(Boolean))].join('; ')})`:''}. Those days are blank.
    {trip.onRetry&&<button type="button" className="roster-retry" onClick={()=>trip.onRetry!(trip.failed!)}><RefreshCw/>Retry these days</button>}</div>}
   {view!=='bio'&&trip.status==='ready'&&!(trip.rows||[]).length&&(trip.misSites?.length||0)>0&&<p className="roster-warn" role="alert">MIS has trip cards in these dates for {trip.misSites!.join(', ')}, but none for this site. If one of them is this site, its name is written differently in HR and MIS.</p>}
+  {view!=='bio'&&trip.savedNote&&<p className="roster-saved" role="status">{trip.savedNote}</p>}
+  {view!=='bio'&&trip.saveError&&<p className="roster-warn" role="alert">{trip.saveError}</p>}
   <div className="roster-bar">
    {compare&&<label className="roster-check"><input type="checkbox" checked={onlyDiff} onChange={e=>setOnlyDiff(e.target.checked)}/>Only employees with a difference</label>}
    <span role="status">{status}</span>
+   {view!=='bio'&&trip.onSave&&<button type="button" className="roster-save" disabled={!trip.canSave} onClick={trip.onSave}><Save/>{trip.saveLabel||'Save trip cards'}</button>}
    <button type="button" disabled={!shown.length||exporting} onClick={exportExcel}><Download/>{exporting?'Preparing…':'Export Excel'}</button>
   </div>
   <div className="attendance-table"><table className={'register-grid roster-grid'+(compare?'':' roster-nosrc')} aria-label="Attendance roster">
    <thead><tr>{compare&&<th className="roster-fixed roster-src">Source</th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>Sr. No.</th><th className="roster-fixed roster-id">Employee ID</th><th className="roster-fixed roster-name">Name</th><th className="roster-text">Site</th><th className="roster-text">Department</th><th className="roster-text">Designation</th>
-    {dates.map(d=>{const state=view!=='bio'?trip.days?.[d]:undefined;return <th key={d} title={show(d)+(state?' · '+DAY_STATE[state]+(state==='failed'&&trip.errors?.[d]?': '+trip.errors[d]:''):'')} className={[weekday(d)==='Su'?'roster-sunday':'',state&&state!=='done'?'roster-day-'+state:''].filter(Boolean).join(' ')||undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small>{state&&state!=='done'&&<i className="roster-day-mark" aria-label={DAY_STATE[state]}/>}</th>;})}
+    {dates.map(d=>{const state=view!=='bio'?trip.days?.[d]:undefined;return <th key={d} title={show(d)+(state==='done'&&trip.saved?.[d]?' · Saved copy':'')+(state?' · '+DAY_STATE[state]+(state==='failed'&&trip.errors?.[d]?': '+trip.errors[d]:''):'')} className={[weekday(d)==='Su'?'roster-sunday':'',state&&state!=='done'?'roster-day-'+state:''].filter(Boolean).join(' ')||undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small>{state&&state!=='done'&&<i className="roster-day-mark" aria-label={DAY_STATE[state]}/>}</th>;})}
     {ROSTER_TOTALS.map(([key,label])=><th key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}>{label}</th>)}{monthly&&<th className="roster-total">Gate pass</th>}
     {view==='trip'&&<th className="roster-text roster-cards">Cards (days)</th>}{compare&&<th className="roster-diff">{DIFF_HEADING}</th>}</tr></thead>
    <tbody>{shown.length?shown.map((g,i)=>{const picked=g.key===open,diff=diffText(g,tripsLoaded),rows=lines.length;return <Fragment key={g.key}>
@@ -139,12 +144,16 @@ export default function AttendanceRoster({grant,rows,dates,today,policy=DEFAULT_
 
 type Source<T>={key:string;status:'idle'|'loading'|'ready'|'error';message:string;data:T|null};
 /** The Trip card tab's reading, day by day: each day's state, rows and MIS error, and the site names MIS returned. */
-type TripStream={key:string;days:Record<string,DayState>;rows:Record<string,AttendanceRow[]>;errors:Record<string,string>;sites:string[];runs:number};
-const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0};
+type TripStream={key:string;days:Record<string,DayState>;rows:Record<string,AttendanceRow[]>;errors:Record<string,string>;sites:string[];runs:number;
+ /** saved: days opened from (or written to) the saved copy; fresh: days read from MIS and not saved yet. */
+ saved:Record<string,SavedInfo>;fresh:string[];save:{running:boolean;done:number;total:number;failed:string[];error:string}|null};
+const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null};
 export function applyDay(stream:TripStream,u:DayUpdate):TripStream{
  const days={...stream.days,[u.day]:u.state},errors={...stream.errors},rows=u.state==='done'?{...stream.rows,[u.day]:u.rows||[]}:stream.rows;
  if(u.state==='failed')errors[u.day]=u.error||'MIS did not answer';else if(u.state==='done')delete errors[u.day];
- return {...stream,days,rows,errors,sites:u.sites?[...new Set([...stream.sites,...u.sites])].sort():stream.sites};
+ const done=u.state==='done',saved=done?Object.fromEntries(Object.entries(stream.saved).filter(([d])=>d!==u.day)):stream.saved;
+ return {...stream,days,rows,errors,saved,fresh:done&&!stream.fresh.includes(u.day)?[...stream.fresh,u.day]:stream.fresh,
+  sites:u.sites?[...new Set([...stream.sites,...u.sites])].sort():stream.sites};
 }
 const idle={key:'',status:'idle' as const,message:'',data:null};
 
@@ -156,7 +165,7 @@ export function AttendanceRosterPage({grant}:{grant:string}){
  const [department,setDepartment]=useState(''),[employee,setEmployee]=useState('');
  const [view,setView]=useState<RosterView|''>('');
  const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<Source<Register>>(idle);
- const keyRef=useRef('');
+ const keyRef=useRef(''),forceMis=useRef(false);
  const [reload,setReload]=useState(0);
  useEffect(()=>{let live=true;
   api<Lookup[]>(grant,'lookups').then(rows=>{if(!live)return;const list=Array.isArray(rows)?rows:[];
@@ -174,16 +183,41 @@ export function AttendanceRosterPage({grant}:{grant:string}){
  useEffect(()=>{
   if(!wantTrip||trip.key===key)return;
   setTrip({...noStream,key});
-  readTrip(tripDays(from,to));
+  const runKey=key,all=tripDays(from,to);
+  keyRef.current=runKey;
+  // "Fetch again" reads every day from MIS; otherwise the saved days open at once and MIS is read for the rest.
+  if(forceMis.current){forceMis.current=false;readTrip(all);return;}
+  setTrip(t=>t.key===runKey?{...t,runs:t.runs+1}:t);
+  readSavedTripCards(grant,site,from,to).then(saved=>{
+   if(keyRef.current!==runKey)return;
+   const have=saved.filter(d=>all.includes(d.day));
+   setTrip(t=>t.key!==runKey?t:{...t,days:{...t.days,...Object.fromEntries(have.map(d=>[d.day,'done' as DayState]))},rows:{...t.rows,...Object.fromEntries(have.map(d=>[d.day,d.rows]))},
+    saved:{...t.saved,...Object.fromEntries(have.map(d=>[d.day,{savedBy:d.savedBy,savedAt:d.savedAt}]))}});
+   const missing=all.filter(d=>!have.some(x=>x.day===d));
+   if(missing.length)readTrip(missing);
+  }).catch(()=>{if(keyRef.current===runKey)readTrip(all);})
+   .finally(()=>setTrip(t=>t.key===runKey?{...t,runs:t.runs-1}:t));
  },[wantTrip,key]); // eslint-disable-line react-hooks/exhaustive-deps
  // Switching to another tab keeps the reading going; a new site or dates stops it.
- useEffect(()=>{if(trip.key&&trip.key!==key)keyRef.current='';},[key,trip.key]);
+ // (Compared with the reading's own key: comparing trip.key here stopped a new reading in the render that started it.)
+ useEffect(()=>{if(keyRef.current&&keyRef.current!==key)keyRef.current='';},[key]);
  /** Reads these days from MIS and fills the muster as each day arrives (also "Retry these days"). */
  function readTrip(list:string[]){
   const runKey=key;keyRef.current=runKey;
   setTrip(t=>t.key===runKey?{...t,runs:t.runs+1}:t);
   void streamTripCards(grant,list,site,u=>setTrip(t=>t.key===runKey?applyDay(t,u):t),()=>keyRef.current===runKey)
    .finally(()=>setTrip(t=>t.key===runKey?{...t,runs:t.runs-1}:t));
+ }
+ /** Save trip cards: every day read from MIS and not saved yet, one day per request. */
+ function saveTrip(){
+  const runKey=key,list=trip.fresh.filter(d=>trip.days[d]==='done').sort().map(day=>({day,rows:trip.rows[day]||[]}));
+  if(!list.length)return;
+  setTrip(t=>({...t,save:{running:true,done:0,total:list.length,failed:[],error:''}}));
+  void saveTripCards(grant,site,list,(day,info,error)=>setTrip(t=>{
+   if(t.key!==runKey||!t.save)return t;
+   const save={...t.save,done:t.save.done+1,failed:info?t.save.failed:[...t.save.failed,day],error:t.save.error||error||''};
+   return info?{...t,save,saved:{...t.saved,[day]:info},fresh:t.fresh.filter(d=>d!==day)}:{...t,save};
+  })).finally(()=>setTrip(t=>t.key===runKey&&t.save?{...t,save:{...t.save,running:false}}:t));
  }
  useEffect(()=>{
   if(!wantBio||bio.key===key)return;
@@ -207,6 +241,16 @@ export function AttendanceRosterPage({grant}:{grant:string}){
   message:`Reading trip cards from MIS · ${finished} of ${total||'…'} days${retrying?` · ${retrying} retrying`:''}${failedDays.length?` · ${failedDays.length} not read`:''}`,
   rows:tripRows,failed:failedDays,misSites:trip.key===key?trip.sites:[],days:trip.key===key?trip.days:undefined,errors:trip.key===key?trip.errors:undefined,
   onRetry:list=>readTrip(list)};
+ const savedDays=trip.key===key?Object.entries(trip.saved):[],freshDone=trip.key===key?trip.fresh.filter(d=>trip.days[d]==='done'):[],save=trip.key===key?trip.save:null;
+ const latest=savedDays.map(([,info])=>info).sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)))[0];
+ const when=(at:string)=>{const t=Date.parse(at);return Number.isFinite(t)?new Date(t).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):at;};
+ tripState.onSave=saveTrip;
+ tripState.saved=trip.key===key?trip.saved:undefined;
+ tripState.canSave=!running&&!save?.running&&freshDone.length>0;
+ tripState.saveLabel=save?.running?`Saving ${save.done} of ${save.total} days…`:freshDone.length?`Save trip cards (${freshDone.length} day${freshDone.length===1?'':'s'})`:savedDays.length?'Saved':'Save trip cards';
+ tripState.savedNote=savedDays.length?`Saved copy: ${savedDays.length} of ${total} days (last saved ${latest?when(latest.savedAt):''}${latest?.savedBy?' by '+latest.savedBy:''}).`+
+  (freshDone.length?` ${freshDone.length} day${freshDone.length===1?'':'s'} read from MIS ${freshDone.length===1?'is':'are'} not saved yet.`:' Press Fetch again for the latest from MIS.'):'';
+ tripState.saveError=save&&!save.running&&save.failed.length?`Could not save ${save.failed.map(show).join(', ')}: ${save.error}`:'';
  if(tripState.status==='error')tripState.message=trip.errors[failedDays[0]]||'The MIS attendance feed is temporarily unavailable.';
  const bioLoading=view!=='trip'&&wantBio&&(bio.key!==key||bio.status==='loading');
  const choose=(next:RosterView)=>{setView(next);setEmployee('');};
@@ -221,7 +265,7 @@ export function AttendanceRosterPage({grant}:{grant:string}){
    <label>To<input type="date" value={to} min={from} max={today} onChange={e=>setTo(e.target.value)}/></label>
    <label>Department<select value={department} onChange={e=>setDepartment(e.target.value)}><option value="">All departments</option>{departments.map(d=><option key={d}>{d}</option>)}</select></label>
    <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>!department||g.department===department).map(g=><option key={g.key} value={g.key}>{g.code} · {g.name}</option>)}</select></label>
-   <button type="button" disabled={!ready||!view||busy} onClick={()=>setReload(n=>n+1)}><RefreshCw className={busy?'spin':''}/>Fetch again</button>
+   <button type="button" disabled={!ready||!view||busy} onClick={()=>{forceMis.current=view!=='bio';setReload(n=>n+1);}}><RefreshCw className={busy?'spin':''}/>Fetch again</button>
   </div>
   {lookupError&&<p className="error" role="alert">Sites could not be loaded: {lookupError}</p>}
   {sites&&!sites.length&&!lookupError&&<p className="error" role="alert">No site is assigned to your login.</p>}

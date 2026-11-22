@@ -148,7 +148,7 @@ it('reports each day as it arrives so the muster fills in day by day',async()=>{
  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const day=new URL(url,'https://x').searchParams.get('from')!;
   if(day==='2026-11-03'&&first){first=false;return Response.json({error:'MIS busy'},{status:503});}
   return Response.json(misReport());}));
- const updates:string[]=[];let stream:Parameters<typeof applyDay>[0]={key:'k',days:{},rows:{},errors:{},sites:[],runs:0};
+ const updates:string[]=[];let stream:Parameters<typeof applyDay>[0]={key:'k',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null};
  const failed=await streamTripCards('a'.repeat(43),['2026-11-02','2026-11-03','2026-11-04'],'Gevra',u=>{updates.push(u.day.slice(8)+':'+u.state);stream=applyDay(stream,u);});
  expect(failed).toEqual([]);
  expect(updates.filter(u=>u.endsWith(':done')).sort()).toEqual(['02:done','03:done','04:done']);
@@ -156,4 +156,38 @@ it('reports each day as it arrives so the muster fills in day by day',async()=>{
  expect(updates.indexOf('02:done')).toBeLessThan(updates.indexOf('03:done'));
  expect(Object.keys(stream.rows).sort()).toEqual(['2026-11-02','2026-11-03','2026-11-04']);
  expect(stream.rows['2026-11-02'].every(r=>r.date==='2026-11-02'&&r.site==='Gevra')).toBe(true);
+});
+
+it('opens saved trip cards at once, reads MIS only for the other days, and saves them',async()=>{
+ const {AttendanceRosterPage}=await import('./AttendanceRoster');
+ const calls:{url:string;method:string;body?:{day:string;rows:unknown[]}}[]=[];
+ const savedDay=misReport();
+ vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{const method=init?.method||'GET';const body=init?.body?JSON.parse(String(init.body)):undefined;calls.push({url,method,body});
+  const q=new URL(url,'https://x').searchParams;
+  if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'GV',name:'Gevra'}]);
+  if(url.includes('attendance/register'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,rows:[]});
+  if(url.includes('attendance/trip-cards')&&method==='GET'){
+   const {mapMisAttendance}=await import('./misAttendanceModel');
+   return Response.json({site:'Gevra',days:[{day:'2026-11-02',rows:mapMisAttendance(savedDay).filter(r=>r.date==='2026-11-02'&&r.site==='Gevra'),duties:1,savedBy:'vinod',savedAt:'2026-11-22T10:00:00Z'}]});}
+  if(url.includes('attendance/trip-cards')&&method==='POST')return Response.json({day:body.day,duties:body.rows.length,savedBy:'vinod',savedAt:'2026-11-22T11:00:00Z'});
+  if(url.includes('attendance/mis'))return Response.json(misReport());
+  return Response.json({});}));
+ render(<AttendanceRosterPage grant={'a'.repeat(43)}/>);
+ const site=screen.getByLabelText('Site');
+ await waitFor(()=>expect(within(site).getByRole('option',{name:'Gevra'})).toBeTruthy());
+ fireEvent.change(site,{target:{value:'Gevra'}});
+ fireEvent.change(screen.getByLabelText('From'),{target:{value:'2026-11-02'}});
+ fireEvent.change(screen.getByLabelText('To'),{target:{value:'2026-11-04'}});
+ fireEvent.click(screen.getByRole('button',{name:'Trip card (VLB · ELB · LMV)'}));
+ const save=await screen.findByRole('button',{name:'Save trip cards (2 days)'});
+ expect(screen.getByText(/Saved copy: 1 of 3 days .*by vinod\)\. 2 days read from MIS are not saved yet\./)).toBeTruthy();
+ expect(calls.filter(c=>c.url.includes('attendance/mis')).map(c=>new URL(c.url,'https://x').searchParams.get('from')).sort()).toEqual(['2026-11-03','2026-11-04']);
+ fireEvent.click(save);
+ await screen.findByRole('button',{name:'Saved'});
+ const posts=calls.filter(c=>c.method==='POST');
+ expect(posts.map(c=>c.body!.day).sort()).toEqual(['2026-11-03','2026-11-04']);
+ expect(posts.every(c=>c.body!.rows.length>0)).toBe(true);
+ expect(screen.getByText(/Saved copy: 3 of 3 days/)).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:/Fetch again/}));
+ await waitFor(()=>expect(calls.filter(c=>c.url.includes('attendance/mis')).length).toBe(5));
 });

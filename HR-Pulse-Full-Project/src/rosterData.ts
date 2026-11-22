@@ -91,3 +91,26 @@ export async function fetchBiometric(grant: string, from: string, to: string, si
   const rows = Array.isArray(register?.rows) ? register.rows : [];
   return {...register, rows: site ? rows.filter(r => sameSite(site, r.site)) : rows};
 }
+
+/* Saved trip cards (owner, 22 Nov 2026): "Save trip cards" stores each day of the site's trip cards in HR
+   (server/trip-card-store.mjs), and the Trip card tab opens the saved days at once, reading MIS only for the rest. */
+export type SavedInfo = {savedBy: string; savedAt: string};
+export type SavedDay = SavedInfo & {day: string; rows: AttendanceRow[]; duties: number};
+export async function readSavedTripCards(grant: string, site: string, from: string, to: string) {
+  const result = await api<{days?: SavedDay[]}>(grant, 'attendance/trip-cards?' + new URLSearchParams({site, from, to}));
+  return Array.isArray(result?.days) ? result.days : [];
+}
+/** Saves the given days, one day per request (each under the 2 MB request limit), three at a time. */
+export async function saveTripCards(grant: string, site: string, days: {day: string; rows: AttendanceRow[]}[], onDay: (day: string, info: SavedInfo | null, error?: string) => void) {
+  let next = 0;
+  const failed: string[] = [];
+  async function worker() {
+    while (next < days.length) {
+      const {day, rows} = days[next++];
+      try { onDay(day, await api<SavedInfo & {day: string}>(grant, 'attendance/trip-cards', 'POST', {site, day, rows})); }
+      catch (e) { failed.push(day); onDay(day, null, (e as Error).message); }
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(3, days.length)}, worker));
+  return failed.sort();
+}

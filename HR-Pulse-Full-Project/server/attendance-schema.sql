@@ -90,3 +90,15 @@ CREATE TABLE IF NOT EXISTS hr_attendance_policy(
  updated_at timestamptz NOT NULL DEFAULT now(),
  version integer NOT NULL DEFAULT 1 CHECK(version>0)
 );
+
+-- Attendance roster › Trip card (owner, 22 Nov 2026): the MIS trip cards (VLB, ELB, LMV) of one site and day, saved by
+-- "Save trip cards" so the roster opens them without reading MIS again. rows: the day's duties (trip-card-store.mjs).
+CREATE TABLE IF NOT EXISTS hr_trip_card_days(
+ site text NOT NULL,
+ day date NOT NULL,
+ rows jsonb NOT NULL,
+ duties integer NOT NULL,
+ saved_by text NOT NULL,
+ saved_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(site,day)
+);
