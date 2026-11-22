@@ -98,7 +98,7 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
  const [lookups,setLookups]=useState<Lookup[]>([]),[choice,setChoice]=useState<Record<string,string>>({});
  const [loading,setLoading]=useState(true),[fetching,setFetching]=useState(false),[busy,setBusy]=useState(false);
  const [error,setError]=useState(''),[message,setMessage]=useState('');
- const [tab,setTab]=useState<'punches'|'machines'|'sheet'|'tripPunch'|'recon'>('punches');
+ const [tab,setTab]=useState<'punches'|'machines'|'sheet'|'tripPunch'|'recon'|'roster'>('punches');
  const [selected,setSelected]=useState('');
  const live=useRef(true);
  const attendanceFrame=useRef<HTMLIFrameElement>(null);
@@ -186,7 +186,10 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
    <button className={tab==='sheet'?'selected':''} aria-pressed={tab==='sheet'} onClick={()=>setTab('sheet')}>ESSL punch log (Excel)</button>
    <button className={tab==='tripPunch'?'selected':''} aria-pressed={tab==='tripPunch'} onClick={()=>setTab('tripPunch')}>Trip card punch</button>
    <button className={tab==='recon'?'selected':''} aria-pressed={tab==='recon'} onClick={()=>setTab('recon')}>Biometric vs trip card</button>
+   <button className={tab==='roster'?'selected':''} aria-pressed={tab==='roster'} onClick={()=>setTab('roster')}>Attendance roster</button>
   </div>
+  {/* Owner, 22 Nov 2026: the monthly roster (Trip Card and Bio Matric lines, difference drill-down) as a tab after Biometric vs trip card. */}
+  {tab==='roster'&&<AttendanceRegister grant={grant} mode="month"/>}
   {(tab==='sheet'||tab==='tripPunch'||tab==='recon')&&<iframe key={tab} ref={attendanceFrame} src={legacyModuleUrl(tab==='sheet'?'punch':tab==='tripPunch'?'tpunch':'recon',policy)} sandbox={inPulseII ? "allow-scripts allow-downloads" : undefined} title={tab==='sheet'?'ESSL punch log upload':tab==='tripPunch'?'Trip card punch':'Biometric vs trip card comparison'}/>}
   {tab==='punches'&&<>
 
