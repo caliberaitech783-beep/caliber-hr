@@ -133,3 +133,61 @@ export async function saveTripCards(grant: string, site: string, days: {day: str
   await Promise.all(Array.from({length: Math.min(3, days.length)}, worker));
   return failed.sort();
 }
+
+/* Biometric tab, day by day (owner, 22 Nov 2026: "the same way as the trip card"): the site's machines are read one day
+   per request, three days at a time, each day tried three times, so the muster fills in as each day arrives. */
+export type BioDayUpdate = {day: string; state: DayState; result?: SiteRegister; error?: string; attempt?: number};
+export async function streamBiometric(grant: string, days: string[], site: string, onDay: (update: BioDayUpdate) => void, live: () => boolean = () => true) {
+  const failed = new Set<string>();
+  let next = 0;
+  for (const day of days) onDay({day, state: 'queued'});
+  async function run(day: string) {
+    if (!live()) return;
+    onDay({day, state: 'loading'});
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const result = await fetchBiometric(grant, day, day, site);
+        failed.delete(day);
+        if (live()) onDay({day, state: 'done', result});
+        return;
+      } catch (e) {
+        const error = (e as Error).message || 'HR did not answer';
+        if (attempt >= TRIP_ATTEMPTS || NO_ACCESS.test(error)) {failed.add(day); if (live()) onDay({day, state: 'failed', error}); return;}
+        if (live()) onDay({day, state: 'retrying', attempt: attempt + 1, error});
+        await pause(1500 * attempt);
+      }
+    }
+  }
+  async function worker() {while (next < days.length && live()) await run(days[next++]);}
+  await Promise.all(Array.from({length: Math.min(3, days.length)}, worker));
+  return [...failed].sort();
+}
+
+/** The days read so far joined into one register: each person's days in date order, machines and punch counts added up. */
+export function joinBiometricDays(results: SiteRegister[], lateEarlyPerHalfCut = 3): SiteRegister | null {
+  if (!results.length) return null;
+  const people = new Map<string, Register['rows'][number]>();
+  const machines = new Map<string, SiteMachine>();
+  for (const result of results) {
+    for (const m of result.machines) {
+      const before = machines.get(m.serial);
+      machines.set(m.serial, before ? {...m, punches: before.punches + m.punches, lastPunch: [before.lastPunch, m.lastPunch].sort().at(-1) || ''} : {...m});
+    }
+    for (const row of result.rows) {
+      const before = people.get(row.id);
+      if (!before) {people.set(row.id, {...row, days: [...row.days], machinesUsed: [...(row.machinesUsed || [])], summary: {...row.summary}}); continue;}
+      before.days.push(...row.days.filter(d => !before.days.some(x => x.date === d.date)));
+      before.machinesUsed = [...new Set([...(before.machinesUsed || []), ...(row.machinesUsed || [])])];
+      before.summary = {...before.summary, gatePassDeduction: Math.round(((before.summary.gatePassDeduction || 0) + (row.summary.gatePassDeduction || 0)) * 100) / 100};
+    }
+  }
+  // Half duty cuts count late comes and early goings over each month, so they are counted again over the joined days.
+  for (const person of people.values()) {
+    person.days.sort((a, b) => a.date.localeCompare(b.date));
+    const months = new Map<string, number>();
+    for (const d of person.days) if (d.late || d.early) months.set(d.date.slice(0, 7), (months.get(d.date.slice(0, 7)) || 0) + (d.late ? 1 : 0) + (d.early ? 1 : 0));
+    person.summary = {...person.summary, halfDutyCuts: [...months.values()].reduce((s, n) => s + Math.floor(n / Math.max(1, lateEarlyPerHalfCut)), 0)};
+  }
+  const first = results[0];
+  return {...first, rows: [...people.values()].sort((a, b) => Number(a.linked === false) - Number(b.linked === false) || a.name.localeCompare(b.name)), machines: [...machines.values()]};
+}
