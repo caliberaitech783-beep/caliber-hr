@@ -28,8 +28,8 @@ export const formSections:Record<string,Section[]>={
     {title:'Review',keys:[]},
   ],
   employeeTransfers:[
-    {title:'Employee and date',keys:['employeeId','transferDate']},
-    {title:'Current posting (from Employee Master)',keys:['fromSiteId','fromDesignation','fromManager']},
+    {title:'Site and employee',keys:['fromSiteId','employeeId','transferDate']},
+    {title:'Current posting (from Employee Master)',keys:['fromDesignation','fromManager']},
     {title:'New posting',keys:['toSiteId','toDesignation','toManager']},
     {title:'Reason and review',keys:[]},
   ],
