@@ -11,6 +11,7 @@ import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval,isDriverO
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
 import {createEmployeeMasterRegister} from './employee-master-register.mjs';
+import {createMisEmployeeSync} from './mis-employee-sync.mjs';
 import {createReportingManagers} from './reporting-managers.mjs';
 import {validateTrialJoining} from './trial-joining.mjs';
 import {requireTrialRole} from './trial-access.mjs';
@@ -220,6 +221,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     ...createTransferFlows(pool),
     ...createHolidayDocuments(pool),
     ...createEmployeeMasterRegister(pool),
+    ...createMisEmployeeSync(pool),
     ...createReportingManagers(pool),
     async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests','gatePasses'].includes(kind))}]))}; },
     async list(profile,kind,params) {
