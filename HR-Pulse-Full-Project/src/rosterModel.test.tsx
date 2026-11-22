@@ -69,3 +69,21 @@ it('writes the coloured roster workbook with both lines and a Differences sheet'
  expect((ws.getCell('I5').fill as {fgColor:{argb:string}}).fgColor.argb).toBe('FFEAF3DE');
  expect(wb.getWorksheet('Differences')!.rowCount).toBe(3);
 });
+
+it('opens the roster from the Attendance roster tab after Biometric vs trip card',async()=>{
+ const {default:AttendanceManagement}=await import('./AttendanceManagement');
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams;
+  if(url.includes('attendance/status'))return Response.json({configured:true,bridgeOnline:false,bridgeLastSeen:null,devices:[],lastFetch:null,canLink:false,canManageDevices:false});
+  if(url.includes('attendance/punches'))return Response.json({rows:[]});
+  if(url.includes('attendance/unlinked'))return Response.json([]);
+  if(url.includes('attendance/policy'))return Response.json({policy:DEFAULT_POLICY,version:1,canEdit:false});
+  if(url.includes('attendance/mis'))return Response.json({attendanceEquipment:[],attendanceShifts:[],otDuties:[],ot:[],performance:[],details:[],exceptions:[],corrections:[],canEdit:true});
+  if(url.includes('attendance/register'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,rows:[bio]});
+  return Response.json({rows:[],total:0});}));
+ render(<AttendanceManagement grant={'a'.repeat(43)} view="Biometric integration"/>);
+ const tabs=document.querySelector('[aria-label="Biometric views"]')!.querySelectorAll('button');
+ expect([...tabs].map(b=>b.textContent).slice(-2)).toEqual(['Biometric vs trip card','Attendance roster']);
+ fireEvent.click(screen.getByRole('button',{name:'Attendance roster'}));
+ const table=await screen.findByRole('table',{name:'Attendance roster'});
+ await waitFor(()=>expect(within(table).getByText('Ramesh Kumar')).toBeTruthy());
+});
