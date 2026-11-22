@@ -33,3 +33,21 @@ it('keeps separate Aadhaar sides until a complete card replaces them',async()=>{
  expect(screen.getByAltText('Uploaded Aadhaar image 1 preview')).toHaveAttribute('src','blob:card.jpg');
  expect(screen.queryByAltText('Uploaded Aadhaar image 2 preview')).toBeNull();
 });
+
+it('offers camera and document choices for each side before opening a picker',()=>{
+ render(<Form/>);
+ const camera=vi.spyOn(screen.getByLabelText('Capture Aadhaar card'),'click');
+ for(const [button,input] of [
+  ['Upload Aadhaar Front Image','Choose Aadhaar front image'],
+  ['Upload Aadhaar Back Image','Choose second Aadhaar image'],
+ ]){
+  const gallery=vi.spyOn(screen.getByLabelText(input),'click');
+  fireEvent.click(screen.getByRole('button',{name:button}));
+  expect(gallery).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Camera'}));
+  expect(camera).toHaveBeenCalledTimes(1);
+  camera.mockClear();
+  fireEvent.click(screen.getByRole('button',{name:'Gallery / Document'}));
+  expect(gallery).toHaveBeenCalledTimes(1);
+ }
+});
