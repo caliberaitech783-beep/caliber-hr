@@ -107,7 +107,9 @@ function difference(trip: string, bio: string): string {
  * but no linked biometric ID are added with an empty biometric line. `dates` are the roster's dates; `today`
  * stops the trip card line (and its absences) at today.
  */
-export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | null, dates: string[], today: string, policy: AttendancePolicy = DEFAULT_POLICY): RosterGroup[] {
+export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | null, dates: string[], today: string, policy: AttendancePolicy = DEFAULT_POLICY,
+  /** While MIS is still being read: only these days have trip cards; the others stay blank and are not compared. */
+  tripRead?: Set<string>): RosterGroup[] {
   const tripPeople = trips ? tripCardDays(trips, policy) : new Map();
   const groups: RosterGroup[] = register.map(row => ({
     key: row.id, code: row.code, name: row.name, site: row.site, department: row.department || '', designation: row.designation, shift: row.shift, exempt: row.exempt,
@@ -132,7 +134,7 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
       const day = days.get(date);
       const bio = day?.status || '';
       group.bioCodes[date] = bio;
-      if (!trips || !group.hasTripCards) continue;
+      if (!trips || !group.hasTripCards || (tripRead && !tripRead.has(date))) continue;
       const calendar = day?.calendar || (CALENDAR.has(bio) ? bio : '');
       const tripDay = group.tripDays[date];
       // Without a biometric line there is no HR calendar to tell a weekly off from an absence: leave such days blank.

@@ -6,50 +6,83 @@ import type {Register} from './AttendanceRegister';
 /* Fetching for the attendance roster (owner, 22 Nov 2026): the Trip card tab reads MIS, the Biometric tab reads the
    biometric register, each only for the site and dates the user chose. */
 export const FIRST_TRIP_DATE = '2026-11-01';
-/** Days read from MIS at the same time; more would crowd Pulse-II's database pool. */
-export const TRIP_PARALLEL = 3;
+/** Days read from MIS at the same time. Three at once left Sasti OC with 11 of 22 days failed (MIS busy / slow). */
+export const TRIP_PARALLEL = 2;
+/** Tries per day in the first pass, then again one day at a time for the days that still failed. */
+export const TRIP_ATTEMPTS = 3;
 const addDay = (date: string) => new Date(Date.parse(date + 'T00:00:00Z') + 86_400_000).toISOString().slice(0, 10);
 export const daysBetween = (from: string, to: string) => {const out: string[] = []; for (let d = from; d <= to; d = addDay(d)) out.push(d); return out;};
-/** rows: the chosen site's duties; misSites: every site name MIS returned (to show when none matched the chosen site). */
+export const tripDays = (from: string, to: string) => {const start = from < FIRST_TRIP_DATE ? FIRST_TRIP_DATE : from; return start > to ? [] : daysBetween(start, to);};
+export type DayState = 'queued' | 'loading' | 'retrying' | 'done' | 'failed';
+export type DayUpdate = {day: string; state: DayState; rows?: AttendanceRow[]; sites?: string[]; error?: string; attempt?: number};
 export type TripFetch = {rows: AttendanceRow[]; failed: string[]; error: string; misSites: string[]};
+const NO_ACCESS = /outside your assigned access|permission|not allowed|sign in|session/i;
+let pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+/** Tests replace the wait between tries. */
+export const setRetryPause = (fn: typeof pause) => {pause = fn;};
+
+/** One day of MIS trip cards for the site, tried `attempts` times with a growing wait. */
+async function readDay(grant: string, day: string, site: string, attempts: number, onRetry: (attempt: number, error: string) => void) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day}));
+      // The feed also carries the day before (for night shifts); keep only this day so no duty is counted twice.
+      const all = mapMisAttendance(data).filter(r => r.date === day);
+      return {rows: all.filter(r => !site || sameSite(site, r.site)), sites: [...new Set(all.map(r => r.site).filter(Boolean))]};
+    } catch (e) {
+      const message = (e as Error).message || 'MIS did not answer';
+      if (attempt >= attempts || NO_ACCESS.test(message)) throw new Error(message);
+      onRetry(attempt + 1, message);
+      await pause(1500 * attempt);
+    }
+  }
+}
 
 /**
- * MIS trip cards (VLB, ELB, LMV), one day per request, three at a time, each day tried twice, kept to the chosen site.
- * A whole month, and even a week, of every site took longer than the 30 second request limit ("signal timed out");
- * one day is what the Trip card and logbook page reads. Days that still fail are returned in `failed`, the rest is shown.
+ * MIS trip cards (VLB, ELB, LMV), one day per request, two days at a time, each day tried three times; the days that
+ * still failed are tried again one at a time. `onDay` reports every day as it starts, retries, arrives or fails, so the
+ * muster fills in day by day. `live()` false stops it (the user changed the site or dates).
  */
-export async function fetchTripCards(grant: string, from: string, to: string, site: string, onProgress?: (done: number, total: number) => void): Promise<TripFetch> {
-  const start = from < FIRST_TRIP_DATE ? FIRST_TRIP_DATE : from;
-  if (start > to) return {rows: [], failed: [], error: '', misSites: []};
-  const days = daysBetween(start, to), rows: AttendanceRow[] = [], failed: string[] = [], misSites = new Set<string>();
-  let next = 0, done = 0, error = '';
-  onProgress?.(0, days.length);
-  async function readDay(day: string) {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day}));
-        // The feed also carries the day before (for night shifts); keep only this day so no duty is counted twice.
-        const all = mapMisAttendance(data).filter(r => r.date === day);
-        for (const r of all) if (r.site) misSites.add(r.site);
-        return all.filter(r => !site || sameSite(site, r.site));
-      } catch (e) {
-        const message = (e as Error).message;
-        // No access is final; anything else (timeout, MIS busy) is tried once more.
-        if (attempt >= 2 || /outside your assigned access|permission|not allowed/i.test(message)) throw e;
-      }
+export async function streamTripCards(grant: string, days: string[], site: string, onDay: (update: DayUpdate) => void, live: () => boolean = () => true) {
+  const failed = new Set<string>();
+  let next = 0;
+  for (const day of days) onDay({day, state: 'queued'});
+  async function run(day: string, attempts: number) {
+    if (!live()) return;
+    onDay({day, state: 'loading'});
+    try {
+      const result = await readDay(grant, day, site, attempts, (attempt, error) => {if (live()) onDay({day, state: 'retrying', attempt, error});});
+      failed.delete(day);
+      if (live()) onDay({day, state: 'done', rows: result.rows, sites: result.sites});
+    } catch (e) {
+      failed.add(day);
+      if (live()) onDay({day, state: 'failed', error: (e as Error).message});
     }
   }
-  async function worker() {
-    while (next < days.length) {
-      const day = days[next++];
-      try { rows.push(...await readDay(day)); }
-      catch (e) { failed.push(day); error = error || (e as Error).message; }
-      onProgress?.(++done, days.length);
-    }
-  }
+  async function worker() {while (next < days.length && live()) await run(days[next++], TRIP_ATTEMPTS);}
   await Promise.all(Array.from({length: Math.min(TRIP_PARALLEL, days.length)}, worker));
+  // Second pass: the failed days again, one at a time, when MIS is less busy.
+  for (const day of [...failed].sort()) {
+    if (!live()) break;
+    await pause(1000);
+    await run(day, TRIP_ATTEMPTS);
+  }
+  return [...failed].sort();
+}
+
+/** The whole range at once (the Weekly register's comparison): the same day-by-day reading, collected. */
+export async function fetchTripCards(grant: string, from: string, to: string, site: string, onProgress?: (done: number, total: number) => void): Promise<TripFetch> {
+  const days = tripDays(from, to), rows: AttendanceRow[] = [], misSites = new Set<string>(), finished = new Set<string>();
+  let error = '';
+  if (!days.length) return {rows, failed: [], error, misSites: []};
+  onProgress?.(0, days.length);
+  const failed = await streamTripCards(grant, days, site, update => {
+    if (update.state === 'done') {rows.push(...update.rows || []); for (const s of update.sites || []) misSites.add(s);}
+    if (update.state === 'failed') error = error || update.error || '';
+    if (update.state === 'done' || update.state === 'failed') {finished.add(update.day); onProgress?.(finished.size, days.length);}
+  });
   if (failed.length === days.length) throw new Error(error || 'The MIS attendance feed is temporarily unavailable.');
-  return {rows, failed: failed.sort(), error, misSites: [...misSites].sort()};
+  return {rows, failed, error, misSites: [...misSites].sort()};
 }
 
 /** Biometric register (punches rated with the HR policy), kept to the chosen site. */
