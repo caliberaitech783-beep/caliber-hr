@@ -84,8 +84,10 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       const onLeave = !!leave, leaveCode = leave?.compOff ? 'CO' : 'L';
       const onDuty = ods.some(o => o.employeeId === employee.id && between(date, o.from, o.to));
       let status = result.status, note = '';
+      const weeklyOff = employee.siteType === 'Office' && new Date(number * DAY_MS).getUTCDay() === 0;
+      // The HR calendar for the day (whatever the punches say): the roster's trip card line shows it too.
+      const calendar = holiday ? 'H' : onLeave ? leaveCode : onDuty ? 'OD' : weeklyOff ? 'WO' : '';
       if (!times.length) {
-        const weeklyOff = employee.siteType === 'Office' && new Date(number * DAY_MS).getUTCDay() === 0;
         status = holiday ? 'H' : onLeave ? leaveCode : onDuty ? 'OD' : weeklyOff ? 'WO' : exempt ? 'P' : 'A';
         if (holiday) note = holiday.name || 'Holiday';
       } else if (status !== 'P' && (onLeave || onDuty)) {
@@ -98,7 +100,7 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       if (status === 'MP') note = 'Only one punch — regularize the missing punch';
       const counts = ['P', 'HD', 'A', 'MP'].includes(status);
       days.push({
-        date, status, note, in: clock(inMinute), out: clock(outMinute), workedMinutes: counts ? result.workedMinutes : null,
+        date, status, calendar, note, in: clock(inMinute), out: clock(outMinute), workedMinutes: counts ? result.workedMinutes : null,
         late: counts && result.late, early: counts && result.early, missPunch: status === 'MP',
         gatePassMinutes: gate, gatePassDeduction: result.gatePassDeduction, exempt
       });
