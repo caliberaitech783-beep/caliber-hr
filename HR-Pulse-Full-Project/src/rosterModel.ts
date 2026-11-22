@@ -7,7 +7,27 @@ import {DEFAULT_POLICY, dutyStatus, workedMinutes, type AttendancePolicy} from '
 import type {AttendanceRow} from './misAttendanceModel';
 import type {RegisterDay, RegisterRow} from './AttendanceRegister';
 
-export type TripDuty = {shift: string; site: string; equipment: string; time: string; output: string; status: string; verification: string; code: string};
+export type TripDuty = {shift: string; site: string; equipment: string; time: string; output: string; status: string; verification: string; code: string; cards: string[]};
+/** MIS card sources → the card names HR uses: VLB trip card, ELB job card, LMV vehicle log book. */
+export const CARD_TYPES: [string, string][] = [['Trip card', 'VLB'], ['Job card', 'ELB'], ['Vehicle logbook', 'LMV']];
+export const cardTypes = (sources: string[]) => CARD_TYPES.filter(([source]) => sources.includes(source)).map(([, card]) => card);
+/** HR site names and MIS site names are written differently ("Jayant" / "Jayant OB"): compare letters and digits only. */
+const siteWords = (site: string) => String(site || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+export function sameSite(hrSite: string, misSite: string) {
+  const a = siteWords(hrSite), b = siteWords(misSite);
+  if (!a || !b) return false;
+  return a === b || (' ' + b + ' ').includes(' ' + a + ' ') || (' ' + a + ' ').includes(' ' + b + ' ');
+}
+/** The roster's dates in week-long pieces, so each MIS trip card request stays well inside the time limit. */
+export function weekPieces(from: string, to: string) {
+  const pieces: {from: string; to: string}[] = [];
+  const day = 86_400_000;
+  for (let start = Date.parse(from + 'T00:00:00Z'); start <= Date.parse(to + 'T00:00:00Z'); start += 7 * day) {
+    const end = Math.min(start + 6 * day, Date.parse(to + 'T00:00:00Z'));
+    pieces.push({from: new Date(start).toISOString().slice(0, 10), to: new Date(end).toISOString().slice(0, 10)});
+  }
+  return pieces;
+}
 export type TripDay = {date: string; code: string; duties: TripDuty[]};
 export type Mismatch = {date: string; trip: string; bio: string; reason: string; tripDetail: string; bioDetail: string};
 export type RosterGroup = {
@@ -48,7 +68,7 @@ export function tripCardDays(rows: AttendanceRow[], policy: AttendancePolicy = D
     const person = byEmployee.get(key) || {name: row.employeeName, site: row.site, designation: row.designation, days: {}};
     const day = person.days[row.date] || {date: row.date, code: '', duties: []};
     const code = tripDutyCode(row, policy);
-    day.duties.push({shift: row.shift, site: row.site, equipment: row.equipment.join(', '), output: row.output, status: row.status, verification: row.verification, code,
+    day.duties.push({shift: row.shift, site: row.site, equipment: row.equipment.join(', '), output: row.output, status: row.status, verification: row.verification, code, cards: cardTypes(row.sources),
       time: row.window ? `${hm(row.window.startMs)}–${hm(row.window.endMs)}` : ''});
     const verified = day.duties.filter(d => d.code !== '?');
     day.code = verified.length ? verified.map(d => d.code).sort((a, b) => (RANK[b] || 0) - (RANK[a] || 0))[0] : '?';
@@ -58,7 +78,13 @@ export function tripCardDays(rows: AttendanceRow[], policy: AttendancePolicy = D
   return byEmployee;
 }
 
-const tripText = (day?: TripDay) => day?.duties.map(d => [d.shift, d.site, d.equipment, d.time, d.output, d.verification].filter(Boolean).join(' · ')).join(' | ') || 'No trip card';
+/** VLB / ELB / LMV with the number of days each card type was used. */
+export const cardSummary = (group: RosterGroup, dates: string[]) => {
+  const count = new Map<string, number>();
+  for (const date of dates) for (const card of new Set(group.tripDays[date]?.duties.flatMap(d => d.cards) || [])) count.set(card, (count.get(card) || 0) + 1);
+  return CARD_TYPES.map(([, card]) => card).filter(card => count.has(card)).map(card => `${card} ${count.get(card)}`).join(' · ');
+};
+const tripText = (day?: TripDay) => day?.duties.map(d => [d.cards.join('/'), d.shift, d.site, d.equipment, d.time, d.output, d.verification].filter(Boolean).join(' · ')).join(' | ') || 'No trip card';
 const bioText = (day?: RegisterDay) => !day ? 'No biometric record' :
   [day.in || day.out ? `${day.in || '?'}–${day.out || '?'}` : 'No punch', hoursText(day.workedMinutes), day.note].filter(Boolean).join(' · ');
 

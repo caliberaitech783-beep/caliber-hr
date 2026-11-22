@@ -117,3 +117,14 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .biometric-machines .machine-last-punch{display:block;color:#7a698b;font-size:12px}
 .biometric-machines .machine-actions{display:flex;gap:8px;flex-wrap:wrap}
 .biometric-machines .machine-actions svg{width:14px;height:14px}
+
+/* Attendance roster page (owner, 22 Nov 2026): site and dates first, then the Trip card / Biometric / comparison tab */
+.roster-grid.roster-nosrc .roster-sr{left:0}
+.roster-grid.roster-nosrc .roster-id{left:50px}
+.roster-grid.roster-nosrc .roster-name{left:142px}
+.roster-grid tr.roster-single td,.roster-grid tr.roster-single th{border-bottom:1px solid #eee7f3}
+.roster-grid .roster-cards{min-width:130px;font-size:12px;color:#4b3d5c}
+.roster-filters select[aria-invalid="true"]{border-color:#d97706;box-shadow:0 0 0 2px #fde7c2}
+.roster-tabs{margin:6px 0 12px}
+.roster-tabs button:disabled{opacity:.55;cursor:not-allowed}
+.roster-hint{margin:14px 0;padding:14px 16px;border:1px dashed #d8cde6;border-radius:10px;background:#fcfbfe;color:#5c4d6e;font-size:14px}
