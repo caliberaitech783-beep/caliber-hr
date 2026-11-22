@@ -53,11 +53,12 @@ modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
 modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared','Gazetted','Gazetted (General)','Paid (PH)']));
 modules.approvalRules.fields.find(f=>f.key==='target').options.push('leaveEncashments');
-export const menus = ['Calendar','Asset Management','Attendance Management','Payroll Management','Dashboard','Employee Master','Master Configuration','Employee Onboarding','Employee Directory','Approval Management','Approval Master','Telegram Hierarchy',...managementMenus,'Shift Management','Holiday & Leave','Compliance & Statutory','Reports & MIS','Administration','Administration & Settings','Audit Logs'];
+export const menus = ['Calendar','Asset Management','Attendance Management','Payroll Management','Dashboard','Employee Master','Leave / OD / Gatepass','Master Configuration','Employee Onboarding','Employee Directory','Approval Management','Approval Master','Telegram Hierarchy',...managementMenus,'Shift Management','Holiday & Leave','Compliance & Statutory','Reports & MIS','Administration','Administration & Settings','Audit Logs'];
 // This is the desktop HR API. Mobile selections must not silently expand desktop access.
 export function grantedMenus(profile) { return new Set((profile.permissions?.hrDesktopAccess || []).filter(x => menus.includes(x))); }
 export function canRead(profile, kind) {
   const granted = grantedMenus(profile);
+  if(granted.has('Leave / OD / Gatepass'))return ['leaveRequests','outDutyRequests','gatePasses','employees','companies','sites','departments','leaveTypes','leavePolicies','leavePeriods'].includes(kind);
   if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu);
   if(kind==='calendarEvents')return granted.has('Calendar');
   if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return granted.has('Asset Management');
@@ -67,6 +68,7 @@ export function canRead(profile, kind) {
 }
 export function canWrite(profile, kind) {
   const granted = grantedMenus(profile);
+  if(granted.has('Leave / OD / Gatepass'))return ['leaveRequests','outDutyRequests','gatePasses'].includes(kind);
   if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu);
   if(kind==='calendarEvents')return granted.has('Calendar');
   if(['assets','assetCategories','assetEmployees','assetAllocationLog','assetExitClearances'].includes(kind))return granted.has('Asset Management');

@@ -24,6 +24,7 @@ import {PM_APPROVALS_PAGE,pmApprovalMenus,isProjectManager,type PmApprovalMenu} 
 import type {JoiningDraft} from './joiningDrafts';
 import {siteOnlyLogin,type SiteRight} from './siteRights';
 import './modules.css';
+import './pulse-leave-workspace.css';
 const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Attendance Management',Clock],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Approval Master',ShieldCheck],...managementSections,['Telegram Hierarchy',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Compliance & Statutory',ShieldCheck],['Reports & MIS',FileBarChart],['Audit Logs',FileBarChart],['Administration & Settings',Settings],['Others',Folder]] as const;
 const masterGroups=[{name:'B1 · Company & sites',kinds:['companies','clients','regions','sites']},{name:'B2 · Organization',kinds:['departments','grades','designations']},{name:'B3 · Approval workflows',kinds:['workflows']},{name:'B4 · New employee',kinds:['employees']},{name:'B5 · Staff import',kinds:['employees']},{name:'B6 · Shifts',kinds:['shifts']},{name:'B7 · Holiday & leave',kinds:['holidays','leavePolicies','leaveRequests']},{name:'B8 · Approval matrix',kinds:['approvalRules']}];
 function HeaderClock(){
@@ -33,7 +34,7 @@ function HeaderClock(){
   const date=[String(now.getDate()).padStart(2,'0'),String(now.getMonth()+1).padStart(2,'0'),String(now.getFullYear()).slice(-2)].join('-');
   return <div className="header-clock" aria-label={`${time}, ${date}`}><strong>{time}</strong><CalendarDays/><span>{date}</span></div>;
 }
-export default function Workspace({session,initialConfig,logout}:{session:Session;initialConfig:HRConfig;logout:()=>void}){
+export default function Workspace({session,initialConfig,logout,leaveOnly=false}:{session:Session;initialConfig:HRConfig;logout:()=>void;leaveOnly?:boolean}){
   const[config,setConfig]=useState(initialConfig.modules),[profile,setProfile]=useState(initialConfig.profile),[page,setPage]=useState(()=>decodeURIComponent(window.location.hash.slice(1))),[kind,setKind]=useState('companies'),[group,setGroup]=useState(0),[error,setError]=useState(''),[collapsed,setCollapsed]=useState(()=>window.innerWidth<=760),[notice,setNotice]=useState('');
   const[autoHide,setAutoHide]=useState(false),[navQuery,setNavQuery]=useState(''),[dayMode,setDayMode]=useState(true),[celsius,setCelsius]=useState(true);
   const navSearch=useRef<HTMLInputElement>(null);
@@ -92,6 +93,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
     :approvalMenu==='Employee Verify'?<Approvals key="employees" grant={session.grant} actor={actor} notice={setNotice} kind="employees"/>
     :approvalMenu==='Transfer Approvals'?<Approvals key="transfers" grant={session.grant} actor={actor} notice={setNotice} kind="employeeTransfers"/>
     :<Approvals key="all" grant={session.grant} actor={actor} notice={setNotice}/>;
+  if(leaveOnly)return <main className="pulse-leave-workspace"><LeaveRequests grant={session.grant} module={config.leaveRequests} odModule={config.outDutyRequests} gateModule={config.gatePasses} actor={profile.actor||''} canApprove={false} notice={setNotice}/>{notice&&<div className="toast" role="status">{notice}<button aria-label="Dismiss notification" onClick={()=>setNotice('')}><X/></button></div>}</main>;
   return <div className={'app '+(collapsed?'collapsed ':'')+(autoHide?'auto-hide ':'')+(dayMode?'':'night-mode')}>
    <aside>
     <div className="side-head"><Logo/><button aria-label="Toggle navigation" onClick={()=>setCollapsed(!collapsed)}><Menu/></button></div>

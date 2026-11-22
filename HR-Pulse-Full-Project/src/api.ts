@@ -1,7 +1,7 @@
 import {hrApiOrigin,hrSessionEndpoint} from './hr-paths';
 import {displaySiteRecords} from './siteNames';
 export const API=hrApiOrigin;
-export type Profile={name:string;username?:string;email?:string;actor?:string;assignedRole?:string;permissions:{application:string;hrDesktopAccess?:string[];hrMobileAccess?:string[];site?:unknown;adminLevel?:unknown}};
+export type Profile={name:string;username?:string;email?:string;actor?:string;assignedRole?:string;permissions:{application:string;hrDesktopAccess?:string[];hrMobileAccess?:string[];site?:unknown;adminLevel?:unknown;leaveOnly?:boolean}};
 export type Session={grant:string;profile:Profile};
 export type Field={key:string;label:string;type:string;required?:boolean;reference?:string;options?:string[];min?:number};
 export type Module={autoCode?:boolean;title:string;menu:string;category?:string;fields:Field[];canWrite:boolean};
