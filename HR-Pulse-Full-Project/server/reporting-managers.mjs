@@ -52,15 +52,21 @@ export function managerRank(designation) {
 
 const leftStatus = /\b(left|inactive|resign|resigned|exit|exited|terminated|absconding|dead|expired)\b/;
 
+// Owner, 22 Nov 2026: once a site is chosen on the form, only that site's
+// managers are listed (no other site's Site In-Charges, PMs or Managers).
+export function sameSite(formSite, registerSite) {
+  const target = words(formSite), found = words(registerSite);
+  if (!target || !found) return false;
+  return found === target || ` ${found} `.includes(` ${target} `) || ` ${target} `.includes(` ${found} `);
+}
+
 export function reportingManagers(rows, department, site = '') {
   const siteKey = words(site), seen = new Set();
   return rows
     .map(row => ({...row, rank: managerRank(row.designation)}))
     .filter(row => row.rank && row.name && sameDepartment(department, row.department) && !leftStatus.test(words(row.status)))
-    .sort((a, b) => {
-      const sameA = siteKey && words(a.site).includes(siteKey) ? 0 : 1, sameB = siteKey && words(b.site).includes(siteKey) ? 0 : 1;
-      return sameA - sameB || a.rank - b.rank || a.name.localeCompare(b.name);
-    })
+    .filter(row => !siteKey || sameSite(site, row.site))
+    .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name))
     .map(row => ({
       name: row.name.trim(), employeeId: row.employeeId || '', designation: (row.designation || '').trim(), site: row.site || '',
       label: `${row.name.trim()} – ${(row.designation || '').trim()}${row.site ? ` (${row.site})` : ''}`,
@@ -75,8 +81,7 @@ export function createReportingManagers(pool) {
       const department = String(params.get('department') || '').trim().slice(0, 100);
       const site = String(params.get('site') || '').trim().slice(0, 100);
       if (!department) return {managers: []};
-      // Names and designations of managers only; every signed-in HR user filling
-      // a joining form may pick a manager from any site (regional / HO heads).
+      // Names and designations of managers only, limited to the form's site once one is chosen.
       const result = await pool.query(`SELECT name, site_name AS site, data->>'employeeId' AS "employeeId",
         data->>'department' AS department, data->>'designation' AS designation, data->>'status' AS status
         FROM hr_employee_master_register
