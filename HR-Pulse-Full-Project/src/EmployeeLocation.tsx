@@ -159,7 +159,7 @@ function EmployeeCategoryField({value,onChange}:{value:string;onChange:(value:st
  const[open,setOpen]=useState(false),options=['Staff','Worker','Driver','Operator','Security','Contract'];
  return <label className="joining-field employee-category-field"><span>Employee Category{enforceJoiningMandatoryFields&&<b> *</b>}</span><input type="hidden" name="Employee Category" value={value}/><button type="button" className="employee-category-trigger" aria-label="Employee Category" aria-haspopup="listbox" aria-expanded={open} aria-required={enforceJoiningMandatoryFields} onClick={()=>setOpen(current=>!current)}>{value||'Select'}<ChevronDown/></button>{open&&<div className="employee-category-options" role="listbox" aria-label="Employee Category options">{options.map(option=><button type="button" role="option" aria-selected={value===option} key={option} onClick={()=>{onChange(option);setOpen(false);}}>{option}</button>)}</div>}</label>;
 }
-/* Owner, 21 Nov 2026: Reporting To is a dropdown of the Manager-and-above people (Employee Master) in the department chosen on the form; the form's site is listed first. "Other" writes a name that is not in the list. */
+/* Owner, 21 Nov 2026: Reporting To is a dropdown of the Manager-and-above people (Employee Master) in the department chosen on the form; owner, 22 Nov 2026: only the form's site's managers once a site is chosen. "Other" writes a name that is not in the list. */
 type ReportingManager={label:string;value:string};
 const REPORTING_OTHER='__other__';
 export function ReportingToField({department,site}:{department:string;site:string}){
@@ -170,7 +170,7 @@ export function ReportingToField({department,site}:{department:string;site:strin
  },[department,site]);
  /* A saved draft fills the hidden field by name; show it as chosen. */
  useEffect(()=>{const input=hidden.current;if(!input)return;const restore=()=>{setChosen(input.value);setOther(Boolean(input.value)&&!managers?.some(manager=>manager.value===input.value));};input.addEventListener('change',restore);return()=>input.removeEventListener('change',restore);},[managers]);
- if(!managers?.length)return <Field label="Reporting To" required placeholder={department&&managers?'No manager found for this department – type name / designation':'Name / designation'}/>;
+ if(!managers?.length)return <Field label="Reporting To" required placeholder={department&&managers?(site?'No manager found for this site and department – type name / designation':'No manager found for this department – type name / designation'):'Name / designation'}/>;
  const options=chosen&&!other&&!managers.some(manager=>manager.value===chosen)?[{label:chosen,value:chosen},...managers]:managers;
  return <label className="joining-field reporting-to-field" htmlFor="reporting-to"><span>Reporting To{mandatory&&<b> *</b>}</span>
   <input ref={hidden} type="hidden" name="Reporting To" value={chosen} data-restore-change="1"/>

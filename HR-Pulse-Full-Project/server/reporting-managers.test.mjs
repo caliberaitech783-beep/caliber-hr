@@ -22,7 +22,7 @@ test('department matches the register by word, with common short names', () => {
   assert.ok(!sameDepartment('Maintenance', ''));
 });
 
-test('lists only active managers of the department, form site first, then by rank', () => {
+test('lists only active managers of the department at the form site, by rank (owner, 22 Nov 2026)', () => {
   const rows = [
     {name: 'Ravi', designation: 'Manager', department: 'Maintenance', site: 'Sasti OB', status: 'Active'},
     {name: 'Amit', designation: 'General Manager', department: 'MAINTENANCE', site: 'Sasti OB', status: ''},
@@ -32,9 +32,24 @@ test('lists only active managers of the department, form site first, then by ran
     {name: 'Prod', designation: 'Manager', department: 'Production', site: 'Majri OB', status: 'Active'},
   ];
   const list = reportingManagers(rows, 'Maintenance', 'Majri OB');
-  assert.deepEqual(list.map(row => row.name), ['Sunil', 'Amit', 'Ravi']);
+  assert.deepEqual(list.map(row => row.name), ['Sunil']);
   assert.equal(list[0].value, 'Sunil – Manager');
   assert.equal(list[0].label, 'Sunil – Manager (Majri OB)');
+  assert.deepEqual(reportingManagers(rows, 'Maintenance', 'Sasti OB').map(row => row.name), ['Amit', 'Ravi']);
+  assert.deepEqual(reportingManagers(rows, 'Maintenance', 'Jayant OB'), []);
+  assert.deepEqual(reportingManagers(rows, 'Maintenance', '').map(row => row.name), ['Amit', 'Ravi', 'Sunil']);
+});
+
+test('a chosen site never lists another site\'s Site In-Charges or PMs (owner, 22 Nov 2026)', () => {
+  const rows = [
+    {name: 'Grijesh', designation: 'Mine Manager', department: 'Production', site: 'Majri OB'},
+    {name: 'Akash', designation: 'Site Incharge', department: 'Production', site: 'Jayant OB'},
+    {name: 'Lalit', designation: 'Site Incharge', department: 'Production', site: 'Dhoptala OB 2nd'},
+    {name: 'Arun', designation: 'Project Manager', department: 'Production', site: 'Dudhichua OB West'},
+  ];
+  assert.deepEqual(reportingManagers(rows, 'Production', 'Majri OB').map(row => row.name), ['Grijesh']);
+  assert.deepEqual(reportingManagers(rows, 'Production', 'Dudhichua OB East'), []);
+  assert.deepEqual(reportingManagers(rows, 'Production', 'Dudhichua OB West').map(row => row.name), ['Arun']);
 });
 
 test('service returns nothing without a department and reads the register otherwise', async () => {
