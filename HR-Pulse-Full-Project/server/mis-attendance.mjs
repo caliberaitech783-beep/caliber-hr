@@ -1,3 +1,5 @@
+import {siteIds} from './scope.mjs';
+
 const ORIGIN = 'https://pulse-ll.cmll.in';
 const FIRST_DATE = '2026-11-01';
 const DAY = 86_400_000;
@@ -73,8 +75,12 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     if (route === 'mis' && method === 'GET') {
       const report = await read(grant, params.get('from'), params.get('to'));
       const ids = [...new Set([...report.otDuties, ...report.attendanceEquipment].map(dutyKey))];
-      const {rows} = ids.length ? await pool.query('SELECT * FROM hr_mis_attendance_corrections WHERE duty_id=ANY($1::text[])', [ids]) : {rows: []};
-      return {...report, corrections: rows.map(publicCorrection), canEdit: true};
+      const scope = await siteIds(pool, profile);
+      const [{rows}, siteRows] = await Promise.all([
+        ids.length ? pool.query('SELECT * FROM hr_mis_attendance_corrections WHERE duty_id=ANY($1::text[])', [ids]) : {rows: []},
+        pool.query("SELECT name FROM hr_records WHERE kind='sites' AND status='ACTIVE' AND ($1::uuid[] IS NULL OR id=ANY($1)) ORDER BY name", [scope])
+      ]);
+      return {...report, corrections: rows.map(publicCorrection), sites: siteRows.rows.map(row => row.name), canEdit: true};
     }
     if (route === 'mis/correction' && method === 'POST') {
       const change = correctionInput(input);

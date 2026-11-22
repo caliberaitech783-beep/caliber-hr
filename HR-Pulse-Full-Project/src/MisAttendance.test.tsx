@@ -56,21 +56,22 @@ it('picks up a newly closed MIS batch and calculates overtime on the next automa
   expect(within(morningDuty).getAllByText('8 h')).toHaveLength(2);
 });
 
-it('loads an earlier closed day without requesting a month of MIS records', async () => {
+it('filters a date range and loads site options even when a site has no duty in that range', async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-16T06:00:00Z'));
-  const request = vi.fn().mockResolvedValue({ok: true, json: async () => report('closed')});
+  const request = vi.fn().mockResolvedValue({ok: true, json: async () => ({...report('closed'), sites: ['Jayant OB', 'Sasti OB']})});
   vi.stubGlobal('fetch', request);
   render(<MisAttendance grant="test"/>);
   await act(async () => {});
   expect(request.mock.calls[0][0]).toMatch(/from=2026-11-16&to=2026-11-16$/);
+  expect(within(screen.getByLabelText('Site')).getByRole('option', {name: 'Sasti OB'})).toBeTruthy();
   expect(screen.queryByRole('row', {name: /S3 Demo Operator/})).toBeNull();
-  fireEvent.click(screen.getByRole('button', {name: 'Previous day'}));
+  fireEvent.change(screen.getByLabelText('From date'), {target: {value: '2026-11-15'}});
   await act(async () => {});
-  expect(request.mock.calls[1][0]).toMatch(/from=2026-11-15&to=2026-11-15$/);
+  expect(request.mock.calls[1][0]).toMatch(/from=2026-11-15&to=2026-11-16$/);
   const previous = screen.getByRole('row', {name: /S3 Demo Operator/});
   expect(within(previous).getByText('MIS batch closed')).toBeTruthy();
-  expect(screen.queryByRole('row', {name: /S1 Demo Operator/})).toBeNull();
+  expect(screen.getByRole('row', {name: /S1 Demo Operator/})).toBeTruthy();
 });
 
 it('saves a correction with the duty identity and version and reloads it from HR', async () => {

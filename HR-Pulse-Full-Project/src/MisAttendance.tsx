@@ -13,7 +13,6 @@ export const logbookDuty = (startMs: number, endMs: number, policy: AttendancePo
 const startOfRecords = '2026-11-01';
 const dateInIndia = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
 const displayDate = (date: string) => date.split('-').reverse().join('-');
-const shiftDate = (date: string, days: number) => new Date(Date.parse(date) + days * 86_400_000).toISOString().slice(0, 10);
 const columns = ['Date', 'Employee', 'Type', 'Equipment / vehicle', 'Time', 'Output', 'Hours', 'Status', 'Verification', 'OT'];
 const refreshMs = 30_000;
 const pageSize = 100;
@@ -21,26 +20,29 @@ const pageSize = 100;
 export default function MisAttendance({grant, shiftManagement=false, overtimeOnly=false, policy=DEFAULT_POLICY}: {grant: string; shiftManagement?: boolean; overtimeOnly?: boolean; policy?: AttendancePolicy}) {
   const today = dateInIndia();
   const latest = today < startOfRecords ? startOfRecords : today;
-  const [date, setDate] = useState(latest);
+  const [fromDate, setFromDate] = useState(latest);
+  const [toDate, setToDate] = useState(latest);
   const [site, setSite] = useState('');
   const [shift, setShift] = useState('');
   const [search, setSearch] = useState('');
   const [pendingOnly, setPendingOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [refresh, setRefresh] = useState(0);
-  const [result, setResult] = useState<{date: string; rows: AttendanceRow[]; updated: Date; canEdit: boolean}>();
-  const [failure, setFailure] = useState<{date: string; message: string}>();
+  const [result, setResult] = useState<{range: string; rows: AttendanceRow[]; sites: string[]; updated: Date; canEdit: boolean}>();
+  const [failure, setFailure] = useState<{range: string; message: string}>();
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<AttendanceRow>();
   const [status, setStatus] = useState<CorrectionStatus>('mis');
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [saved, setSaved] = useState('');
-  const valid = date >= startOfRecords && date <= latest;
-  const error = failure?.date === date ? failure.message : '';
+  const range = `${fromDate}:${toDate}`;
+  const valid = fromDate >= startOfRecords && toDate <= latest && fromDate <= toDate && Date.parse(toDate) - Date.parse(fromDate) <= 30 * 86_400_000;
+  const error = failure?.range === range ? failure.message : '';
 
-  function selectDate(next: string) {
-    setDate(next);
+  function selectRange(from: string, to: string) {
+    setFromDate(from);
+    setToDate(to);
     setPage(0);
     setEditing(undefined);
     setSaved('');
@@ -53,15 +55,15 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
     async function load() {
       setLoading(true);
       try {
-        const query = new URLSearchParams({from: date, to: date});
-        const data = await api<{canEdit: boolean}>(grant, 'attendance/mis?' + query);
-        const rows = mapMisAttendance(data).filter(row => row.date === date);
+        const query = new URLSearchParams({from: fromDate, to: toDate});
+        const data = await api<{canEdit: boolean; sites?: string[]}>(grant, 'attendance/mis?' + query);
+        const rows = mapMisAttendance(data).filter(row => row.date >= fromDate && row.date <= toDate);
         if (lifetime.signal.aborted) return;
-        setResult({date, rows, updated: new Date(), canEdit: data.canEdit});
+        setResult({range, rows, sites: data.sites || [], updated: new Date(), canEdit: data.canEdit});
         setFailure(undefined);
       } catch (error) {
         if (!lifetime.signal.aborted) {
-          setFailure({date, message: (error as Error).message});
+          setFailure({range, message: (error as Error).message});
         }
       } finally {
         if (!lifetime.signal.aborted) {
@@ -75,7 +77,7 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
       lifetime.abort();
       clearTimeout(timer);
     };
-  }, [date, valid, refresh, grant]);
+  }, [fromDate, toDate, range, valid, refresh, grant]);
 
   async function saveCorrection(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -99,10 +101,10 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
     }
   }
 
-  const current = result?.date === date ? result : undefined;
+  const current = result?.range === range ? result : undefined;
   const awaitingResult = valid && !current && !error;
   const all = current?.rows || [];
-  const sites = [...new Set(all.map(row => row.site))];
+  const sites = [...new Set([...(current?.sites || []), ...all.map(row => row.site)].filter(Boolean))].sort();
   const activeSite = sites.includes(site) ? site : '';
   const needle = search.trim().toLowerCase();
   const shifts = [...new Set(all.filter(row => !activeSite || row.site === activeSite).map(row => row.shift))].sort();
@@ -129,11 +131,8 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
         </button>
       </div>
       <div className="trip-attendance-filters">
-        <label>Attendance date<input type="date" min={startOfRecords} max={latest} value={date} disabled={saving} onChange={e => selectDate(e.target.value)}/></label>
-        <div className="trip-attendance-day-buttons" aria-label="Browse attendance dates">
-          <button type="button" disabled={!valid || date === startOfRecords || saving} onClick={() => selectDate(shiftDate(date, -1))}>Previous day</button>
-          <button type="button" disabled={!valid || date === latest || saving} onClick={() => selectDate(shiftDate(date, 1))}>Next day</button>
-        </div>
+        <label>From date<input type="date" min={startOfRecords} max={toDate < latest ? toDate : latest} value={fromDate} disabled={saving} onChange={e => selectRange(e.target.value, toDate)}/></label>
+        <label>To date<input type="date" min={fromDate > startOfRecords ? fromDate : startOfRecords} max={latest} value={toDate} disabled={saving} onChange={e => selectRange(fromDate, e.target.value)}/></label>
         <label>Site<select value={activeSite} onChange={e => {setSite(e.target.value); setPage(0);}}>
           <option value="">All sites</option>
           {sites.map(name => <option key={name}>{name}</option>)}
@@ -142,7 +141,7 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
         <label>Employee<input type="search" value={search} placeholder="Search name or code" onChange={e => {setSearch(e.target.value); setPage(0);}}/></label>
         <label className="trip-attendance-checkbox"><input type="checkbox" checked={pendingOnly} onChange={e => {setPendingOnly(e.target.checked); setPage(0);}}/> Pending only</label>
       </div>
-      {!valid && <p role="alert" className="trip-attendance-feedback">Choose an attendance date from 1 November 2026 through today.</p>}
+      {!valid && <p role="alert" className="trip-attendance-feedback">Choose a date range of up to 31 days from 1 November 2026 through today.</p>}
       {valid && error && <p role="alert" className="trip-attendance-feedback">{current && 'Showing the last successful sync. '}{error}</p>}
       {saved && <p className="trip-attendance-saved" role="status">{saved}</p>}
       <div className="trip-attendance-summary" role="status">
