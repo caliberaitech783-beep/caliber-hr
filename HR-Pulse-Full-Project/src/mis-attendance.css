@@ -64,3 +64,9 @@
   border-top: 1px solid var(--pulse-border, #e4d7ed);
   font-size: 13px;
 }
+.trip-attendance-header-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.trip-attendance-export{position:relative}
+.trip-attendance-export>button{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.trip-attendance-export-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:20;min-width:220px;padding:8px;background:#fff;border:1px solid #e4dcef;border-radius:12px;box-shadow:0 14px 35px rgba(40,25,65,.16)}
+.trip-attendance-export-menu button{display:flex;width:100%;align-items:center;gap:12px;padding:12px;border:0;background:transparent;text-align:left;color:#283650;border-radius:8px}
+.trip-attendance-export-menu button:hover{background:#f7f2fb}

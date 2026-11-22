@@ -1,6 +1,8 @@
 import {Fragment, useEffect, useState} from 'react';
-import {Pencil, RefreshCw} from 'lucide-react';
+import {ChevronDown, Download, Pencil, Printer, RefreshCw} from 'lucide-react';
 import {api} from './api';
+import {assetPrintHtml} from './assetPrint';
+import {downloadExcel} from './excelFiles';
 import {mapMisAttendance, type AttendanceRow, type CorrectionStatus} from './misAttendanceModel';
 import {DEFAULT_POLICY, dutyStatus, workedMinutes, type AttendancePolicy} from '../server/attendance-policy.mjs';
 import './mis-attendance.css';
@@ -36,6 +38,7 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [saved, setSaved] = useState('');
+  const [exportOpen, setExportOpen] = useState(false);
   const valid = date >= startOfRecords && date <= latest;
   const error = failure?.date === date ? failure.message : '';
 
@@ -116,6 +119,34 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
   const activePage = Math.min(page, lastPage);
   const pageStart = activePage * pageSize;
 
+  const exportColumns = [
+    {key: 'date', label: 'Date'}, {key: 'employee', label: 'Employee'}, {key: 'code', label: 'Employee code'},
+    {key: 'site', label: 'Site'}, {key: 'shift', label: 'Shift'}, {key: 'type', label: 'Type'},
+    {key: 'equipment', label: 'Equipment / vehicle'}, {key: 'time', label: 'Time'}, {key: 'output', label: 'Output'},
+    {key: 'hours', label: 'Hours'}, {key: 'status', label: 'Status'}, {key: 'verification', label: 'Verification'},
+    {key: 'ot', label: 'OT'}, {key: 'note', label: 'Note'}
+  ];
+  const exportRows = rows.map(row => ({
+    date: displayDate(row.date), employee: row.employeeName, code: row.caliberCode || row.employeeId, site: row.site, shift: row.shift,
+    type: row.sources.join(', '), equipment: row.equipment.join(', ') || '—',
+    time: row.window ? `${row.window.start.slice(-5)} – ${row.window.end.slice(-5)}` : '—', output: row.output || '—',
+    hours: row.window ? `${(row.window.endMs - row.window.startMs) / 3_600_000} h` : '—', status: row.status,
+    verification: row.verification, ot: row.otHours === null ? '—' : `${row.otHours} h`, note: row.note || ''
+  }));
+  const reportTitle = shiftManagement ? 'Shift roster' : overtimeOnly ? 'Overtime attendance' : 'Trip cards & driver logbooks';
+  function printReport() {
+    const popup = window.open('', '_blank', 'noopener,noreferrer');
+    if (!popup) { setFailure({date, message: 'The print window was blocked. Allow pop-ups for this site, then try Print/Export again.'}); return; }
+    popup.document.open();
+    popup.document.write(assetPrintHtml(`${reportTitle} · ${displayDate(date)}`, exportColumns, exportRows));
+    popup.document.close(); popup.focus(); setExportOpen(false);
+  }
+  function exportExcel() {
+    const excelRows = exportRows.map(row => Object.fromEntries(exportColumns.map(column => [column.label, row[column.key as keyof typeof row]])));
+    downloadExcel(`attendance-${date}.xlsx`, exportColumns.map(column => column.label), excelRows);
+    setExportOpen(false);
+  }
+
   return <div className="trip-attendance">
     <section className="data-card trip-attendance-card" aria-labelledby="trip-card-heading">
       <div className="trip-attendance-header">
@@ -124,9 +155,21 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
           <p>Closed MIS batches verify attendance. Two verified back-to-back 8-hour shifts give 8 hours of OT.{!shiftManagement && !overtimeOnly &&
             ` Logbook hours follow the attendance policy: less a ${policy.lunchMinutes} min lunch, under ${policy.absentBelowHours} h is absent, ${policy.fullDutyHours} h or more is full duty, otherwise half duty. The first trip / logbook start counts as the In punch.`}</p>
         </div>
-        <button type="button" className="trip-attendance-refresh" disabled={loading || !valid} onClick={() => setRefresh(n => n + 1)}>
-          <RefreshCw size={16} aria-hidden="true"/> {loading && valid ? 'Syncing…' : 'Refresh MIS'}
-        </button>
+        <div className="trip-attendance-header-actions">
+          <button type="button" className="trip-attendance-refresh" disabled={loading || !valid} onClick={() => setRefresh(n => n + 1)}>
+            <RefreshCw size={16} aria-hidden="true"/> {loading && valid ? 'Syncing…' : 'Refresh MIS'}
+          </button>
+          <div className="trip-attendance-export">
+            <button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!rows.length} onClick={() => setExportOpen(open => !open)}>
+              <Download size={17} aria-hidden="true"/> Print/Export <ChevronDown size={16} aria-hidden="true"/>
+            </button>
+            {exportOpen && <div className="trip-attendance-export-menu" role="menu">
+              <button type="button" role="menuitem" onClick={printReport}><Download size={17} aria-hidden="true"/> Download as PDF</button>
+              <button type="button" role="menuitem" onClick={printReport}><Printer size={17} aria-hidden="true"/> Smart Print</button>
+              <button type="button" role="menuitem" onClick={exportExcel}><Download size={17} aria-hidden="true"/> Download as Excel</button>
+            </div>}
+          </div>
+        </div>
       </div>
       <div className="trip-attendance-filters">
         <label>Attendance date<input type="date" min={startOfRecords} max={latest} value={date} disabled={saving} onChange={e => selectDate(e.target.value)}/></label>

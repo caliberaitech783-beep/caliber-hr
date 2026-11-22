@@ -73,6 +73,18 @@ it('loads an earlier closed day without requesting a month of MIS records', asyn
   expect(screen.queryByRole('row', {name: /S1 Demo Operator/})).toBeNull();
 });
 
+it('offers PDF, print and Excel for the complete filtered attendance report', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-11-16T06:00:00Z'));
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ok: true, json: async () => report('closed')}));
+  render(<MisAttendance grant="test"/>);
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('button', {name: /Print\/Export/}));
+  expect(screen.getByRole('menuitem', {name: 'Download as PDF'})).toBeTruthy();
+  expect(screen.getByRole('menuitem', {name: 'Smart Print'})).toBeTruthy();
+  expect(screen.getByRole('menuitem', {name: 'Download as Excel'})).toBeTruthy();
+});
+
 it('saves a correction with the duty identity and version and reloads it from HR', async () => {
   const original = {...report('closed'), canEdit: true};
   const target = mapMisAttendance(original).find(row => row.employeeId === 'DEMO-1' && row.shift === 'S1')!;
