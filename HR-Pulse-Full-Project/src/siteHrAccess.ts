@@ -3,9 +3,12 @@ import {pulseTrialSites,siteOnlyLogin,type SiteRight} from './siteRights';
 
 /* Owner, 22 Nov 2026: every HR who works at a site (Site HR, the site's HR Manager, HR executives at Majri,
    Sasti and the other OB / COAL sites) sees only Employee Master › OB / COAL and Trial Form in HRMS.
-   HR at the Head Office, the Nagpur office or a regional office (Office HR, Regional HR) keeps every menu. */
+   HR at the Head Office, the Nagpur office or a regional office (Office HR, Regional HR) keeps every menu.
+   Owner, 22 Nov 2026 (later): site HR also gets Leave / OD / Gatepass and Employee Transfer. */
 export const SITE_HR_PAGE='Employee Master';
-export const siteHrMenus=['OB / COAL','Trial Form'] as const;
+export const siteHrMenus=['OB / COAL','Trial Form','Leave / OD / Gatepass','Employee Transfer'] as const;
+/* The Employee Master screens a site HR may open (OB / COAL opens Employee Management). */
+export const siteHrViews:readonly string[]=['Employee Management','Trial Form','Leave / OD / Gatepass','Employee Transfer'];
 
 /* The fixed Regional HR (server/site-staff-routing.mjs) always keeps every menu, whatever their site rights. */
 const REGIONAL_HR_LOGINS=['vinodpinjarkar','viratsingh','cmpl3399','cmpl18114','3399','18114'];

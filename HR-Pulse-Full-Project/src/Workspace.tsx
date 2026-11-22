@@ -23,7 +23,7 @@ import EmployeeMasterRegister from './EmployeeMasterRegister';
 import {PM_APPROVALS_PAGE,pmApprovalMenus,isProjectManager,type PmApprovalMenu} from './pmAccess';
 import type {JoiningDraft} from './joiningDrafts';
 import {siteOnlyLogin,type SiteRight} from './siteRights';
-import {SITE_HR_PAGE,officeOrRegionalHr,siteHrMenus,siteHrOnly} from './siteHrAccess';
+import {SITE_HR_PAGE,officeOrRegionalHr,siteHrMenus,siteHrOnly,siteHrViews} from './siteHrAccess';
 import './modules.css';
 import './pulse-leave-workspace.css';
 const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Attendance Management',Clock],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Approval Master',ShieldCheck],...managementSections,['Telegram Hierarchy',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Compliance & Statutory',ShieldCheck],['Reports & MIS',FileBarChart],['Audit Logs',FileBarChart],['Administration & Settings',Settings],['Others',Folder]] as const;
@@ -49,7 +49,7 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
     if(workflow==='leave')return 'Leave / OD / Gatepass';
     try{const saved=localStorage.getItem('hrPulse.employeeMenu');return saved==='Leave/OD Management'?'Leave / OD / Gatepass':saved==='Attendance Management'?'Employee Management':saved||'Employee Management';}catch{return 'Employee Management';}
   });
-  const setEmployeeMenu=(menu:string)=>{if(menu==='Corporate / HO'&&hideCorporate)return;if(siteHr&&menu==='OB / COAL')setEmployeeMenuState('Employee Management');else if(siteHr&&menu!=='Trial Form')menu='Employee Management';if(menu==='Corporate / HO'||menu==='OB / COAL'){const nextGroup=menu as 'Corporate / HO'|'OB / COAL';setEmployeeGroup(nextGroup);setSelection(current=>{const next={...current,employeeGroup:nextGroup,...(nextGroup==='Corporate / HO'?{site:'',region:''}:{})};saveSelection(next);return next;});return;}setEmployeeMenuState(menu);try{localStorage.setItem('hrPulse.employeeMenu',menu);}catch{/* ignore */}};
+  const setEmployeeMenu=(menu:string)=>{if(menu==='Corporate / HO'&&hideCorporate)return;if(siteHr&&menu==='OB / COAL')setEmployeeMenuState('Employee Management');else if(siteHr&&!siteHrViews.includes(menu))menu='Employee Management';if(menu==='Corporate / HO'||menu==='OB / COAL'){const nextGroup=menu as 'Corporate / HO'|'OB / COAL';setEmployeeGroup(nextGroup);setSelection(current=>{const next={...current,employeeGroup:nextGroup,...(nextGroup==='Corporate / HO'?{site:'',region:''}:{})};saveSelection(next);return next;});return;}setEmployeeMenuState(menu);try{localStorage.setItem('hrPulse.employeeMenu',menu);}catch{/* ignore */}};
   const[attendanceMenu,setAttendanceMenuState]=useState(()=>{try{const saved=localStorage.getItem('hrPulse.attendanceMenu')||'';return attendanceViews.includes(saved)?saved:'Biometric integration';}catch{return 'Biometric integration';}});
   const setAttendanceMenu=(menu:string)=>{setAttendanceMenuState(menu);try{localStorage.setItem('hrPulse.attendanceMenu',menu);}catch{/* ignore */}};
   const[transferTab,setTransferTab]=useState('requests');
@@ -65,7 +65,7 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
   const siteHr=!isProjectManager(profile)&&siteHrOnly(profile,scopeSites);
   /* Owner, 22 Nov 2026 (later): office HR and regional HR always see Corporate / HO and every Employee Master menu, even when their site rights list only sites. */
   const hideCorporate=siteHr||siteOnly&&!officeOrRegionalHr(profile);
-  useEffect(()=>{if(siteHr&&!['Employee Management','Trial Form'].includes(employeeMenu))setEmployeeMenuState('Employee Management');},[siteHr,employeeMenu]);
+  useEffect(()=>{if(siteHr&&!siteHrViews.includes(employeeMenu))setEmployeeMenuState('Employee Management');},[siteHr,employeeMenu]);
   useEffect(()=>{if(!(profile.permissions.hrDesktopAccess||[]).includes('Employee Master'))return;let active=true;void api<{admin:boolean;sites:SiteRight[]}>(session.grant,'telegram/trial-scope').then(result=>{if(active)setScopeSites(result.admin?null:result.sites);}).catch(()=>{/* keep the session's own site rights */});return()=>{active=false;};},[session.grant]);
   useEffect(()=>{if(!hideCorporate||employeeGroup==='OB / COAL'&&selection.employeeGroup==='OB / COAL')return;setEmployeeGroup('OB / COAL');setSelection(current=>{const next={...current,employeeGroup:'OB / COAL' as const};saveSelection(next);return next;});},[hideCorporate,employeeGroup,selection.employeeGroup]);
   const[trialDraft,setTrialDraft]=useState<JoiningDraft>();
@@ -92,7 +92,7 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
   const initials=profile.name?.split(' ').map(x=>x[0]).slice(0,2).join('')||'HR';
   const childrenFor=(name:string):string[]=>pmOnly?(name===PM_APPROVALS_PAGE?[...pmApprovalMenus]:[]):siteHr?(name===SITE_HR_PAGE?[...siteHrMenus]:[]):name==='Dashboard'?[...dashboardTabs]:name==='Employee Master'?[...(hideCorporate?[]:['Corporate / HO']),'OB / COAL',...(trialVisible?['Trial Form']:[]),'Employee Management','Leave / OD / Gatepass','Employee Transfer']:name==='Attendance Management'?attendanceViews:name==='Payroll Management'?['Salary Scheme','Payroll Processing','Loan and Advances','Expense Claims']:name==='Master Configuration'?['Employee Master']:[];
   const query=navQuery.trim().toLowerCase(),visibleMenus=permitted.filter(([name])=>!query||name.toLowerCase().includes(query)||childrenFor(name).some(item=>item.toLowerCase().includes(query)));
-  const siteHrMenu=employeeMenu==='Trial Form'?'Trial Form':'OB / COAL';
+  const siteHrMenu=employeeMenu==='Employee Management'?'OB / COAL':employeeMenu;
   const currentArea=pmOnly?approvalMenu:siteHr?siteHrMenu:page==='Employee Master'?employeeMenu:page==='Attendance Management'?attendanceMenu:page||'Dashboard';
   /* PM logins (owner, 21 Nov 2026): approvals only. Trial approvals, new employees waiting at the Site PM step, transfers waiting at the PM step, and the full inbox. */
   const actor=profile.actor||'';

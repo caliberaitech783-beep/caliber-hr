@@ -21,9 +21,9 @@ it('tells site HR apart from office and regional HR',()=>{
  expect(siteHrOnly({...siteHr,permissions:{...siteHr.permissions,hrTrialAssignments:[{role:'Office HR',sites:[{code:'WCL-MAJRI'}]}]}} as typeof siteHr,majri)).toBe(false);
 });
 
-async function sidebar(profile:typeof siteHr,scope:unknown){
+async function sidebar(profile:typeof siteHr,scope:unknown,savedLeave=true){
  window.location.hash='Employee%20Master';
- localStorage.setItem('hrPulse.employeeMenu','Leave / OD / Gatepass');
+ if(savedLeave)localStorage.setItem('hrPulse.employeeMenu','Leave / OD / Gatepass');
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
  vi.stubGlobal('fetch',async(url:string)=>Response.json(url.endsWith('/config')||url.endsWith('validate')?{profile,modules:{}}:url.includes('trial-scope')?scope:url.includes('approvals')?[]:{roles:[]}));
  render(<App/>);
@@ -33,19 +33,26 @@ async function sidebar(profile:typeof siteHr,scope:unknown){
 }
 const names=(nav:HTMLElement)=>within(nav).getAllByRole('button').map(button=>button.textContent?.trim());
 
-it('shows a site HR login only OB / COAL and Trial Form',async()=>{
+const siteHrNav=['Employee Master','OB / COAL','Trial Form','Leave / OD / Gatepass','Employee Transfer'];
+it('shows a site HR login only OB / COAL, Trial Form, Leave / OD / Gatepass and Employee Transfer',async()=>{
  const nav=await sidebar(siteHr,{admin:false,sites:majri});
  await within(nav).findByRole('button',{name:'Trial Form'},{timeout:5000});
- expect(names(nav)).toEqual(['Employee Master','OB / COAL','Trial Form']);
+ expect(names(nav)).toEqual(siteHrNav);
+ expect(within(nav).getByRole('button',{name:'Leave / OD / Gatepass'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(within(nav).getByRole('button',{name:'Employee Transfer'}));
+ expect(within(nav).getByRole('button',{name:'Employee Transfer'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(within(nav).getByRole('button',{name:'OB / COAL'}));
  expect(within(nav).getByRole('button',{name:'OB / COAL'})).toHaveAttribute('aria-pressed','true');
  const tabs=document.querySelector('.employee-tabs') as HTMLElement;
  expect(within(tabs).getAllByRole('button').map(button=>button.textContent)).toEqual(['Add Temp. Employee']);
 },20000);
 
-it('gives the site HR Manager the same two menus instead of the trial-only screen',async()=>{
- const nav=await sidebar({...siteHr,assignedRole:'HR Manager',permissions:{...siteHr.permissions,site:'NCL-JAYANT'}},{admin:false,sites:[{region:'NCL',site:'Jayant OB East'}]});
+it('gives the site HR Manager the same menus and never opens a menu site HR does not have',async()=>{
+ localStorage.setItem('hrPulse.employeeMenu','Attendance Management');
+ const nav=await sidebar({...siteHr,assignedRole:'HR Manager',permissions:{...siteHr.permissions,site:'NCL-JAYANT'}},{admin:false,sites:[{region:'NCL',site:'Jayant OB East'}]},false);
  await within(nav).findByRole('button',{name:'Trial Form'},{timeout:5000});
- expect(names(nav)).toEqual(['Employee Master','OB / COAL','Trial Form']);
+ expect(names(nav)).toEqual(siteHrNav);
+ expect(within(nav).getByRole('button',{name:'OB / COAL'})).toHaveAttribute('aria-pressed','true');
 },20000);
 
 it('keeps every menu for office HR and regional HR',async()=>{
