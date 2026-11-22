@@ -55,3 +55,5 @@
 .request-card-mine{border-color:#b9a5dc;box-shadow:0 0 0 2px #efe8fa}
 .request-card-purpose{margin:-6px 0 12px;font-size:13px;color:#51415d}
 .request-card-waiting{margin-right:auto;font-size:12px;color:#8a7d95;align-self:center}
+/* Employee transfer: the reason box spans the form like the leave reason. */
+.rfs-field:has(.transfer-reason){grid-column:1/-1}.record-form .transfer-reason{display:block;box-sizing:border-box;width:100%;min-height:90px;margin-top:7px;padding:11px;border:1px solid #dcd1e3;border-radius:8px;background:#fff;color:#30223e;font:inherit;line-height:1.5;resize:vertical}

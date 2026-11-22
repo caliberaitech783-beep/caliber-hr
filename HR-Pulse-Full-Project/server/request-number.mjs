@@ -1,10 +1,12 @@
 /* Running request numbers, one count per kind that starts at 0001 and never resets.
    OD:        OD0001/<dd-mm-yyyy>/<Emp ID>      (date = OD from date)
    Gate pass: GP No.0001/<dd-mm-yyyy>/<Emp ID>  (date = pass date)
+   Transfer:  TR0001/<dd-mm-yyyy>/<Emp ID>      (date = transfer date)
    A request keeps its serial when edited; the date and Emp ID follow the saved values. */
 const formats={
   outDutyRequests:{prefix:'OD',pattern:'^OD([0-9]+)/',lock:'hr-od-serial',date:'outDutyDate'},
   gatePasses:{prefix:'GP No.',pattern:'^GP No\\.([0-9]+)/',lock:'hr-gate-pass-serial',date:'passDate'},
+  employeeTransfers:{prefix:'TR',pattern:'^TR([0-9]+)/',lock:'hr-transfer-serial',date:'transferDate'},
 };
 const ddmmyyyy=d=>{const s=String(d||'');return `${s.slice(8,10)}-${s.slice(5,7)}-${s.slice(0,4)}`;};
 export const requestCode=(kind,serial,date,empCode)=>`${formats[kind].prefix}${String(serial).padStart(4,'0')}/${ddmmyyyy(date)}/${empCode||''}`;

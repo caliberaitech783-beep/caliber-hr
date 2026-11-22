@@ -31,7 +31,7 @@ export const modules = {
   assets: module('Assets','Asset Management',[text('code','Asset code',true),text('name','Asset name',true),ref('siteId','Locations','sites',true),text('department','Departments'),text('vendor','Vendors'),text('condition','Conditions'),text('assetStatus','Asset Status'),text('employeeStatus','Employee Status'),text('movementAction','Movement Action'),text('assetGroup','Asset Group'),text('depreciationMethod','Dep. Method'),text('disposalMethod','Disposal Method')]),
   gatePasses: module('Gate Pass','Employee Master',[text('code','Gate pass number',true),ref('employeeId','Employee ID','employees',true),text('name','Employee name',true),ref('companyId','Company','companies'),text('department','Department'),ref('siteId','Location','sites'),date('passDate','Date',true),select('passType','Pass type',gatePassTypes,true),{key:'outTime',label:'Out time',type:'time',required:true},{key:'returnTime',label:'Expected return',type:'time',required:true},text('purpose','Purpose / reason',true)]),
   outDutyRequests: module('Out Duty Form','Employee Master',[text('code','OD reference',true),text('name','Employee name',true),ref('employeeId','Employee ID','employees',true),ref('companyId','Company','companies'),text('designation','Designation',true),text('department','Department',true),ref('siteId','Site / Location','sites',true),date('outDutyDate','From date',true),date('toDate','To date',true),text('purpose','Purpose of out duty',true),text('visitLocation','Location / Place to visit',true),text('authorityName','Authority name'),text('authoritySignature','Reporting to'),text('employeeSignature','Employee signature (typed name)'),date('signatureDate','Signature date')]),
-  employeeTransfers: module('Employee transfers','Employee Master',[text('code','Transfer reference',true),text('name','Transfer title',true),ref('employeeId','Employee','employees',true),date('transferDate','Transfer date',true),ref('fromSiteId','From location','sites',true),ref('toSiteId','To location','sites',true),text('fromDesignation','From designation',true),text('toDesignation','To designation',true),text('fromManager','From reporting manager',true),text('toManager','To reporting manager',true)]),
+  employeeTransfers: module('Employee transfers','Employee Master',[text('code','Transfer reference',true),text('name','Reason for transfer',true),ref('employeeId','Employee','employees',true),date('transferDate','Transfer date',true),ref('fromSiteId','From location','sites',true),ref('toSiteId','To location','sites',true),text('fromDesignation','From designation',true),text('toDesignation','To designation',true),text('fromManager','From reporting manager',true),text('toManager','To reporting manager',true)]),
   companies: module('Companies', 'Master Configuration', [text('code','Company code',true),text('name','Company name',true),text('address','Registered address'),text('email','Company email')]),
   clients: module('Clients','Master Configuration',[text('code','Client code',true),text('name','Client name',true),text('contact','Contact details')]),
   regions: module('Regions','Master Configuration',[text('code','Region code',true),text('name','Region name',true),text('state','State',true)]),
@@ -48,7 +48,7 @@ export const modules = {
   approvalRules: module('Approval matrix','Master Configuration',[text('code','Rule code',true),text('name','Rule name',true),select('target','Module',['employees','leaveRequests'],true),ref('workflowId','Workflow','workflows',true),ref('companyId','Company (blank = all)','companies'),ref('siteId','Site (blank = all)','sites')]),
 };
 Object.assign(modules,leaveModules,managementModules);
-modules.outDutyRequests.autoCode=true;modules.gatePasses.autoCode=true;
+modules.outDutyRequests.autoCode=true;modules.gatePasses.autoCode=true;modules.employeeTransfers.autoCode=true;
 modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
 modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared','Gazetted','Gazetted (General)','Paid (PH)']));
@@ -110,6 +110,7 @@ export function validate(kind, input) {
     data[field.key] = field.type === 'number' ? Number(value) : value;
   }
   if (kind==='gatePasses') validateGatePass(data);
+  if (kind==='employeeTransfers' && data.fromSiteId && data.fromSiteId===data.toSiteId) throw Object.assign(new Error('To location must be different from the current location'),{status:400});
   if (kind==='outDutyRequests' && data.outDutyDate > data.toDate) throw Object.assign(new Error('To date must be on or after from date'),{status:400});
   if (data.fromDate && data.toDate && data.fromDate > data.toDate) throw Object.assign(new Error('End date must be on or after start date'),{status:400});
   if (data.dateOfBirth && data.dateOfBirth >= new Date().toISOString().slice(0,10)) throw Object.assign(new Error('Date of birth must be in the past'),{status:400});

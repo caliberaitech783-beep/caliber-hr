@@ -41,6 +41,7 @@ const day=(v:unknown)=>{const s=String(v||'');return /^\d{4}-\d{2}-\d{2}$/.test(
 export function requestSummary(kind:string,row:RecordRow,byId:Map<string,Lookup>){
   const d=row.data,emp=byId.get(String(d.employeeId||'')),who=[emp?.code,String(d.employeeName||d.name||emp?.name||'')].filter(Boolean).join(' · ');
   if(kind==='leaveRequests'){const days=Number(d.days)||0;return {who,details:[`${day(d.fromDate)} → ${day(d.toDate)}`,days?`${days} day${days===1?'':'s'}`:'',byId.get(String(d.leaveTypeId||''))?.name||''].filter(Boolean)};}
+  if(kind==='employeeTransfers'){const site=(id:unknown)=>byId.get(String(id||''))?.name||'';return {who,details:[day(d.transferDate),[site(d.fromSiteId),site(d.toSiteId)].filter(Boolean).join(' → '),String(d.toDesignation||''),row.code].filter(Boolean)};}
   if(kind==='outDutyRequests')return {who:[row.code,String(d.name||'')].filter(Boolean).join(' · '),details:[`${day(d.outDutyDate)} → ${day(d.toDate)}`,String(d.visitLocation||'')].filter(Boolean)};
   return {who:[row.code,String(d.name||'')].filter(Boolean).join(' · '),details:[day(d.passDate),`Out ${d.outTime||'—'} → back ${d.returnTime||'—'}`,String(d.passType||'')].filter(Boolean)};
 }
