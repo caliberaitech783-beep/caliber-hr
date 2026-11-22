@@ -22,6 +22,7 @@ import AdditionApprovalPopup from './AdditionApprovalPopup';
 import EmployeeMasterRegister from './EmployeeMasterRegister';
 import {PM_APPROVALS_PAGE,pmApprovalMenus,isProjectManager,type PmApprovalMenu} from './pmAccess';
 import type {JoiningDraft} from './joiningDrafts';
+import {siteOnlyLogin,type SiteRight} from './siteRights';
 import './modules.css';
 const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Attendance Management',Clock],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Approval Master',ShieldCheck],...managementSections,['Telegram Hierarchy',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Compliance & Statutory',ShieldCheck],['Reports & MIS',FileBarChart],['Audit Logs',FileBarChart],['Administration & Settings',Settings],['Others',Folder]] as const;
 const masterGroups=[{name:'B1 · Company & sites',kinds:['companies','clients','regions','sites']},{name:'B2 · Organization',kinds:['departments','grades','designations']},{name:'B3 · Approval workflows',kinds:['workflows']},{name:'B4 · New employee',kinds:['employees']},{name:'B5 · Staff import',kinds:['employees']},{name:'B6 · Shifts',kinds:['shifts']},{name:'B7 · Holiday & leave',kinds:['holidays','leavePolicies','leaveRequests']},{name:'B8 · Approval matrix',kinds:['approvalRules']}];
@@ -46,7 +47,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
     if(workflow==='leave')return 'Leave / OD / Gatepass';
     try{const saved=localStorage.getItem('hrPulse.employeeMenu');return saved==='Leave/OD Management'?'Leave / OD / Gatepass':saved==='Attendance Management'?'Employee Management':saved||'Employee Management';}catch{return 'Employee Management';}
   });
-  const setEmployeeMenu=(menu:string)=>{if(menu==='Corporate / HO'||menu==='OB / COAL'){const nextGroup=menu as 'Corporate / HO'|'OB / COAL';setEmployeeGroup(nextGroup);setSelection(current=>{const next={...current,employeeGroup:nextGroup,...(nextGroup==='Corporate / HO'?{site:'',region:''}:{})};saveSelection(next);return next;});return;}setEmployeeMenuState(menu);try{localStorage.setItem('hrPulse.employeeMenu',menu);}catch{/* ignore */}};
+  const setEmployeeMenu=(menu:string)=>{if(menu==='Corporate / HO'&&siteOnly)return;if(menu==='Corporate / HO'||menu==='OB / COAL'){const nextGroup=menu as 'Corporate / HO'|'OB / COAL';setEmployeeGroup(nextGroup);setSelection(current=>{const next={...current,employeeGroup:nextGroup,...(nextGroup==='Corporate / HO'?{site:'',region:''}:{})};saveSelection(next);return next;});return;}setEmployeeMenuState(menu);try{localStorage.setItem('hrPulse.employeeMenu',menu);}catch{/* ignore */}};
   const[attendanceMenu,setAttendanceMenuState]=useState(()=>{try{const saved=localStorage.getItem('hrPulse.attendanceMenu')||'';return attendanceViews.includes(saved)?saved:'Biometric integration';}catch{return 'Biometric integration';}});
   const setAttendanceMenu=(menu:string)=>{setAttendanceMenuState(menu);try{localStorage.setItem('hrPulse.attendanceMenu',menu);}catch{/* ignore */}};
   const[transferTab,setTransferTab]=useState('requests');
@@ -55,6 +56,11 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
   const[payrollMenu,setPayrollMenu]=useState('Salary Scheme');
   const[approvalMenu,setApprovalMenu]=useState<PmApprovalMenu>('Trial Approvals');
   const[employeeGroup,setEmployeeGroup]=useState<'Corporate / HO'|'OB / COAL'>(workflow==='trial'?'OB / COAL':'Corporate / HO');
+  /* Owner, 22 Nov 2026: site logins (Majri, Sasti and other OB / COAL sites) see only OB / COAL, never Corporate / HO. */
+  const[scopeSites,setScopeSites]=useState<SiteRight[]|null|undefined>();
+  const siteOnly=siteOnlyLogin(profile.permissions.site,profile.permissions.adminLevel,scopeSites);
+  useEffect(()=>{if(!(profile.permissions.hrDesktopAccess||[]).includes('Employee Master'))return;let active=true;void api<{admin:boolean;sites:SiteRight[]}>(session.grant,'telegram/trial-scope').then(result=>{if(active)setScopeSites(result.admin?null:result.sites);}).catch(()=>{/* keep the session's own site rights */});return()=>{active=false;};},[session.grant]);
+  useEffect(()=>{if(!siteOnly||employeeGroup==='OB / COAL')return;setEmployeeGroup('OB / COAL');setSelection(current=>{const next={...current,employeeGroup:'OB / COAL' as const};saveSelection(next);return next;});},[siteOnly,employeeGroup]);
   const[trialDraft,setTrialDraft]=useState<JoiningDraft>();
   const draftOwner=profile.actor||profile.username||profile.email||'';
   const storedSession=savedSession();
@@ -77,7 +83,7 @@ export default function Workspace({session,initialConfig,logout}:{session:Sessio
   const activeKind=employeePage?'employees':kind;
   const groups=masterGroups[group].kinds.filter(k=>config[k]);
   const initials=profile.name?.split(' ').map(x=>x[0]).slice(0,2).join('')||'HR';
-  const childrenFor=(name:string):string[]=>pmOnly?(name===PM_APPROVALS_PAGE?[...pmApprovalMenus]:[]):name==='Dashboard'?[...dashboardTabs]:name==='Employee Master'?['Corporate / HO','OB / COAL',...(trialVisible?['Trial Form']:[]),'Employee Management','Leave / OD / Gatepass','Employee Transfer']:name==='Attendance Management'?attendanceViews:name==='Payroll Management'?['Salary Scheme','Payroll Processing','Loan and Advances','Expense Claims']:name==='Master Configuration'?['Employee Master']:[];
+  const childrenFor=(name:string):string[]=>pmOnly?(name===PM_APPROVALS_PAGE?[...pmApprovalMenus]:[]):name==='Dashboard'?[...dashboardTabs]:name==='Employee Master'?[...(siteOnly?[]:['Corporate / HO']),'OB / COAL',...(trialVisible?['Trial Form']:[]),'Employee Management','Leave / OD / Gatepass','Employee Transfer']:name==='Attendance Management'?attendanceViews:name==='Payroll Management'?['Salary Scheme','Payroll Processing','Loan and Advances','Expense Claims']:name==='Master Configuration'?['Employee Master']:[];
   const query=navQuery.trim().toLowerCase(),visibleMenus=permitted.filter(([name])=>!query||name.toLowerCase().includes(query)||childrenFor(name).some(item=>item.toLowerCase().includes(query)));
   const currentArea=pmOnly?approvalMenu:page==='Employee Master'?employeeMenu:page==='Attendance Management'?attendanceMenu:page||'Dashboard';
   /* PM logins (owner, 21 Nov 2026): approvals only. Trial approvals, new employees waiting at the Site PM step, transfers waiting at the PM step, and the full inbox. */
