@@ -112,7 +112,9 @@ function difference(trip: string, bio: string): string {
  */
 export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | null, dates: string[], today: string, policy: AttendancePolicy = DEFAULT_POLICY,
   /** While MIS is still being read: only these days have trip cards; the others stay blank and are not compared. */
-  tripRead?: Set<string>): RosterGroup[] {
+  tripRead?: Set<string>,
+  /** While the Biometric tab is still being read: only these days have punches; the others stay blank and are not compared. */
+  bioRead?: Set<string>): RosterGroup[] {
   const tripPeople = trips ? tripCardDays(trips, policy) : new Map();
   const groups: RosterGroup[] = register.map(row => ({
     key: row.id, code: row.code, name: row.name, site: row.site, department: row.department || '', designation: row.designation, shift: row.shift, exempt: row.exempt,
@@ -136,9 +138,11 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
     for (const date of dates) {
       if (date > today) continue;
       const day = days.get(date);
-      const bio = day?.status || '';
-      group.bioCodes[date] = bio;
+      const bioUnread = Boolean(bioRead && !bioRead.has(date));
+      const bio = bioUnread ? '' : day?.status || '';
+      if (!bioUnread) group.bioCodes[date] = bio;
       if (!trips || !group.hasTripCards || (tripRead && !tripRead.has(date))) continue;
+      if (bioUnread) {const read = group.tripDays[date]?.code || ''; if (read) group.tripCodes[date] = read; continue;}
       const calendar = day?.calendar || (CALENDAR.has(bio) ? bio : '');
       const tripDay = group.tripDays[date];
       // Without a biometric line there is no HR calendar to tell a weekly off from an absence: leave such days blank.

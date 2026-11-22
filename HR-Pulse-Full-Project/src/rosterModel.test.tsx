@@ -251,3 +251,49 @@ it('In / Out sheet lists every employee and date with In, Out and the punches',a
  expect(io.getRow(3).getCell(7).value).toBe('08:00');
  expect(io.getRow(3).getCell(12).value).toBe('08:00 Main gate');
 });
+
+it('Biometric reads one day per request and joins the days: each person once, punches added up, cuts counted over the month',async()=>{
+ const {streamBiometric,joinBiometricDays,setRetryPause}=await import('./rosterData');
+ setRetryPause(async()=>{});
+ const asked:string[]=[];let busy=true;
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams;const day=q.get('from')!;asked.push(day);expect(q.get('to')).toBe(day);
+  if(day==='2026-11-03'&&busy){busy=false;return Response.json({error:'HR busy'},{status:503});}
+  return Response.json({from:day,to:day,policy:DEFAULT_POLICY,site:'Gevra',machines:[{serial:'SST01',name:'K90',location:'Main gate',online:true,lastContact:null,lastPunch:day+' 17:00',punches:2}],
+   rows:[{...bio,days:bio.days.filter(d=>d.date===day).map(d=>({...d,late:day!=='2026-11-05'})),linked:true,machinesUsed:['Main gate · 101']}]});}));
+ const results:Record<string,unknown>={};const states:string[]=[];
+ const failed=await streamBiometric('a'.repeat(43),['2026-11-02','2026-11-03','2026-11-04','2026-11-05'],'Gevra',u=>{states.push(u.day.slice(8)+':'+u.state);if(u.result)results[u.day]=u.result;});
+ expect(failed).toEqual([]);
+ expect(states).toContain('03:retrying');
+ expect(asked.filter(d=>d==='2026-11-03').length).toBe(2);
+ const joined=joinBiometricDays(Object.values(results) as never,3)!;
+ expect(joined.rows).toHaveLength(1);
+ expect(joined.rows[0].days.map(d=>d.date)).toEqual(['2026-11-02','2026-11-03','2026-11-04','2026-11-05']);
+ expect(joined.machines[0].punches).toBe(8);
+ expect(joined.rows[0].summary.halfDutyCuts).toBe(1);
+});
+
+it('Biometric tab shows which days it is reading and how many punches arrived; machines without a bridge PC are not waited for',async()=>{
+ const {AttendanceRosterPage}=await import('./AttendanceRoster');
+ const posts:string[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{const q=new URL(url,'https://x').searchParams;
+  if(init?.method==='POST'){posts.push(url);return Response.json({});}
+  if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'SO',name:'Sasti OC'}]);
+  if(url.includes('site-register')){const day=q.get('from')!;
+   return Response.json({from:day,to:day,policy:DEFAULT_POLICY,site:'Sasti OC',machines:[{serial:'JNP1',name:'GENERAL STAFF 1',location:'OFFICE',ipAddress:'192.168.16.13',bridgeName:'',online:false,lastContact:null,lastPunch:'',punches:3}],
+    rows:[{...bio,site:'Sasti OC',days:bio.days.filter(d=>d.date===day),linked:true,machinesUsed:['OFFICE · 101']}]});}
+  return Response.json({});}));
+ render(<AttendanceRosterPage grant={'a'.repeat(43)}/>);
+ const site=screen.getByLabelText('Site');
+ await waitFor(()=>expect(within(site).getByRole('option',{name:'Sasti OC'})).toBeTruthy());
+ fireEvent.change(site,{target:{value:'Sasti OC'}});
+ fireEvent.change(screen.getByLabelText('From'),{target:{value:'2026-11-02'}});
+ fireEvent.change(screen.getByLabelText('To'),{target:{value:'2026-11-04'}});
+ fireEvent.click(screen.getByRole('button',{name:'Biometric'}));
+ expect(await screen.findByText(/3 of 3 days read · 9 punches/)).toBeTruthy();
+ const roster=screen.getByRole('table',{name:'Attendance roster'});
+ expect(within(roster).getByText('Ramesh Kumar')).toBeTruthy();
+ expect(within(roster).getByRole('columnheader',{name:/^2\s*Mo/}).getAttribute('title')).toMatch(/Read · 3 punches/);
+ fireEvent.click(screen.getByRole('button',{name:'Fetch from these machines'}));
+ expect(await screen.findByText(/GENERAL STAFF 1: no bridge PC yet/)).toBeTruthy();
+ expect(posts).toEqual([]);
+});
