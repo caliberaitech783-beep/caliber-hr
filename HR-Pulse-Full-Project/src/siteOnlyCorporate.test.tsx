@@ -29,9 +29,10 @@ async function sidebar(profile:typeof siteHr,scope:unknown){
  return nav;
 }
 
-it('hides Corporate / HO from a site HR login',async()=>{
+/* Owner, 22 Nov 2026 (latest): every HR login, site HR included, sees Corporate / HO while the HRMS is being built. */
+it('shows Corporate / HO to a site HR login too',async()=>{
  const nav=await sidebar(siteHr,{admin:false,sites:[{region:'WCL',site:'Majri OB'}]});
- expect(within(nav).queryByRole('button',{name:'Corporate / HO'})).toBeNull();
+ expect(within(nav).getByRole('button',{name:'Corporate / HO'})).toBeTruthy();
 },20000);
 
 it('keeps Corporate / HO for an all-sites login',async()=>{

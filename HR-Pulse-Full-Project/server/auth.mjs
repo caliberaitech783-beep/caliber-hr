@@ -1,3 +1,5 @@
+import {withAllHrMenus} from './hr-staff-access.mjs';
+
 export async function authenticate(grant) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(grant || '')) return null;
   let response;
@@ -16,5 +18,5 @@ export async function authenticate(grant) {
   if (profile?.permissions?.application !== 'HR') return null;
   const identity = profile.login || profile.username || profile.email || profile.userId || profile.id;
   if (!identity || typeof identity!=='string'&&typeof identity!=='number') throw Object.assign(new Error('Pulse did not return a stable user identity'),{status:403});
-  return { ...profile, actor:String(identity).toLowerCase() };
+  return withAllHrMenus({ ...profile, actor:String(identity).toLowerCase() });
 }
