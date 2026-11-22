@@ -33,6 +33,16 @@ it('autosaves incomplete fields and resumes after unmount without a network call
  expect(screen.getByLabelText('Date of Birth 1')).toHaveValue('15/03/2000');
  expect(screen.getByLabelText('Age 1').textContent).toMatch(/\d+ years?, \d+ months?, \d+ days?/);
 });
+it('captures the final edit when the form is closed immediately',async()=>{
+ const view=render(<EmployeeLocation draftOwner="alice"/>);
+ fireEvent.input(screen.getByLabelText(/^Full Name\s*\*?$/),{target:{value:'Last second edit'}});
+ view.unmount();
+ await waitFor(()=>expect([...memory.values()][0]?.fields['Full Name'][0].value).toBe('Last second edit'));
+ render(<EmployeeLocation draftOwner="alice"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Draft'}));
+ fireEvent.click(await screen.findByRole('button',{name:'Resume'}));
+ expect(screen.getByLabelText(/^Full Name\s*\*?$/)).toHaveValue('Last second edit');
+});
 it('draft list is isolated by signed-in account',async()=>{
  memory.set('one',{id:'one',owner:'alice',group:'Corporate / HO',updatedAt:new Date().toISOString(),fields:{'Full Name':[{value:'Private draft'}]},defaults:{},step:1});
  render(<EmployeeLocation draftOwner="bob"/>);fireEvent.click(screen.getByRole('button',{name:'Draft'}));await waitFor(()=>expect(screen.getByText('No saved drafts yet.')).toBeTruthy());expect(screen.queryByText('Private draft')).toBeNull();
