@@ -1,7 +1,6 @@
 import {lazy,Suspense,useEffect,useRef,useState} from 'react';
 import {api,pulse,clearSession,savedSession,type Session,type HRConfig} from './api';
 import HrLogin from './HrLogin';
-import SiteHRWorkspace,{isSiteHRManager} from './SiteHRWorkspace';
 
 const loadWorkspace=()=>import('./Workspace');
 const Workspace=lazy(loadWorkspace);
@@ -69,5 +68,5 @@ export default function App(){
   if(!session?.grant)return <HrLogin embedded={embedded} preload={loadWorkspace} onLogin={next=>{pending.current=undefined;setError('');setSession(next);}}/>;
   const opening=<div className="loading-screen" role="status">Opening your HR workspace…</div>;
   if(error)return <div className="loading-screen"><p role="alert">{error}</p><button onClick={()=>{setError('');setAttempt(value=>value+1);}}>Retry connection</button> <button onClick={logout}>Sign out</button></div>;
-  return config?<Suspense fallback={opening}>{!leaveOnly&&isSiteHRManager(config.profile)?<SiteHRWorkspace profile={config.profile} session={session} logout={logout}/>:<Workspace session={session} initialConfig={config} logout={logout} leaveOnly={leaveOnly}/>}</Suspense>:opening;
+  return config?<Suspense fallback={opening}><Workspace session={session} initialConfig={config} logout={logout} leaveOnly={leaveOnly}/></Suspense>:opening;
 }
