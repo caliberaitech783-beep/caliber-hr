@@ -122,8 +122,9 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  expect(await screen.findByRole('button',{name:/days differ for Ramesh Kumar/})).toBeTruthy();
 });
 
-it('reads MIS one day per request, retries a failed day once, and keeps the days that worked',async()=>{
- const {fetchTripCards}=await import('./rosterData');
+it('reads MIS one day per request, retries failed days, and keeps the days that worked',async()=>{
+ const {fetchTripCards,setRetryPause}=await import('./rosterData');
+ setRetryPause(async()=>{});
  const tries:Record<string,number>={};
  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const day=new URL(url,'https://x').searchParams.get('from')!;tries[day]=(tries[day]||0)+1;
   if(day==='2026-11-03')return Response.json({error:'The MIS attendance feed is temporarily unavailable.'},{status:503});
@@ -131,9 +132,28 @@ it('reads MIS one day per request, retries a failed day once, and keeps the days
   const report=misReport();return Response.json({...report,otDuties:report.otDuties.filter(d=>d.date===day||d.date<day)});}));
  const progress:number[]=[];
  const result=await fetchTripCards('a'.repeat(43),'2026-11-01','2026-11-04','Sasti OC'.replace('Sasti OC','Gevra'),done=>progress.push(done));
- expect(tries).toEqual({'2026-11-01':1,'2026-11-02':2,'2026-11-03':2,'2026-11-04':1});
+ // 03 fails every time: three tries, then three more in the second pass. 02 timed out once and then worked.
+ expect(tries).toEqual({'2026-11-01':1,'2026-11-02':2,'2026-11-03':6,'2026-11-04':1});
  expect(result.failed).toEqual(['2026-11-03']);
  expect([...new Set(result.rows.map(r=>r.date))].sort()).toEqual(['2026-11-02','2026-11-04']);
  expect(result.misSites).toEqual(['Dipka','Gevra']);
  expect(progress.at(-1)).toBe(4);
+});
+
+it('reports each day as it arrives so the muster fills in day by day',async()=>{
+ const {streamTripCards,setRetryPause}=await import('./rosterData');
+ const {applyDay}=await import('./AttendanceRoster');
+ setRetryPause(async()=>{});
+ let first=true;
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const day=new URL(url,'https://x').searchParams.get('from')!;
+  if(day==='2026-11-03'&&first){first=false;return Response.json({error:'MIS busy'},{status:503});}
+  return Response.json(misReport());}));
+ const updates:string[]=[];let stream:Parameters<typeof applyDay>[0]={key:'k',days:{},rows:{},errors:{},sites:[],runs:0};
+ const failed=await streamTripCards('a'.repeat(43),['2026-11-02','2026-11-03','2026-11-04'],'Gevra',u=>{updates.push(u.day.slice(8)+':'+u.state);stream=applyDay(stream,u);});
+ expect(failed).toEqual([]);
+ expect(updates.filter(u=>u.endsWith(':done')).sort()).toEqual(['02:done','03:done','04:done']);
+ expect(updates).toContain('03:retrying');
+ expect(updates.indexOf('02:done')).toBeLessThan(updates.indexOf('03:done'));
+ expect(Object.keys(stream.rows).sort()).toEqual(['2026-11-02','2026-11-03','2026-11-04']);
+ expect(stream.rows['2026-11-02'].every(r=>r.date==='2026-11-02'&&r.site==='Gevra')).toBe(true);
 });

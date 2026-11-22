@@ -3,7 +3,7 @@ import {Download,RefreshCw} from 'lucide-react';
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,fetchBiometric,fetchTripCards,type TripFetch} from './rosterData';
+import {FIRST_TRIP_DATE,fetchBiometric,fetchTripCards,streamTripCards,tripDays,type DayState,type DayUpdate} from './rosterData';
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 
@@ -37,14 +37,16 @@ export const diffText=(group:RosterGroup,tripsLoaded:boolean)=>!tripsLoaded?'—
 /** The groups a view lists: trip card people, biometric people, or everyone. */
 export const viewGroups=(groups:RosterGroup[],view:RosterView)=>groups.filter(g=>view==='trip'?g.hasTripCards:view==='bio'?Boolean(g.bio):true);
 
-export type TripState={status:'idle'|'loading'|'ready'|'error';message:string;rows:AttendanceRow[]|null;failed?:string[];misSites?:string[]};
+/** rows: the trip cards read so far (shown while the other days are still being read); days: each day's reading state. */
+export type TripState={status:'idle'|'loading'|'ready'|'error';message:string;rows:AttendanceRow[]|null;failed?:string[];misSites?:string[];days?:Record<string,DayState>;errors?:Record<string,string>;onRetry?:(days:string[])=>void};
+const DAY_STATE:Record<DayState,string>={queued:'Waiting to be read from MIS',loading:'Reading from MIS…',retrying:'MIS was busy · trying again…',done:'Read from MIS',failed:'Could not be read from MIS'};
 type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripState;monthly:boolean;from:string;to:string;loading?:boolean;error?:string;emptyText?:string};
 
 /** The roster table, its toolbar, the difference drill-down and Export Excel. */
 export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=false,error='',emptyText}:TableProps){
  const [onlyDiff,setOnlyDiff]=useState(false),[open,setOpen]=useState(''),[exporting,setExporting]=useState(false);
  const drill=useRef<HTMLDivElement>(null);
- const compare=view==='compare',tripsLoaded=trip.status==='ready';
+ const compare=view==='compare',tripsLoaded=trip.rows!==null,tripRunning=trip.status==='loading';
  const shown=viewGroups(groups,view).filter(g=>!compare||!onlyDiff||g.mismatches.length>0);
  const openGroup=compare?shown.find(g=>g.key===open):undefined;
  const openKey=openGroup?.key||'';
@@ -68,16 +70,17 @@ export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=fals
  const totals=(t:LineTotals)=>ROSTER_TOTALS.map(([key])=><td key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}>{key==='paidDays'||key==='totalDays'?<strong>{t[key]}</strong>:t[key]}</td>);
  const lineCells=(g:RosterGroup,line:'trip'|'bio')=>line==='trip'
   ?(tripsLoaded&&g.hasTripCards?<>{cells(g.tripCodes,g,true)}{totals(tripTotals(g,dates))}{monthly&&<td className="roster-total">—</td>}{view==='trip'&&<td className="roster-text roster-cards">{cardSummary(g,dates)||'—'}</td>}</>:
-   <td colSpan={span} className="roster-nolink">{trip.status==='loading'?trip.message||'Reading trip cards…':trip.status==='error'?'Trip cards unavailable':'No trip card or log book in these dates'}</td>)
+   <td colSpan={span} className="roster-nolink">{tripRunning?'No trip card in the days read so far':trip.status==='error'?'Trip cards unavailable':'No trip card or log book in these dates'}</td>)
   :(g.bio?<>{cells(g.bioCodes,g,false)}{totals(bioTotals(g,dates))}{monthly&&<td className="roster-total">{money(g.bio.summary.gatePassDeduction)}</td>}</>:
    <td colSpan={span} className="roster-nolink">Biometric ID not linked in Biometric integration</td>);
- const status=view!=='bio'&&trip.status==='loading'?trip.message||'Reading trip cards…':view!=='bio'&&trip.status==='error'?`Trip cards unavailable: ${trip.message}`:
+ const status=view!=='bio'&&tripRunning?(trip.message||'Reading trip cards…')+(tripsLoaded?` · ${shown.length} employee${shown.length===1?'':'s'} so far`:''):view!=='bio'&&trip.status==='error'?`Trip cards unavailable: ${trip.message}`:
   loading?'Reading biometric punches…':`${shown.length} employee${shown.length===1?'':'s'}`+(compare?` · ${diffCount} with a difference`:'');
- const empty=<tr><td colSpan={60} className="attendance-empty">{loading||trip.status==='loading'?'Loading attendance…':error?'Attendance is unavailable.':onlyDiff&&compare?'No employee has a difference between trip card and biometric.':emptyText||'No attendance for this selection.'}</td></tr>;
+ const empty=<tr><td colSpan={60} className="attendance-empty">{loading||(tripRunning&&view!=='bio')?'Loading attendance… the muster fills in as each day arrives from MIS.':error?'Attendance is unavailable.':onlyDiff&&compare?'No employee has a difference between trip card and biometric.':emptyText||'No attendance for this selection.'}</td></tr>;
 
  return <>
   <div className="roster-legend" aria-label="Day codes">{ROSTER_CODES.filter(([code])=>view!=='bio'||code!=='?').map(([code,label])=><span key={code}><b className={'register-cell '+codeClass(code)}>{code}</b> {label}</span>)}{view!=='trip'&&<span><sup className="roster-sup">L</sup> late come · <sup className="roster-sup">E</sup> early going</span>}{compare&&<span><i className="roster-miss-key"/> day where trip card and biometric differ</span>}</div>
-  {view!=='bio'&&trip.status==='ready'&&(trip.failed?.length||0)>0&&<p className="roster-warn" role="alert">Trip cards could not be read from MIS for {trip.failed!.map(show).join(', ')}. Those days are left blank; press Fetch again to retry them.</p>}
+  {view!=='bio'&&trip.status==='ready'&&(trip.failed?.length||0)>0&&<div className="roster-warn" role="alert">Trip cards could not be read from MIS for {trip.failed!.map(show).join(', ')}, even after trying each day again{trip.errors?` (MIS: ${[...new Set(trip.failed!.map(d=>trip.errors![d]).filter(Boolean))].join('; ')})`:''}. Those days are blank.
+   {trip.onRetry&&<button type="button" className="roster-retry" onClick={()=>trip.onRetry!(trip.failed!)}><RefreshCw/>Retry these days</button>}</div>}
   {view!=='bio'&&trip.status==='ready'&&!(trip.rows||[]).length&&(trip.misSites?.length||0)>0&&<p className="roster-warn" role="alert">MIS has trip cards in these dates for {trip.misSites!.join(', ')}, but none for this site. If one of them is this site, its name is written differently in HR and MIS.</p>}
   <div className="roster-bar">
    {compare&&<label className="roster-check"><input type="checkbox" checked={onlyDiff} onChange={e=>setOnlyDiff(e.target.checked)}/>Only employees with a difference</label>}
@@ -86,7 +89,7 @@ export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=fals
   </div>
   <div className="attendance-table"><table className={'register-grid roster-grid'+(compare?'':' roster-nosrc')} aria-label="Attendance roster">
    <thead><tr>{compare&&<th className="roster-fixed roster-src">Source</th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>Sr. No.</th><th className="roster-fixed roster-id">Employee ID</th><th className="roster-fixed roster-name">Name</th><th className="roster-text">Site</th><th className="roster-text">Department</th><th className="roster-text">Designation</th>
-    {dates.map(d=><th key={d} title={show(d)} className={weekday(d)==='Su'?'roster-sunday':undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small></th>)}
+    {dates.map(d=>{const state=view!=='bio'?trip.days?.[d]:undefined;return <th key={d} title={show(d)+(state?' · '+DAY_STATE[state]+(state==='failed'&&trip.errors?.[d]?': '+trip.errors[d]:''):'')} className={[weekday(d)==='Su'?'roster-sunday':'',state&&state!=='done'?'roster-day-'+state:''].filter(Boolean).join(' ')||undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small>{state&&state!=='done'&&<i className="roster-day-mark" aria-label={DAY_STATE[state]}/>}</th>;})}
     {ROSTER_TOTALS.map(([key,label])=><th key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}>{label}</th>)}{monthly&&<th className="roster-total">Gate pass</th>}
     {view==='trip'&&<th className="roster-text roster-cards">Cards (days)</th>}{compare&&<th className="roster-diff">{DIFF_HEADING}</th>}</tr></thead>
    <tbody>{shown.length?shown.map((g,i)=>{const picked=g.key===open,diff=diffText(g,tripsLoaded),rows=lines.length;return <Fragment key={g.key}>
@@ -135,6 +138,14 @@ export default function AttendanceRoster({grant,rows,dates,today,policy=DEFAULT_
 }
 
 type Source<T>={key:string;status:'idle'|'loading'|'ready'|'error';message:string;data:T|null};
+/** The Trip card tab's reading, day by day: each day's state, rows and MIS error, and the site names MIS returned. */
+type TripStream={key:string;days:Record<string,DayState>;rows:Record<string,AttendanceRow[]>;errors:Record<string,string>;sites:string[];runs:number};
+const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0};
+export function applyDay(stream:TripStream,u:DayUpdate):TripStream{
+ const days={...stream.days,[u.day]:u.state},errors={...stream.errors},rows=u.state==='done'?{...stream.rows,[u.day]:u.rows||[]}:stream.rows;
+ if(u.state==='failed')errors[u.day]=u.error||'MIS did not answer';else if(u.state==='done')delete errors[u.day];
+ return {...stream,days,rows,errors,sites:u.sites?[...new Set([...stream.sites,...u.sites])].sort():stream.sites};
+}
 const idle={key:'',status:'idle' as const,message:'',data:null};
 
 /** Attendance roster page: site, dates, department and employee first; then the Trip card, Biometric or comparison tab. */
@@ -144,7 +155,8 @@ export function AttendanceRosterPage({grant}:{grant:string}){
  const [site,setSite]=useState(''),[from,setFrom]=useState(today.slice(0,8)+'01'),[to,setTo]=useState(today);
  const [department,setDepartment]=useState(''),[employee,setEmployee]=useState('');
  const [view,setView]=useState<RosterView|''>('');
- const [trip,setTrip]=useState<Source<TripFetch>>(idle),[bio,setBio]=useState<Source<Register>>(idle);
+ const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<Source<Register>>(idle);
+ const keyRef=useRef('');
  const [reload,setReload]=useState(0);
  useEffect(()=>{let live=true;
   api<Lookup[]>(grant,'lookups').then(rows=>{if(!live)return;const list=Array.isArray(rows)?rows:[];
@@ -161,13 +173,18 @@ export function AttendanceRosterPage({grant}:{grant:string}){
  const wantTrip=ready&&(view==='trip'||view==='compare'),wantBio=ready&&Boolean(view);
  useEffect(()=>{
   if(!wantTrip||trip.key===key)return;
-  let live=true;
-  setTrip({key,status:'loading',message:'Reading trip cards…',data:null});
-  fetchTripCards(grant,from,to,site,(done,total)=>{if(live&&done<total)setTrip(t=>t.key===key?{...t,message:`Reading trip cards from MIS · ${done} of ${total} days…`}:t);})
-   .then(data=>{if(live)setTrip({key,status:'ready',message:'',data});})
-   .catch(e=>{if(live)setTrip({key,status:'error',message:(e as Error).message,data:null});});
-  return()=>{live=false;};
+  setTrip({...noStream,key});
+  readTrip(tripDays(from,to));
  },[wantTrip,key]); // eslint-disable-line react-hooks/exhaustive-deps
+ // Switching to another tab keeps the reading going; a new site or dates stops it.
+ useEffect(()=>{if(trip.key&&trip.key!==key)keyRef.current='';},[key,trip.key]);
+ /** Reads these days from MIS and fills the muster as each day arrives (also "Retry these days"). */
+ function readTrip(list:string[]){
+  const runKey=key;keyRef.current=runKey;
+  setTrip(t=>t.key===runKey?{...t,runs:t.runs+1}:t);
+  void streamTripCards(grant,list,site,u=>setTrip(t=>t.key===runKey?applyDay(t,u):t),()=>keyRef.current===runKey)
+   .finally(()=>setTrip(t=>t.key===runKey?{...t,runs:t.runs-1}:t));
+ }
  useEffect(()=>{
   if(!wantBio||bio.key===key)return;
   let live=true;
@@ -176,12 +193,21 @@ export function AttendanceRosterPage({grant}:{grant:string}){
   return()=>{live=false;};
  },[wantBio,key]); // eslint-disable-line react-hooks/exhaustive-deps
  const dates=useMemo(()=>ready?datesBetween(from,to):[],[ready,from,to]);
- const tripRows=trip.key===key&&trip.status==='ready'?trip.data?.rows||[]:null,bioData=bio.key===key&&bio.status==='ready'?bio.data:null;
+ const tripList=useMemo(()=>trip.key===key?Object.values(trip.rows).flat():[],[trip.key,trip.rows,key]);
+ const tripRead=useMemo(()=>new Set(trip.key===key?Object.keys(trip.rows):[]),[trip.key,trip.rows,key]);
+ const tripRows=trip.key===key&&tripRead.size?tripList:null,bioData=bio.key===key&&bio.status==='ready'?bio.data:null;
  const policy=bioData?.policy||DEFAULT_POLICY;
- const groups=useMemo(()=>buildRoster(bioData?.rows||[],view==='bio'?null:tripRows,dates,today,policy).map(g=>({...g,site:g.site||site})),[bioData,tripRows,dates,today,policy,view,site]);
+ const groups=useMemo(()=>buildRoster(bioData?.rows||[],view==='bio'?null:tripRows,dates,today,policy,tripRead).map(g=>({...g,site:g.site||site})),[bioData,tripRows,dates,today,policy,view,site,tripRead]);
  const people=groups.filter(g=>view?viewGroups([g],view).length>0:false);
  const shown=people.filter(g=>(!department||g.department===department)&&(!employee||g.key===employee));
- const tripState:TripState=trip.key!==key?{status:wantTrip?'loading':'idle',message:'Reading trip cards…',rows:null}:{status:trip.status,message:trip.message,rows:trip.data?.rows||null,failed:trip.data?.failed,misSites:trip.data?.misSites};
+ const dayList=trip.key===key?Object.entries(trip.days):[],total=dayList.length,finished=dayList.filter(([,st])=>st==='done'||st==='failed').length;
+ const failedDays=dayList.filter(([,st])=>st==='failed').map(([d])=>d).sort(),retrying=dayList.filter(([,st])=>st==='retrying').length;
+ const running=wantTrip&&(trip.key!==key||trip.runs>0);
+ const tripState:TripState={status:running?'loading':total&&failedDays.length===total?'error':trip.key===key?'ready':'idle',
+  message:`Reading trip cards from MIS · ${finished} of ${total||'…'} days${retrying?` · ${retrying} retrying`:''}${failedDays.length?` · ${failedDays.length} not read`:''}`,
+  rows:tripRows,failed:failedDays,misSites:trip.key===key?trip.sites:[],days:trip.key===key?trip.days:undefined,errors:trip.key===key?trip.errors:undefined,
+  onRetry:list=>readTrip(list)};
+ if(tripState.status==='error')tripState.message=trip.errors[failedDays[0]]||'The MIS attendance feed is temporarily unavailable.';
  const bioLoading=view!=='trip'&&wantBio&&(bio.key!==key||bio.status==='loading');
  const choose=(next:RosterView)=>{setView(next);setEmployee('');};
  const busy=tripState.status==='loading'||bioLoading;
