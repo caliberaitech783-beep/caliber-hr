@@ -65,3 +65,22 @@ it('marks missing leave fields in red instead of saving, and submits once comple
  fireEvent.click(screen.getByRole('button',{name:'Submit for approval'}));
  await waitFor(()=>expect(posts.some(u=>u.endsWith('/submit'))).toBe(true));
 });
+
+it('prefills the Pulse employee and Caliber company while limiting locations to assigned lookups',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>new Response(JSON.stringify(url.endsWith('/lookups')?[
+  {id:'employee',kind:'employees',code:'E-01',name:'Pulse Employee'},
+  {id:'company',kind:'companies',code:'CMLL',name:'CALIBER MINING AND LOGISTICS LIMITED'},
+  {id:'site-a',kind:'sites',code:'SITE-A',name:'Sasti OC'},
+  {id:'site-b',kind:'sites',code:'SITE-B',name:'Majri OC'},
+ ]:{rows:[],total:0,page:1,pageSize:50}))));
+ render(<Records grant="test" kind="leaveRequests" module={{title:'Leave requests',menu:'Holiday & Leave',fields:requestFields,autoCode:true,canWrite:true}} notice={()=>{}} actionLabel="Apply leave" pulseIdentity/>);
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Apply leave'})).toBeEnabled());
+ fireEvent.click(screen.getByRole('button',{name:'Apply leave'}));
+ expect(screen.getByLabelText(/Employee ID/)).toHaveValue('employee');
+ expect(screen.getByLabelText(/Employee ID/)).toBeDisabled();
+ expect(screen.getByLabelText('Name')).toHaveValue('Pulse Employee');
+ expect(screen.getByLabelText('Company')).toHaveValue('company');
+ expect(screen.getByLabelText('Company')).toBeDisabled();
+ expect(screen.getByLabelText('Location')).toHaveValue('');
+ expect(screen.getByLabelText('Location').querySelectorAll('option')).toHaveLength(3);
+});

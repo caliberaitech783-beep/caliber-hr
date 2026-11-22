@@ -263,9 +263,24 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       if(grantedMenus(profile).has('Approval Management')&&!kinds.includes('employees'))kinds.push('employees');
       if(canRead(profile,'outDutyRequests')||canRead(profile,'gatePasses'))for(const kind of ['departments','designations','sites'])if(!kinds.includes(kind))kinds.push(kind);
       const result=await pool.query("SELECT r.id,r.kind,r.code,r.name,CASE WHEN r.kind='designations' THEN r.data->>'departmentId' END AS department_id FROM hr_records r WHERE r.kind=ANY($1) AND r.status IN ('ACTIVE','APPROVED') AND "+scopeSql('r','$2')+" ORDER BY r.name LIMIT 10000",[kinds,await siteIds(pool,profile)]);
+      if(profile.permissions?.leaveOnly){
+        const normalized=value=>String(value||'').trim().toLowerCase().replace(/&/g,'and').replace(/\bltd\b/g,'limited').replace(/[^a-z0-9]/g,'');
+        const employeeName=normalized(profile.name);
+        const caliberCompany=new Set(['caliberminingandlogisticslimited','cmll','cmpl']);
+        return result.rows.filter(row=>row.kind==='employees'?normalized(row.name)===employeeName:row.kind==='companies'?caliberCompany.has(normalized(row.name))||caliberCompany.has(normalized(row.code)):true);
+      }
       return result.rows;
     },
-    async save(profile,kind,data,id) {return transaction(db=>save(db,profile,kind,data,id));},
+    async save(profile,kind,data,id) {
+      if(profile.permissions?.leaveOnly&&kind==='leaveRequests'&&!id){
+        const employee=(await pool.query("SELECT r.id FROM hr_records r WHERE r.kind='employees' AND r.status IN ('ACTIVE','APPROVED') AND lower(trim(r.name))=lower(trim($1)) AND "+scopeSql('r','$2')+" ORDER BY r.updated_at DESC LIMIT 1",[profile.name,await siteIds(pool,profile)])).rows[0];
+        const company=(await pool.query("SELECT id FROM hr_records WHERE kind='companies' AND status IN ('ACTIVE','APPROVED') AND (upper(regexp_replace(code,'[^A-Z0-9]','','g')) IN ('CMLL','CMPL') OR lower(regexp_replace(name,'[^a-z0-9]','','g'))='caliberminingandlogisticslimited') ORDER BY updated_at DESC LIMIT 1")).rows[0];
+        if(!employee)throw problem('Your Pulse employee name is not linked to an active HR Employee Master record.',409);
+        if(!company)throw problem('Caliber Mining and Logistics Limited is not configured in Company Master.',409);
+        data={...data,employeeId:employee.id,companyId:company.id};
+      }
+      return transaction(db=>save(db,profile,kind,data,id));
+    },
     async updateEmployeeDetails(profile,id,{version,officeData}) {
       authorize(profile,'employees',true);
       if(!uuid(id))throw problem('Invalid employee ID');
