@@ -1,5 +1,5 @@
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
-import {Download,RefreshCw,Save} from 'lucide-react';
+import {ChevronDown,Download,Printer,RefreshCw,Save} from 'lucide-react';
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
@@ -51,8 +51,9 @@ type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripSt
 
 /** The roster table, its toolbar, the difference drill-down and Export Excel. */
 export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=false,error='',emptyText}:TableProps){
- const [onlyDiff,setOnlyDiff]=useState(false),[open,setOpen]=useState(''),[exporting,setExporting]=useState(false),[times,setTimes]=useState(true);
+ const [onlyDiff,setOnlyDiff]=useState(false),[open,setOpen]=useState(''),[exporting,setExporting]=useState(false),[exportOpen,setExportOpen]=useState(false),[times,setTimes]=useState(true);
  const drill=useRef<HTMLDivElement>(null);
+ const rosterTable=useRef<HTMLTableElement>(null);
  const compare=view==='compare',tripsLoaded=trip.rows!==null,tripRunning=trip.status==='loading';
  const shown=viewGroups(groups,view).filter(g=>!compare||!onlyDiff||g.mismatches.length>0);
  const openGroup=compare?shown.find(g=>g.key===open):undefined;
@@ -66,8 +67,17 @@ export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=fals
 
  async function exportExcel(){
   setExporting(true);
-  try{const {downloadRosterExcel}=await import('./attendanceRosterExcel');await downloadRosterExcel({groups:shown,dates,tripsLoaded,monthly,from,to,view});}
+  try{const {downloadRosterExcel}=await import('./attendanceRosterExcel');await downloadRosterExcel({groups:shown,dates,tripsLoaded,monthly,from,to,view});setExportOpen(false);}
   finally{setExporting(false);}
+ }
+ function printRoster(){
+  const table=rosterTable.current;if(!table)return;
+  const popup=window.open('','_blank');if(!popup){window.alert('The print window was blocked. Allow pop-ups for this site, then try Print/Export again.');return;}
+  const title=`Attendance roster · ${show(from)} to ${show(to)} · ${VIEW_TABS.find(([key])=>key===view)?.[1]||''}`;
+  popup.document.open();popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>
+   @page{size:A3 landscape;margin:8mm}body{font:10px Arial;color:#18122b}button{padding:8px 14px;margin-bottom:10px}h1{font-size:18px;margin:0 0 4px}p{margin:0 0 12px;color:#665b76}table{border-collapse:collapse;width:100%;font-size:8px}th,td{border:1px solid #cfc5db;padding:3px;text-align:center;vertical-align:middle;white-space:nowrap}th{background:#f2eaf8}td:nth-child(-n+6),th:nth-child(-n+6){text-align:left}.register-sub,small{display:block;font-size:7px}.register-cell{display:inline-block;min-width:18px;padding:2px;border-radius:4px}.code-P{background:#eaf3de}.code-HD{background:#fff0d5}.code-A{background:#fde5e3}.code-WO{background:#eeece5}.code-H{background:#ebe8ff}.code-L{background:#fde8ef}.code-OD{background:#e6f1ff}.code-MP{background:#ffe8dc}.roster-day-mark,.roster-diff-open{display:none}@media print{button{display:none}thead{display:table-header-group}tr{break-inside:avoid}}
+  </style></head><body><button onclick="window.print()">Print / Save as PDF</button><h1>${title}</h1><p>${shown.length} employee${shown.length===1?'':'s'} · generated ${new Date().toLocaleString('en-IN')}</p>${table.outerHTML}</body></html>`);
+  popup.document.close();popup.focus();setExportOpen(false);
  }
  const cells=(codes:Record<string,string>,group:RosterGroup,isTrip:boolean)=>dates.map(date=>{
   const code=codes[date]||'',bio=group.bio?.days.find(d=>d.date===date),tripDay=group.tripDays[date];
@@ -101,9 +111,16 @@ export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=fals
    <span role="status">{status}</span>
    {view!=='trip'&&<span className="roster-seg" role="group" aria-label="Day boxes"><button type="button" aria-pressed={!times} onClick={()=>setTimes(false)}>Codes only</button><button type="button" aria-pressed={times} onClick={()=>setTimes(true)}>Codes + In / Out</button></span>}
    {view!=='bio'&&trip.onSave&&<button type="button" className="roster-save" disabled={!trip.canSave} onClick={trip.onSave}><Save/>{trip.saveLabel||'Save trip cards'}</button>}
-   <button type="button" disabled={!shown.length||exporting} onClick={exportExcel}><Download/>{exporting?'Preparing…':'Export Excel'}</button>
+   <div className="roster-export">
+    <button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!shown.length||exporting} onClick={()=>setExportOpen(value=>!value)}><Download/>{exporting?'Preparing…':'Print/Export'}<ChevronDown/></button>
+    {exportOpen&&<div className="roster-export-menu" role="menu">
+     <button type="button" role="menuitem" onClick={printRoster}><Download/>Download as PDF</button>
+     <button type="button" role="menuitem" onClick={printRoster}><Printer/>Smart Print</button>
+     <button type="button" role="menuitem" onClick={()=>void exportExcel()}><Download/>Download as Excel</button>
+    </div>}
+   </div>
   </div>
-  <div className="attendance-table"><table className={'register-grid roster-grid'+(compare?'':' roster-nosrc')} aria-label="Attendance roster">
+  <div className="attendance-table"><table ref={rosterTable} className={'register-grid roster-grid'+(compare?'':' roster-nosrc')} aria-label="Attendance roster">
    <thead><tr>{compare&&<th className="roster-fixed roster-src">Source</th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>Sr. No.</th><th className="roster-fixed roster-id">Employee ID</th><th className="roster-fixed roster-name">Name</th><th className="roster-text">Site</th><th className="roster-text">Department</th><th className="roster-text">Designation</th>{machineCol&&<th className="roster-text roster-machine">Machine · ID</th>}
     {dates.map(d=>{const state=view!=='bio'?trip.days?.[d]:undefined;return <th key={d} title={show(d)+(state==='done'&&trip.saved?.[d]?' · Saved copy':'')+(state?' · '+DAY_STATE[state]+(state==='failed'&&trip.errors?.[d]?': '+trip.errors[d]:''):'')} className={[weekday(d)==='Su'?'roster-sunday':'',state&&state!=='done'?'roster-day-'+state:''].filter(Boolean).join(' ')||undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small>{state&&state!=='done'&&<i className="roster-day-mark" aria-label={DAY_STATE[state]}/>}</th>;})}
     {ROSTER_TOTALS.map(([key,label])=><th key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}>{label}</th>)}{monthly&&<th className="roster-total">Gate pass</th>}{hoursCol&&<th className="roster-total">Worked hours</th>}

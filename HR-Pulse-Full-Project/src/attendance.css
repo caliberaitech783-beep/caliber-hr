@@ -175,3 +175,8 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .bridge-key ol{margin:8px 0 8px 18px;padding:0}
 .bridge-key li{margin:3px 0}
 .machine-status.awaiting{background:#f1efe8;color:#444441}
+.roster-export{position:relative}
+.roster-export>button{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.roster-export-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:30;min-width:220px;padding:8px;background:#fff;border:1px solid #e4dcef;border-radius:12px;box-shadow:0 14px 35px rgba(40,25,65,.16)}
+.roster-export-menu button{display:flex;width:100%;align-items:center;gap:12px;padding:12px;border:0;background:transparent;text-align:left;color:#283650;border-radius:8px}
+.roster-export-menu button:hover{background:#f7f2fb}

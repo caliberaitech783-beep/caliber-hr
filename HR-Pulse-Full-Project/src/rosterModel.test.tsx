@@ -135,6 +135,10 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  expect(within(roster).queryAllByText('08:00').length).toBe(0);
  fireEvent.click(screen.getByRole('button',{name:'Trip card vs Biometric'}));
  expect(await screen.findByRole('button',{name:/days differ for Ramesh Kumar/})).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
+ expect(screen.getByRole('menuitem',{name:'Download as PDF'})).toBeTruthy();
+ expect(screen.getByRole('menuitem',{name:'Smart Print'})).toBeTruthy();
+ expect(screen.getByRole('menuitem',{name:'Download as Excel'})).toBeTruthy();
 });
 
 it('reads MIS one day per request, retries failed days, and keeps the days that worked',async()=>{
