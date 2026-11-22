@@ -244,16 +244,19 @@ it('restores a saved session with one authenticated configuration request',async
 it('keeps the saved session during an API outage and retries configuration',async()=>{
  const profile={name:'Saved user',actor:'test',permissions:{application:'HR',hrDesktopAccess:[]}};
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
- const request=vi.fn()
-  .mockResolvedValueOnce(new Response('<html>Service unavailable</html>',{status:503}))
-  .mockResolvedValueOnce(Response.json({profile,modules:{}}));
+ /* Answer by address: timers left by earlier tests in this file may also call fetch on a slow CI machine,
+    so only the configuration calls are counted (first one fails, the retry succeeds). */
+ const configCalls=()=>request.mock.calls.filter(([url])=>String(url).endsWith('/api/config')).length;
+ const request=vi.fn(async(url:string)=>String(url).endsWith('/api/config')
+  ?(configCalls()===1?new Response('<html>Service unavailable</html>',{status:503}):Response.json({profile,modules:{}}))
+  :Response.json({}));
  vi.stubGlobal('fetch',request);
  render(<App/>);
  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to complete the request');
  expect(sessionStorage.getItem('hrPulseSession')).not.toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Retry connection'}));
  await screen.findByText('No HR menus are assigned. Contact your Pulse administrator.');
- expect(request).toHaveBeenCalledTimes(2);
+ expect(configCalls()).toBe(2);
 });
 
 it('returns to sign-in when the HR API rejects a saved session',async()=>{
