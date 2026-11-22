@@ -1,6 +1,7 @@
 import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import App from './App';
+import appSource from './App.tsx?raw';
 import * as joiningDrafts from './joiningDrafts';
 import {DOCS,type Trial} from './trial-workflow-preview/records';
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();sessionStorage.clear();localStorage.clear();});
@@ -11,6 +12,9 @@ it('hides Administration even when assigned in the Pulse session',async()=>{
  render(<App/>);await screen.findByRole('heading',{name:'Dashboard'},{timeout:3000});expect(screen.queryByRole('button',{name:'Administration'})).toBeNull();
 });
 describe('HR Pulse',()=>{it('shows login',()=>{render(<App/>);expect(screen.getByRole('heading',{name:'HR sign in'})).not.toBeNull()});it('toggles password visibility',()=>{render(<App/>);const password=screen.getByLabelText('Password');expect(password.getAttribute('type')).toBe('password');fireEvent.click(screen.getByRole('button',{name:'Toggle password'}));expect(password.getAttribute('type')).toBe('text')})});
+it('never renders the HR login form inside the Pulse leave workspace',()=>{
+ expect(appSource).toMatch(/if\(!session\?\.grant\)return leaveOnly\?<div className="loading-screen" role="status">Opening your HR workspace…<\/div>:<HrLogin/);
+});
 
 it('opens the full trial workflow directly from the Trial Form menu',async()=>{
  const profile={name:'HR user',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Employee Master']}};
