@@ -56,7 +56,7 @@ it('prints all matching rows, including records on later pages, with the current
   fireEvent.change(screen.getByLabelText('Site'),{target:{value:'WCL-SASTI'}});
   fireEvent.change(screen.getByRole('searchbox'),{target:{value:'employee'}});
   fireEvent.click(screen.getByRole('button',{name:'Search'}));
-  const download = screen.getByRole('button',{name:'Download'});
+  const download = screen.getByRole('button',{name:'Export'});
   await waitFor(()=>expect(download).toBeEnabled());
   expect(screen.queryByRole('group',{name:'Download format'})).toBeNull();
   fireEvent.click(download);
@@ -74,4 +74,39 @@ it('prints all matching rows, including records on later pages, with the current
   expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('Later &amp; employee'));
   expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('CMLL051'));
   expect(mockPopup.opener).toBeNull();
+});
+
+it('routes Excel rows using their own sites while another site is selected and rejects unmatched sites before saving',async()=>{
+  const {utils,write}=await import('xlsx');
+  const sites=[{code:'WCL-GAURI',label:'Gauri Pauni OB 2nd'},{code:'NCL-JAYANT',label:'Jayant OB'}];
+  const existing={id:'old',name:'Existing',employeeId:'0001',site:'Jayant OB'};
+  const posts: {rows:{siteCode:string;employeeId:string}[]}[]=[];
+  vi.stubGlobal('fetch',vi.fn(async(url:string,options?:RequestInit)=>{
+    if(options?.method==='POST'){
+      posts.push(JSON.parse(String(options.body)));
+      return Response.json({inserted:2,alreadyImported:0});
+    }
+    if(new URL(url).searchParams.has('export'))return Response.json({complete:true,rows:[existing]});
+    return Response.json({rows:[existing],total:1,pageSize:50,sites,canImport:true});
+  }));
+  render(<EmployeeMasterRegister grant={'a'.repeat(43)}/>);
+  await screen.findByText('Existing');
+  fireEvent.change(screen.getByLabelText('Site'),{target:{value:'NCL-JAYANT'}});
+  const picker=screen.getByLabelText('Import HR employee data');
+  async function upload(lastSite:string){
+    await waitFor(()=>expect(picker).toBeEnabled());
+    const book=utils.book_new();
+    utils.book_append_sheet(book,utils.aoa_to_sheet([
+      ['Employee ID','Name','Site / Office'],['0001','Existing','Jayant OB'],
+      ['0002','Employee Two','Gauri Pouni'],['0003','Employee Three',lastSite],
+    ]),'Employees');
+    const file=Object.assign(new File([],'employees.xlsx'),{arrayBuffer:async()=>write(book,{type:'array',bookType:'xlsx'})});
+    fireEvent.change(picker,{target:{files:[file]}});
+  }
+  await upload('Unlisted site');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Employees row 4');
+  expect(posts).toHaveLength(0);
+  await upload('NCL-JAYANT');
+  expect(await screen.findByText('2 entries added. 1 already imported.')).toBeVisible();
+  expect(posts[0].rows.map(({siteCode,employeeId})=>[siteCode,employeeId])).toEqual([['WCL-GAURI','0002'],['NCL-JAYANT','0003']]);
 });
