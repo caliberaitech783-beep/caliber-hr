@@ -6,7 +6,7 @@ const kind = 'employeeMasterRegister';
 const pageSize = 50;
 // Keep the imported source rows while hiding unused formulas and entries
 // sourced solely from workbook tabs excluded from the register.
-const isEmployeeEntry = `NOT (
+export const isEmployeeEntry = `NOT (
   site_code='NCL-DUDE' AND name='0'
   AND COALESCE(data->>'employeeId','')=''
   AND COALESCE(data->>'department','')='0'
