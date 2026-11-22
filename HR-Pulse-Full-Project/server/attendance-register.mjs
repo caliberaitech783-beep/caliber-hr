@@ -215,12 +215,14 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
  * site {id,name,siteType}. Returns the register plus the site's machines (status, last punch, punches in these dates).
  */
 export async function loadSiteRegister(db, site, from, to, today) {
-  const {rows: machines} = await db.query(`SELECT d.serial,d.name,d.location,d.last_contact,coalesce(d.last_contact>now()-interval '2 minutes',false) AS online,
+  const {rows: machines} = await db.query(`SELECT d.serial,d.name,d.location,d.ip_address,d.last_contact,coalesce(d.last_contact>now()-interval '2 minutes',false) AS online,
+    coalesce(max(b.name),CASE WHEN d.bridge_id IS NULL AND (d.last_contact IS NOT NULL OR d.last_seen IS NOT NULL) THEN 'Main bridge PC' ELSE '' END) AS bridge_name,
     to_char(max(p.punched_at),'YYYY-MM-DD HH24:MI') AS last_punch,
     count(p.id) FILTER (WHERE p.punched_at>=$2::date AND p.punched_at<$3::date+1)::int AS punches
-   FROM hr_attendance_devices d LEFT JOIN hr_attendance_punches p ON p.device_serial=d.serial AND p.punched_at>=$2::date-31 AND p.punched_at<$3::date+2
+   FROM hr_attendance_devices d LEFT JOIN hr_attendance_bridges b ON b.id=d.bridge_id AND b.removed_at IS NULL
+   LEFT JOIN hr_attendance_punches p ON p.device_serial=d.serial AND p.punched_at>=$2::date-31 AND p.punched_at<$3::date+2
    WHERE d.site_id=$1 GROUP BY d.serial ORDER BY d.location,d.name,d.serial`, [site.id, from, to]);
-  const machineList = machines.map(m => ({serial: m.serial, name: m.name || '', location: m.location || '', online: Boolean(m.online),
+  const machineList = machines.map(m => ({serial: m.serial, name: m.name || '', location: m.location || '', ipAddress: m.ip_address || '', bridgeName: m.bridge_name || '', online: Boolean(m.online),
     lastContact: m.last_contact || null, lastPunch: m.last_punch || '', punches: Number(m.punches) || 0}));
   const {policy} = await readPolicy(db);
   if (!machines.length) return {from, to, policy, site: site.name, machines: machineList, rows: []};

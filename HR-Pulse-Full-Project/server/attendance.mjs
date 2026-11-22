@@ -9,6 +9,7 @@ import {assignedSites,siteIds} from './scope.mjs';
 import {grantedMenus,canWrite} from './modules.mjs';
 import {createMisAttendance} from './mis-attendance.mjs';
 import {createTripCardStore} from './trip-card-store.mjs';
+import {createBridges,looksLikeSiteKey} from './attendance-bridges.mjs';
 import {loadRegister,loadSiteRegister,readPolicy,savePolicy} from './attendance-register.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
@@ -61,7 +62,10 @@ export function validateDevice(input,register){
  if(register&&!siteId)fail('Choose a site');
  if(!SERIAL.test(serial))fail('Enter a valid machine serial number (letters, numbers, - or _)');
  if(siteId&&!uuid(siteId))fail('Choose a site');
- return {serial,siteId,name:cleanText(input?.name),location:input?.location===undefined?null:cleanText(input.location)};
+ // The machine's IP address on the site network, kept for records (fetching goes through the bridge PC): IPv4 or IPv6.
+ const ip=input?.ipAddress===undefined?null:String(input.ipAddress).trim();
+ if(ip&&!(/^((25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(25[0-5]|2[0-4]\d|1?\d?\d)$/.test(ip)||/^[0-9a-fA-F:]{2,39}$/.test(ip)&&ip.includes(':')))fail('Enter a valid IP address, for example 192.168.1.201');
+ return {serial,siteId,name:cleanText(input?.name),location:input?.location===undefined?null:cleanText(input.location),ipAddress:ip};
 }
 
 const indiaDay=()=>new Date(Date.now()+5.5*3600_000).toISOString().slice(0,10);
@@ -76,6 +80,7 @@ export function validateRange(params){
 
 export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_KEY}={}){
  const misAttendance=createMisAttendance(pool);
+ const bridges=createBridges(pool);
  const tripCards=createTripCardStore(pool);
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
@@ -83,31 +88,45 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
  const view=row=>row&&{id:row.id,state:row.state,punchesReceived:row.punches_received,newPunches:row.new_punches,error:row.error||'',requestedBy:row.requested_by,requestedAt:row.requested_at,completedAt:row.completed_at};
  const expire=db=>db.query(`UPDATE hr_attendance_fetch_requests SET state='FAILED',error=$1,completed_at=now() WHERE state IN ('PENDING','RUNNING') AND requested_at<now()-${STALE}`,[NO_BRIDGE]);
 
+ const mainConfigured=typeof bridgeKey==='string'&&bridgeKey.length>=32;
+ /** The bridge PC signing in: null for the main bridge PC (ATTENDANCE_BRIDGE_KEY), else the site bridge PC's id. */
+ async function signedInBridge(key){
+  if(mainConfigured&&keyMatches(bridgeKey,key))return null;
+  const site=looksLikeSiteKey(key)?await bridges.findByKey(key):null;
+  if(site)return site.id;
+  if(!mainConfigured&&!looksLikeSiteKey(key))fail('The attendance bridge is not configured',503);
+  fail('Invalid bridge key',401);
+ }
+
  async function bridge(key,route,method,input){
-  if(typeof bridgeKey!=='string'||bridgeKey.length<32)fail('The attendance bridge is not configured',503);
-  if(!keyMatches(bridgeKey,key))fail('Invalid bridge key',401);
+  const bridgeId=await signedInBridge(key);
   if(route==='next'&&['GET','POST'].includes(method))return tx(async db=>{
-   await db.query('INSERT INTO hr_attendance_bridge(id,last_seen) VALUES(true,now()) ON CONFLICT(id) DO UPDATE SET last_seen=now()');
+   if(bridgeId)await db.query('UPDATE hr_attendance_bridges SET last_seen=now() WHERE id=$1',[bridgeId]);
+   else await db.query('INSERT INTO hr_attendance_bridge(id,last_seen) VALUES(true,now()) ON CONFLICT(id) DO UPDATE SET last_seen=now()');
    if(method==='POST'){
     const contacts=input.contacts;
     if(!Array.isArray(contacts)||contacts.length>1000)fail('Invalid device contacts');
     for(const {serial,age} of contacts){
      if(!SERIAL.test(serial)||!Number.isSafeInteger(age)||age<0||age>86400)fail('Invalid device contact');
-     await db.query("INSERT INTO hr_attendance_devices(serial,last_contact) VALUES($1,now()-$2::int*interval '1 second') ON CONFLICT(serial) DO UPDATE SET last_contact=greatest(hr_attendance_devices.last_contact,excluded.last_contact)",[serial,age]);
+     // A machine belongs to the bridge PC it reports to.
+     await db.query("INSERT INTO hr_attendance_devices(serial,last_contact,bridge_id) VALUES($1,now()-$2::int*interval '1 second',$3) ON CONFLICT(serial) DO UPDATE SET last_contact=greatest(hr_attendance_devices.last_contact,excluded.last_contact),bridge_id=excluded.bridge_id",[serial,age,bridgeId]);
     }
    }
    await expire(db);
-   const row=(await db.query("UPDATE hr_attendance_fetch_requests SET state='RUNNING' WHERE id=(SELECT id FROM hr_attendance_fetch_requests WHERE state='PENDING' ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id,device_serial")).rows[0];
+   // Each bridge PC picks up only its own fetch requests.
+   const row=(await db.query("UPDATE hr_attendance_fetch_requests SET state='RUNNING' WHERE id=(SELECT id FROM hr_attendance_fetch_requests WHERE state='PENDING' AND bridge_id IS NOT DISTINCT FROM $1 ORDER BY requested_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id,device_serial",[bridgeId])).rows[0];
    return {request:row?{id:row.id,deviceSerial:row.device_serial}:null};
   });
   if(route==='punches'&&method==='POST'){
    const upload=validateUpload(input);
    return tx(async db=>{
     if(upload.requestId && upload.serial){
-     const target=(await db.query("SELECT device_serial FROM hr_attendance_fetch_requests WHERE id=$1",[upload.requestId])).rows[0]?.device_serial;
+     const request=(await db.query("SELECT device_serial,bridge_id FROM hr_attendance_fetch_requests WHERE id=$1",[upload.requestId])).rows[0];
+     const target=request?.device_serial;
      if(target && target!==upload.serial)fail("Restart the updated attendance bridge for machine-specific fetches.",409);
+     if(request&&(request.bridge_id||null)!==bridgeId)fail('This fetch request belongs to another bridge PC.',409);
     }
-    if(upload.serial)await db.query('INSERT INTO hr_attendance_devices(serial,name,last_seen) VALUES($1,$2,now()) ON CONFLICT(serial) DO UPDATE SET last_seen=now(),name=CASE WHEN hr_attendance_devices.name=\'\' THEN EXCLUDED.name ELSE hr_attendance_devices.name END',[upload.serial,upload.name]);
+    if(upload.serial)await db.query('INSERT INTO hr_attendance_devices(serial,name,last_seen,bridge_id) VALUES($1,$2,now(),$3) ON CONFLICT(serial) DO UPDATE SET last_seen=now(),bridge_id=EXCLUDED.bridge_id,name=CASE WHEN hr_attendance_devices.name=\'\' THEN EXCLUDED.name ELSE hr_attendance_devices.name END',[upload.serial,upload.name,bridgeId]);
     let added=0;
     if(upload.punches.length)added=(await db.query('INSERT INTO hr_attendance_punches(device_serial,biometric_id,punched_at,verify,punch_type) SELECT $1,x.b,x.t::timestamp,x.v,x.p FROM unnest($2::text[],$3::text[],$4::text[],$5::text[]) AS x(b,t,v,p) ON CONFLICT DO NOTHING',[upload.serial,upload.punches.map(p=>p.biometricId),upload.punches.map(p=>p.punchedAt),upload.punches.map(p=>p.verify),upload.punches.map(p=>p.punchType)])).rowCount;
     if(upload.users.length)await db.query('INSERT INTO hr_attendance_device_users(device_serial,biometric_id,name) SELECT DISTINCT ON (x.b) $1,x.b,x.n FROM unnest($2::text[],$3::text[]) AS x(b,n) ON CONFLICT(device_serial,biometric_id) DO UPDATE SET name=EXCLUDED.name',[upload.serial,upload.users.map(u=>u.biometricId),upload.users.map(u=>u.name)]);
@@ -129,15 +148,27 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   if(route==='fetch'&&method==='POST')return tx(async db=>{
    await expire(db);
    const serial=input.deviceSerial||null;
+   const allowed=await siteIds(db,profile);
+   // The bridge PCs that must pick this up: a machine's own bridge PC, or for "all machines" the main bridge PC and
+   // every site bridge PC of the user's sites (owner, 22 Nov 2026: one bridge PC per site).
+   let targets=[null];
    if(serial){
-    const allowed=await siteIds(db,profile);
-    if(!SERIAL.test(serial)||!(await db.query("SELECT 1 FROM hr_attendance_devices WHERE serial=$1 AND ($2::text[] IS NULL OR site_id::text=ANY($2))",[serial,allowed])).rowCount)fail("Machine not available",404);
+    const device=SERIAL.test(serial)?(await db.query("SELECT bridge_id FROM hr_attendance_devices WHERE serial=$1 AND ($2::text[] IS NULL OR site_id::text=ANY($2))",[serial,allowed])).rows[0]:null;
+    if(!device)fail("Machine not available",404);
+    targets=[device.bridge_id||null];
+   }else{
+    const scoped=(await db.query("SELECT id FROM hr_attendance_bridges WHERE removed_at IS NULL AND ($1::text[] IS NULL OR site_id::text=ANY($1)) ORDER BY created_at",[allowed])).rows.map(r=>r.id);
+    targets=[...(mainConfigured||!scoped.length?[null]:[]),...scoped];
    }
-   const open=(await db.query("SELECT * FROM hr_attendance_fetch_requests WHERE state IN ('PENDING','RUNNING') AND device_serial IS NOT DISTINCT FROM $1 ORDER BY requested_at DESC LIMIT 1",[serial])).rows[0];
-   if(open)return view(open); // one fetch at a time; everyone waits on the same request
-   const row=(await db.query('INSERT INTO hr_attendance_fetch_requests(id,requested_by,device_serial) VALUES($1,$2,$3) RETURNING *',[randomUUID(),profile.actor,serial])).rows[0];
-   await audit(db,profile.actor,'FETCH_ATTENDANCE',{requestId:row.id});
-   return view(row);
+   const views=[];
+   for(const target of targets){
+    const open=(await db.query("SELECT * FROM hr_attendance_fetch_requests WHERE state IN ('PENDING','RUNNING') AND device_serial IS NOT DISTINCT FROM $1 AND bridge_id IS NOT DISTINCT FROM $2 ORDER BY requested_at DESC LIMIT 1",[serial,target])).rows[0];
+    if(open){views.push(view(open));continue;} // one fetch at a time per bridge PC; everyone waits on the same request
+    const row=(await db.query('INSERT INTO hr_attendance_fetch_requests(id,requested_by,device_serial,bridge_id) VALUES($1,$2,$3,$4) RETURNING *',[randomUUID(),profile.actor,serial,target])).rows[0];
+    await audit(db,profile.actor,'FETCH_ATTENDANCE',{requestId:row.id,bridgeId:target});
+    views.push(view(row));
+   }
+   return views[0];
   });
   if(fetchId&&method==='GET'){
    if(!uuid(fetchId))fail('Invalid fetch request');
@@ -150,13 +181,21 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    // Active logs: punches the machine recorded today (India date) and its latest
    // punch in the last 31 days, both read through the punched_at index.
    const devices=(await pool.query(`SELECT d.serial,d.name,d.location,d.site_id,s.name AS site_name,d.last_seen,d.last_contact,d.last_contact>now()-interval '2 minutes' AS online,
-    coalesce(a.today,0)::int AS logs_today,to_char(a.last_punch,'YYYY-MM-DD HH24:MI') AS last_punch
-    FROM hr_attendance_devices d LEFT JOIN hr_records s ON s.id=d.site_id
+    coalesce(a.today,0)::int AS logs_today,to_char(a.last_punch,'YYYY-MM-DD HH24:MI') AS last_punch,d.ip_address,d.bridge_id,b.name AS bridge_name
+    FROM hr_attendance_devices d LEFT JOIN hr_records s ON s.id=d.site_id LEFT JOIN hr_attendance_bridges b ON b.id=d.bridge_id AND b.removed_at IS NULL
     LEFT JOIN (SELECT device_serial,count(*) FILTER (WHERE punched_at>=$2::date) AS today,max(punched_at) AS last_punch FROM hr_attendance_punches WHERE punched_at>=$2::date-30 GROUP BY device_serial) a ON a.device_serial=d.serial
     WHERE $1::text[] IS NULL OR d.site_id::text=ANY($1) ORDER BY s.name NULLS LAST,d.location,d.serial`,[sites,indiaDay()])).rows;
    const last=(await pool.query('SELECT * FROM hr_attendance_fetch_requests ORDER BY requested_at DESC LIMIT 1')).rows[0];
-   return {configured:typeof bridgeKey==='string'&&bridgeKey.length>=32,bridgeOnline:Boolean(seen?.online),bridgeLastSeen:seen?.last_seen||null,
-    devices:devices.map(d=>({serial:d.serial,name:d.name,location:d.location||'',siteId:d.site_id,siteName:d.site_name||'',lastContact:d.last_contact,online:Boolean(d.online),lastSeen:d.last_seen,logsToday:Number(d.logs_today)||0,lastPunch:d.last_punch||null})),lastFetch:view(last)||null,
+   const siteBridges=await bridges.list(pool);
+   const scope=sites?new Set(sites.map(String)):null;
+   const listed=d=>({serial:d.serial,name:d.name,location:d.location||'',siteId:d.site_id,siteName:d.site_name||'',lastContact:d.last_contact,online:Boolean(d.online),lastSeen:d.last_seen,logsToday:Number(d.logs_today)||0,lastPunch:d.last_punch||null,
+    ipAddress:d.ip_address||'',bridgeId:d.bridge_id||null,bridgeName:d.bridge_name||(d.bridge_id||!(d.last_contact||d.last_seen)?'':'Main bridge PC')});
+   const shown=devices.map(listed);
+   // Bridge PCs: the main one (ATTENDANCE_BRIDGE_KEY) and one per site (attendance-bridges.mjs); site users see their sites'.
+   const bridgeList=[...(mainConfigured?[{id:'main',name:'Main bridge PC',siteId:null,siteName:'',keyHint:'',lastSeen:seen?.last_seen||null,online:Boolean(seen?.online),main:true,
+    machines:shown.filter(d=>!d.bridgeId&&d.bridgeName).map(d=>d.serial)}]:[]),...siteBridges.filter(b=>!scope||scope.has(String(b.siteId)))];
+   return {configured:mainConfigured||siteBridges.length>0,bridgeOnline:Boolean(seen?.online)||siteBridges.some(b=>b.online),bridgeLastSeen:seen?.last_seen||null,
+    bridges:bridgeList,devices:shown,lastFetch:view(last)||null,
     canLink:canWrite(profile,'employees'),canManageDevices:assignedSites(profile)===null&&canWrite(profile,'employees')};
   }
   if(route==='policy'&&method==='GET')return {...await readPolicy(pool),canEdit:assignedSites(profile)===null&&canWrite(profile,'employees')};
@@ -233,19 +272,28 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   if((route==='devices'||route==='devices/register')&&method==='POST'){
    if(assignedSites(profile)!==null||!canWrite(profile,'employees'))fail('Only an HR administrator without site restrictions can assign devices',403);
    const register=route==='devices/register';
-   const {serial,siteId,name,location}=validateDevice(input,register);
+   const {serial,siteId,name,location,ipAddress}=validateDevice(input,register);
    return tx(async db=>{
     if(siteId&&!(await db.query("SELECT 1 FROM hr_records WHERE id=$1 AND kind='sites'",[siteId])).rowCount)fail('Site not found',404);
-    // An update that leaves out the location keeps the one already saved.
+    // An update that leaves out the location or IP address keeps the one already saved.
     const statement=register
-     ? "INSERT INTO hr_attendance_devices(serial,site_id,name,location) VALUES($1,$2,$3,coalesce($4,'')) ON CONFLICT(serial) DO NOTHING RETURNING serial,location"
-     : 'UPDATE hr_attendance_devices SET site_id=$2,name=$3,location=coalesce($4,location) WHERE serial=$1 RETURNING serial,location';
-    const row=(await db.query(statement,[serial,siteId||null,name,location])).rows[0];
+     ? "INSERT INTO hr_attendance_devices(serial,site_id,name,location,ip_address) VALUES($1,$2,$3,coalesce($4,''),coalesce($5,'')) ON CONFLICT(serial) DO NOTHING RETURNING serial,location,ip_address"
+     : 'UPDATE hr_attendance_devices SET site_id=$2,name=$3,location=coalesce($4,location),ip_address=coalesce($5,ip_address) WHERE serial=$1 RETURNING serial,location,ip_address';
+    const row=(await db.query(statement,[serial,siteId||null,name,location,ipAddress])).rows[0];
     if(!row&&register)fail('This serial number is already listed. Use its existing row to assign the site.',409);
     if(!row)fail('Device not found',404);
-    await audit(db,profile.actor,register?'REGISTER_ATTENDANCE_DEVICE':'ASSIGN_ATTENDANCE_DEVICE',{serial,siteId,name,location:row.location});
-    return {serial,siteId,name,location:row.location};
+    await audit(db,profile.actor,register?'REGISTER_ATTENDANCE_DEVICE':'ASSIGN_ATTENDANCE_DEVICE',{serial,siteId,name,location:row.location,ipAddress:row.ip_address||''});
+    return {serial,siteId,name,location:row.location,ipAddress:row.ip_address||''};
    });
+  }
+  // Bridge PCs per site (attendance-bridges.mjs): list, add (key shown once), new key, remove. HR administrators only.
+  const bridgeRoute=route.match(/^bridges(?:\/([0-9a-fA-F-]{36})\/(key|remove))?$/);
+  if(bridgeRoute){
+   if(method==='GET')return {bridges:(await bridges.list(pool)).filter(b=>!sites||sites.map(String).includes(String(b.siteId)))};
+   if(method!=='POST')fail('Not found',404);
+   if(assignedSites(profile)!==null||!canWrite(profile,'employees'))fail('Only an HR administrator without site restrictions can manage bridge PCs',403);
+   const [,id,action]=bridgeRoute;
+   return tx(db=>!id?bridges.create(db,profile.actor,input):action==='key'?bridges.rekey(db,profile.actor,id):bridges.remove(db,profile.actor,id));
   }
   fail('Not found',404);
  }

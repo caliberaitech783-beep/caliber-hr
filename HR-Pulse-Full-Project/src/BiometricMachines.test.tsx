@@ -28,7 +28,7 @@ it('rates a machine online only while it and the bridge PC are in touch',()=>{
 it('lists the machines of every site with location, name, serial, status, last contact and active logs',()=>{
  render(<BiometricMachines {...props}/>);
  const table=screen.getByRole('table');
- expect(within(table).getAllByRole('columnheader').map(h=>h.textContent)).toEqual(['Site','Machine location','Machine name','Serial no.','Status','Last contact','Active logs','Action']);
+ expect(within(table).getAllByRole('columnheader').map(h=>h.textContent)).toEqual(['Site','Machine location','Machine name','Serial no.','IP address','Bridge PC','Status','Last contact','Active logs','Action']);
  const first=within(table).getAllByRole('row')[1];
  for(const text of ['Amlohri','Main gate','ESSL K90','JNP2260900233','Online','14'])expect(within(first).getByText(text)).toBeTruthy();
  expect(within(first).getByText('Last punch 20-11-2026 10:31')).toBeTruthy();
@@ -47,7 +47,7 @@ it('adds a machine to a site with its location, name and serial',async()=>{
  fireEvent.change(within(form).getByLabelText('Machine name'),{target:{value:'ESSL F22'}});
  fireEvent.change(within(form).getByLabelText('Serial no.'),{target:{value:'CKJ1234'}});
  fireEvent.submit(form);
- await waitFor(()=>expect(api).toHaveBeenCalledWith('g','attendance/devices/register','POST',{serial:'CKJ1234',siteId:'s2',name:'ESSL F22',location:'Office'}));
+ await waitFor(()=>expect(api).toHaveBeenCalledWith('g','attendance/devices/register','POST',{serial:'CKJ1234',siteId:'s2',name:'ESSL F22',location:'Office',ipAddress:''}));
  await waitFor(()=>expect(props.onSaved).toHaveBeenCalled());
 });
 
@@ -57,7 +57,7 @@ it('edits a machine site, location and name; site users get no add or edit',asyn
  const form=screen.getByRole('form',{name:'Edit machine JNP2260900400'});
  fireEvent.change(within(form).getByLabelText('Machine location'),{target:{value:'Weighbridge'}});
  fireEvent.submit(form);
- await waitFor(()=>expect(api).toHaveBeenCalledWith('g','attendance/devices','POST',{serial:'JNP2260900400',siteId:'s2',name:'',location:'Weighbridge'}));
+ await waitFor(()=>expect(api).toHaveBeenCalledWith('g','attendance/devices','POST',{serial:'JNP2260900400',siteId:'s2',name:'',location:'Weighbridge',ipAddress:''}));
  unmount();
  render(<BiometricMachines {...props} canManage={false}/>);
  expect(screen.queryByRole('button',{name:'Add machine'})).toBeNull();

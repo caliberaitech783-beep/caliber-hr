@@ -81,7 +81,12 @@ Open **Employee Master → Attendance Management** and click **Fetch attendance*
 ## Limits
 
 - The bridge PC must be on and online for Fetch attendance to work.
-- One bridge key and one bridge PC are supported at present. A second site
-  needs its own bridge support added first.
+- One bridge PC per site. The first bridge PC uses ATTENDANCE_BRIDGE_KEY (the
+  "Main bridge PC"). For every other site, HR Pulse › Attendance Management ›
+  Biometric integration › Biometric machines › Bridge PCs › **Add bridge PC**
+  makes a key for that site's PC (shown once) and offers this program to download
+  with the key already filled in. A machine belongs to the bridge PC it reports
+  to, and a fetch for it goes only to that bridge PC. **New key** replaces a lost
+  key (the old one stops at once); **Remove** stops the PC.
 - Punch times are stored exactly as the machine's clock shows them, so keep the
   machine's date and time correct.

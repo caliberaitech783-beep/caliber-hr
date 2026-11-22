@@ -1,15 +1,24 @@
 import {useState,type FormEvent} from 'react';
 import {Pencil,Plus,RefreshCw} from 'lucide-react';
 import {api,type Lookup} from './api';
+import BridgePcs,{type BridgePc} from './BridgePcs';
 
 /* Biometric machines register: every ESSL machine on every site, with where it
    stands, its name, serial number, status, last contact and the logs it has
    recorded today. HR administrators without a site restriction add machines to
    a site and change their site, location or name. */
-export type Machine={serial:string;name:string;location:string;siteId:string|null;siteName:string;online:boolean;lastContact:string|null;lastSeen:string|null;logsToday:number;lastPunch:string|null};
+export type Machine={serial:string;name:string;location:string;siteId:string|null;siteName:string;online:boolean;lastContact:string|null;lastSeen:string|null;logsToday:number;lastPunch:string|null;
+ /** Owner, 22 Nov 2026: the machine's IP address (records only) and the bridge PC it reports to (null = main bridge PC). */
+ ipAddress?:string;bridgeId?:string|null;bridgeName?:string};
 export type MachineStatus='Online'|'Offline'|'Awaiting contact';
 export const ALL_SITES='',UNASSIGNED='unassigned';
 
+/** Whether the bridge PC a machine reports to is in touch (one bridge PC per site); without the list, the one bridge PC. */
+export const bridgeOnlineFor=(machine:Pick<Machine,'bridgeId'|'bridgeName'>,bridges:BridgePc[]|undefined,fallback:boolean)=>{
+ if(!bridges?.length)return fallback;
+ const bridge=bridges.find(b=>machine.bridgeId?b.id===machine.bridgeId:b.main);
+ return Boolean(bridge?.online);
+};
 /** Online only while both the machine and the bridge PC are in touch. */
 export const machineStatus=(machine:Pick<Machine,'online'|'lastContact'>,bridgeOnline:boolean):MachineStatus=>machine.online&&bridgeOnline?'Online':machine.lastContact?'Offline':'Awaiting contact';
 export const machinesForSite=(machines:Machine[],site:string)=>site===ALL_SITES?machines:machines.filter(m=>(m.siteId||UNASSIGNED)===site);
@@ -22,20 +31,21 @@ export function siteOptions(sites:Lookup[],machines:Machine[]){
  return [...options].map(([id,name])=>({id,name})).sort((a,b)=>a.name.localeCompare(b.name));
 }
 
-type Props={grant:string;machines:Machine[];sites:Lookup[];bridgeOnline:boolean;configured:boolean;canManage:boolean;fetching:boolean;
+type Props={grant:string;machines:Machine[];sites:Lookup[];bridgeOnline:boolean;configured:boolean;canManage:boolean;fetching:boolean;bridges?:BridgePc[];
  onFetch:(serial:string)=>void;onSaved:(message:string)=>Promise<void>|void;onError:(message:string)=>void};
 
-export default function BiometricMachines({grant,machines,sites,bridgeOnline,configured,canManage,fetching,onFetch,onSaved,onError}:Props){
+export default function BiometricMachines({grant,machines,sites,bridgeOnline,configured,canManage,fetching,bridges,onFetch,onSaved,onError}:Props){
+ const statusOf=(m:Machine)=>machineStatus(m,bridgeOnlineFor(m,bridges,bridgeOnline));
  const [site,setSite]=useState(ALL_SITES);
  const [adding,setAdding]=useState(false),[editing,setEditing]=useState(''),[busy,setBusy]=useState(false);
  const options=siteOptions(sites,machines);
  const rows=machinesForSite(machines,site);
- const online=rows.filter(m=>machineStatus(m,bridgeOnline)==='Online').length;
+ const online=rows.filter(m=>statusOf(m)==='Online').length;
 
  async function save(event:FormEvent<HTMLFormElement>,route:'devices'|'devices/register',serial?:string){
   event.preventDefault();if(busy)return;
   const fields=new FormData(event.currentTarget);
-  const body={serial:serial??String(fields.get('serial')||'').trim(),siteId:String(fields.get('siteId')||''),name:String(fields.get('name')||''),location:String(fields.get('location')||'')};
+  const body={serial:serial??String(fields.get('serial')||'').trim(),siteId:String(fields.get('siteId')||''),name:String(fields.get('name')||''),location:String(fields.get('location')||''),ipAddress:String(fields.get('ipAddress')||'').trim()};
   setBusy(true);onError('');
   try{
    await api(grant,'attendance/'+route,'POST',body);
@@ -48,7 +58,8 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
   <option value="">Choose site…</option>{options.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
  </select>;
 
- return <div className="data-card biometric-machines">
+ return <>{bridges&&<BridgePcs grant={grant} bridges={bridges} sites={options.map(s=>({id:s.id,name:s.name,kind:'sites'} as Lookup))} canManage={canManage} onSaved={onSaved} onError={onError}/>}
+ <div className="data-card biometric-machines">
   <h2>Biometric machines</h2>
   <p className="help-text">Every fingerprint / face machine on each site. {canManage?'Add a machine to its site with the serial number printed on it; the bridge PC at that site then reports its status and logs.':'Machines of your sites.'}</p>
   <div className="attendance-filters">
@@ -64,21 +75,23 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
    <label>Machine location<input name="location" maxLength={80} placeholder="e.g. Main gate, Workshop"/></label>
    <label>Machine name<input name="name" maxLength={80} placeholder="e.g. ESSL K90 gate"/></label>
    <label>Serial no.<input name="serial" required maxLength={40} pattern="[A-Za-z0-9_\-]{1,40}" title="Letters, numbers, - or _" placeholder="Printed on the machine"/></label>
+   <label>IP address<input name="ipAddress" maxLength={45} placeholder="e.g. 192.168.1.201" inputMode="decimal"/></label>
    <button className="primary" disabled={busy}>{busy?'Saving…':'Save machine'}</button>
    <button type="button" disabled={busy} onClick={()=>setAdding(false)}>Cancel</button>
   </form>}
   <div className="attendance-table"><table>
-   <thead><tr>{['Site','Machine location','Machine name','Serial no.','Status','Last contact','Active logs','Action'].map(x=><th key={x}>{x}</th>)}</tr></thead>
+   <thead><tr>{['Site','Machine location','Machine name','Serial no.','IP address','Bridge PC','Status','Last contact','Active logs','Action'].map(x=><th key={x}>{x}</th>)}</tr></thead>
    <tbody>
-    {!rows.length&&<tr><td colSpan={8} className="attendance-empty">{site===ALL_SITES?'No machines yet.':'No machines on this site yet.'}{canManage?' Click Add machine to add one.':''}</td></tr>}
+    {!rows.length&&<tr><td colSpan={10} className="attendance-empty">{site===ALL_SITES?'No machines yet.':'No machines on this site yet.'}{canManage?' Click Add machine to add one.':''}</td></tr>}
     {rows.map(m=>{
-     const status=machineStatus(m,bridgeOnline);
-     if(editing===m.serial)return <tr key={m.serial}><td colSpan={8}>
+     const status=statusOf(m);
+     if(editing===m.serial)return <tr key={m.serial}><td colSpan={10}>
       <form className="attendance-filters machine-form" aria-label={`Edit machine ${m.serial}`} onSubmit={e=>void save(e,'devices',m.serial)}>
        <label>Site{siteSelect(m.siteId||'',`Site for machine ${m.serial}`)}</label>
        <label>Machine location<input name="location" maxLength={80} defaultValue={m.location}/></label>
        <label>Machine name<input name="name" maxLength={80} defaultValue={m.name}/></label>
        <label>Serial no.<input value={m.serial} readOnly/></label>
+       <label>IP address<input name="ipAddress" maxLength={45} defaultValue={m.ipAddress||''} placeholder="e.g. 192.168.1.201" inputMode="decimal"/></label>
        <button className="primary" disabled={busy}>{busy?'Saving…':'Save'}</button>
        <button type="button" disabled={busy} onClick={()=>setEditing('')}>Cancel</button>
       </form>
@@ -88,6 +101,8 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
       <td>{m.location||'—'}</td>
       <td>{m.name||'—'}</td>
       <td className="machine-serial">{m.serial}</td>
+      <td className="machine-serial">{m.ipAddress||'—'}</td>
+      <td>{m.bridgeName||<span className="attendance-unlinked">No bridge PC yet</span>}</td>
       <td><span className={'machine-status '+status.split(' ')[0].toLowerCase()}>{status}</span></td>
       <td>{formatContact(m.lastContact)}</td>
       <td><strong>{m.logsToday}</strong> today{m.lastPunch&&<small className="machine-last-punch">Last punch {formatLastPunch(m.lastPunch)}</small>}</td>
@@ -99,5 +114,5 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
     })}
    </tbody>
   </table></div>
- </div>;
+ </div></>;
 }
