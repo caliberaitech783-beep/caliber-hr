@@ -74,7 +74,7 @@ it('writes the coloured roster workbook with both lines and a Differences sheet'
 it('splits trip card requests into weeks and matches HR and MIS site names',async()=>{
  const {weekPieces,sameSite}=await import('./rosterModel');
  expect(weekPieces('2026-11-01','2026-11-22')).toEqual([{from:'2026-11-01',to:'2026-11-07'},{from:'2026-11-08',to:'2026-11-14'},{from:'2026-11-15',to:'2026-11-21'},{from:'2026-11-22',to:'2026-11-22'}]);
- expect([sameSite('Jayant','Jayant OB'),sameSite('Jayant OB','jayant-ob'),sameSite('Gevra','Dipka'),sameSite('Majri','Majri Coal')]).toEqual([true,true,false,true]);
+ expect([sameSite('Jayant','Jayant OB'),sameSite('Jayant OB','jayant-ob'),sameSite('Gevra','Dipka'),sameSite('Majri','Majri Coal'),sameSite('Sasti OC','Sasti OCP'),sameSite('Sasti OC','SASTI'),sameSite('Sasti OC','Dhuptala OC')]).toEqual([true,true,false,true,true,true,false]);
 });
 
 const misReport=()=>({attendanceEquipment:[],attendanceShifts:trips.map(t=>({siteKey:'Gevra',date:t.date,shift:'S1',state:t.verified?'closed':'open',batch:'B1'})),
@@ -112,7 +112,7 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  await waitFor(()=>expect(within(table).getByText('Ramesh Kumar')).toBeTruthy());
  expect(within(table).queryByText('Other Site')).toBeNull();
  expect(within(table).getByText(/VLB \d/)).toBeTruthy();
- expect(calls.filter(u=>u.includes('attendance/mis')).map(u=>new URL(u,'https://x').searchParams.get('from'))).toEqual(['2026-11-01','2026-11-08']);
+ expect(calls.filter(u=>u.includes('attendance/mis')).map(u=>new URL(u,'https://x').searchParams.get('from')).sort()).toEqual(['01','02','03','04','05','06','07','08','09','10'].map(d=>'2026-11-'+d));
  await waitFor(()=>expect(within(table).getByText('Operations')).toBeTruthy());
  fireEvent.click(screen.getByRole('button',{name:'Biometric'}));
  await waitFor(()=>expect(within(screen.getByRole('table',{name:'Attendance roster'})).getByText('Ramesh Kumar')).toBeTruthy());
@@ -120,4 +120,20 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  expect(calls.some(u=>u.includes('attendance/register'))).toBe(true);
  fireEvent.click(screen.getByRole('button',{name:'Trip card vs Biometric'}));
  expect(await screen.findByRole('button',{name:/days differ for Ramesh Kumar/})).toBeTruthy();
+});
+
+it('reads MIS one day per request, retries a failed day once, and keeps the days that worked',async()=>{
+ const {fetchTripCards}=await import('./rosterData');
+ const tries:Record<string,number>={};
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const day=new URL(url,'https://x').searchParams.get('from')!;tries[day]=(tries[day]||0)+1;
+  if(day==='2026-11-03')return Response.json({error:'The MIS attendance feed is temporarily unavailable.'},{status:503});
+  if(day==='2026-11-02'&&tries[day]===1)throw new DOMException('signal timed out','TimeoutError');
+  const report=misReport();return Response.json({...report,otDuties:report.otDuties.filter(d=>d.date===day||d.date<day)});}));
+ const progress:number[]=[];
+ const result=await fetchTripCards('a'.repeat(43),'2026-11-01','2026-11-04','Sasti OC'.replace('Sasti OC','Gevra'),done=>progress.push(done));
+ expect(tries).toEqual({'2026-11-01':1,'2026-11-02':2,'2026-11-03':2,'2026-11-04':1});
+ expect(result.failed).toEqual(['2026-11-03']);
+ expect([...new Set(result.rows.map(r=>r.date))].sort()).toEqual(['2026-11-02','2026-11-04']);
+ expect(result.misSites).toEqual(['Dipka','Gevra']);
+ expect(progress.at(-1)).toBe(4);
 });

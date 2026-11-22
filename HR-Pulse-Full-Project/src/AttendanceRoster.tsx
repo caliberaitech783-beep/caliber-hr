@@ -3,7 +3,7 @@ import {Download,RefreshCw} from 'lucide-react';
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,fetchBiometric,fetchTripCards} from './rosterData';
+import {FIRST_TRIP_DATE,fetchBiometric,fetchTripCards,type TripFetch} from './rosterData';
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 
@@ -37,7 +37,7 @@ export const diffText=(group:RosterGroup,tripsLoaded:boolean)=>!tripsLoaded?'—
 /** The groups a view lists: trip card people, biometric people, or everyone. */
 export const viewGroups=(groups:RosterGroup[],view:RosterView)=>groups.filter(g=>view==='trip'?g.hasTripCards:view==='bio'?Boolean(g.bio):true);
 
-export type TripState={status:'idle'|'loading'|'ready'|'error';message:string;rows:AttendanceRow[]|null};
+export type TripState={status:'idle'|'loading'|'ready'|'error';message:string;rows:AttendanceRow[]|null;failed?:string[];misSites?:string[]};
 type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripState;monthly:boolean;from:string;to:string;loading?:boolean;error?:string;emptyText?:string};
 
 /** The roster table, its toolbar, the difference drill-down and Export Excel. */
@@ -77,6 +77,8 @@ export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=fals
 
  return <>
   <div className="roster-legend" aria-label="Day codes">{ROSTER_CODES.filter(([code])=>view!=='bio'||code!=='?').map(([code,label])=><span key={code}><b className={'register-cell '+codeClass(code)}>{code}</b> {label}</span>)}{view!=='trip'&&<span><sup className="roster-sup">L</sup> late come · <sup className="roster-sup">E</sup> early going</span>}{compare&&<span><i className="roster-miss-key"/> day where trip card and biometric differ</span>}</div>
+  {view!=='bio'&&trip.status==='ready'&&(trip.failed?.length||0)>0&&<p className="roster-warn" role="alert">Trip cards could not be read from MIS for {trip.failed!.map(show).join(', ')}. Those days are left blank; press Fetch again to retry them.</p>}
+  {view!=='bio'&&trip.status==='ready'&&!(trip.rows||[]).length&&(trip.misSites?.length||0)>0&&<p className="roster-warn" role="alert">MIS has trip cards in these dates for {trip.misSites!.join(', ')}, but none for this site. If one of them is this site, its name is written differently in HR and MIS.</p>}
   <div className="roster-bar">
    {compare&&<label className="roster-check"><input type="checkbox" checked={onlyDiff} onChange={e=>setOnlyDiff(e.target.checked)}/>Only employees with a difference</label>}
    <span role="status">{status}</span>
@@ -122,7 +124,7 @@ export default function AttendanceRoster({grant,rows,dates,today,policy=DEFAULT_
  useEffect(()=>{
   let live=true;
   setTrip({key,status:'loading',message:'Reading trip cards…',rows:null});
-  fetchTripCards(grant,from,tripTo,'').then(rows=>{if(live)setTrip({key,status:'ready',message:'',rows});}).catch(e=>{if(live)setTrip({key,status:'error',message:(e as Error).message,rows:null});});
+  fetchTripCards(grant,from,tripTo,'',(done,total)=>{if(live&&done<total)setTrip(t=>t.key===key?{...t,message:`Reading trip cards from MIS · ${done} of ${total} days…`}:t);}).then(r=>{if(live)setTrip({key,status:'ready',message:'',rows:r.rows,failed:r.failed,misSites:r.misSites});}).catch(e=>{if(live)setTrip({key,status:'error',message:(e as Error).message,rows:null});});
   return()=>{live=false;};
  },[grant,from,tripTo,key]);
  const tripState=trip.key===key?trip:{status:'loading' as const,message:'Reading trip cards…',rows:null};
@@ -142,7 +144,7 @@ export function AttendanceRosterPage({grant}:{grant:string}){
  const [site,setSite]=useState(''),[from,setFrom]=useState(today.slice(0,8)+'01'),[to,setTo]=useState(today);
  const [department,setDepartment]=useState(''),[employee,setEmployee]=useState('');
  const [view,setView]=useState<RosterView|''>('');
- const [trip,setTrip]=useState<Source<AttendanceRow[]>>(idle),[bio,setBio]=useState<Source<Register>>(idle);
+ const [trip,setTrip]=useState<Source<TripFetch>>(idle),[bio,setBio]=useState<Source<Register>>(idle);
  const [reload,setReload]=useState(0);
  useEffect(()=>{let live=true;
   api<Lookup[]>(grant,'lookups').then(rows=>{if(!live)return;const list=Array.isArray(rows)?rows:[];
@@ -161,8 +163,8 @@ export function AttendanceRosterPage({grant}:{grant:string}){
   if(!wantTrip||trip.key===key)return;
   let live=true;
   setTrip({key,status:'loading',message:'Reading trip cards…',data:null});
-  fetchTripCards(grant,from,to,site,(done,total)=>{if(live&&done<total)setTrip(t=>t.key===key?{...t,message:`Reading trip cards from MIS · week ${done+1} of ${total}…`}:t);})
-   .then(rows=>{if(live)setTrip({key,status:'ready',message:'',data:rows});})
+  fetchTripCards(grant,from,to,site,(done,total)=>{if(live&&done<total)setTrip(t=>t.key===key?{...t,message:`Reading trip cards from MIS · ${done} of ${total} days…`}:t);})
+   .then(data=>{if(live)setTrip({key,status:'ready',message:'',data});})
    .catch(e=>{if(live)setTrip({key,status:'error',message:(e as Error).message,data:null});});
   return()=>{live=false;};
  },[wantTrip,key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -174,12 +176,12 @@ export function AttendanceRosterPage({grant}:{grant:string}){
   return()=>{live=false;};
  },[wantBio,key]); // eslint-disable-line react-hooks/exhaustive-deps
  const dates=useMemo(()=>ready?datesBetween(from,to):[],[ready,from,to]);
- const tripRows=trip.key===key&&trip.status==='ready'?trip.data:null,bioData=bio.key===key&&bio.status==='ready'?bio.data:null;
+ const tripRows=trip.key===key&&trip.status==='ready'?trip.data?.rows||[]:null,bioData=bio.key===key&&bio.status==='ready'?bio.data:null;
  const policy=bioData?.policy||DEFAULT_POLICY;
  const groups=useMemo(()=>buildRoster(bioData?.rows||[],view==='bio'?null:tripRows,dates,today,policy).map(g=>({...g,site:g.site||site})),[bioData,tripRows,dates,today,policy,view,site]);
  const people=groups.filter(g=>view?viewGroups([g],view).length>0:false);
  const shown=people.filter(g=>(!department||g.department===department)&&(!employee||g.key===employee));
- const tripState:TripState=trip.key!==key?{status:wantTrip?'loading':'idle',message:'Reading trip cards…',rows:null}:{status:trip.status,message:trip.message,rows:trip.data};
+ const tripState:TripState=trip.key!==key?{status:wantTrip?'loading':'idle',message:'Reading trip cards…',rows:null}:{status:trip.status,message:trip.message,rows:trip.data?.rows||null,failed:trip.data?.failed,misSites:trip.data?.misSites};
  const bioLoading=view!=='trip'&&wantBio&&(bio.key!==key||bio.status==='loading');
  const choose=(next:RosterView)=>{setView(next);setEmployee('');};
  const busy=tripState.status==='loading'||bioLoading;
