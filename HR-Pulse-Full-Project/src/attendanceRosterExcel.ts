@@ -73,6 +73,22 @@ export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,v
  if(compare)ws.getColumn(last).width=16;
  ws.pageSetup={orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0};
 
+ // Biometric and comparison: every employee's In, Out, worked hours and punches for each date (owner, 22 Nov 2026).
+ if(view!=='trip'){
+  const io=wb.addWorksheet('In - Out',{views:[{state:'frozen',ySplit:1}]});
+  const ih=['Employee ID','Name','Machine · ID','Date','Day','Code','In','Out','Worked hours','Late come','Early going','Every punch (machine)'];
+  io.addRow(ih).eachCell(c=>{c.font={bold:true,color:{argb:'FF5C4D6E'}};c.fill=fill('F3F0F7');});
+  const hm=(m:number|null)=>m==null?'':`${Math.floor(m/60)}:${String(m%60).padStart(2,'0')}`;
+  for(const g of groups)for(const d of g.bio?.days||[]){
+   if(!dates.includes(d.date))continue;
+   const row=io.addRow([g.linked?g.code:'Not linked',g.name,g.machines.join(', '),show(d.date),weekday(d.date),d.status,d.in||'',(d.out||'').replace(' (+1)',' +1'),hm(d.workedMinutes),d.late?'Yes':'',d.early?'Yes':'',(d.punches||[]).join(' · ')]);
+   const c=row.getCell(6);if(CODE_COLOURS[d.status]){c.fill=fill(CODE_COLOURS[d.status][0]);c.font={bold:true,color:{argb:'FF'+CODE_COLOURS[d.status][1]}};c.alignment={horizontal:'center'};}
+   if(d.late)row.getCell(7).font={bold:true,color:{argb:'FFB45309'}};
+   if(d.early)row.getCell(8).font={bold:true,color:{argb:'FFA12626'}};
+  }
+  [13,24,24,12,6,7,9,10,12,10,11,60].forEach((w,i)=>{io.getColumn(i+1).width=w;});
+  if(io.rowCount>1)io.autoFilter={from:{row:1,column:1},to:{row:io.rowCount,column:ih.length}};
+ }
  if(compare){
   const ds=wb.addWorksheet('Differences',{views:[{state:'frozen',ySplit:1}]});
   const dh=['Employee ID','Name','Site','Date','Day','Trip Card','Trip card details','Bio Matric','Biometric details','Difference'];

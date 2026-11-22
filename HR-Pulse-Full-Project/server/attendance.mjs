@@ -9,7 +9,7 @@ import {assignedSites,siteIds} from './scope.mjs';
 import {grantedMenus,canWrite} from './modules.mjs';
 import {createMisAttendance} from './mis-attendance.mjs';
 import {createTripCardStore} from './trip-card-store.mjs';
-import {loadRegister,readPolicy,savePolicy} from './attendance-register.mjs';
+import {loadRegister,loadSiteRegister,readPolicy,savePolicy} from './attendance-register.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const uuid=value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value||'');
@@ -167,6 +167,13 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   if(route==='register'&&method==='GET'){
    const {from,to}=validateRange(params);
    return loadRegister(pool,sites,from,to,indiaDay());
+  }
+  if(route==='site-register'&&method==='GET'){
+   // Attendance roster › Biometric: one site's machines, whoever punched on them (loadSiteRegister).
+   const {from,to}=validateRange(params);
+   const site=(await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[String(params.get('site')||''),sites])).rows[0];
+   if(!site)fail('This site is not assigned to your login.',403);
+   return loadSiteRegister(pool,{id:site.id,name:site.name,siteType:site.site_type||''},from,to,indiaDay());
   }
   if(route==='punctuality'&&method==='GET'){
    // Late come / early going come from the same day calculation as the register.

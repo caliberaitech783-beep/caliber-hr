@@ -92,7 +92,10 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
   if(url.includes('attendance/policy'))return Response.json({policy:DEFAULT_POLICY,version:1,canEdit:false});
   if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'GV',name:'Gevra'},{id:'s2',kind:'sites',code:'DP',name:'Dipka'},{id:'d1',kind:'departments',code:'OP',name:'Operations'}]);
   if(url.includes('attendance/mis'))return Response.json(misReport());
-  if(url.includes('attendance/register'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,rows:[bio,{...bio,id:'e2',code:'CMPL555',name:'Dipka Person',site:'Dipka'}]});
+  if(url.includes('attendance/site-register'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,site:q.get('site'),
+   machines:[{serial:'SST01',name:'ESSL K90',location:'Main gate',online:true,lastContact:null,lastPunch:'2026-11-10 16:10',punches:42}],
+   rows:q.get('site')==='Gevra'?[{...bio,linked:true,machinesUsed:['Main gate · 101'],days:bio.days.map(d=>({...d,punches:d.in?[d.in+' Main gate',d.out+' Main gate']:[]}))},
+    {...bio,id:'u:SST01|77',code:'',name:'RAMU (machine)',department:'',designation:'',linked:false,machinesUsed:['Main gate · 77']}]:[]});
   return Response.json({rows:[],total:0});}));
  render(<AttendanceManagement grant={'a'.repeat(43)} view="Biometric integration"/>);
  const tabs=document.querySelector('[aria-label="Biometric views"]')!.querySelectorAll('button');
@@ -116,8 +119,19 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  await waitFor(()=>expect(within(table).getByText('Operations')).toBeTruthy());
  fireEvent.click(screen.getByRole('button',{name:'Biometric'}));
  await waitFor(()=>expect(within(screen.getByRole('table',{name:'Attendance roster'})).getByText('Ramesh Kumar')).toBeTruthy());
- expect(screen.queryByText('Dipka Person')).toBeNull();
- expect(calls.some(u=>u.includes('attendance/register'))).toBe(true);
+ expect(calls.some(u=>u.includes('attendance/site-register')&&u.includes('site=Gevra'))).toBe(true);
+ // Machines panel, In / Out under the codes, the machine column and the unlinked machine ID.
+ expect(screen.getByRole('heading',{name:'Gevra · 1 biometric machine'})).toBeTruthy();
+ const roster=screen.getByRole('table',{name:'Attendance roster'});
+ expect(within(roster).getByRole('columnheader',{name:'Machine · ID'})).toBeTruthy();
+ expect(within(roster).getByRole('columnheader',{name:'Worked hours'})).toBeTruthy();
+ expect(within(roster).getAllByText('08:00').length).toBeGreaterThan(0);
+ expect(within(roster).getAllByText('17:00').length).toBeGreaterThan(0);
+ expect(within(roster).getByText('Not linked')).toBeTruthy();
+ expect(within(roster).getByText('RAMU (machine)')).toBeTruthy();
+ expect(screen.getByText(/1 machine ID punched at Gevra but is not linked/)).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Codes only'}));
+ expect(within(roster).queryAllByText('08:00').length).toBe(0);
  fireEvent.click(screen.getByRole('button',{name:'Trip card vs Biometric'}));
  expect(await screen.findByRole('button',{name:/days differ for Ramesh Kumar/})).toBeTruthy();
 });
@@ -190,4 +204,45 @@ it('opens saved trip cards at once, reads MIS only for the other days, and saves
  expect(screen.getByText(/Saved copy: 3 of 3 days/)).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:/Fetch again/}));
  await waitFor(()=>expect(calls.filter(c=>c.url.includes('attendance/mis')).length).toBe(5));
+});
+
+it('Biometric tab says when the site has no machine yet and offers Add machine',async()=>{
+ const {AttendanceRosterPage}=await import('./AttendanceRoster');
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams;
+  if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'SO',name:'Sasti OC'}]);
+  if(url.includes('attendance/site-register'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,site:'Sasti OC',machines:[],rows:[]});
+  return Response.json({});}));
+ const manage=vi.fn();
+ render(<AttendanceRosterPage grant={'a'.repeat(43)} onManageMachines={manage}/>);
+ const site=screen.getByLabelText('Site');
+ await waitFor(()=>expect(within(site).getByRole('option',{name:'Sasti OC'})).toBeTruthy());
+ fireEvent.change(site,{target:{value:'Sasti OC'}});
+ fireEvent.click(screen.getByRole('button',{name:'Biometric'}));
+ expect((await screen.findAllByText(/No biometric machine is added for Sasti OC yet/)).length).toBeGreaterThan(0);
+ fireEvent.click(screen.getByRole('button',{name:'Add machine'}));
+ expect(manage).toHaveBeenCalled();
+});
+
+it('Fetch from these machines asks the bridge PC for each machine of the site',async()=>{
+ const {fetchFromMachines}=await import('./rosterData');
+ const posts:string[]=[];let polls=0;
+ vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
+  if(init?.method==='POST'){const serial=JSON.parse(String(init.body)).deviceSerial;posts.push(serial);return Response.json({id:serial,state:'PENDING',punchesReceived:0,newPunches:0,error:''});}
+  polls++;const id=url.split('/').pop()!;return Response.json(id==='B'?{id,state:'FAILED',punchesReceived:0,newPunches:0,error:'Bridge PC offline'}:{id,state:'DONE',punchesReceived:9,newPunches:4,error:''});}));
+ const steps:string[]=[];
+ await fetchFromMachines('a'.repeat(43),['A','B'],(serial,request,error)=>steps.push(serial+':'+(request?.state||error)),async()=>{});
+ expect(posts).toEqual(['A','B']);
+ expect(steps).toEqual(['A:PENDING','A:DONE','B:PENDING','B:FAILED']);
+ expect(polls).toBe(2);
+});
+
+it('In / Out sheet lists every employee and date with In, Out and the punches',async()=>{
+ const row={...bio,linked:true,machinesUsed:['Main gate · 101'],days:bio.days.map(d=>({...d,punches:d.in?[d.in+' Main gate']:[]}))};
+ const groups=buildRoster([row],null,dates,'2026-11-06');
+ const wb=await rosterWorkbook({groups,dates,tripsLoaded:false,monthly:false,from:'2026-11-01',to:'2026-11-05',view:'bio'});
+ const io=wb.getWorksheet('In - Out')!;
+ expect(io.getRow(1).values).toContain('Every punch (machine)');
+ expect(io.rowCount).toBe(6);
+ expect(io.getRow(3).getCell(7).value).toBe('08:00');
+ expect(io.getRow(3).getCell(12).value).toBe('08:00 Main gate');
 });

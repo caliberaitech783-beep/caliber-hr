@@ -51,7 +51,7 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
   for (const punch of punches) {
     const minute = stampMinutes(punch.at);
     if (minute == null) continue;
-    byEmployee.set(punch.employeeId, [...(byEmployee.get(punch.employeeId) || []), minute]);
+    byEmployee.set(punch.employeeId, [...(byEmployee.get(punch.employeeId) || []), {minute, where: punch.where || ''}]);
   }
   const passMinutes = new Map();
   for (const pass of gatePasses) {
@@ -62,11 +62,12 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
     const starts = clockMinutes(employee.starts), rawEnd = clockMinutes(employee.ends);
     const ends = starts != null && rawEnd != null ? (rawEnd <= starts ? rawEnd + 1440 : rawEnd) : null;
     const anchor = starts == null ? 0 : starts - EARLY_WINDOW;
-    const duties = new Map();
-    for (const minute of (byEmployee.get(employee.id) || []).sort((a, b) => a - b)) {
+    const duties = new Map(), places = new Map();
+    for (const {minute, where} of (byEmployee.get(employee.id) || []).sort((a, b) => a.minute - b.minute)) {
       const duty = Math.floor((minute - anchor) / 1440);
       if (duty < first || duty > last) continue;
       duties.set(duty, [...(duties.get(duty) || []), minute - duty * 1440]);
+      if (where) places.set(duty, [...(places.get(duty) || []), clock(minute - duty * 1440) + ' ' + where]);
     }
     const exempt = isExempt(employee.designation, policy);
     const holidayFor = date => holidays.find(h => h.date === date && (!h.siteId || [employee.siteId, employee.siteCode, employee.site].includes(h.siteId)));
@@ -102,7 +103,9 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       days.push({
         date, status, calendar, note, in: clock(inMinute), out: clock(outMinute), workedMinutes: counts ? result.workedMinutes : null,
         late: counts && result.late, early: counts && result.early, missPunch: status === 'MP',
-        gatePassMinutes: gate, gatePassDeduction: result.gatePassDeduction, exempt
+        gatePassMinutes: gate, gatePassDeduction: result.gatePassDeduction, exempt,
+        // Site roster: every punch of the day with the machine it came from ("05:52 Main gate").
+        ...(places.has(number) ? {punches: places.get(number)} : {})
       });
     }
     const months = {};
@@ -144,7 +147,13 @@ export async function savePolicy(db, actor, input) {
   return {policy, version: row.version, updatedBy: row.updated_by, updatedAt: row.updated_at};
 }
 
-export async function loadRegister(db, sites, from, to, today) {
+/**
+ * sites: the employees' HR sites (null = all). options.devices: read only punches from these machines (the site roster),
+ * options.employeeIds: these linked employees instead of the employees of `sites`. With devices, every punch carries the
+ * machine it came from (day.punches).
+ */
+export async function loadRegister(db, sites, from, to, today, options = {}) {
+  const {devices = null, employeeIds = null} = options;
   const {policy} = await readPolicy(db);
   const employees = (await db.query(`
    SELECT DISTINCT e.id,e.code,e.name,e.data->>'siteId' AS site_id,site.code AS site_code,site.name AS site,site.data->>'siteType' AS site_type,
@@ -158,14 +167,17 @@ export async function loadRegister(db, sites, from, to, today) {
    LEFT JOIN hr_records sh ON sh.id::text=e.data->>'shiftId' AND sh.kind='shifts'
    LEFT JOIN hr_records dep ON dep.id::text=e.data->>'departmentId' AND dep.kind='departments'
    LEFT JOIN hr_records des ON des.id::text=e.data->>'designationId' AND des.kind='designations'
-   WHERE $1::text[] IS NULL OR e.data->>'siteId'=ANY($1)
-   ORDER BY e.name,e.code`, [sites])).rows;
+   WHERE CASE WHEN $2::uuid[] IS NULL THEN ($1::text[] IS NULL OR e.data->>'siteId'=ANY($1)) ELSE e.id=ANY($2::uuid[]) END
+   ORDER BY e.name,e.code`, [employeeIds ? null : sites, employeeIds])).rows;
   const ids = employees.map(e => e.id);
   if (!ids.length) return buildRegister({from, to, today, policy});
   const [punches, holidays, leaves, ods, passes, pay] = await Promise.all([
-    db.query(`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM hr_attendance_punches p
+    db.query(`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+      coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM hr_attendance_punches p
      JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
-     WHERE l.employee_id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, [ids, from, to]),
+     LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
+     WHERE l.employee_id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
+      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`, [ids, from, to, devices]),
     db.query(`SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
      WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to]),
     db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'fromDate' AS from_date,coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate') AS to_date,
@@ -187,11 +199,63 @@ export async function loadRegister(db, sites, from, to, today) {
     employees: employees.map(e => ({id: String(e.id), code: e.code, name: e.name, siteId: e.site_id || '', siteCode: e.site_code || '',
       site: e.site || '', siteType: e.site_type || '', department: e.department || '', shift: e.shift || '', starts: e.starts, ends: e.ends, designation: e.designation || '',
       dailyWage: Number(e.daily_wage) || 0, monthlyPay: monthly.get(String(e.id)) || 0})),
-    punches: punches.rows.map(p => ({employeeId: String(p.employee_id), at: p.at})),
+    punches: punches.rows.map(p => ({employeeId: String(p.employee_id), at: p.at, where: devices ? p.place : ''})),
     holidays: holidays.rows.map(h => ({date: h.date, siteId: h.site_id, name: h.name})),
     leaves: leaves.rows.map(l => ({employeeId: l.employee_id, from: l.from_date, to: l.to_date, compOff: isCompOff(l.leave_type)})),
     ods: ods.rows.map(o => ({employeeId: o.employee_id, from: o.from_date, to: o.to_date})),
     gatePasses: passes.rows.map(p => ({employeeId: p.employee_id, date: p.date,
       minutes: gatePassMinutes({history: p.history, outTime: p.out_time, returnTime: p.return_time})}))
   });
+}
+
+/**
+ * Attendance roster › Biometric for one site (owner, 22 Nov 2026): everyone who punched on that site's machines in these
+ * dates, whatever site their HR record shows, with In / Out from those machines and every punch with its machine.
+ * Machine IDs not linked to an employee are listed too (linked: false), rated on calendar days.
+ * site {id,name,siteType}. Returns the register plus the site's machines (status, last punch, punches in these dates).
+ */
+export async function loadSiteRegister(db, site, from, to, today) {
+  const {rows: machines} = await db.query(`SELECT d.serial,d.name,d.location,d.last_contact,coalesce(d.last_contact>now()-interval '2 minutes',false) AS online,
+    to_char(max(p.punched_at),'YYYY-MM-DD HH24:MI') AS last_punch,
+    count(p.id) FILTER (WHERE p.punched_at>=$2::date AND p.punched_at<$3::date+1)::int AS punches
+   FROM hr_attendance_devices d LEFT JOIN hr_attendance_punches p ON p.device_serial=d.serial AND p.punched_at>=$2::date-31 AND p.punched_at<$3::date+2
+   WHERE d.site_id=$1 GROUP BY d.serial ORDER BY d.location,d.name,d.serial`, [site.id, from, to]);
+  const machineList = machines.map(m => ({serial: m.serial, name: m.name || '', location: m.location || '', online: Boolean(m.online),
+    lastContact: m.last_contact || null, lastPunch: m.last_punch || '', punches: Number(m.punches) || 0}));
+  const {policy} = await readPolicy(db);
+  if (!machines.length) return {from, to, policy, site: site.name, machines: machineList, rows: []};
+  const serials = machines.map(m => m.serial);
+  const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
+  const {rows: ids} = await db.query(`SELECT p.device_serial,p.biometric_id,l.employee_id,coalesce(u.name,'') AS machine_name
+   FROM hr_attendance_punches p
+   LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
+   LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id
+   WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
+   GROUP BY 1,2,3,4`, [serials, from, to]);
+  const used = new Map();
+  for (const r of ids) {
+    const key = r.employee_id ? String(r.employee_id) : `u:${r.device_serial}|${r.biometric_id}`;
+    used.set(key, [...(used.get(key) || []), `${place.get(r.device_serial)} · ${r.biometric_id}`]);
+  }
+  const linkedIds = [...new Set(ids.filter(r => r.employee_id).map(r => String(r.employee_id)))];
+  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds})).rows : [];
+  const unlinked = ids.filter(r => !r.employee_id);
+  let others = [];
+  if (unlinked.length) {
+    const [{rows: punches}, {rows: holidays}] = await Promise.all([
+      db.query(`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM hr_attendance_punches p
+       LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
+       WHERE l.employee_id IS NULL AND p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, [serials, from, to]),
+      db.query(`SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
+       WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to])
+    ]);
+    others = buildRegister({from, to, today, policy,
+      employees: unlinked.map(r => ({id: `u:${r.device_serial}|${r.biometric_id}`, code: '', name: r.machine_name || `Machine ID ${r.biometric_id}`,
+        siteId: String(site.id), site: site.name, siteType: site.siteType || '', designation: ''})),
+      punches: punches.map(p => ({employeeId: `u:${p.device_serial}|${p.biometric_id}`, at: p.at, where: place.get(p.device_serial)})),
+      holidays: holidays.map(h => ({date: h.date, siteId: h.site_id, name: h.name}))}).rows;
+  }
+  const rows = [...linked.map(r => ({...r, linked: true})), ...others.map(r => ({...r, linked: false}))]
+    .map(r => ({...r, machinesUsed: [...new Set(used.get(r.id) || [])]}));
+  return {from, to, policy, site: site.name, machines: machineList, rows};
 }

@@ -85,11 +85,30 @@ export async function fetchTripCards(grant: string, from: string, to: string, si
   return {rows, failed, error, misSites: [...misSites].sort()};
 }
 
-/** Biometric register (punches rated with the HR policy), kept to the chosen site. */
-export async function fetchBiometric(grant: string, from: string, to: string, site: string) {
-  const register = await api<Register>(grant, `attendance/register?from=${from}&to=${to}`);
-  const rows = Array.isArray(register?.rows) ? register.rows : [];
-  return {...register, rows: site ? rows.filter(r => sameSite(site, r.site)) : rows};
+export type SiteMachine = {serial: string; name: string; location: string; online: boolean; lastContact: string | null; lastPunch: string; punches: number};
+export type SiteRegister = Register & {site?: string; machines: SiteMachine[]};
+/**
+ * Biometric for a site (owner, 22 Nov 2026): every punch on that site's machines (Biometric machines › site), whoever
+ * punched, with In / Out and each punch's machine; machine IDs not linked to an employee are included (linked: false).
+ */
+export async function fetchBiometric(grant: string, from: string, to: string, site: string): Promise<SiteRegister> {
+  const register = await api<SiteRegister>(grant, 'attendance/site-register?' + new URLSearchParams({site, from, to}));
+  return {...register, rows: Array.isArray(register?.rows) ? register.rows : [], machines: Array.isArray(register?.machines) ? register.machines : []};
+}
+export type FetchRequest = {id: string; state: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'; punchesReceived: number; newPunches: number; error: string};
+/** Fetch from these machines: asks the bridge PC to read each machine in turn and waits for it (2 s polls, 2 minutes a machine). */
+export async function fetchFromMachines(grant: string, serials: string[], onStep: (serial: string, request: FetchRequest | null, error?: string) => void, wait = (ms: number) => new Promise(r => setTimeout(r, ms))) {
+  for (const serial of serials) {
+    try {
+      let request = await api<FetchRequest>(grant, 'attendance/fetch', 'POST', {deviceSerial: serial});
+      onStep(serial, request);
+      for (let i = 0; i < 60 && (request.state === 'PENDING' || request.state === 'RUNNING'); i++) {
+        await wait(2000);
+        request = await api<FetchRequest>(grant, 'attendance/fetch/' + request.id);
+        onStep(serial, request);
+      }
+    } catch (e) { onStep(serial, null, (e as Error).message); }
+  }
 }
 
 /* Saved trip cards (owner, 22 Nov 2026): "Save trip cards" stores each day of the site's trip cards in HR
