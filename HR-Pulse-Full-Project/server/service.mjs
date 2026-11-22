@@ -120,6 +120,8 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     if(existing?.data.__importDraft==='true')input=await resolveImportReferences(db,kind,input);
     if(kind==='outDutyRequests')input={...input,code:await nextRequestCode(db,kind,existing?.code,input)};
     if(kind==='gatePasses')input={...input,code:await nextRequestCode(db,kind,existing?.code,input)};
+    /* A transfer always starts from the employee's current posting: From location is read from Employee Master, never typed. */
+    if(kind==='employeeTransfers'){const current=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[input.employeeId])).rows[0]?.site;input={...input,fromSiteId:current||input.fromSiteId,code:await nextRequestCode(db,kind,existing?.code,input)};}
     data=validate(kind,input);
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);
@@ -241,27 +243,28 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     /* Read-only: the employee details a leave / OD form fills in, and the approval route it would take. Nothing is saved. */
     async requestPreview(profile,params) {
       const kind=params.get('kind')||'',employeeId=params.get('employeeId')||'';
-      if(!['leaveRequests','outDutyRequests','gatePasses'].includes(kind)||!uuid(employeeId))throw problem('Invalid request preview');
+      if(!['leaveRequests','outDutyRequests','gatePasses','employeeTransfers'].includes(kind)||!uuid(employeeId))throw problem('Invalid request preview');
       authorize(profile,kind);
       const employee=(await pool.query("SELECT r.id,r.name,r.data FROM hr_records r WHERE r.id=$1 AND r.kind='employees' AND "+scopeSql('r','$2','$3'),[employeeId,await siteIds(pool,profile),profile.actor])).rows[0];
       if(!employee)throw problem('Employee not found',404);
       const name=async(id,kindName)=>id?(await pool.query('SELECT name FROM hr_records WHERE id::text=$1 AND kind=$2',[String(id),kindName])).rows[0]?.name||'':'';
       const d=employee.data||{},f=d.officeData||d.fields||{},siteId=d.siteId||'';
       const department=await name(d.departmentId,'departments')||String(f['Department']||d.department||'');
-      const designation=await name(d.designationId,'designations')||String(f['Designation']||d.designation||'');
+      const designation=String(d.designationTitle||'')||await name(d.designationId,'designations')||String(f['Designation *']||f['Designation']||d.designation||'');
+      const reportingTo=String(d.reportingManagerName||f['Reporting To']||d.reportingTo||'');
       let route=null,routeNote='';
       try{
-        const flow=kind==='leaveRequests'?await telegramLeaveFlow(pool,siteId):await odSiteFlow(pool,siteId);
-        const steps=kind==='gatePasses'?gatePassWorkflow(flow,department).data.steps:flow&&kind==='leaveRequests'?telegramSteps(flow,department):kind==='outDutyRequests'?odApprovalWorkflow(flow,department).data.steps:(await employeeHierarchy(pool,siteId))?.data?.steps;
-        if(steps?.length)route=steps.map(s=>stepLabel(s.label));else routeNote='The approval matrix sets the route when you submit.';
+        const flow=kind==='employeeTransfers'?null:kind==='leaveRequests'?await telegramLeaveFlow(pool,siteId):await odSiteFlow(pool,siteId);
+        const steps=kind==='employeeTransfers'?(await transferWorkflow(pool,siteId))?.data?.steps:kind==='gatePasses'?gatePassWorkflow(flow,department).data.steps:flow&&kind==='leaveRequests'?telegramSteps(flow,department):kind==='outDutyRequests'?odApprovalWorkflow(flow,department).data.steps:(await employeeHierarchy(pool,siteId))?.data?.steps;
+        if(steps?.length)route=steps.map(s=>stepLabel(s.label));else routeNote=kind==='employeeTransfers'?'Transfer routing is not switched on. Set it in Approval Master › Employee Transfer.':'The approval matrix sets the route when you submit.';
       }catch(e){routeNote=e.message||'The approval route is not configured for this employee yet.';}
-      return {employee:{name:employee.name,companyId:d.companyId||'',siteId,department,designation},route,routeNote,missing:[d.companyId?'':'Company',siteId?'':'Site'].filter(Boolean)};
+      return {employee:{name:employee.name,companyId:d.companyId||'',siteId,department,designation,reportingTo},route,routeNote,missing:[d.companyId?'':'Company',siteId?'':'Site'].filter(Boolean)};
     },
     async lookups(profile) {
       if(!grantedMenus(profile).size)throw problem('No HR permissions assigned',403);
       const kinds=[...new Set(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).flatMap(([,config])=>config.fields.filter(x=>x.type==='reference').map(x=>x.reference)))];
       if(grantedMenus(profile).has('Approval Management')&&!kinds.includes('employees'))kinds.push('employees');
-      if(canRead(profile,'outDutyRequests')||canRead(profile,'gatePasses'))for(const kind of ['departments','designations','sites'])if(!kinds.includes(kind))kinds.push(kind);
+      if(canRead(profile,'outDutyRequests')||canRead(profile,'gatePasses')||canRead(profile,'employeeTransfers'))for(const kind of ['departments','designations','sites'])if(!kinds.includes(kind))kinds.push(kind);
       const result=await pool.query("SELECT r.id,r.kind,r.code,r.name,CASE WHEN r.kind='designations' THEN r.data->>'departmentId' END AS department_id,r.data->>'actor' AS actor FROM hr_records r WHERE r.kind=ANY($1) AND r.status IN ('ACTIVE','APPROVED') AND "+scopeSql('r','$2')+" ORDER BY r.name LIMIT 10000",[kinds,await siteIds(pool,profile)]);
       if(profile.permissions?.leaveOnly){
         const normalized=value=>String(value||'').trim().toLowerCase().replace(/&/g,'and').replace(/\bltd\b/g,'limited').replace(/[^a-z0-9]/g,'');
