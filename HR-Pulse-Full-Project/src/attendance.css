@@ -41,6 +41,60 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .code-MP{background:#fff1e0;color:#b45309}
 .code-L,.code-OD{background:#eef3ff;color:#2d5ba1}
 .code-H,.code-WO{background:#f3f0f7;color:#6b5a80}
+/* Monthly roster: a colour of its own for every code */
+.code-P{background:#eaf3de;color:#27500a}
+.code-IN{background:#e1f5ee;color:#085041;outline:1px dashed #1d9e75}
+.code-HD{background:#faeeda;color:#633806}
+.code-A{background:#fcebeb;color:#791f1f}
+.code-WO{background:#f1efe8;color:#444441}
+.code-H{background:#eeedfe;color:#3c3489}
+.code-CO{background:#e1f5ee;color:#085041}
+.code-L{background:#fbeaf0;color:#72243e}
+.code-OD{background:#e6f1fb;color:#0c447c}
+.code-MP{background:#faece7;color:#712b13}
+.roster-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:4px 0 10px;font-size:12.5px;color:#5c4d6e}
+.roster-legend b.register-cell{display:inline-block;min-width:28px;padding:2px 4px;text-align:center}
+.roster-sup{font-size:9px;color:#b45309;font-weight:700}
+.roster-grid{font-size:12.5px}
+.roster-grid th{font-size:11.5px;vertical-align:bottom}
+.register-grid.roster-grid th:first-child,.register-grid.roster-grid td:first-child{min-width:0}
+.roster-grid .roster-fixed{position:sticky;background:#fff;z-index:2;box-sizing:border-box}
+.roster-grid .roster-src,.roster-grid .roster-sr,.roster-grid .roster-id,.roster-grid .roster-name{max-width:var(--w);width:var(--w);min-width:var(--w)!important;overflow:hidden;text-overflow:ellipsis}
+.roster-grid .roster-src{--w:86px}.roster-grid .roster-sr{--w:50px}.roster-grid .roster-id{--w:92px}.roster-grid .roster-name{--w:170px;white-space:normal}
+.roster-grid thead .roster-fixed{z-index:3}
+.roster-grid .roster-src{left:0;width:86px;min-width:86px;text-align:left;font-size:11.5px;font-weight:700}
+.roster-grid .roster-sr{left:86px}
+.roster-grid .roster-id{left:136px;text-align:left}
+.roster-grid .roster-name{left:228px;text-align:left;box-shadow:inset -1px 0 0 #eee7f3}
+.roster-grid tr.roster-trip .roster-src{color:#633806}
+.roster-grid tr.roster-bio .roster-src{color:#0c447c}
+.roster-grid tr.roster-bio td,.roster-grid tr.roster-bio th{border-bottom:2px solid #e4dbef}
+.roster-grid tr.roster-trip td,.roster-grid tr.roster-trip th{border-bottom:1px dashed #eee7f3}
+.roster-grid tr.roster-picked>*{background-color:#f6f1fd}
+.roster-grid tr.roster-picked .roster-src{box-shadow:inset 3px 0 0 #7c3aed}
+.roster-grid td.roster-miss .roster-code{box-shadow:0 0 0 2px #e24b4a}
+.roster-miss-key{display:inline-block;width:14px;height:12px;border-radius:3px;box-shadow:0 0 0 2px #e24b4a;vertical-align:-1px;margin-right:2px}
+.code-Q{background:#f1efe8;color:#5f5e5a;outline:1px dashed #b4b2a9}
+.roster-grid .roster-diff{min-width:120px;white-space:normal;background:#fff7f7}
+.roster-diff-open{font-weight:700;color:#a12626;background:#fcebeb;border:1px solid #f09595;border-radius:8px;padding:4px 14px;cursor:pointer}
+.roster-diff-open[aria-pressed="true"]{outline:2px solid #7c3aed}
+.roster-diff-ok{font-weight:700;color:#27500a}
+.roster-diff-none{color:#7a698b;font-size:12px}
+.roster-nolink{text-align:left!important;color:#7a698b;font-style:italic}
+.roster-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin:0 0 10px;font-size:13px;color:#5c4d6e}
+.roster-bar button{margin-left:auto}
+.roster-check{display:flex;align-items:center;gap:6px}
+.roster-drill{margin-top:14px;padding:12px;border:1px solid #e4dbef;border-radius:10px;background:#fcfbfe}
+.roster-drill h3{margin:0 0 8px;font-size:15px}
+.roster-drill td.roster-detail{white-space:normal;min-width:220px;font-size:12.5px;color:#4b3d5c}
+.roster-drill td.roster-reason{white-space:normal;color:#a12626;font-weight:600}
+.roster-grid .roster-text{text-align:left;min-width:110px;white-space:normal}
+.roster-grid td.roster-day{padding:4px 2px}
+.roster-grid .roster-code{display:inline-block;min-width:28px;padding:3px 2px;text-align:center}
+.roster-grid .code-none{background:transparent}
+.roster-grid th.roster-sunday{color:#a12626}
+.roster-grid .roster-total{background:#faf8fc;min-width:52px;white-space:normal}
+.roster-grid .roster-paid{background:#f1ecf8;color:#3c2a55}
 .attendance-policy .policy-rules{display:grid;gap:8px;margin:14px 0 20px;padding-left:20px}
 .attendance-policy .policy-rules li{display:grid;grid-template-columns:170px 1fr;gap:12px;font-size:13.5px;line-height:1.45}
 .attendance-policy .policy-rules b{color:#30263c}

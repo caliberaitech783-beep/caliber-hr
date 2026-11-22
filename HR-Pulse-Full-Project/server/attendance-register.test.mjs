@@ -116,3 +116,14 @@ test('only an unrestricted HR administrator can change the policy', async () => 
   assert.equal(view.policy.graceMinutes, 15);
   assert.equal(view.canEdit, false);
 });
+
+test('roster: comp off leave shows as CO, department is carried on the line', async () => {
+  const {isCompOff} = await import('./attendance-register.mjs');
+  assert.deepEqual(['Comp Off', 'CO Comp off', 'Compensatory off', 'comp-off', 'CL Casual Leave', 'COL Casual'].map(isCompOff), [true, true, true, true, false, false]);
+  const result = buildRegister({from: '2026-11-02', to: '2026-11-04', today: '2026-11-20', employees: [{...staff, department: 'Accounts'}],
+    leaves: [{employeeId: 'e1', from: '2026-11-02', to: '2026-11-02', compOff: true}, {employeeId: 'e1', from: '2026-11-03', to: '2026-11-03'}]});
+  const row = result.rows[0];
+  assert.equal(row.department, 'Accounts');
+  assert.deepEqual(row.days.map(d => d.status), ['CO', 'L', 'A']);
+  assert.deepEqual([row.summary.CO, row.summary.L], [1, 1]);
+});
