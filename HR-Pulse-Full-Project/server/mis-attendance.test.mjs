@@ -53,7 +53,7 @@ test('a conflicting correction rolls back without writing an audit entry', async
 });
 
 test('two PCs receive the same centrally cached site and day report', async () => {
-  let cached, fetches = 0;
+  let cached, fetches = 0, requestedUrl;
   const db = {
     async query(sql, args) {
       if (sql.startsWith('SELECT report')) return {rows: cached ? [cached] : []};
@@ -72,13 +72,34 @@ test('two PCs receive the same centrally cached site and day report', async () =
       return {rows: []};
     }
   };
-  const api = createMisAttendance(pool, {fetchMis: async () => {
+  const api = createMisAttendance(pool, {fetchMis: async url => {
     fetches++;
+    requestedUrl = url;
     return Response.json(report);
   }});
   const params = () => new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site: 'Gevra'});
   const first = await api({actor: 'first', permissions: {}}, 'a'.repeat(43), 'mis', 'GET', {}, params());
   const second = await api({actor: 'second', permissions: {}}, 'b'.repeat(43), 'mis', 'GET', {}, params());
   assert.equal(fetches, 1);
+  assert.equal(requestedUrl.searchParams.get('site'), 'Gevra');
   assert.deepEqual(second.otDuties, first.otDuties);
+});
+
+test('an explicit refresh forwards the exact selected site and bypass flag to Pulse-II', async () => {
+  let requestedUrl;
+  const db = {async query(sql) {if (sql.startsWith('SELECT report')) return {rows: []};return {rows: []};}, release() {}};
+  const pool = {
+    connect: async () => db,
+    async query(sql) {
+      if (sql.includes('hr_mis_attendance_corrections')) return {rows: []};
+      if (sql.includes("kind='sites'")) return {rows: [{name: 'Dudhichua OB East'}]};
+      return {rows: []};
+    }
+  };
+  const api = createMisAttendance(pool, {fetchMis: async url => {requestedUrl = url;return Response.json(report);}});
+  await api({actor: 'site-hr', permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: '2026-11-14', to: '2026-11-14', site: 'Dudhichua OB East', refresh: '1'}));
+  assert.equal(requestedUrl.searchParams.get('site'), 'Dudhichua OB East');
+  assert.equal(requestedUrl.searchParams.get('refresh'), '1');
+  assert.equal(requestedUrl.searchParams.get('from'), '2026-11-13');
+  assert.equal(requestedUrl.searchParams.get('to'), '2026-11-15');
 });

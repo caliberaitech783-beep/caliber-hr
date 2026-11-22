@@ -48,11 +48,11 @@ function publicCorrection(row) {
 }
 
 export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
-  async function read(grant, from, to) {
+  async function read(grant, from, to, selectedSite = '', refresh = false) {
     const ranges = reportRanges(from, to);
     const reports = await Promise.all(ranges.map(async ([start, end]) => {
       const url = new URL('/api/integrations/hr/attendance', ORIGIN);
-      url.search = new URLSearchParams({from: dayString(start), to: dayString(end)});
+      url.search = new URLSearchParams({from: dayString(start), to: dayString(end), ...(selectedSite ? {site: selectedSite} : {}), ...(refresh ? {refresh: '1'} : {})});
       let response;
       try {
         response = await fetchMis(url, {
@@ -81,7 +81,7 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
       const cached = (await db.query('SELECT report,fetched_at FROM hr_mis_attendance_cache WHERE cache_key=$1', [key])).rows[0];
       // A refresh that waited behind another PC uses the snapshot that PC just refreshed.
       if (cached && (!refresh || new Date(cached.fetched_at) >= requestedAt)) return cached.report;
-      const report = await read(grant, from, to);
+      const report = await read(grant, from, to, selectedSite, refresh);
       await db.query(`INSERT INTO hr_mis_attendance_cache(cache_key,report,fetched_by,fetched_at) VALUES($1,$2,$3,now())
         ON CONFLICT(cache_key) DO UPDATE SET report=EXCLUDED.report,fetched_by=EXCLUDED.fetched_by,fetched_at=now()`, [key, report, profile.actor]);
       return report;
