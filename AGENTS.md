@@ -114,3 +114,11 @@ Set by the owner on 21 November 2026.
 - A login is a PM when its Pulse role is "PM" / "Project Manager", or every HR trial assignment it has is PM.
 - `isProjectManager` in `HR-Pulse-Full-Project/src/pmAccess.ts` and `pmOnly` in `src/Workspace.tsx` hold it; `src/pmAccess.test.tsx` checks it.
 - The server refuses employee creation, import, edits, submission, deletion and Aadhaar scanning from a PM login (403, "A PM login can only approve employees…"), whatever menus Pulse assigned; approvals need only Approval Management and stay open. `isProjectManager` in `HR-Pulse-Full-Project/server/pm-access.mjs` (used by `canWrite` in `server/modules.mjs`) holds it; `server/pm-employee-write.test.mjs` checks it.
+
+# Site logins never see Corporate / HO
+
+Set by the owner on 22 November 2026.
+
+- A login whose site rights cover only OB / COAL sites (HR at Majri, Sasti and the other NCL / WCL sites) sees only OB / COAL under Employee Master. The Corporate / HO button is not shown and the page stays on OB / COAL.
+- Admin, "All sites" logins and any login with an office (Head Office, Corporate Office, HO, CO) in its site rights still see both.
+- `siteOnlyLogin` in `HR-Pulse-Full-Project/src/siteRights.ts` (used by `src/Workspace.tsx`, with `/api/telegram/trial-scope`) holds it; `src/siteOnlyCorporate.test.tsx` checks it.

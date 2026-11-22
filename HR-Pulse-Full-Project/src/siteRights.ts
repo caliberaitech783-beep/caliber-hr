@@ -14,3 +14,14 @@ export function pulseTrialSites(siteScope:unknown,adminLevel:unknown):SiteRight[
   return keys.some(key=>assigned.has(key));
  }).map(site=>({region,site})));
 }
+
+/* Owner, 22 Nov 2026: a site login (HR at Majri, Sasti and other OB / COAL sites) never sees Corporate / HO in
+   Employee Master. A login is a site login when its site rights are limited to OB / COAL sites (not admin, not
+   "All sites") and none of its assigned sites is an office (Head Office, Corporate Office, HO, CO). */
+const officeScope=(value:string)=>/\b(head|corporate)\s*office\b|\bHO\b|\bCO\b|\bCO-HO\b|nagpur\s*office/i.test(value);
+export function siteOnlyLogin(siteScope:unknown,adminLevel:unknown,resolved?:SiteRight[]|null):boolean{
+ const values=(Array.isArray(siteScope)?siteScope:[siteScope]).flatMap(value=>typeof value==='string'?value.split('|'):[]).map(value=>value.trim()).filter(Boolean);
+ if(values.some(officeScope))return false;
+ const sites=resolved===undefined?pulseTrialSites(siteScope,adminLevel):resolved;
+ return sites!==null&&sites.length>0;
+}
