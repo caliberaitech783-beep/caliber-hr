@@ -7,9 +7,11 @@ import type {AttendancePolicy} from '../server/attendance-policy.mjs';
 
 /* Registers built from the server day calculation (GET attendance/register),
    which applies Settings › HR policy · attendance to biometric punches. */
-export type RegisterDay={date:string;status:string;calendar?:string;note:string;in:string;out:string;workedMinutes:number|null;late:boolean;early:boolean;missPunch:boolean;gatePassMinutes:number;gatePassDeduction:number;exempt:boolean};
+export type RegisterDay={date:string;status:string;calendar?:string;note:string;in:string;out:string;workedMinutes:number|null;late:boolean;early:boolean;missPunch:boolean;gatePassMinutes:number;gatePassDeduction:number;exempt:boolean;punches?:string[]};
 export type RegisterSummary={full:number;half:number;absent:number;missPunch:number;late:number;early:number;lateEarly:number;halfDutyCuts:number;duties:number;gatePassDeduction:number;H:number;L:number;CO?:number;OD:number;WO:number;IN:number};
-export type RegisterRow={id:string;code:string;name:string;siteId:string;site:string;siteType:string;department?:string;shift:string;designation:string;exempt:boolean;shiftStart:string;shiftEnd:string;days:RegisterDay[];summary:RegisterSummary};
+export type RegisterRow={id:string;code:string;name:string;siteId:string;site:string;siteType:string;department?:string;shift:string;designation:string;exempt:boolean;shiftStart:string;shiftEnd:string;days:RegisterDay[];summary:RegisterSummary;
+ /** Site roster only: false for a machine ID not linked to an employee; the machines and IDs the person punched on. */
+ linked?:boolean;machinesUsed?:string[]};
 export type Register={from:string;to:string;policy:AttendancePolicy;rows:RegisterRow[]};
 export type RegisterMode='month'|'week-day'|'site'|'miss'|'gate';
 

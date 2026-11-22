@@ -3,7 +3,7 @@ import {Download,RefreshCw,Save} from 'lucide-react';
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,fetchBiometric,fetchTripCards,readSavedTripCards,saveTripCards,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo} from './rosterData';
+import {FIRST_TRIP_DATE,fetchBiometric,fetchFromMachines,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo} from './rosterData';
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 
@@ -28,6 +28,11 @@ const addDays=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z')+
 const datesBetween=(from:string,to:string)=>{const out:string[]=[];for(let d=from;d<=to;d=addDays(d,1))out.push(d);return out;};
 export const MAX_ROSTER_DAYS=31;
 
+/** "06:05 (+1)" → "06:05 +1"; no Out → "—". */
+const NEWLINE=String.fromCharCode(10);
+export const outText=(out?:string)=>out?out.replace(' (+1)',' +1'):'—';
+/** The month's worked hours (lunch already taken off by the HR policy), as h:mm. */
+export const workedHours=(g:RosterGroup)=>{const m=(g.bio?.days||[]).reduce((s,d)=>s+(d.workedMinutes||0),0);return m?`${Math.floor(m/60)}:${String(m%60).padStart(2,'0')}`:'—';};
 export function bioTotals(group:RosterGroup,dates:string[]){
  const days=group.bio?.days||[];
  return lineTotals(group.bioCodes,dates,{lateEarly:days.filter(d=>d.late||d.early).length,cuts:group.bio?.summary.halfDutyCuts||0});
@@ -46,7 +51,7 @@ type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripSt
 
 /** The roster table, its toolbar, the difference drill-down and Export Excel. */
 export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=false,error='',emptyText}:TableProps){
- const [onlyDiff,setOnlyDiff]=useState(false),[open,setOpen]=useState(''),[exporting,setExporting]=useState(false);
+ const [onlyDiff,setOnlyDiff]=useState(false),[open,setOpen]=useState(''),[exporting,setExporting]=useState(false),[times,setTimes]=useState(true);
  const drill=useRef<HTMLDivElement>(null);
  const compare=view==='compare',tripsLoaded=trip.rows!==null,tripRunning=trip.status==='loading';
  const shown=viewGroups(groups,view).filter(g=>!compare||!onlyDiff||g.mismatches.length>0);
@@ -55,7 +60,9 @@ export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=fals
  useEffect(()=>{if(openKey)drill.current?.scrollIntoView?.({block:'nearest',behavior:'smooth'});},[openKey]);
  const diffCount=shown.filter(g=>g.mismatches.length).length;
  const lines=(['trip','bio'] as const).filter(line=>compare||view===line);
- const span=dates.length+ROSTER_TOTALS.length+(monthly?1:0)+(view==='trip'?1:0);
+ // Biometric by site: the machine and ID column, In / Out under each day's code, and the month's worked hours.
+ const machineCol=view!=='trip'&&shown.some(g=>g.machines.length>0),showTimes=times&&view!=='trip',hoursCol=view!=='trip';
+ const span=dates.length+ROSTER_TOTALS.length+(monthly?1:0)+(view==='trip'?1:0)+(hoursCol?1:0);
 
  async function exportExcel(){
   setExporting(true);
@@ -67,13 +74,16 @@ export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=fals
   const miss=compare&&group.mismatches.some(m=>m.date===date);
   const title=show(date)+' · '+(isTrip?(tripDay?tripDay.duties.map(d=>[d.cards.join('/'),d.shift,d.equipment,d.time,d.output].filter(Boolean).join(' · ')).join(' | '):codeLabel(code)):
    (bio?`${codeLabel(code)}${bio.in?` · ${bio.in}–${bio.out||'?'}`:''}${bio.note?' · '+bio.note:''}`:codeLabel(code)));
-  return <td key={date} className={'roster-day'+(miss?' roster-miss':'')}><span className={'register-cell roster-code '+codeClass(code)} title={title}>{code}{!isTrip&&(bio?.late||bio?.early)&&<sup>{bio.late?'L':''}{bio.early?'E':''}</sup>}</span></td>;
+  const punches=!isTrip&&bio?.punches?.length?NEWLINE+bio.punches.join(NEWLINE):'';
+  if(!isTrip&&showTimes)return <td key={date} className={'roster-day'+(miss?' roster-miss':'')}><span className={'register-cell roster-code roster-times '+codeClass(code)} title={title+punches}><b>{code}</b>
+   <small className={bio?.late?'roster-late':undefined}>{bio?.in||'—'}</small><small className={bio?.early?'roster-early':undefined}>{outText(bio?.out)}</small></span></td>;
+  return <td key={date} className={'roster-day'+(miss?' roster-miss':'')}><span className={'register-cell roster-code '+codeClass(code)} title={title+punches}>{code}{!isTrip&&(bio?.late||bio?.early)&&<sup>{bio.late?'L':''}{bio.early?'E':''}</sup>}</span></td>;
  });
  const totals=(t:LineTotals)=>ROSTER_TOTALS.map(([key])=><td key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}>{key==='paidDays'||key==='totalDays'?<strong>{t[key]}</strong>:t[key]}</td>);
  const lineCells=(g:RosterGroup,line:'trip'|'bio')=>line==='trip'
-  ?(tripsLoaded&&g.hasTripCards?<>{cells(g.tripCodes,g,true)}{totals(tripTotals(g,dates))}{monthly&&<td className="roster-total">—</td>}{view==='trip'&&<td className="roster-text roster-cards">{cardSummary(g,dates)||'—'}</td>}</>:
+  ?(tripsLoaded&&g.hasTripCards?<>{cells(g.tripCodes,g,true)}{totals(tripTotals(g,dates))}{monthly&&<td className="roster-total">—</td>}{hoursCol&&<td className="roster-total">—</td>}{view==='trip'&&<td className="roster-text roster-cards">{cardSummary(g,dates)||'—'}</td>}</>:
    <td colSpan={span} className="roster-nolink">{tripRunning?'No trip card in the days read so far':trip.status==='error'?'Trip cards unavailable':'No trip card or log book in these dates'}</td>)
-  :(g.bio?<>{cells(g.bioCodes,g,false)}{totals(bioTotals(g,dates))}{monthly&&<td className="roster-total">{money(g.bio.summary.gatePassDeduction)}</td>}</>:
+  :(g.bio?<>{cells(g.bioCodes,g,false)}{totals(bioTotals(g,dates))}{monthly&&<td className="roster-total">{g.linked?money(g.bio.summary.gatePassDeduction):'—'}</td>}{hoursCol&&<td className="roster-total">{workedHours(g)}</td>}</>:
    <td colSpan={span} className="roster-nolink">Biometric ID not linked in Biometric integration</td>);
  const status=view!=='bio'&&tripRunning?(trip.message||'Reading trip cards…')+(tripsLoaded?` · ${shown.length} employee${shown.length===1?'':'s'} so far`:''):view!=='bio'&&trip.status==='error'?`Trip cards unavailable: ${trip.message}`:
   loading?'Reading biometric punches…':`${shown.length} employee${shown.length===1?'':'s'}`+(compare?` · ${diffCount} with a difference`:'');
@@ -89,20 +99,21 @@ export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=fals
   <div className="roster-bar">
    {compare&&<label className="roster-check"><input type="checkbox" checked={onlyDiff} onChange={e=>setOnlyDiff(e.target.checked)}/>Only employees with a difference</label>}
    <span role="status">{status}</span>
+   {view!=='trip'&&<span className="roster-seg" role="group" aria-label="Day boxes"><button type="button" aria-pressed={!times} onClick={()=>setTimes(false)}>Codes only</button><button type="button" aria-pressed={times} onClick={()=>setTimes(true)}>Codes + In / Out</button></span>}
    {view!=='bio'&&trip.onSave&&<button type="button" className="roster-save" disabled={!trip.canSave} onClick={trip.onSave}><Save/>{trip.saveLabel||'Save trip cards'}</button>}
    <button type="button" disabled={!shown.length||exporting} onClick={exportExcel}><Download/>{exporting?'Preparing…':'Export Excel'}</button>
   </div>
   <div className="attendance-table"><table className={'register-grid roster-grid'+(compare?'':' roster-nosrc')} aria-label="Attendance roster">
-   <thead><tr>{compare&&<th className="roster-fixed roster-src">Source</th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>Sr. No.</th><th className="roster-fixed roster-id">Employee ID</th><th className="roster-fixed roster-name">Name</th><th className="roster-text">Site</th><th className="roster-text">Department</th><th className="roster-text">Designation</th>
+   <thead><tr>{compare&&<th className="roster-fixed roster-src">Source</th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>Sr. No.</th><th className="roster-fixed roster-id">Employee ID</th><th className="roster-fixed roster-name">Name</th><th className="roster-text">Site</th><th className="roster-text">Department</th><th className="roster-text">Designation</th>{machineCol&&<th className="roster-text roster-machine">Machine · ID</th>}
     {dates.map(d=>{const state=view!=='bio'?trip.days?.[d]:undefined;return <th key={d} title={show(d)+(state==='done'&&trip.saved?.[d]?' · Saved copy':'')+(state?' · '+DAY_STATE[state]+(state==='failed'&&trip.errors?.[d]?': '+trip.errors[d]:''):'')} className={[weekday(d)==='Su'?'roster-sunday':'',state&&state!=='done'?'roster-day-'+state:''].filter(Boolean).join(' ')||undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small>{state&&state!=='done'&&<i className="roster-day-mark" aria-label={DAY_STATE[state]}/>}</th>;})}
-    {ROSTER_TOTALS.map(([key,label])=><th key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}>{label}</th>)}{monthly&&<th className="roster-total">Gate pass</th>}
+    {ROSTER_TOTALS.map(([key,label])=><th key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}>{label}</th>)}{monthly&&<th className="roster-total">Gate pass</th>}{hoursCol&&<th className="roster-total">Worked hours</th>}
     {view==='trip'&&<th className="roster-text roster-cards">Cards (days)</th>}{compare&&<th className="roster-diff">{DIFF_HEADING}</th>}</tr></thead>
    <tbody>{shown.length?shown.map((g,i)=>{const picked=g.key===open,diff=diffText(g,tripsLoaded),rows=lines.length;return <Fragment key={g.key}>
-    {lines.map((line,j)=><tr key={line} className={(line==='trip'?'roster-trip':'roster-bio')+(rows===1?' roster-single':'')+(picked?' roster-picked':'')}>
+    {lines.map((line,j)=><tr key={line} className={(line==='trip'?'roster-trip':'roster-bio')+(rows===1?' roster-single':'')+(picked?' roster-picked':'')+(g.linked?'':' roster-unlinked')}>
      {compare&&<th scope="row" className="roster-fixed roster-src">{line==='trip'?'Trip Card':'Bio Matric'}</th>}
-     {j===0&&<><td rowSpan={rows} className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>{i+1}</td><td rowSpan={rows} className="roster-fixed roster-id">{g.code}</td>
+     {j===0&&<><td rowSpan={rows} className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>{i+1}</td><td rowSpan={rows} className={'roster-fixed roster-id'+(g.linked?'':' roster-unlinked-id')}>{g.linked?g.code:'Not linked'}</td>
       <td rowSpan={rows} className="roster-fixed roster-name"><strong>{g.name}</strong>{(g.shift||g.exempt)&&<small className="register-sub">{[g.shift,g.exempt?'Exempt':''].filter(Boolean).join(' · ')}</small>}</td>
-      <td rowSpan={rows} className="roster-text">{g.site||'—'}</td><td rowSpan={rows} className="roster-text">{g.department||'—'}</td><td rowSpan={rows} className="roster-text">{g.designation||'—'}</td></>}
+      <td rowSpan={rows} className="roster-text">{g.site||'—'}</td><td rowSpan={rows} className="roster-text">{g.department||'—'}</td><td rowSpan={rows} className="roster-text">{g.designation||'—'}</td>{machineCol&&<td rowSpan={rows} className="roster-text roster-machine">{g.machines.length?g.machines.map(m=><span key={m}>{m}</span>):'—'}</td>}</>}
      {lineCells(g,line)}
      {compare&&j===0&&<td rowSpan={rows} className="roster-diff">{g.mismatches.length?<button type="button" className="roster-diff-open" aria-pressed={picked} aria-label={`${g.mismatches.length} days differ for ${g.name}`} onClick={()=>setOpen(picked?'':g.key)}>{diff}</button>:
       <span className={diff==='0'?'roster-diff-ok':'roster-diff-none'}>{diff==='0'?'0 · matches':diff}</span>}{g.pending>0&&<small className="register-sub">{g.pending} not verified</small>}</td>}
@@ -118,8 +129,8 @@ export function RosterTable({groups,dates,view,trip,monthly,from,to,loading=fals
      <td><span className={'register-cell roster-code '+codeClass(m.bio)}>{m.bio||'—'}</span></td><td className="roster-detail">{m.bioDetail}</td><td className="roster-reason">{m.reason}</td></tr>)}</tbody>
    </table></div>
   </div>}
-  <p className="help-text">{view==='bio'?'Biometric: punches of employees linked in Biometric integration, rated with the attendance policy. ':'Trip card: MIS VLB trip cards, ELB job cards and LMV vehicle log books, rated with the attendance policy hours rule (? until the MIS batch is closed). '}
-   {compare?'Bio Matric: biometric punches of employees linked in Biometric integration. ':''}Weekly off, holiday, leave, comp off and OD come from HR records{compare?' and show on both lines':''}. Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + comp off + leave + on duty.</p>
+  <p className="help-text">{view==='bio'?'Biometric: every punch on this site’s machines (Biometric machines), rated with the attendance policy: In is the first punch of the shift, Out the last; +1 is the next morning. Orange In is late come, red Out is early going. Hover a day for every punch and its machine. Machine IDs not linked to an employee show the name on the machine; link them in Machine punches. ':'Trip card: MIS VLB trip cards, ELB job cards and LMV vehicle log books, rated with the attendance policy hours rule (? until the MIS batch is closed). '}
+   {compare?'Bio Matric: every punch on this site’s machines (Biometric machines). ':''}Weekly off, holiday, leave, comp off and OD come from HR records{compare?' and show on both lines':''}. Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + comp off + leave + on duty.</p>
  </>;
 }
 
@@ -142,6 +153,22 @@ export default function AttendanceRoster({grant,rows,dates,today,policy=DEFAULT_
  return <RosterTable groups={shown} dates={dates} view="compare" trip={tripState} monthly={monthly} from={from} to={to} loading={loading} error={error}/>;
 }
 
+/** The chosen site's machines (Biometric machines › site): status, last punch, punches in these dates, and the bridge fetch. */
+function MachinesPanel({site,machines,pull,onPull,onManage}:{site:string;machines:SiteMachine[];pull:{running:boolean;message:string;error:string}|null;onPull:()=>void;onManage?:()=>void}){
+ const stamp=(at:string)=>at?at.slice(8,10)+'-'+at.slice(5,7)+' '+at.slice(11,16):'—';
+ if(!machines.length)return <div className="roster-machines roster-machines-empty" role="status"><b>No biometric machine is added for {site} yet.</b> Add the site’s machines with their serial numbers in Biometric machines; the roster then reads every punch from them.
+  {onManage&&<button type="button" className="roster-save" onClick={onManage}>Add machine</button>}</div>;
+ const online=machines.filter(m=>m.online).length;
+ return <div className="roster-machines" aria-label={`${site} biometric machines`}>
+  <div className="roster-machines-head"><h3>{site} · {machines.length} biometric machine{machines.length===1?'':'s'}</h3><span>{online} online · {machines.length-online} not online</span><span className="roster-grow"/>
+   <button type="button" className="roster-save" disabled={pull?.running} onClick={onPull}><RefreshCw className={pull?.running?'spin':''}/>{pull?.running?'Fetching…':'Fetch from these machines'}</button>
+   {onManage&&<button type="button" onClick={onManage}>Manage machines</button>}</div>
+  {pull&&(pull.message||pull.error)&&<p className={pull.error?'roster-warn':'roster-saved'} role="status">{pull.message}{pull.error?' '+pull.error:''}</p>}
+  <div className="attendance-table"><table aria-label="Site machines"><thead><tr>{['Machine location','Machine name','Serial no.','Status','Last punch','Punches in these dates'].map(h=><th key={h}>{h}</th>)}</tr></thead>
+   <tbody>{machines.map(m=><tr key={m.serial}><td>{m.location||'—'}</td><td>{m.name||'—'}</td><td><code>{m.serial}</code></td>
+    <td><span className={m.online?'roster-online':'roster-offline'}>{m.online?'Online':'Not online'}</span></td><td>{stamp(m.lastPunch)}</td><td>{m.punches.toLocaleString('en-IN')}</td></tr>)}</tbody></table></div>
+ </div>;
+}
 type Source<T>={key:string;status:'idle'|'loading'|'ready'|'error';message:string;data:T|null};
 /** The Trip card tab's reading, day by day: each day's state, rows and MIS error, and the site names MIS returned. */
 type TripStream={key:string;days:Record<string,DayState>;rows:Record<string,AttendanceRow[]>;errors:Record<string,string>;sites:string[];runs:number;
@@ -158,13 +185,14 @@ export function applyDay(stream:TripStream,u:DayUpdate):TripStream{
 const idle={key:'',status:'idle' as const,message:'',data:null};
 
 /** Attendance roster page: site, dates, department and employee first; then the Trip card, Biometric or comparison tab. */
-export function AttendanceRosterPage({grant}:{grant:string}){
+export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onManageMachines?:()=>void}){
  const today=india();
  const [sites,setSites]=useState<string[]|null>(null),[departments,setDepartments]=useState<string[]>([]),[lookupError,setLookupError]=useState('');
  const [site,setSite]=useState(''),[from,setFrom]=useState(today.slice(0,8)+'01'),[to,setTo]=useState(today);
  const [department,setDepartment]=useState(''),[employee,setEmployee]=useState('');
  const [view,setView]=useState<RosterView|''>('');
- const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<Source<Register>>(idle);
+ const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<Source<SiteRegister>>(idle);
+ const [pull,setPull]=useState<{running:boolean;message:string;error:string}|null>(null),[bioReload,setBioReload]=useState(0);
  const keyRef=useRef(''),forceMis=useRef(false);
  const [reload,setReload]=useState(0);
  useEffect(()=>{let live=true;
@@ -219,17 +247,32 @@ export function AttendanceRosterPage({grant}:{grant:string}){
    return info?{...t,save,saved:{...t.saved,[day]:info},fresh:t.fresh.filter(d=>d!==day)}:{...t,save};
   })).finally(()=>setTrip(t=>t.key===runKey&&t.save?{...t,save:{...t.save,running:false}}:t));
  }
+ const bioKey=key+'|'+bioReload;
  useEffect(()=>{
-  if(!wantBio||bio.key===key)return;
+  if(!wantBio||bio.key===bioKey)return;
   let live=true;
-  setBio({key,status:'loading',message:'',data:null});
-  fetchBiometric(grant,from,to,site).then(data=>{if(live)setBio({key,status:'ready',message:'',data});}).catch(e=>{if(live)setBio({key,status:'error',message:(e as Error).message,data:null});});
+  setBio(b=>({key:bioKey,status:'loading',message:'',data:b.key.startsWith(key+'|')?b.data:null}));
+  fetchBiometric(grant,from,to,site).then(data=>{if(live)setBio({key:bioKey,status:'ready',message:'',data});}).catch(e=>{if(live)setBio({key:bioKey,status:'error',message:(e as Error).message,data:null});});
   return()=>{live=false;};
- },[wantBio,key]); // eslint-disable-line react-hooks/exhaustive-deps
+ },[wantBio,bioKey]);
+ /** Fetch from these machines: the bridge PC reads each machine of the site in turn, then the roster is read again. */
+ async function pullMachines(machines:SiteMachine[]){
+  setPull({running:true,message:`Asking the bridge PC to read ${machines.length} machine${machines.length===1?'':'s'}…`,error:''});
+  let added=0;const errors:string[]=[];
+  await fetchFromMachines(grant,machines.map(m=>m.serial),(serial,request,error)=>{
+   const label=machines.find(m=>m.serial===serial)?.location||serial;
+   if(error)errors.push(`${label}: ${error}`);
+   else if(request?.state==='FAILED')errors.push(`${label}: ${request.error||'the machine did not answer'}`);
+   else if(request?.state==='DONE')added+=Number(request.newPunches)||0;
+   setPull(p=>p&&{...p,message:`Reading ${label}…`});
+  });
+  setPull({running:false,message:`${added} new punch${added===1?'':'es'} received.`,error:[...new Set(errors)].join(' · ')});
+  setBioReload(n=>n+1);
+ } // eslint-disable-line react-hooks/exhaustive-deps
  const dates=useMemo(()=>ready?datesBetween(from,to):[],[ready,from,to]);
  const tripList=useMemo(()=>trip.key===key?Object.values(trip.rows).flat():[],[trip.key,trip.rows,key]);
  const tripRead=useMemo(()=>new Set(trip.key===key?Object.keys(trip.rows):[]),[trip.key,trip.rows,key]);
- const tripRows=trip.key===key&&tripRead.size?tripList:null,bioData=bio.key===key&&bio.status==='ready'?bio.data:null;
+ const tripRows=trip.key===key&&tripRead.size?tripList:null,bioData=bio.key.startsWith(key+'|')&&bio.data?bio.data:null;
  const policy=bioData?.policy||DEFAULT_POLICY;
  const groups=useMemo(()=>buildRoster(bioData?.rows||[],view==='bio'?null:tripRows,dates,today,policy,tripRead).map(g=>({...g,site:g.site||site})),[bioData,tripRows,dates,today,policy,view,site,tripRead]);
  const people=groups.filter(g=>view?viewGroups([g],view).length>0:false);
@@ -252,7 +295,8 @@ export function AttendanceRosterPage({grant}:{grant:string}){
   (freshDone.length?` ${freshDone.length} day${freshDone.length===1?'':'s'} read from MIS ${freshDone.length===1?'is':'are'} not saved yet.`:' Press Fetch again for the latest from MIS.'):'';
  tripState.saveError=save&&!save.running&&save.failed.length?`Could not save ${save.failed.map(show).join(', ')}: ${save.error}`:'';
  if(tripState.status==='error')tripState.message=trip.errors[failedDays[0]]||'The MIS attendance feed is temporarily unavailable.';
- const bioLoading=view!=='trip'&&wantBio&&(bio.key!==key||bio.status==='loading');
+ const bioLoading=view!=='trip'&&wantBio&&(bio.key!==bioKey||bio.status==='loading')&&!bioData;
+ const unlinkedCount=(bioData?.rows||[]).filter(r=>r.linked===false).length;
  const choose=(next:RosterView)=>{setView(next);setEmployee('');};
  const busy=tripState.status==='loading'||bioLoading;
 
@@ -264,7 +308,7 @@ export function AttendanceRosterPage({grant}:{grant:string}){
    <label>From<input type="date" value={from} max={to||today} onChange={e=>setFrom(e.target.value)}/></label>
    <label>To<input type="date" value={to} min={from} max={today} onChange={e=>setTo(e.target.value)}/></label>
    <label>Department<select value={department} onChange={e=>setDepartment(e.target.value)}><option value="">All departments</option>{departments.map(d=><option key={d}>{d}</option>)}</select></label>
-   <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>!department||g.department===department).map(g=><option key={g.key} value={g.key}>{g.code} · {g.name}</option>)}</select></label>
+   <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>!department||g.department===department).map(g=><option key={g.key} value={g.key}>{g.linked?g.code:'Not linked'} · {g.name}</option>)}</select></label>
    <button type="button" disabled={!ready||!view||busy} onClick={()=>{forceMis.current=view!=='bio';setReload(n=>n+1);}}><RefreshCw className={busy?'spin':''}/>Fetch again</button>
   </div>
   {lookupError&&<p className="error" role="alert">Sites could not be loaded: {lookupError}</p>}
@@ -272,8 +316,10 @@ export function AttendanceRosterPage({grant}:{grant:string}){
   {rangeError&&<p className="error" role="alert">{rangeError}</p>}
   <div className="module-tabs roster-tabs" aria-label="Roster source">{VIEW_TABS.map(([id,label])=><button key={id} type="button" className={view===id?'selected':''} aria-pressed={view===id} disabled={!site} title={site?undefined:'Select a site first'} onClick={()=>choose(id)}>{label}</button>)}</div>
   {!site?<p className="roster-hint">Select a site first.</p>:!view?<p className="roster-hint">Press <b>Trip card</b> to fetch from MIS, or <b>Biometric</b> to fetch the machine punches, for {site} · {show(from)} to {show(to)}.</p>:
-   ready&&<>{view!=='trip'&&bio.key===key&&bio.status==='error'&&<p className="error" role="alert">Biometric punches unavailable: {bio.message}</p>}
+   ready&&<>{view!=='trip'&&bio.key===bioKey&&bio.status==='error'&&<p className="error" role="alert">Biometric punches unavailable: {bio.message}</p>}
+   {view!=='trip'&&bioData&&<MachinesPanel site={site} machines={bioData.machines} pull={pull} onPull={()=>void pullMachines(bioData.machines)} onManage={onManageMachines}/>}
+   {view!=='trip'&&bioData&&unlinkedCount>0&&<p className="roster-warn" role="alert">{unlinkedCount} machine ID{unlinkedCount===1?'':'s'} punched at {site} but {unlinkedCount===1?'is':'are'} not linked to an employee yet. {unlinkedCount===1?'It is':'They are'} shown with the name on the machine; link them in Machine punches to see the employee code.</p>}
    <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} loading={bioLoading} error={view!=='trip'&&bio.key===key&&bio.status==='error'?bio.message:''}
-    emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?`No biometric punches for employees of ${site} in these dates. Only employees whose machine ID is linked in Biometric integration appear here.`:undefined}/></>}
+    emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):undefined}/></>}
  </section>;
 }

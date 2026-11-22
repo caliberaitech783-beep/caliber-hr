@@ -45,6 +45,9 @@ export type RosterGroup = {
   hasTripCards: boolean;
   mismatches: Mismatch[];
   pending: number;
+  /** Biometric by site: the machines and IDs punched on, and false for a machine ID not linked to an employee. */
+  machines: string[];
+  linked: boolean;
 };
 
 const CALENDAR = new Set(['WO', 'H', 'L', 'CO', 'OD']);
@@ -113,14 +116,15 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
   const tripPeople = trips ? tripCardDays(trips, policy) : new Map();
   const groups: RosterGroup[] = register.map(row => ({
     key: row.id, code: row.code, name: row.name, site: row.site, department: row.department || '', designation: row.designation, shift: row.shift, exempt: row.exempt,
-    bio: row, bioCodes: {}, tripCodes: {}, tripDays: {}, hasTripCards: false, mismatches: [], pending: 0
+    bio: row, bioCodes: {}, tripCodes: {}, tripDays: {}, hasTripCards: false, mismatches: [], pending: 0,
+    machines: row.machinesUsed || [], linked: row.linked !== false
   }));
-  const byCode = new Map(groups.map(g => [normal(g.code), g]));
+  const byCode = new Map(groups.filter(g => g.code).map(g => [normal(g.code), g]));
   for (const [code, person] of tripPeople) {
     let group = byCode.get(code);
     if (!group) {
       group = {key: 'mis:' + code, code, name: person.name, site: person.site, department: '', designation: person.designation, shift: '', exempt: false,
-        bioCodes: {}, tripCodes: {}, tripDays: {}, hasTripCards: false, mismatches: [], pending: 0};
+        bioCodes: {}, tripCodes: {}, tripDays: {}, hasTripCards: false, mismatches: [], pending: 0, machines: [], linked: true};
       groups.push(group);
       byCode.set(code, group);
     }

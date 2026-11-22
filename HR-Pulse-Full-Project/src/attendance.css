@@ -144,3 +144,23 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .roster-save:disabled{background:#efe9f6;color:#7a698b;border-color:#e4dbef;cursor:default}
 .roster-save svg{width:16px;height:16px}
 .roster-saved{margin:0 0 10px;padding:8px 12px;border:1px solid #c0dd97;border-radius:8px;background:#f3f9ec;color:#27500a;font-size:13px}
+/* Attendance roster › Biometric by site: machines panel, In / Out in the day boxes, unlinked machine IDs */
+.roster-machines{margin:0 0 12px;padding:10px 12px;border:1px solid #e4dbef;border-radius:10px;background:#fcfbfe}
+.roster-machines-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:0 0 8px;font-size:13px;color:#5c4d6e}
+.roster-machines-head h3{margin:0;font-size:15px;color:#30263c}
+.roster-grow{flex:1}
+.roster-machines-empty{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:13.5px;color:#5c4d6e}
+.roster-online{background:#eaf3de;color:#27500a;border-radius:6px;padding:2px 8px;font-size:12px}
+.roster-offline{background:#faeeda;color:#633806;border-radius:6px;padding:2px 8px;font-size:12px}
+.roster-seg{display:inline-flex;border:1px solid #d8cde6;border-radius:8px;overflow:hidden}
+.roster-seg button{border:0;border-radius:0;background:#fff;padding:5px 10px;font-size:12px;cursor:pointer}
+.roster-seg button[aria-pressed="true"]{background:#efe9f6;color:#3c2a55;font-weight:600}
+.roster-grid .roster-code.roster-times{display:inline-flex;flex-direction:column;align-items:center;min-width:44px;line-height:1.25;padding:2px 2px 3px}
+.roster-grid .roster-times b{font-size:11.5px}
+.roster-grid .roster-times small{font-size:10.5px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.roster-grid .roster-times small.roster-late{color:#b45309}
+.roster-grid .roster-times small.roster-early{color:#a12626}
+.roster-grid .roster-machine{min-width:130px;font-size:12px}
+.roster-grid .roster-machine span{display:block}
+.roster-grid tr.roster-unlinked>td{background:#fff8f0}
+.roster-grid .roster-unlinked-id{color:#a12626;font-weight:600}

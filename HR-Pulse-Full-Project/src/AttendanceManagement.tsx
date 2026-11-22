@@ -190,7 +190,7 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
    <button className={tab==='roster'?'selected':''} aria-pressed={tab==='roster'} onClick={()=>setTab('roster')}>Attendance roster</button>
   </div>
   {/* Owner, 22 Nov 2026: the monthly roster (Trip Card and Bio Matric lines, difference drill-down) as a tab after Biometric vs trip card. */}
-  {tab==='roster'&&<AttendanceRosterPage grant={grant}/>}
+  {tab==='roster'&&<AttendanceRosterPage grant={grant} onManageMachines={()=>setTab('machines')}/>}
   {(tab==='sheet'||tab==='tripPunch'||tab==='recon')&&<iframe key={tab} ref={attendanceFrame} src={legacyModuleUrl(tab==='sheet'?'punch':tab==='tripPunch'?'tpunch':'recon',policy)} sandbox={inPulseII ? "allow-scripts allow-downloads" : undefined} title={tab==='sheet'?'ESSL punch log upload':tab==='tripPunch'?'Trip card punch':'Biometric vs trip card comparison'}/>}
   {tab==='punches'&&<>
 
