@@ -13,10 +13,15 @@ export const CARD_TYPES: [string, string][] = [['Trip card', 'VLB'], ['Job card'
 export const cardTypes = (sources: string[]) => CARD_TYPES.filter(([source]) => sources.includes(source)).map(([, card]) => card);
 /** HR site names and MIS site names are written differently ("Jayant" / "Jayant OB"): compare letters and digits only. */
 const siteWords = (site: string) => String(site || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+// Words that only say what kind of site it is: "Sasti OC", "Sasti OCP" and "Sasti" are the same site.
+const SITE_KIND = new Set(['ob', 'oc', 'ocp', 'ocm', 'opencast', 'coal', 'mine', 'mines', 'project', 'site', 'colliery']);
+const placeWords = (site: string) => {const words = siteWords(site).split(' ').filter(Boolean), place = words.filter(w => !SITE_KIND.has(w)); return place.length ? place : words;};
 export function sameSite(hrSite: string, misSite: string) {
   const a = siteWords(hrSite), b = siteWords(misSite);
   if (!a || !b) return false;
-  return a === b || (' ' + b + ' ').includes(' ' + a + ' ') || (' ' + a + ' ').includes(' ' + b + ' ');
+  if (a === b || (' ' + b + ' ').includes(' ' + a + ' ') || (' ' + a + ' ').includes(' ' + b + ' ')) return true;
+  const pa = placeWords(hrSite), pb = placeWords(misSite);
+  return pa.every(w => pb.includes(w)) || pb.every(w => pa.includes(w));
 }
 /** The roster's dates in week-long pieces, so each MIS trip card request stays well inside the time limit. */
 export function weekPieces(from: string, to: string) {
