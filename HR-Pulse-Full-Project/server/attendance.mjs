@@ -56,16 +56,21 @@ export function validateUpload(input){
 
 /** Machine name or location as typed: one line, at most 80 characters. */
 export const cleanText=value=>String(value??'').replace(/[\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().slice(0,80);
-/** A biometric machine added to a site (register) or changed (site, name, location). */
+/** IPv4 address as typed ('' when left empty): four numbers 0-255 without leading zeros. */
+export function cleanIp(value){
+ const ip=String(value??'').trim();
+ if(!ip)return '';
+ const parts=ip.split('.');
+ if(parts.length!==4||!parts.every(p=>/^(0|[1-9]\d{0,2})$/.test(p)&&Number(p)<=255))fail('Enter a valid IP address, e.g. 192.168.1.201');
+ return ip;
+}
+/** A biometric machine added to a site (register) or changed (site, name, location, IP address). */
 export function validateDevice(input,register){
  const serial=String(input?.serial||'').trim(),siteId=String(input?.siteId||'');
  if(register&&!siteId)fail('Choose a site');
  if(!SERIAL.test(serial))fail('Enter a valid machine serial number (letters, numbers, - or _)');
  if(siteId&&!uuid(siteId))fail('Choose a site');
- // The machine's IP address on the site network, kept for records (fetching goes through the bridge PC): IPv4 or IPv6.
- const ip=input?.ipAddress===undefined?null:String(input.ipAddress).trim();
- if(ip&&!(/^((25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(25[0-5]|2[0-4]\d|1?\d?\d)$/.test(ip)||/^[0-9a-fA-F:]{2,39}$/.test(ip)&&ip.includes(':')))fail('Enter a valid IP address, for example 192.168.1.201');
- return {serial,siteId,name:cleanText(input?.name),location:input?.location===undefined?null:cleanText(input.location),ipAddress:ip};
+ return {serial,siteId,name:cleanText(input?.name),location:input?.location===undefined?null:cleanText(input.location),ipAddress:input?.ipAddress===undefined?null:cleanIp(input.ipAddress)};
 }
 
 const indiaDay=()=>new Date(Date.now()+5.5*3600_000).toISOString().slice(0,10);
@@ -282,8 +287,9 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
     const row=(await db.query(statement,[serial,siteId||null,name,location,ipAddress])).rows[0];
     if(!row&&register)fail('This serial number is already listed. Use its existing row to assign the site.',409);
     if(!row)fail('Device not found',404);
-    await audit(db,profile.actor,register?'REGISTER_ATTENDANCE_DEVICE':'ASSIGN_ATTENDANCE_DEVICE',{serial,siteId,name,location:row.location,ipAddress:row.ip_address||''});
-    return {serial,siteId,name,location:row.location,ipAddress:row.ip_address||''};
+    const saved={serial,siteId,name,location:row.location,ipAddress:row.ip_address||''};
+    await audit(db,profile.actor,register?'REGISTER_ATTENDANCE_DEVICE':'ASSIGN_ATTENDANCE_DEVICE',saved);
+    return saved;
    });
   }
   // Bridge PCs per site (attendance-bridges.mjs): list, add (key shown once), new key, remove. HR administrators only.

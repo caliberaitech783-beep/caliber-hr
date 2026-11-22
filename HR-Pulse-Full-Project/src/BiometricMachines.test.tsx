@@ -9,7 +9,7 @@ afterEach(()=>{cleanup();vi.clearAllMocks();});
 
 const base={name:'',location:'',siteId:null,siteName:'',online:false,lastContact:null,lastSeen:null,logsToday:0,lastPunch:null};
 const machines:Machine[]=[
- {...base,serial:'JNP2260900233',name:'ESSL K90',location:'Main gate',siteId:'s1',siteName:'Amlohri',online:true,lastContact:'2026-11-20T05:00:00Z',logsToday:14,lastPunch:'2026-11-20 10:31'},
+ {...base,serial:'JNP2260900233',name:'ESSL K90',location:'Main gate',ipAddress:'192.168.1.201',siteId:'s1',siteName:'Amlohri',online:true,lastContact:'2026-11-20T05:00:00Z',logsToday:14,lastPunch:'2026-11-20 10:31'},
  {...base,serial:'JNP2260900400',location:'Workshop',siteId:'s2',siteName:'Nigahi',lastContact:'2026-11-19T13:59:00Z'},
  {...base,serial:'NEW1'},
 ];
@@ -30,7 +30,7 @@ it('lists the machines of every site with location, name, serial, status, last c
  const table=screen.getByRole('table');
  expect(within(table).getAllByRole('columnheader').map(h=>h.textContent)).toEqual(['Site','Machine location','Machine name','Serial no.','IP address','Bridge PC','Status','Last contact','Active logs','Action']);
  const first=within(table).getAllByRole('row')[1];
- for(const text of ['Amlohri','Main gate','ESSL K90','JNP2260900233','Online','14'])expect(within(first).getByText(text)).toBeTruthy();
+ for(const text of ['Amlohri','Main gate','ESSL K90','JNP2260900233','192.168.1.201','Online','14'])expect(within(first).getByText(text)).toBeTruthy();
  expect(within(first).getByText('Last punch 20-11-2026 10:31')).toBeTruthy();
  expect(screen.getByText('3 machines · 1 online · 2 not online')).toBeTruthy();
  fireEvent.change(screen.getByLabelText('Site'),{target:{value:'s2'}});
@@ -38,7 +38,7 @@ it('lists the machines of every site with location, name, serial, status, last c
  expect(screen.getByText('Offline')).toBeTruthy();
 });
 
-it('adds a machine to a site with its location, name and serial',async()=>{
+it('adds a machine to a site with its location, name, serial and IP address',async()=>{
  render(<BiometricMachines {...props}/>);
  fireEvent.click(screen.getByRole('button',{name:'Add machine'}));
  const form=screen.getByRole('form',{name:'Add biometric machine'});
@@ -46,8 +46,11 @@ it('adds a machine to a site with its location, name and serial',async()=>{
  fireEvent.change(within(form).getByLabelText('Machine location'),{target:{value:'Office'}});
  fireEvent.change(within(form).getByLabelText('Machine name'),{target:{value:'ESSL F22'}});
  fireEvent.change(within(form).getByLabelText('Serial no.'),{target:{value:'CKJ1234'}});
+ const ip=within(form).getByLabelText('IP address') as HTMLInputElement;
+ expect(new RegExp(`^(?:${ip.pattern})$`).test('192.168.1.256')).toBe(false);
+ fireEvent.change(ip,{target:{value:'192.168.1.205'}});
  fireEvent.submit(form);
- await waitFor(()=>expect(api).toHaveBeenCalledWith('g','attendance/devices/register','POST',{serial:'CKJ1234',siteId:'s2',name:'ESSL F22',location:'Office',ipAddress:''}));
+ await waitFor(()=>expect(api).toHaveBeenCalledWith('g','attendance/devices/register','POST',{serial:'CKJ1234',siteId:'s2',name:'ESSL F22',location:'Office',ipAddress:'192.168.1.205'}));
  await waitFor(()=>expect(props.onSaved).toHaveBeenCalled());
 });
 

@@ -4,7 +4,7 @@ import {api,type Lookup} from './api';
 import BridgePcs,{type BridgePc} from './BridgePcs';
 
 /* Biometric machines register: every ESSL machine on every site, with where it
-   stands, its name, serial number, status, last contact and the logs it has
+   stands, its name, serial number, IP address, status, last contact and the logs it has
    recorded today. HR administrators without a site restriction add machines to
    a site and change their site, location or name. */
 export type Machine={serial:string;name:string;location:string;siteId:string|null;siteName:string;online:boolean;lastContact:string|null;lastSeen:string|null;logsToday:number;lastPunch:string|null;
@@ -12,6 +12,9 @@ export type Machine={serial:string;name:string;location:string;siteId:string|nul
  ipAddress?:string;bridgeId?:string|null;bridgeName?:string};
 export type MachineStatus='Online'|'Offline'|'Awaiting contact';
 export const ALL_SITES='',UNASSIGNED='unassigned';
+const OCTET='(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';
+/** IPv4 address: four numbers 0-255 separated by dots (the server checks it again). */
+export const IP_PATTERN=`(${OCTET}\\.){3}${OCTET}`;
 
 /** Whether the bridge PC a machine reports to is in touch (one bridge PC per site); without the list, the one bridge PC. */
 export const bridgeOnlineFor=(machine:Pick<Machine,'bridgeId'|'bridgeName'>,bridges:BridgePc[]|undefined,fallback:boolean)=>{
@@ -57,6 +60,8 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
  const siteSelect=(value:string,label:string)=><select name="siteId" aria-label={label} defaultValue={value} required disabled={busy}>
   <option value="">Choose site…</option>{options.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
  </select>;
+ const ipInput=(value:string)=><input name="ipAddress" defaultValue={value} maxLength={15} inputMode="decimal" placeholder="e.g. 192.168.1.201"
+  pattern={IP_PATTERN} title="Four numbers 0-255 separated by dots, e.g. 192.168.1.201"/>;
 
  return <>{bridges&&<BridgePcs grant={grant} bridges={bridges} sites={options.map(s=>({id:s.id,name:s.name,kind:'sites'} as Lookup))} canManage={canManage} onSaved={onSaved} onError={onError}/>}
  <div className="data-card biometric-machines">
@@ -75,7 +80,7 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
    <label>Machine location<input name="location" maxLength={80} placeholder="e.g. Main gate, Workshop"/></label>
    <label>Machine name<input name="name" maxLength={80} placeholder="e.g. ESSL K90 gate"/></label>
    <label>Serial no.<input name="serial" required maxLength={40} pattern="[A-Za-z0-9_\-]{1,40}" title="Letters, numbers, - or _" placeholder="Printed on the machine"/></label>
-   <label>IP address<input name="ipAddress" maxLength={45} placeholder="e.g. 192.168.1.201" inputMode="decimal"/></label>
+   <label>IP address{ipInput('')}</label>
    <button className="primary" disabled={busy}>{busy?'Saving…':'Save machine'}</button>
    <button type="button" disabled={busy} onClick={()=>setAdding(false)}>Cancel</button>
   </form>}
@@ -91,7 +96,7 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
        <label>Machine location<input name="location" maxLength={80} defaultValue={m.location}/></label>
        <label>Machine name<input name="name" maxLength={80} defaultValue={m.name}/></label>
        <label>Serial no.<input value={m.serial} readOnly/></label>
-       <label>IP address<input name="ipAddress" maxLength={45} defaultValue={m.ipAddress||''} placeholder="e.g. 192.168.1.201" inputMode="decimal"/></label>
+       <label>IP address{ipInput(m.ipAddress||'')}</label>
        <button className="primary" disabled={busy}>{busy?'Saving…':'Save'}</button>
        <button type="button" disabled={busy} onClick={()=>setEditing('')}>Cancel</button>
       </form>

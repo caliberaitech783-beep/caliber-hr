@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS hr_attendance_fetch_requests(
 ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS last_contact timestamptz;
 -- Where the machine stands on its site (main gate, workshop, office...).
 ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS location text NOT NULL DEFAULT '';
+-- The machine's IPv4 address on the site network ('' = not entered).
+ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS ip_address text NOT NULL DEFAULT '';
 ALTER TABLE hr_attendance_fetch_requests ADD COLUMN IF NOT EXISTS device_serial text;
 CREATE INDEX IF NOT EXISTS hr_attendance_fetch_open ON hr_attendance_fetch_requests(requested_at) WHERE state IN ('PENDING','RUNNING');
 
@@ -78,6 +80,15 @@ CREATE TABLE IF NOT EXISTS hr_mis_attendance_corrections(
  updated_by text NOT NULL,
  updated_at timestamptz NOT NULL DEFAULT now(),
  version integer NOT NULL DEFAULT 1 CHECK(version>0)
+);
+
+-- One shared MIS snapshot per Pulse access scope, selected site and date range.
+-- Browsers no longer build separate versions of the same attendance report.
+CREATE TABLE IF NOT EXISTS hr_mis_attendance_cache(
+ cache_key text PRIMARY KEY,
+ report jsonb NOT NULL,
+ fetched_by text NOT NULL,
+ fetched_at timestamptz NOT NULL DEFAULT now()
 );
 
 -- Attendance HR policy settings (one row). Missing values use the defaults in
@@ -117,8 +128,7 @@ CREATE TABLE IF NOT EXISTS hr_attendance_bridges(
  last_seen timestamptz,
  removed_at timestamptz
 );
--- The bridge PC a machine reports to (NULL = the main bridge PC), and the machine's IP address on the site network (for records).
+-- The bridge PC a machine reports to (NULL = the main bridge PC).
 ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS bridge_id uuid;
-ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS ip_address text NOT NULL DEFAULT '';
 -- The bridge PC that must pick up a fetch request (NULL = the main bridge PC).
 ALTER TABLE hr_attendance_fetch_requests ADD COLUMN IF NOT EXISTS bridge_id uuid;
