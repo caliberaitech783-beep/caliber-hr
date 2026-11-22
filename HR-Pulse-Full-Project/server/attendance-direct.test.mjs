@@ -81,3 +81,17 @@ test('the API answers machines in plain text over HTTP and sends every other pla
   assert.equal((await fetch(base+'/api/health',{headers:{'X-Forwarded-Proto':'https'}})).status,200);
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
+
+test('behind Azure a call with no X-Forwarded-Proto is plain HTTP: machines answered, API calls sent to HTTPS, health probe answered',async()=>{
+ const service={async attendanceMachine(){return {text:'OK'};}};
+ const server=createApi({query:async()=>{},service,behindAzure:true});
+ server.listen(0,'127.0.0.1');await once(server,'listening');const base=`http://127.0.0.1:${server.address().port}`;
+ try{
+  assert.equal((await fetch(base+'/iclock/cdata?SN=CEXJ1')).status,200);
+  const api=await fetch(base+'/api/me',{redirect:'manual'});
+  assert.equal(api.status,301);assert.match(api.headers.get('location'),/^https:\/\/127\.0\.0\.1:\d+\/api\/me$/);
+  assert.equal((await fetch(base+'/api/health')).status,200);
+  assert.equal((await fetch(base+'/api/health',{headers:{'X-Forwarded-Proto':'http'},redirect:'manual'})).status,301);
+  assert.notEqual((await fetch(base+'/api/me',{headers:{'X-Forwarded-Proto':'https'},redirect:'manual'})).status,301);
+ }finally{await new Promise(resolve=>server.close(resolve));}
+});
