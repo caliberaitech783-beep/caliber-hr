@@ -164,8 +164,8 @@ function MachinesPanel({site,machines,pull,onPull,onManage}:{site:string;machine
    <button type="button" className="roster-save" disabled={pull?.running} onClick={onPull}><RefreshCw className={pull?.running?'spin':''}/>{pull?.running?'Fetching…':'Fetch from these machines'}</button>
    {onManage&&<button type="button" onClick={onManage}>Manage machines</button>}</div>
   {pull&&(pull.message||pull.error)&&<p className={pull.error?'roster-warn':'roster-saved'} role="status">{pull.message}{pull.error?' '+pull.error:''}</p>}
-  <div className="attendance-table"><table aria-label="Site machines"><thead><tr>{['Machine location','Machine name','Serial no.','Status','Last punch','Punches in these dates'].map(h=><th key={h}>{h}</th>)}</tr></thead>
-   <tbody>{machines.map(m=><tr key={m.serial}><td>{m.location||'—'}</td><td>{m.name||'—'}</td><td><code>{m.serial}</code></td>
+  <div className="attendance-table"><table aria-label="Site machines"><thead><tr>{['Machine location','Machine name','Serial no.','IP address','Bridge PC','Status','Last punch','Punches in these dates'].map(h=><th key={h}>{h}</th>)}</tr></thead>
+   <tbody>{machines.map(m=><tr key={m.serial}><td>{m.location||'—'}</td><td>{m.name||'—'}</td><td><code>{m.serial}</code></td><td><code>{m.ipAddress||'—'}</code></td><td>{m.bridgeName||'No bridge PC yet'}</td>
     <td><span className={m.online?'roster-online':'roster-offline'}>{m.online?'Online':'Not online'}</span></td><td>{stamp(m.lastPunch)}</td><td>{m.punches.toLocaleString('en-IN')}</td></tr>)}</tbody></table></div>
  </div>;
 }

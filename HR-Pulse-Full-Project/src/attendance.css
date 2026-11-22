@@ -164,3 +164,14 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .roster-grid .roster-machine span{display:block}
 .roster-grid tr.roster-unlinked>td{background:#fff8f0}
 .roster-grid .roster-unlinked-id{color:#a12626;font-weight:600}
+/* Bridge PCs per site */
+.bridge-pcs{margin-bottom:16px}
+.bridge-head{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px}
+.bridge-head h2{margin:0}
+.bridge-grow{flex:1}
+.bridge-key{margin:10px 0 12px;padding:12px 14px;border:1px dashed #7f77dd;border-radius:10px;background:#f7f5ff;font-size:13.5px;color:#30263c}
+.bridge-key code{display:inline-block;margin:4px 6px;padding:3px 8px;border-radius:6px;background:#fff;border:1px solid #e4dbef;font-size:12.5px;word-break:break-all;user-select:all}
+.bridge-key button{margin:4px 6px 4px 0}
+.bridge-key ol{margin:8px 0 8px 18px;padding:0}
+.bridge-key li{margin:3px 0}
+.machine-status.awaiting{background:#f1efe8;color:#444441}

@@ -113,3 +113,22 @@ CREATE TABLE IF NOT EXISTS hr_trip_card_days(
  saved_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(site,day)
 );
+
+-- Bridge PCs per site (owner, 22 Nov 2026): each site's bridge PC signs in with its own key (attendance-bridges.mjs).
+-- Only the key's SHA-256 fingerprint and last 4 letters are kept. The first bridge PC keeps ATTENDANCE_BRIDGE_KEY and
+-- is the "Main bridge PC" (bridge_id NULL on its machines and fetch requests).
+CREATE TABLE IF NOT EXISTS hr_attendance_bridges(
+ id uuid PRIMARY KEY,
+ site_id uuid REFERENCES hr_records(id),
+ name text NOT NULL,
+ key_hash text NOT NULL UNIQUE,
+ key_hint text NOT NULL,
+ created_by text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ last_seen timestamptz,
+ removed_at timestamptz
+);
+-- The bridge PC a machine reports to (NULL = the main bridge PC).
+ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS bridge_id uuid;
+-- The bridge PC that must pick up a fetch request (NULL = the main bridge PC).
+ALTER TABLE hr_attendance_fetch_requests ADD COLUMN IF NOT EXISTS bridge_id uuid;

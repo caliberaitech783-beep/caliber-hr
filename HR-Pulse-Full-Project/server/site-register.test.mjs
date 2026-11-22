@@ -10,7 +10,7 @@ function fakeDb({machines = [], punches = []} = {}) {
   return {calls, async query(sql, params = []) {
     calls.push(sql);
     if (/FROM hr_attendance_policy/.test(sql)) return {rows: []};
-    if (/FROM hr_attendance_devices d LEFT JOIN hr_attendance_punches/.test(sql)) return {rows: machines};
+    if (/FROM hr_attendance_devices d LEFT JOIN hr_attendance_bridges/.test(sql)) return {rows: machines};
     if (/GROUP BY 1,2,3,4/.test(sql)) {
       const seen = new Map();
       for (const p of punches) seen.set(p.serial + '|' + p.id, {device_serial: p.serial, biometric_id: p.id, employee_id: links[p.serial + '|' + p.id] || null, machine_name: names[p.serial + '|' + p.id] || ''});

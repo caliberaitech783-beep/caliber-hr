@@ -28,7 +28,7 @@ it('rates a machine online only while it and the bridge PC are in touch',()=>{
 it('lists the machines of every site with location, name, serial, status, last contact and active logs',()=>{
  render(<BiometricMachines {...props}/>);
  const table=screen.getByRole('table');
- expect(within(table).getAllByRole('columnheader').map(h=>h.textContent)).toEqual(['Site','Machine location','Machine name','Serial no.','IP address','Status','Last contact','Active logs','Action']);
+ expect(within(table).getAllByRole('columnheader').map(h=>h.textContent)).toEqual(['Site','Machine location','Machine name','Serial no.','IP address','Bridge PC','Status','Last contact','Active logs','Action']);
  const first=within(table).getAllByRole('row')[1];
  for(const text of ['Amlohri','Main gate','ESSL K90','JNP2260900233','192.168.1.201','Online','14'])expect(within(first).getByText(text)).toBeTruthy();
  expect(within(first).getByText('Last punch 20-11-2026 10:31')).toBeTruthy();

@@ -8,6 +8,7 @@ import PunctualitySummary from './PunctualitySummary';
 import ShiftMaster from './ShiftMaster';
 import MisAttendance from './MisAttendance';
 import AttendanceRegister from './AttendanceRegister';
+import type {BridgePc} from './BridgePcs';
 import {AttendanceRosterPage} from './AttendanceRoster';
 import AttendancePolicySettings,{usePolicy} from './AttendancePolicy';
 import HRCalendar from './HRCalendar';
@@ -37,7 +38,7 @@ export const legacyModuleUrl=(view:string,policy?:AttendancePolicy)=>hrAsset('at
    Excel exports and the biometric vs trip card comparison. */
 export type Punch={id:string;deviceSerial:string;deviceName:string;siteName:string;biometricId:string;date:string;time:string;verify:string;punchType:string;employeeId:string;employeeCode:string;employeeName:string;machineName:string};
 export type FetchRequest={id:string;state:'PENDING'|'RUNNING'|'DONE'|'FAILED';punchesReceived:number;newPunches:number;error:string;requestedAt:string;completedAt:string|null};
-type Status={configured:boolean;bridgeOnline:boolean;bridgeLastSeen:string|null;devices:Machine[];lastFetch:FetchRequest|null;canLink:boolean;canManageDevices:boolean};
+type Status={configured:boolean;bridgeOnline:boolean;bridgeLastSeen:string|null;devices:Machine[];bridges?:BridgePc[];lastFetch:FetchRequest|null;canLink:boolean;canManageDevices:boolean};
 type Unlinked={deviceSerial:string;biometricId:string;punches:number;lastPunch:string;machineName:string;siteName:string};
 type PunchList={from:string;to:string;truncated:boolean;rows:Punch[]};
 
@@ -229,7 +230,7 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
   </div>}
 
   </>}
-  {tab==='machines'&&status&&<BiometricMachines grant={grant} machines={status.devices} sites={sites} bridgeOnline={status.bridgeOnline} configured={status.configured} canManage={status.canManageDevices} fetching={fetching}
+  {tab==='machines'&&status&&<BiometricMachines grant={grant} machines={status.devices} sites={sites} bridges={status.bridges} bridgeOnline={status.bridgeOnline} configured={status.configured} canManage={status.canManageDevices} fetching={fetching}
    onFetch={serial=>void fetchAttendance(serial)} onError={setError} onSaved={async text=>{setError('');setMessage(text);await load(false);}}/>}
  </>;
 }
