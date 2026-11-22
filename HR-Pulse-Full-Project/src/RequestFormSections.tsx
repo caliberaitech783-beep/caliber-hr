@@ -16,13 +16,13 @@ export const formSections:Record<string,Section[]>={
     {title:'Attachment and review',keys:[]},
   ],
   outDutyRequests:[
-    {title:'Employee',keys:['employeeId','name','department','designation','siteId']},
+    {title:'Employee',keys:['employeeId','name','companyId','department','designation','siteId']},
     {title:'Visit and dates',keys:['outDutyDate','toDate','visitLocation','purpose']},
     {title:'Authority and signature',keys:['authorityName','authoritySignature','employeeSignature','signatureDate']},
     {title:'Review',keys:[]},
   ],
   gatePasses:[
-    {title:'Employee',keys:['employeeId','name','department','siteId']},
+    {title:'Employee',keys:['employeeId','name','companyId','department','siteId']},
     {title:'Time out and return',keys:['passDate','passType','outTime','returnTime']},
     {title:'Reason',keys:['purpose']},
     {title:'Review',keys:[]},
@@ -62,8 +62,8 @@ function usePreview(grant:string,kind:string,employeeId:string,setData:(f:(d:Dat
       if(!live||!p?.employee)return;setPreview(p);
       if(autofill)setData(d=>kind==='leaveRequests'
         ?{...d,companyId:p.employee.companyId||d.companyId||'',siteId:p.employee.siteId||d.siteId||''}
-        :kind==='gatePasses'?{...d,name:p.employee.name||d.name||'',siteId:p.employee.siteId||d.siteId||'',department:p.employee.department||d.department||''}
-        :{...d,name:p.employee.name||d.name||'',siteId:p.employee.siteId||d.siteId||'',department:d.department||p.employee.department||'',designation:d.designation||p.employee.designation||''});
+        :kind==='gatePasses'?{...d,name:p.employee.name||d.name||'',companyId:p.employee.companyId||d.companyId||'',siteId:p.employee.siteId||d.siteId||'',department:p.employee.department||d.department||''}
+        :{...d,name:p.employee.name||d.name||'',companyId:p.employee.companyId||d.companyId||'',siteId:p.employee.siteId||d.siteId||'',department:d.department||p.employee.department||'',designation:d.designation||p.employee.designation||''});
     }).catch(e=>{if(live){setPreview(null);setFailure((e as Error).message||'Could not load the employee details.');}});
     return()=>{live=false;};
   },[grant,kind,employeeId,autofill]);// eslint-disable-line react-hooks/exhaustive-deps

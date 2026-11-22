@@ -4,6 +4,8 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {Records} from './Modules';
 // @ts-expect-error Shared server schema is JavaScript.
 import {requestFields} from '../server/leave.mjs';
+// @ts-expect-error Shared server schema is JavaScript.
+import {modules} from '../server/modules.mjs';
 afterEach(()=>vi.unstubAllGlobals());
 it('shows leave fields, calculates days, accepts dictated text reasons and keeps attachments optional',async()=>{
  let saved:any;
@@ -83,4 +85,24 @@ it('prefills the Pulse employee and Caliber company while limiting locations to 
  expect(screen.getByLabelText('Company')).toBeDisabled();
  expect(screen.getByLabelText('Location')).toHaveValue('');
  expect(screen.getByLabelText('Location').querySelectorAll('option')).toHaveLength(3);
+});
+
+for(const [kind,button] of [['outDutyRequests','Add OD form'],['gatePasses','Apply gate pass']] as const)it(`prefills Pulse identity in ${kind}`,async()=>{
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+  if(url.includes('request-preview'))return new Response(JSON.stringify({employee:{name:'Pulse Employee',companyId:'company',siteId:'site',department:'Workshop',designation:'Engineer'},route:[],routeNote:''}));
+  return new Response(JSON.stringify(url.endsWith('/lookups')?[
+   {id:'employee',kind:'employees',code:'E-01',name:'Pulse Employee'},
+   {id:'company',kind:'companies',code:'CMLL',name:'CALIBER MINING AND LOGISTICS LIMITED'},
+   {id:'site',kind:'sites',code:'SITE-A',name:'Sasti OC'},
+  ]:{rows:[],total:0,page:1,pageSize:50}));
+ }));
+ render(<Records grant="test" kind={kind} module={{...modules[kind],canWrite:true}} notice={()=>{}} actionLabel={button} pulseIdentity/>);
+ await waitFor(()=>expect(screen.getByRole('button',{name:button})).toBeEnabled());
+ fireEvent.click(screen.getByRole('button',{name:button}));
+ await waitFor(()=>expect(screen.getByLabelText(/Employee name/)).toHaveValue('Pulse Employee'));
+ expect(screen.getByLabelText(/Employee ID/)).toHaveValue('employee');
+ expect(screen.getByLabelText(/Employee ID/)).toBeDisabled();
+ expect(screen.getByLabelText('Company')).toHaveValue('company');
+ expect(screen.getByLabelText('Company')).toBeDisabled();
+ expect(screen.getByLabelText(kind==='outDutyRequests'?/Site \/ Location/:/^Location/)).toHaveValue('site');
 });

@@ -272,7 +272,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       return result.rows;
     },
     async save(profile,kind,data,id) {
-      if(profile.permissions?.leaveOnly&&kind==='leaveRequests'&&!id){
+      if(profile.permissions?.leaveOnly&&['leaveRequests','outDutyRequests','gatePasses'].includes(kind)&&!id){
         const employee=(await pool.query("SELECT r.id FROM hr_records r WHERE r.kind='employees' AND r.status IN ('ACTIVE','APPROVED') AND (lower(trim(r.name))=lower(trim($1)) OR lower(trim(COALESCE(r.data->>'actor','')))=lower(trim($2))) AND "+scopeSql('r','$3')+" ORDER BY r.updated_at DESC LIMIT 1",[profile.name,profile.actor||profile.login||profile.username||'',await siteIds(pool,profile)])).rows[0];
         const company=(await pool.query("SELECT id FROM hr_records WHERE kind='companies' AND status IN ('ACTIVE','APPROVED') AND (upper(regexp_replace(code,'[^A-Z0-9]','','g')) IN ('CMLL','CMPL') OR lower(regexp_replace(name,'[^a-z0-9]','','g'))='caliberminingandlogisticslimited') ORDER BY updated_at DESC LIMIT 1")).rows[0];
         if(!employee)throw problem('Your Pulse employee name is not linked to an active HR Employee Master record.',409);
