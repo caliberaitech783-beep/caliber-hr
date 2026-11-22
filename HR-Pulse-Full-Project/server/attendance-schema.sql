@@ -82,6 +82,15 @@ CREATE TABLE IF NOT EXISTS hr_mis_attendance_corrections(
  version integer NOT NULL DEFAULT 1 CHECK(version>0)
 );
 
+-- One shared MIS snapshot per Pulse access scope, selected site and date range.
+-- Browsers no longer build separate versions of the same attendance report.
+CREATE TABLE IF NOT EXISTS hr_mis_attendance_cache(
+ cache_key text PRIMARY KEY,
+ report jsonb NOT NULL,
+ fetched_by text NOT NULL,
+ fetched_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- Attendance HR policy settings (one row). Missing values use the defaults in
 -- attendance-policy.mjs: 1 hr lunch, under 4 hrs absent, 7 hrs full duty,
 -- 15 min grace, 3 late/early marks per half duty cut, 1 hr free gate pass.

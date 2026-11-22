@@ -51,3 +51,34 @@ test('a conflicting correction rolls back without writing an audit entry', async
   await assert.rejects(api({actor: 'test'}, grant, 'mis/correction', 'POST', {...change, version: 1}), {status: 409});
   assert.deepEqual(calls.map(call => call[0]), ['BEGIN', 'UPDATE hr_mis_attendance_corrections', 'ROLLBACK']);
 });
+
+test('two PCs receive the same centrally cached site and day report', async () => {
+  let cached, fetches = 0;
+  const db = {
+    async query(sql, args) {
+      if (sql.startsWith('SELECT report')) return {rows: cached ? [cached] : []};
+      if (sql.startsWith('INSERT INTO hr_mis_attendance_cache')) {
+        cached = {report: args[1], fetched_at: new Date()};
+      }
+      return {rows: []};
+    },
+    release() {}
+  };
+  const pool = {
+    connect: async () => db,
+    async query(sql) {
+      if (sql.includes('hr_mis_attendance_corrections')) return {rows: []};
+      if (sql.includes("kind='sites'")) return {rows: [{name: 'Gevra'}]};
+      return {rows: []};
+    }
+  };
+  const api = createMisAttendance(pool, {fetchMis: async () => {
+    fetches++;
+    return Response.json(report);
+  }});
+  const params = () => new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site: 'Gevra'});
+  const first = await api({actor: 'first', permissions: {}}, 'a'.repeat(43), 'mis', 'GET', {}, params());
+  const second = await api({actor: 'second', permissions: {}}, 'b'.repeat(43), 'mis', 'GET', {}, params());
+  assert.equal(fetches, 1);
+  assert.deepEqual(second.otDuties, first.otDuties);
+});

@@ -214,7 +214,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   const runKey=key,all=tripDays(from,to);
   keyRef.current=runKey;
   // "Fetch again" reads every day from MIS; otherwise the saved days open at once and MIS is read for the rest.
-  if(forceMis.current){forceMis.current=false;readTrip(all);return;}
+  if(forceMis.current){forceMis.current=false;readTrip(all,true);return;}
   setTrip(t=>t.key===runKey?{...t,runs:t.runs+1}:t);
   readSavedTripCards(grant,site,from,to).then(saved=>{
    if(keyRef.current!==runKey)return;
@@ -230,10 +230,10 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  // (Compared with the reading's own key: comparing trip.key here stopped a new reading in the render that started it.)
  useEffect(()=>{if(keyRef.current&&keyRef.current!==key)keyRef.current='';},[key]);
  /** Reads these days from MIS and fills the muster as each day arrives (also "Retry these days"). */
- function readTrip(list:string[]){
+ function readTrip(list:string[],refresh=false){
   const runKey=key;keyRef.current=runKey;
   setTrip(t=>t.key===runKey?{...t,runs:t.runs+1}:t);
-  void streamTripCards(grant,list,site,u=>setTrip(t=>t.key===runKey?applyDay(t,u):t),()=>keyRef.current===runKey)
+  void streamTripCards(grant,list,site,u=>setTrip(t=>t.key===runKey?applyDay(t,u):t),()=>keyRef.current===runKey,refresh)
    .finally(()=>setTrip(t=>t.key===runKey?{...t,runs:t.runs-1}:t));
  }
  /** Save trip cards: every day read from MIS and not saved yet, one day per request. */
@@ -283,7 +283,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const tripState:TripState={status:running?'loading':total&&failedDays.length===total?'error':trip.key===key?'ready':'idle',
   message:`Reading trip cards from MIS · ${finished} of ${total||'…'} days${retrying?` · ${retrying} retrying`:''}${failedDays.length?` · ${failedDays.length} not read`:''}`,
   rows:tripRows,failed:failedDays,misSites:trip.key===key?trip.sites:[],days:trip.key===key?trip.days:undefined,errors:trip.key===key?trip.errors:undefined,
-  onRetry:list=>readTrip(list)};
+  onRetry:list=>readTrip(list,true)};
  const savedDays=trip.key===key?Object.entries(trip.saved):[],freshDone=trip.key===key?trip.fresh.filter(d=>trip.days[d]==='done'):[],save=trip.key===key?trip.save:null;
  const latest=savedDays.map(([,info])=>info).sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)))[0];
  const when=(at:string)=>{const t=Date.parse(at);return Number.isFinite(t)?new Date(t).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):at;};

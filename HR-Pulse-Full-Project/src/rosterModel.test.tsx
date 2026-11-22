@@ -116,6 +116,7 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  expect(within(table).queryByText('Other Site')).toBeNull();
  expect(within(table).getByText(/VLB \d/)).toBeTruthy();
  expect(calls.filter(u=>u.includes('attendance/mis')).map(u=>new URL(u,'https://x').searchParams.get('from')).sort()).toEqual(['01','02','03','04','05','06','07','08','09','10'].map(d=>'2026-11-'+d));
+ expect(calls.filter(u=>u.includes('attendance/mis')).every(u=>new URL(u,'https://x').searchParams.get('site')==='Gevra')).toBe(true);
  await waitFor(()=>expect(within(table).getByText('Operations')).toBeTruthy());
  fireEvent.click(screen.getByRole('button',{name:'Biometric'}));
  await waitFor(()=>expect(within(screen.getByRole('table',{name:'Attendance roster'})).getByText('Ramesh Kumar')).toBeTruthy());

@@ -71,9 +71,32 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     return Object.fromEntries(sections.map(key => [key, reports.flatMap(report => report[key])]));
   }
 
+  async function sharedRead(profile, grant, from, to, selectedSite, refresh) {
+    const scope = await siteIds(pool, profile);
+    const key = JSON.stringify([scope === null ? null : [...scope].map(String).sort(), siteKey(selectedSite), from, to]);
+    const requestedAt = new Date();
+    const db = await pool.connect();
+    try {
+      await db.query('SELECT pg_advisory_lock(hashtext($1))', [key]);
+      const cached = (await db.query('SELECT report,fetched_at FROM hr_mis_attendance_cache WHERE cache_key=$1', [key])).rows[0];
+      // A refresh that waited behind another PC uses the snapshot that PC just refreshed.
+      if (cached && (!refresh || new Date(cached.fetched_at) >= requestedAt)) return cached.report;
+      const report = await read(grant, from, to);
+      await db.query(`INSERT INTO hr_mis_attendance_cache(cache_key,report,fetched_by,fetched_at) VALUES($1,$2,$3,now())
+        ON CONFLICT(cache_key) DO UPDATE SET report=EXCLUDED.report,fetched_by=EXCLUDED.fetched_by,fetched_at=now()`, [key, report, profile.actor]);
+      return report;
+    } finally {
+      await db.query('SELECT pg_advisory_unlock(hashtext($1))', [key]).catch(() => {});
+      db.release();
+    }
+  }
+
   async function api(profile, grant, route, method, input, params) {
     if (route === 'mis' && method === 'GET') {
-      const report = await read(grant, params.get('from'), params.get('to'));
+      const selectedSite = String(params.get('site') || '').trim();
+      const report = selectedSite
+        ? await sharedRead(profile, grant, params.get('from'), params.get('to'), selectedSite, params.get('refresh') === '1')
+        : await read(grant, params.get('from'), params.get('to'));
       const ids = [...new Set([...report.otDuties, ...report.attendanceEquipment].map(dutyKey))];
       const scope = await siteIds(pool, profile);
       const [{rows}, siteRows] = await Promise.all([

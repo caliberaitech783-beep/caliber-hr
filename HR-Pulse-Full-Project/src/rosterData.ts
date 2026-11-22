@@ -22,10 +22,10 @@ let pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export const setRetryPause = (fn: typeof pause) => {pause = fn;};
 
 /** One day of MIS trip cards for the site, tried `attempts` times with a growing wait. */
-async function readDay(grant: string, day: string, site: string, attempts: number, onRetry: (attempt: number, error: string) => void) {
+async function readDay(grant: string, day: string, site: string, attempts: number, onRetry: (attempt: number, error: string) => void, refresh = false) {
   for (let attempt = 1; ; attempt++) {
     try {
-      const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day}));
+      const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day, ...(site ? {site} : {}), ...(refresh ? {refresh: '1'} : {})}));
       // The feed also carries the day before (for night shifts); keep only this day so no duty is counted twice.
       const all = mapMisAttendance(data).filter(r => r.date === day);
       return {rows: all.filter(r => !site || sameSite(site, r.site)), sites: [...new Set(all.map(r => r.site).filter(Boolean))]};
@@ -43,7 +43,7 @@ async function readDay(grant: string, day: string, site: string, attempts: numbe
  * still failed are tried again one at a time. `onDay` reports every day as it starts, retries, arrives or fails, so the
  * muster fills in day by day. `live()` false stops it (the user changed the site or dates).
  */
-export async function streamTripCards(grant: string, days: string[], site: string, onDay: (update: DayUpdate) => void, live: () => boolean = () => true) {
+export async function streamTripCards(grant: string, days: string[], site: string, onDay: (update: DayUpdate) => void, live: () => boolean = () => true, refresh = false) {
   const failed = new Set<string>();
   let next = 0;
   for (const day of days) onDay({day, state: 'queued'});
@@ -51,7 +51,7 @@ export async function streamTripCards(grant: string, days: string[], site: strin
     if (!live()) return;
     onDay({day, state: 'loading'});
     try {
-      const result = await readDay(grant, day, site, attempts, (attempt, error) => {if (live()) onDay({day, state: 'retrying', attempt, error});});
+      const result = await readDay(grant, day, site, attempts, (attempt, error) => {if (live()) onDay({day, state: 'retrying', attempt, error});}, refresh);
       failed.delete(day);
       if (live()) onDay({day, state: 'done', rows: result.rows, sites: result.sites});
     } catch (e) {
