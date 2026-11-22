@@ -24,6 +24,8 @@ const indiaStamp = iso => {
 const clock = minutes => minutes == null ? '' :
   `${String(Math.floor((minutes % 1440) / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}${minutes >= 1440 ? ' (+1)' : ''}`;
 const between = (date, from, to) => !!from && from <= date && date <= (to || from);
+// A leave whose type is named "Comp Off" / "Compensatory Off" or coded CO shows as CO in the register.
+export const isCompOff = type => /\bcomp(ensatory)?[\s-]*off\b|^\s*c\.?o\.?(\s|$)/i.test(String(type || ''));
 const daysInMonth = date => new Date(Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)), 0)).getUTCDate();
 
 /** Gate pass minutes from its actual gate out / back in times, else the planned times. */
@@ -38,9 +40,10 @@ export function gatePassMinutes(pass) {
 
 /**
  * Pure register builder. Inputs are plain rows (see loadRegister):
- * employees {id,code,name,siteId,site,siteCode,siteType,shift,starts,ends,designation,dailyWage,monthlyPay}
+ * employees {id,code,name,siteId,site,siteCode,siteType,department,shift,starts,ends,designation,dailyWage,monthlyPay}
  * punches {employeeId, at:'YYYY-MM-DD HH:MM'} · holidays {date,siteId,name}
- * leaves / ods {employeeId,from,to} · gatePasses {employeeId,date,minutes}
+ * leaves {employeeId,from,to,compOff} (compOff: a leave of a comp off leave type, shown as CO)
+ * ods {employeeId,from,to} · gatePasses {employeeId,date,minutes}
  */
 export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employees = [], punches = [], holidays = [], leaves = [], ods = [], gatePasses = []}) {
   const first = dayNumber(from), last = dayNumber(to), now = today ? dayNumber(today) : Infinity;
@@ -77,15 +80,16 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       const result = evaluateDay({inMinute, outMinute, shiftStart: starts, shiftEnd: ends, designation: employee.designation,
         gatePassMinutes: gate, dailyWage: wage}, policy);
       const holiday = holidayFor(date);
-      const onLeave = leaves.some(l => l.employeeId === employee.id && between(date, l.from, l.to));
+      const leave = leaves.find(l => l.employeeId === employee.id && between(date, l.from, l.to));
+      const onLeave = !!leave, leaveCode = leave?.compOff ? 'CO' : 'L';
       const onDuty = ods.some(o => o.employeeId === employee.id && between(date, o.from, o.to));
       let status = result.status, note = '';
       if (!times.length) {
         const weeklyOff = employee.siteType === 'Office' && new Date(number * DAY_MS).getUTCDay() === 0;
-        status = holiday ? 'H' : onLeave ? 'L' : onDuty ? 'OD' : weeklyOff ? 'WO' : exempt ? 'P' : 'A';
+        status = holiday ? 'H' : onLeave ? leaveCode : onDuty ? 'OD' : weeklyOff ? 'WO' : exempt ? 'P' : 'A';
         if (holiday) note = holiday.name || 'Holiday';
       } else if (status !== 'P' && (onLeave || onDuty)) {
-        status = onDuty ? 'OD' : 'L';
+        status = onDuty ? 'OD' : leaveCode;
       } else if (holiday) note = `Worked on ${holiday.name || 'holiday'}`;
       if (status === 'MP' && number === now) {
         status = 'IN';
@@ -107,10 +111,10 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       for (const [key, value] of Object.entries(month)) sum[key] = Math.round(((sum[key] || 0) + value) * 100) / 100;
       return sum;
     }, {});
-    for (const status of ['H', 'L', 'OD', 'WO', 'IN']) total[status] = days.filter(day => day.status === status).length;
+    for (const status of ['H', 'L', 'CO', 'OD', 'WO', 'IN']) total[status] = days.filter(day => day.status === status).length;
     return {
       id: employee.id, code: employee.code, name: employee.name, siteId: employee.siteId || '', site: employee.site || '',
-      siteType: employee.siteType || '', shift: employee.shift || '', designation: employee.designation || '', exempt,
+      siteType: employee.siteType || '', department: employee.department || '', shift: employee.shift || '', designation: employee.designation || '', exempt,
       shiftStart: clock(starts), shiftEnd: clock(ends), days, months, summary: total
     };
   });
@@ -144,11 +148,13 @@ export async function loadRegister(db, sites, from, to, today) {
    SELECT DISTINCT e.id,e.code,e.name,e.data->>'siteId' AS site_id,site.code AS site_code,site.name AS site,site.data->>'siteType' AS site_type,
     sh.name AS shift,sh.data->>'startTime' AS starts,sh.data->>'endTime' AS ends,
     coalesce(nullif(des.name,''),e.data->>'designation',e.data#>>'{fields,Designation}',e.data#>>'{officeData,Designation}','') AS designation,
+    coalesce(nullif(dep.name,''),e.data->>'department',e.data#>>'{fields,Department}',e.data#>>'{officeData,Department}',e.data#>>'{officeData,Department *}','') AS department,
     e.data->>'dailyWage' AS daily_wage
    FROM hr_attendance_links l
    JOIN hr_records e ON e.id=l.employee_id AND e.kind='employees'
    LEFT JOIN hr_records site ON site.id::text=e.data->>'siteId' AND site.kind='sites'
    LEFT JOIN hr_records sh ON sh.id::text=e.data->>'shiftId' AND sh.kind='shifts'
+   LEFT JOIN hr_records dep ON dep.id::text=e.data->>'departmentId' AND dep.kind='departments'
    LEFT JOIN hr_records des ON des.id::text=e.data->>'designationId' AND des.kind='designations'
    WHERE $1::text[] IS NULL OR e.data->>'siteId'=ANY($1)
    ORDER BY e.name,e.code`, [sites])).rows;
@@ -160,8 +166,10 @@ export async function loadRegister(db, sites, from, to, today) {
      WHERE l.employee_id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, [ids, from, to]),
     db.query(`SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
      WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to]),
-    db.query(`SELECT data->>'employeeId' AS employee_id,data->>'fromDate' AS from_date,coalesce(nullif(data->>'toDate',''),data->>'fromDate') AS to_date FROM hr_records
-     WHERE kind='leaveRequests' AND status='APPROVED' AND data->>'employeeId'=ANY($1::text[]) AND data->>'fromDate'<=$3 AND coalesce(nullif(data->>'toDate',''),data->>'fromDate')>=$2`, [ids, from, to]),
+    db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'fromDate' AS from_date,coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate') AS to_date,
+      concat_ws(' ',t.code,t.name) AS leave_type FROM hr_records r
+     LEFT JOIN hr_records t ON t.id::text=r.data->>'leaveTypeId' AND t.kind='leaveTypes'
+     WHERE r.kind='leaveRequests' AND r.status='APPROVED' AND r.data->>'employeeId'=ANY($1::text[]) AND r.data->>'fromDate'<=$3 AND coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate')>=$2`, [ids, from, to]),
     db.query(`SELECT data->>'employeeId' AS employee_id,data->>'outDutyDate' AS from_date,coalesce(nullif(data->>'toDate',''),data->>'outDutyDate') AS to_date FROM hr_records
      WHERE kind='outDutyRequests' AND status='APPROVED' AND data->>'employeeId'=ANY($1::text[]) AND data->>'outDutyDate'<=$3 AND coalesce(nullif(data->>'toDate',''),data->>'outDutyDate')>=$2`, [ids, from, to]),
     db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'passDate' AS date,r.data->>'outTime' AS out_time,r.data->>'returnTime' AS return_time,a.history
@@ -175,11 +183,11 @@ export async function loadRegister(db, sites, from, to, today) {
   return buildRegister({
     from, to, today, policy,
     employees: employees.map(e => ({id: String(e.id), code: e.code, name: e.name, siteId: e.site_id || '', siteCode: e.site_code || '',
-      site: e.site || '', siteType: e.site_type || '', shift: e.shift || '', starts: e.starts, ends: e.ends, designation: e.designation || '',
+      site: e.site || '', siteType: e.site_type || '', department: e.department || '', shift: e.shift || '', starts: e.starts, ends: e.ends, designation: e.designation || '',
       dailyWage: Number(e.daily_wage) || 0, monthlyPay: monthly.get(String(e.id)) || 0})),
     punches: punches.rows.map(p => ({employeeId: String(p.employee_id), at: p.at})),
     holidays: holidays.rows.map(h => ({date: h.date, siteId: h.site_id, name: h.name})),
-    leaves: leaves.rows.map(l => ({employeeId: l.employee_id, from: l.from_date, to: l.to_date})),
+    leaves: leaves.rows.map(l => ({employeeId: l.employee_id, from: l.from_date, to: l.to_date, compOff: isCompOff(l.leave_type)})),
     ods: ods.rows.map(o => ({employeeId: o.employee_id, from: o.from_date, to: o.to_date})),
     gatePasses: passes.rows.map(p => ({employeeId: p.employee_id, date: p.date,
       minutes: gatePassMinutes({history: p.history, outTime: p.out_time, returnTime: p.return_time})}))

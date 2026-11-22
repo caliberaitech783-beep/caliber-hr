@@ -111,3 +111,20 @@ it('opens OD and gate pass from the existing leave screens without the leave for
  expect(await screen.findByRole('button',{name:'OD Form'})).toBeTruthy();
  expect(screen.queryByRole('button',{name:'Gate Pass'})).toBeNull();
 });
+
+it('draws the monthly roster: one line per employee, a coloured code per date and the totals',async()=>{
+ const days=['2026-11-01','2026-11-02','2026-11-03','2026-11-04'].map((date,i)=>({...register.rows[0].days[0],date,status:['WO','P','CO','HD'][i],late:false,early:false,gatePassMinutes:0,gatePassDeduction:0}));
+ const row={...register.rows[0],department:'Accounts',days,summary:{...register.rows[0].summary,halfDutyCuts:0}};
+ const {rosterTotals}=await import('./AttendanceRegister');
+ expect(rosterTotals(row as RegisterRow,['2026-11-01','2026-11-02','2026-11-03','2026-11-04'])).toMatchObject({totalDays:4,present:1,half:1,weeklyOff:1,compOff:1,absent:0,paidDays:3.5});
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams;return Response.json({...register,from:q.get('from'),to:q.get('to'),rows:[row,{...row,id:'e2',code:'C002',name:'Sita Devi',department:'Stores'}]});}));
+ render(<AttendanceRegister grant={'a'.repeat(43)} mode="month"/>);
+ const table=await screen.findByRole('table',{name:'Attendance roster'});
+ await waitFor(()=>expect(within(table).getByText('Ravi Kumar')).toBeTruthy());
+ for(const heading of ['Sr. No.','Employee ID','Name','Site','Department','Designation','Total days','Present','Absent','Weekly off','Holiday','Comp off','Paid days'])expect(within(table).getByRole('columnheader',{name:heading})).toBeTruthy();
+ expect(within(table).getAllByText('CO')[0].className).toContain('code-CO');
+ expect(within(table).getAllByText('Accounts')).toHaveLength(1);
+ fireEvent.change(screen.getByLabelText('Department'),{target:{value:'Stores'}});
+ expect(within(table).queryByText('Ravi Kumar')).toBeNull();
+ expect(within(table).getByText('Sita Devi')).toBeTruthy();
+});
