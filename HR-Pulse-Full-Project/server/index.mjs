@@ -34,6 +34,10 @@ await pool.query(await readFile(new URL('./asset-schema.sql',import.meta.url),'u
 await seedAssets(pool);
 await pool.query(await readFile(new URL('./telegram-schema.sql',import.meta.url),'utf8'));
 await pool.query(await readFile(new URL('./attendance-schema.sql',import.meta.url),'utf8'));
+// The change list Pulse-II reads every minute (employee-changes-schema.sql). HR Pulse must start even if it cannot be
+// made: Pulse-II is then told the list is not ready and reads the whole Employee Master instead.
+await pool.query(await readFile(new URL('./employee-changes-schema.sql',import.meta.url),'utf8'))
+  .catch(error=>console.error('Employee change list could not be set up:',error instanceof Error?error.message:error));
 await seedTelegram(pool);
 void registerTrialWebhook();
 void registerJoiningWebhook();

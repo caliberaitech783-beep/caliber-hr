@@ -1,3 +1,13 @@
+# Pulse-II copies every Employee Master change within a minute
+
+Set by the owner on 23 November 2026: "Pulse HR is now the final authority for employee master. All the creation, edit, and delete will only happen from Pulse HR", copied to Pulse-II "on minute to minute basis".
+
+- Every change of a register line or of a joined employee (Active, Approved or Inactive) gets a running number in `hr_employee_changes`. Two database triggers write it (`HR-Pulse-Full-Project/server/employee-changes-schema.sql`), so no screen, import or later code can change an employee without a line. A trigger never blocks HR's own save, and HR Pulse starts even when the list cannot be made.
+- Pulse-II asks `GET /api/integrations/mis/employee-changes?after=N` (its own key, read only) and gets the numbers that changed, the highest number read, and every line those people have now; no line left means the person was removed. The people changed in the last ten minutes are given again, because a change saved late can carry an earlier number.
+- The copy carries work details only: Employee ID, name, region, site, department, designation, category, status, reporting to, contact and leaving date. Aadhaar, bank, salary and documents are never sent.
+- A joining form replaces the register line of the same number only when it is the same person; a form on somebody else's number is sent beside that line, and Pulse-II then changes nobody.
+- `server/mis-employee-sync.mjs` holds the feed; `server/mis-employee-sync.test.mjs` checks it. Do not change an employee by a path that the two triggers do not see (another table), and do not drop `hr_employee_changes`.
+
 # One employee number, one person
 
 Set by the owner on 23 November 2026: HR Pulse is the final authority for Employee Master, and Pulse-II books every trip card, attendance day and salary line by the employee number.
