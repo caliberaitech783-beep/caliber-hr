@@ -134,6 +134,30 @@ export async function saveTripCards(grant: string, site: string, days: {day: str
   return failed.sort();
 }
 
+/* Saved biometric logs (owner, 23 Nov 2026): "Save biometric" asks HR to store each day of the site's biometric roster
+   (server/biometric-day-store.mjs builds it from the punches itself), and the Biometric tab opens the saved days at once,
+   reading the punches only for the rest. Today is never saved: its punches are still coming in. */
+export type SavedBioDay = SavedInfo & {day: string; register: SiteRegister; punches: number; people: number};
+export async function readSavedBiometric(grant: string, site: string, from: string, to: string) {
+  const result = await api<{days?: SavedBioDay[]}>(grant, 'attendance/biometric-days?' + new URLSearchParams({site, from, to}));
+  return (Array.isArray(result?.days) ? result.days : []).filter(d => d?.register && typeof d.register === 'object')
+    .map(d => ({...d, register: {...d.register, rows: Array.isArray(d.register.rows) ? d.register.rows : [], machines: Array.isArray(d.register.machines) ? d.register.machines : []}}));
+}
+/** Saves the given days, one day per request, two at a time (the server reads each day's punches again to save it). */
+export async function saveBiometricDays(grant: string, site: string, days: string[], onDay: (day: string, info: (SavedInfo & {punches: number}) | null, error?: string) => void) {
+  let next = 0;
+  const failed: string[] = [];
+  async function worker() {
+    while (next < days.length) {
+      const day = days[next++];
+      try { onDay(day, await api<SavedInfo & {day: string; punches: number}>(grant, 'attendance/biometric-days', 'POST', {site, day})); }
+      catch (e) { failed.push(day); onDay(day, null, (e as Error).message); }
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(2, days.length)}, worker));
+  return failed.sort();
+}
+
 /* Biometric tab, day by day (owner, 22 Nov 2026: "the same way as the trip card"): the site's machines are read one day
    per request, three days at a time, each day tried three times, so the muster fills in as each day arrives. */
 export type BioDayUpdate = {day: string; state: DayState; result?: SiteRegister; error?: string; attempt?: number};

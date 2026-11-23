@@ -1,0 +1,49 @@
+/* Saved biometric logs for the attendance roster (owner, 23 Nov 2026: "save button to save the bio-matric logs").
+   "Save biometric" on Attendance roster › Biometric stores each day of a site's biometric roster (every punch on the
+   site's machines, rated with the attendance policy) in hr_biometric_days, so the Biometric tab opens saved days at
+   once next time and reads the machines' punches only for days not saved (and always for today).
+   The server builds the saved copy itself from the punches in HR (loadSiteRegister); the browser only names the day,
+   so a saved day cannot be edited from the browser.
+   GET  attendance/biometric-days?site=&from=&to=  → {days:[{day,register,punches,people,savedBy,savedAt}]}
+   POST attendance/biometric-days {site,day}       → {day,punches,people,savedBy,savedAt}  (one day per request) */
+
+export const MAX_BIO_DAYS = 31;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const fail = (message, status = 400) => { throw Object.assign(new Error(message), {status}); };
+const validDay = value => typeof value === 'string' && DAY.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+
+/** load(site,from,to): the site register for those days (loadSiteRegister); sites: the login's site ids (null = all). today: India date. */
+export function createBiometricDayStore(pool, {load, today}) {
+  async function findSite(name, sites) {
+    if (typeof name !== 'string' || !name.trim() || name.length > 200) fail('Choose a site.');
+    const site = (await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1", [name, sites])).rows[0];
+    if (!site) fail('This site is not assigned to your login.', 403);
+    return {id: site.id, name: site.name, siteType: site.site_type || ''};
+  }
+  return async function biometricDays(profile, method, input, params, sites) {
+    if (method === 'GET') {
+      const from = params.get('from'), to = params.get('to');
+      if (!validDay(from) || !validDay(to) || to < from) fail('Choose a valid date range.');
+      if ((Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 > MAX_BIO_DAYS) fail(`Choose up to ${MAX_BIO_DAYS} days.`);
+      const site = await findSite(params.get('site'), sites);
+      const {rows} = await pool.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,register,punches,people,saved_by,saved_at FROM hr_biometric_days
+        WHERE site=$1 AND day BETWEEN $2::date AND $3::date ORDER BY day`, [site.name, from, to]);
+      return {site: site.name, days: rows.map(r => ({day: r.day, register: r.register, punches: r.punches, people: r.people, savedBy: r.saved_by, savedAt: r.saved_at}))};
+    }
+    if (method === 'POST') {
+      const day = input?.day;
+      if (!validDay(day)) fail('Choose a valid day.');
+      if (day >= today()) fail('Today is still running; biometric logs can be saved from yesterday back.');
+      const site = await findSite(input?.site, sites);
+      const register = await load(site, day, day);
+      const machines = Array.isArray(register?.machines) ? register.machines : [], people = Array.isArray(register?.rows) ? register.rows.length : 0;
+      const punches = machines.reduce((n, m) => n + (Number(m.punches) || 0), 0);
+      const saved = (await pool.query(`INSERT INTO hr_biometric_days(site,day,register,punches,people,saved_by) VALUES($1,$2,$3,$4,$5,$6)
+        ON CONFLICT(site,day) DO UPDATE SET register=EXCLUDED.register,punches=EXCLUDED.punches,people=EXCLUDED.people,saved_by=EXCLUDED.saved_by,saved_at=now()
+        RETURNING to_char(day,'YYYY-MM-DD') AS day,punches,people,saved_by,saved_at`, [site.name, day, JSON.stringify(register), punches, people, profile.actor])).rows[0];
+      await pool.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_BIOMETRIC_DAY','attendance',NULL,$2)", [profile.actor, {site: site.name, day, punches, people}]);
+      return {day: saved.day, punches: saved.punches, people: saved.people, savedBy: saved.saved_by, savedAt: saved.saved_at};
+    }
+    fail('Not found', 404);
+  };
+}
