@@ -53,10 +53,10 @@ export type BioState={running:boolean;message:string;days:Record<string,DayState
  /** Save biometric (owner, 23 Nov 2026): the button's text, whether it can be pressed, and the note on what is saved. */
  onSave?:()=>void;saveLabel?:string;canSave?:boolean;savedNote?:string;saveError?:string;saved?:Record<string,SavedInfo>};
 const BIO_DAY_STATE:Record<DayState,string>={queued:'Waiting to be read',loading:'Reading punches…',retrying:'Busy · trying again…',done:'Read',failed:'Could not be read'};
-type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripState;bio?:BioState;monthly:boolean;from:string;to:string;loading?:boolean;error?:string;emptyText?:string;onImportText?:()=>void;onImportCsv?:()=>void;importing?:boolean};
+type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripState;bio?:BioState;monthly:boolean;from:string;to:string;loading?:boolean;error?:string;emptyText?:string;onImportText?:()=>void;onImportCsv?:()=>void;onImportDat?:()=>void;importing?:boolean};
 
 /** The roster table, its toolbar, the difference drill-down and Export Excel. */
-export function RosterTable({groups,dates,view,trip,bio,monthly,from,to,loading=false,error='',emptyText,onImportText,onImportCsv,importing=false}:TableProps){
+export function RosterTable({groups,dates,view,trip,bio,monthly,from,to,loading=false,error='',emptyText,onImportText,onImportCsv,onImportDat,importing=false}:TableProps){
  const [onlyDiff,setOnlyDiff]=useState(false),[open,setOpen]=useState(''),[exporting,setExporting]=useState(false),[exportOpen,setExportOpen]=useState(false),[importOpen,setImportOpen]=useState(false),[times,setTimes]=useState(true);
  const drill=useRef<HTMLDivElement>(null);
  const rosterTable=useRef<HTMLTableElement>(null);
@@ -123,9 +123,9 @@ export function RosterTable({groups,dates,view,trip,bio,monthly,from,to,loading=
    {view!=='trip'&&<span className="roster-seg" role="group" aria-label="Day boxes"><button type="button" aria-pressed={!times} onClick={()=>setTimes(false)}>Codes only</button><button type="button" aria-pressed={times} onClick={()=>setTimes(true)}>Codes + In / Out</button></span>}
    {view!=='bio'&&trip.onSave&&<button type="button" className="roster-save" disabled={!trip.canSave} onClick={trip.onSave}><Save/>{trip.saveLabel||'Save trip cards'}</button>}
    {view==='bio'&&bio?.onSave&&<button type="button" className="roster-save" disabled={!bio.canSave} onClick={bio.onSave}><Save/>{bio.saveLabel||'Save biometric'}</button>}
-   {view==='bio'&&onImportText&&onImportCsv&&<div className="roster-export roster-import">
+   {view==='bio'&&onImportText&&onImportCsv&&onImportDat&&<div className="roster-export roster-import">
     <button type="button" aria-haspopup="menu" aria-expanded={importOpen} disabled={importing} onClick={()=>setImportOpen(value=>!value)}><Upload/>{importing?'Importing…':'Import'}<ChevronDown/></button>
-    {importOpen&&<div className="roster-export-menu" role="menu"><button type="button" role="menuitem" onClick={()=>{setImportOpen(false);onImportText();}}><Upload/>Import Text</button><button type="button" role="menuitem" onClick={()=>{setImportOpen(false);onImportCsv();}}><Upload/>Import CSV</button></div>}
+    {importOpen&&<div className="roster-export-menu" role="menu"><button type="button" role="menuitem" onClick={()=>{setImportOpen(false);onImportText();}}><Upload/>Import Text</button><button type="button" role="menuitem" onClick={()=>{setImportOpen(false);onImportCsv();}}><Upload/>Import CSV</button><button type="button" role="menuitem" onClick={()=>{setImportOpen(false);onImportDat();}}><Upload/>Import DAT</button></div>}
    </div>}
    <div className="roster-export">
     <button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!shown.length||exporting} onClick={()=>setExportOpen(value=>!value)}><Download/>{exporting?'Preparing…':'Print/Export'}<ChevronDown/></button>
@@ -239,7 +239,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<BioStream>(noBio);
  const bioRef=useRef('');
  const [pull,setPull]=useState<{running:boolean;message:string;error:string}|null>(null),[bioReload,setBioReload]=useState(0);
- const textImport=useRef<HTMLInputElement>(null),csvImport=useRef<HTMLInputElement>(null),[importing,setImporting]=useState(false),[importNote,setImportNote]=useState(''),[importError,setImportError]=useState('');
+ const textImport=useRef<HTMLInputElement>(null),csvImport=useRef<HTMLInputElement>(null),datImport=useRef<HTMLInputElement>(null),[importing,setImporting]=useState(false),[importNote,setImportNote]=useState(''),[importError,setImportError]=useState('');
  const keyRef=useRef(''),forceMis=useRef(false),forceBio=useRef(false);
  const [reload,setReload]=useState(0);
  useEffect(()=>{let live=true;
@@ -433,9 +433,9 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    ready&&<>{view!=='trip'&&bioError&&<p className="error" role="alert">Biometric punches unavailable: {bioError}</p>}
    {view!=='trip'&&bioData&&<MachinesPanel site={site} machines={bioData.machines} pull={pull} onPull={()=>void pullMachines(bioData.machines)} onManage={onManageMachines}/>}
    {view!=='trip'&&bioData&&unlinkedCount>0&&<p className="roster-warn" role="alert">{unlinkedCount} machine ID{unlinkedCount===1?'':'s'} punched at {site} but {unlinkedCount===1?'is':'are'} not linked to an employee yet. {unlinkedCount===1?'It is':'They are'} shown with the name on the machine; link them in Machine punches to see the employee code.</p>}
-   {view==='bio'&&<><input ref={textImport} hidden type="file" accept=".txt,text/plain" aria-label="Import biometric text file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'text');}}/><input ref={csvImport} hidden type="file" accept=".csv,text/csv" aria-label="Import biometric CSV file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'csv');}}/>{importNote&&<p className="roster-saved" role="status">{importNote}</p>}{importError&&<p className="error" role="alert">Import failed: {importError}</p>}</>}
+   {view==='bio'&&<><input ref={textImport} hidden type="file" accept=".txt,text/plain" aria-label="Import biometric text file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'text');}}/><input ref={csvImport} hidden type="file" accept=".csv,text/csv" aria-label="Import biometric CSV file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'csv');}}/><input ref={datImport} hidden type="file" accept=".dat,application/octet-stream" aria-label="Import biometric DAT file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'text');}}/>{importNote&&<p className="roster-saved" role="status">{importNote}</p>}{importError&&<p className="error" role="alert">Import failed: {importError}</p>}</>}
    <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} bio={bioState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} loading={bioLoading} error={view!=='trip'?bioError:''}
-    onImportText={view==='bio'?()=>textImport.current?.click():undefined} onImportCsv={view==='bio'?()=>csvImport.current?.click():undefined} importing={importing}
+    onImportText={view==='bio'?()=>textImport.current?.click():undefined} onImportCsv={view==='bio'?()=>csvImport.current?.click():undefined} onImportDat={view==='bio'?()=>datImport.current?.click():undefined} importing={importing}
     emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):undefined}/></>}
  </section>;
 }
