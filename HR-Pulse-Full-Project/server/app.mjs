@@ -69,12 +69,12 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         if(!['GET','POST'].includes(req.method))throw problem('Method not allowed',405);
         return send(200,await service.attendanceBridge(req.headers['x-bridge-key'],attendanceRoute.slice('bridge/'.length),req.method,req.method==='POST'?await body(req):{}));
       }
-      // Pulse-II copying the Employee Master and the approved transfers (mis-employee-sync.mjs): its own key, read only.
-      const misSync=path.match(/^\/api\/integrations\/mis\/(employees|transfers)$/);
+      // Pulse-II copying the Employee Master, what changed in it, and the approved transfers (mis-employee-sync.mjs): its own key, read only.
+      const misSync=path.match(/^\/api\/integrations\/mis\/(employees|employee-changes|transfers)$/);
       if(misSync){
         if(!service?.misEmployeeSync)throw problem('Service unavailable',503);
         if(req.method!=='GET'){res.setHeader('Allow','GET');throw problem('Method not allowed',405);}
-        return send(200,await service.misEmployeeSync(req.headers['x-mis-sync-key'],misSync[1]));
+        return send(200,await service.misEmployeeSync(req.headers['x-mis-sync-key'],misSync[1],{after:url.searchParams.get('after')}));
       }
       const telegramRoute=path.startsWith('/api/telegram/')?path.slice('/api/telegram/'.length):null;
       const assetRoute=path.startsWith('/api/asset-management/')?path.slice('/api/asset-management/'.length):null;
