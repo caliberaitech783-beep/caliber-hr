@@ -11,7 +11,7 @@ import {api,type Field,type Lookup} from './api';
 export const transferFieldKeys=['fromSiteId','employeeId','toSiteId','fromDesignation','toDesignation','fromManager','toManager'];
 type Data=Record<string,string|number>;
 type Option={label:string;value:string};
-type Options={employees?:Option[];designations:string[];fromManagers:Option[];toManagers:Option[]};
+type Options={employees?:Option[];staff?:{register:number;joined:number;inScope:boolean};designations:string[];fromManagers:Option[];toManagers:Option[]};
 type Props={grant:string;field:Field;data:Data;setData:(f:(d:Data)=>Data)=>void;lookups:Lookup[];disabled:boolean};
 const OTHER='__other__';
 const cache=new Map<string,Promise<Options>>();
@@ -77,7 +77,7 @@ export default function TransferField({grant,field,data,setData,lookups,disabled
     </select>;
     if(fromSiteId&&!options)return <select disabled value="" onChange={()=>{}}><option value="">Loading employees…</option></select>;
     return <select disabled={disabled} required={field.required} value={value} onChange={e=>set(e.target.value)}>
-      <option value="">{!everyone.length?'No active employee is available to this login':fromSiteId&&!atSite.length?`No employee saved at this site · showing all (${people.length})`:`Select employee (${people.length})…`}</option>
+      <option value="">{fromSiteId&&options?.staff?.inScope===false?`This login cannot list staff of this site · showing ${people.length}`:fromSiteId&&options?.staff&&!options.staff.register?`Employee Master has no staff saved for this site · ${people.length} joined through HR`:!everyone.length?'No active employee is available to this login':fromSiteId&&!atSite.length?`No employee saved at this site · showing all (${people.length})`:`Select employee (${people.length})…`}</option>
       {value&&!people.some(x=>x.id===value)&&<option value={value}>{lookups.find(x=>x.id===value)?.name||'Saved employee'}</option>}
       {people.map(x=><option key={x.id} value={x.id}>{x.code} · {x.name}</option>)}
     </select>;
