@@ -56,9 +56,17 @@ export default function TransferField({grant,field,data,setData,lookups,disabled
     {sites.map(x=><option key={x.id} value={x.id}>{siteLabel(x)}</option>)}
   </select>;
   if(key==='employeeId'){
-    const people=lookups.filter(x=>x.kind==='employees'&&(!fromSiteId||x.site_id===fromSiteId)).sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
-    return <select disabled={disabled||!fromSiteId} required={field.required} value={value} onChange={e=>set(e.target.value)}>
-      <option value="">{!fromSiteId?'Choose the site first':people.length?`Select employee (${people.length})…`:'No active employee at this site'}</option>
+    /* The employee is always selectable (owner, 23 Nov 2026). With a site chosen, that site's employees are listed;
+       a site is matched by ID, code or name, so a duplicate site master with the same name still matches.
+       When nobody matches the site, every employee this login can see is listed rather than none. */
+    const everyone=lookups.filter(x=>x.kind==='employees').sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
+    const norm=(s:unknown)=>String(s||'').trim().toLowerCase();
+    const chosen=sites.find(x=>x.id===fromSiteId),keys=new Set(chosen?[chosen.id,norm(chosen.code),norm(chosen.name)].filter(Boolean):[fromSiteId]);
+    const siteKeys=(id:unknown)=>{const s=lookups.find(x=>x.kind==='sites'&&x.id===id);return s?[s.id,norm(s.code),norm(s.name)]:[String(id||''),norm(id)];};
+    const atSite=fromSiteId?everyone.filter(x=>siteKeys(x.site_id).some(k=>k&&keys.has(k))):everyone;
+    const people=atSite.length?atSite:everyone;
+    return <select disabled={disabled} required={field.required} value={value} onChange={e=>set(e.target.value)}>
+      <option value="">{!everyone.length?'No active employee is available to this login':fromSiteId&&!atSite.length?`No employee saved at this site · showing all (${people.length})`:`Select employee (${people.length})…`}</option>
       {value&&!people.some(x=>x.id===value)&&<option value={value}>{lookups.find(x=>x.id===value)?.name||'Saved employee'}</option>}
       {people.map(x=><option key={x.id} value={x.id}>{x.code} · {x.name}</option>)}
     </select>;
