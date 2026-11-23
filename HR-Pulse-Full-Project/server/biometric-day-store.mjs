@@ -6,6 +6,7 @@
    so a saved day cannot be edited from the browser.
    GET  attendance/biometric-days?site=&from=&to=  → {days:[{day,register,punches,people,savedBy,savedAt}]}
    POST attendance/biometric-days {site,day}       → {day,punches,people,savedBy,savedAt}  (one day per request) */
+import {siteAccessMessage} from './scope.mjs';
 
 export const MAX_BIO_DAYS = 31;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -14,10 +15,10 @@ const validDay = value => typeof value === 'string' && DAY.test(value) && Number
 
 /** load(site,from,to): the site register for those days (loadSiteRegister); sites: the login's site ids (null = all). today: India date. */
 export function createBiometricDayStore(pool, {load, today}) {
-  async function findSite(name, sites) {
+  async function findSite(name, sites, profile) {
     if (typeof name !== 'string' || !name.trim() || name.length > 200) fail('Choose a site.');
     const site = (await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1", [name, sites])).rows[0];
-    if (!site) fail('This site is not assigned to your login.', 403);
+    if (!site) fail(siteAccessMessage(profile), 403);
     return {id: site.id, name: site.name, siteType: site.site_type || ''};
   }
   return async function biometricDays(profile, method, input, params, sites) {
@@ -25,7 +26,7 @@ export function createBiometricDayStore(pool, {load, today}) {
       const from = params.get('from'), to = params.get('to');
       if (!validDay(from) || !validDay(to) || to < from) fail('Choose a valid date range.');
       if ((Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 > MAX_BIO_DAYS) fail(`Choose up to ${MAX_BIO_DAYS} days.`);
-      const site = await findSite(params.get('site'), sites);
+      const site = await findSite(params.get('site'), sites, profile);
       const {rows} = await pool.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,register,punches,people,saved_by,saved_at FROM hr_biometric_days
         WHERE site=$1 AND day BETWEEN $2::date AND $3::date ORDER BY day`, [site.name, from, to]);
       return {site: site.name, days: rows.map(r => ({day: r.day, register: r.register, punches: r.punches, people: r.people, savedBy: r.saved_by, savedAt: r.saved_at}))};
@@ -34,7 +35,7 @@ export function createBiometricDayStore(pool, {load, today}) {
       const day = input?.day;
       if (!validDay(day)) fail('Choose a valid day.');
       if (day >= today()) fail('Today is still running; biometric logs can be saved from yesterday back.');
-      const site = await findSite(input?.site, sites);
+      const site = await findSite(input?.site, sites, profile);
       const register = await load(site, day, day);
       const machines = Array.isArray(register?.machines) ? register.machines : [], people = Array.isArray(register?.rows) ? register.rows.length : 0;
       const punches = machines.reduce((n, m) => n + (Number(m.punches) || 0), 0);
