@@ -49,13 +49,17 @@ export default function TransferField({grant,field,data,setData,lookups,disabled
   const fromSiteId=String(data.fromSiteId||''),toSiteId=String(data.toSiteId||'');
   const options=useTransferOptions(grant,fromSiteId,toSiteId);
   const set=(v:string)=>setData(d=>({...d,[key]:v,...(key==='toSiteId'?{toManager:''}:{})}));
-  const siteLabel=(x:Lookup)=>`${x.code} · ${x.name}`;
+  /* Owner, 23 Nov 2026: site boxes show the site name only (no region code); a name shared by two site masters is listed once. */
+  const siteLabel=(x:Lookup)=>x.name;
+  const siteKey=(x?:Lookup)=>String(x?.name||'').trim().toLowerCase();
+  const siteList=sites.filter((x,i)=>sites.findIndex(y=>siteKey(y)===siteKey(x))===i);
+  const fromName=siteKey(sites.find(x=>x.id===fromSiteId));
   /* One site for this login: choose it straight away. */
-  useEffect(()=>{if(key==='fromSiteId'&&!value&&!disabled&&sites.length===1)setData(d=>({...d,fromSiteId:sites[0].id}));},[key,value,disabled,sites.length]);// eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{if(key==='fromSiteId'&&!value&&!disabled&&siteList.length===1)setData(d=>({...d,fromSiteId:siteList[0].id}));},[key,value,disabled,siteList.length]);// eslint-disable-line react-hooks/exhaustive-deps
   if(key==='fromSiteId')return <select disabled={disabled} required={field.required} value={value} onChange={e=>{const next=e.target.value;setData(d=>({...d,fromSiteId:next,employeeId:'',fromDesignation:'',fromManager:'',...(d.toSiteId===next?{toSiteId:'',toManager:''}:{})}));}}>
     <option value="">{sites.length?'Select site…':'No site is assigned to this login'}</option>
     {value&&!sites.some(x=>x.id===value)&&<option value={value}>Current site</option>}
-    {sites.map(x=><option key={x.id} value={x.id}>{siteLabel(x)}</option>)}
+    {siteList.map(x=><option key={x.id} value={x.id}>{siteLabel(x)}</option>)}
   </select>;
   if(key==='employeeId'){
     /* The employee is always selectable (owner, 23 Nov 2026). With a site chosen, that site's employees are listed;
@@ -85,7 +89,7 @@ export default function TransferField({grant,field,data,setData,lookups,disabled
   if(key==='toSiteId')return <select disabled={disabled||!data.employeeId} required={field.required} value={value} onChange={e=>set(e.target.value)}>
     <option value="">{data.employeeId?'Select…':'Choose the employee first'}</option>
     {value&&!lookups.some(x=>x.kind==='sites'&&x.id===value)&&<option value={value}>Existing inactive site</option>}
-    {sites.filter(x=>x.id!==fromSiteId).map(x=><option key={x.id} value={x.id}>{siteLabel(x)}</option>)}
+    {siteList.filter(x=>x.id!==fromSiteId&&siteKey(x)!==fromName).map(x=><option key={x.id} value={x.id}>{siteLabel(x)}</option>)}
   </select>;
   if(key==='fromDesignation'||key==='toDesignation')return <ListOrOther label={field.label} value={value} disabled={disabled} required={field.required} onChange={set}
     options={(options?.designations||[]).map(name=>({label:name,value:name}))} placeholder={options?'Select designation…':'Loading designations…'}/>;
