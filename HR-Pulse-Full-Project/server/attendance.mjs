@@ -12,8 +12,7 @@ import {createTripCardStore} from './trip-card-store.mjs';
 import {createBridges,looksLikeSiteKey} from './attendance-bridges.mjs';
 import {createDirectMachines} from './attendance-direct.mjs';
 import {loadRegister,loadSiteRegister,readPolicy,savePolicy} from './attendance-register.mjs';
-import {createMachineDelete,machineDeleteApprovers} from './machine-delete.mjs';
-import {queueTelegram} from './telegram.mjs';
+import {removeMachine} from './machine-delete.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const uuid=value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value||'');
@@ -89,10 +88,8 @@ export function validateRange(params){
  return {from,to};
 }
 
-export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_KEY,env=process.env,queue=(db,key,actors,message,markup)=>queueTelegram(db,key,actors,message,'joining',markup)}={}){
+export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_KEY}={}){
  const misAttendance=createMisAttendance(pool);
- // Delete a machine only with the approvers' OK on Telegram or their OTP (machine-delete.mjs, owner 23 Nov 2026).
- const machineDelete=createMachineDelete({queue,env});
  const bridges=createBridges(pool);
  const tripCards=createTripCardStore(pool);
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
@@ -218,8 +215,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
     machines:shown.filter(d=>!d.bridgeId&&!d.direct&&d.bridgeName).map(d=>d.serial)}]:[]),...siteBridges.filter(b=>!scope||scope.has(String(b.siteId)))];
    return {configured:mainConfigured||siteBridges.length>0||shown.some(d=>d.direct),directMachines:shown.filter(d=>d.direct).length,bridgeOnline:Boolean(seen?.online)||siteBridges.some(b=>b.online),bridgeLastSeen:seen?.last_seen||null,
     bridges:bridgeList,devices:shown,lastFetch:view(last)||null,
-    canLink:canWrite(profile,'employees'),canManageDevices:assignedSites(profile)===null&&canWrite(profile,'employees'),
-    deleteApprovers:machineDeleteApprovers(env).length};
+    canLink:canWrite(profile,'employees'),canManageDevices:assignedSites(profile)===null&&canWrite(profile,'employees')};
   }
   if(route==='policy'&&method==='GET')return {...await readPolicy(pool),canEdit:assignedSites(profile)===null&&canWrite(profile,'employees')};
   if(route==='policy'&&method==='POST'){
@@ -310,16 +306,10 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
     return saved;
    });
   }
-  // Delete a machine (machine-delete.mjs): POST devices/delete {serial} asks the approvers on Telegram; GET devices/delete/<code>
-  // reads the answer; POST devices/delete/<code> {otp} deletes with the OTP, {cancel:true} withdraws it. HR administrators only.
-  const deleteRoute=route.match(/^devices\/delete(?:\/([A-Za-z0-9-]{1,20}))?$/);
-  if(deleteRoute){
+  // Delete a machine (machine-delete.mjs, owner 23 Nov 2026): no approval, removed at once. HR administrators only.
+  if(route==='devices/delete'&&method==='POST'){
    if(assignedSites(profile)!==null||!canWrite(profile,'employees'))fail('Only an HR administrator without site restrictions can delete machines',403);
-   const code=deleteRoute[1];
-   if(!code&&method==='POST')return tx(db=>machineDelete.request(db,profile,input));
-   if(code&&method==='GET')return machineDelete.status(pool,code);
-   if(code&&method==='POST')return tx(db=>machineDelete.confirm(db,profile,code,input));
-   fail('Not found',404);
+   return tx(db=>removeMachine(db,profile.actor,input));
   }
   // Bridge PCs per site (attendance-bridges.mjs): list, add (key shown once), new key, remove. HR administrators only.
   const bridgeRoute=route.match(/^bridges(?:\/([0-9a-fA-F-]{36})\/(key|remove))?$/);
