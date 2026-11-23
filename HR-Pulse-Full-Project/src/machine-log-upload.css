@@ -1,0 +1,36 @@
+/* Upload machine log (MachineLogUpload.tsx, owner 23 Nov 2026). */
+.machine-log-upload{max-width:860px;width:calc(100vw - 32px)}
+.machine-log-upload h2{display:flex;align-items:center;gap:8px}
+.machine-log-upload h2 svg{width:20px;height:20px}
+.machine-log-upload h3{margin:18px 0 8px;font-size:16px;color:#2b2233}
+.machine-log-drop{display:grid;justify-items:center;gap:4px;margin-top:12px;padding:22px 16px;border:1.5px dashed #cbbfdc;border-radius:12px;background:#faf8fc;text-align:center;color:#2b2233}
+.machine-log-drop.dragging{border-color:#5b2a86;background:#f3ecfa}
+.machine-log-drop>svg{width:26px;height:26px;color:#8a7f96}
+.machine-log-drop p{margin:0;font-size:15px}
+.machine-log-drop small,.machine-log-files small,.machine-log-note{color:#6d6378;font-size:13px}
+.machine-log-link{border:0;background:none;padding:0;color:#5b2a86;font:inherit;text-decoration:underline;cursor:pointer}
+.machine-log-files{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.machine-log-files li{display:grid;gap:6px;padding:10px 12px;border:1px solid #ece6f2;border-radius:10px;background:#fff}
+.machine-log-files li.invalid{border-color:#f3c4bf;background:#fffafa}
+.machine-log-file-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.machine-log-name{display:flex;align-items:center;gap:6px;font-weight:500;color:#2b2233;overflow-wrap:anywhere;flex:1 1 200px}
+.machine-log-name svg{width:16px;height:16px;flex:none}
+.machine-log-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:500}
+.machine-log-pill svg{width:13px;height:13px}
+.machine-log-pill.ok{background:#e8f6ee;color:#1d6b3f}
+.machine-log-pill.guess{background:#fdf3e1;color:#8a5a00}
+.machine-log-pill.warn{background:#fef3f2;color:#b42318}
+.machine-log-remove{border:0;background:none;padding:4px;color:#8a7f96;cursor:pointer;line-height:0}
+.machine-log-remove svg{width:16px;height:16px}
+.machine-log-machine{display:flex;align-items:center;gap:8px;font-size:13px;color:#6d6378;flex-wrap:wrap}
+.machine-log-machine select{flex:1 1 260px;max-width:440px}
+.machine-log-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:12px 0}
+.machine-log-stats div{padding:10px 12px;border-radius:10px;background:#f5f2f8}
+.machine-log-stats span{display:block;font-size:12px;color:#6d6378}
+.machine-log-stats b{font-size:18px;font-weight:600;color:#2b2233}
+.machine-log-stats .warn b{color:#a15c00}
+.machine-log-warn{margin:0 0 10px;padding:8px 12px;border-radius:10px;background:#fdf3e1;color:#7a4b00;font-size:13px}
+.machine-log-upload .attendance-table{max-height:300px;overflow:auto}
+.machine-log-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+.machine-log-actions .machine-log-note{margin-right:auto}
+.machine-log-actions svg{width:15px;height:15px}

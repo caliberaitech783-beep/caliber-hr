@@ -4,6 +4,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {Download,RefreshCw} from 'lucide-react';
 import {api,type Lookup,type Module} from './api';
 import BiometricMachines,{type Machine} from './BiometricMachines';
+import MachineMaster from './MachineMaster';
 import PunctualitySummary from './PunctualitySummary';
 import ShiftMaster from './ShiftMaster';
 import MisAttendance from './MisAttendance';
@@ -100,7 +101,7 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
  const [lookups,setLookups]=useState<Lookup[]>([]),[choice,setChoice]=useState<Record<string,string>>({});
  const [loading,setLoading]=useState(true),[fetching,setFetching]=useState(false),[busy,setBusy]=useState(false);
  const [error,setError]=useState(''),[message,setMessage]=useState('');
- const [tab,setTab]=useState<'punches'|'machines'|'sheet'|'tripPunch'|'recon'|'roster'>('punches');
+ const [tab,setTab]=useState<'punches'|'machines'|'master'|'sheet'|'tripPunch'|'recon'|'roster'>('punches');
  const [selected,setSelected]=useState('');
  const live=useRef(true);
  const attendanceFrame=useRef<HTMLIFrameElement>(null);
@@ -133,7 +134,7 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
   finally{if(live.current)setLoading(false);}
  },[grant,from,to,selected]);
  useEffect(()=>{void load(tab==='punches');},[load,tab]);
- useEffect(()=>{if(!status?.canLink||(tab!=='punches'&&tab!=='machines'))return;let active=true;api<Lookup[]>(grant,'lookups').then(rows=>{if(active&&Array.isArray(rows))setLookups(rows);}).catch(()=>{});return()=>{active=false;};},[grant,status?.canLink,tab]);
+ useEffect(()=>{if(!status?.canLink||(tab!=='punches'&&tab!=='machines'&&tab!=='master'))return;let active=true;api<Lookup[]>(grant,'lookups').then(rows=>{if(active&&Array.isArray(rows))setLookups(rows);}).catch(()=>{});return()=>{active=false;};},[grant,status?.canLink,tab]);
 
  useEffect(()=>{
   if(tab!=='machines')return;
@@ -186,13 +187,17 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
   <div className="module-tabs" aria-label="Biometric views">
    <button className={tab==='punches'?'selected':''} aria-pressed={tab==='punches'} onClick={()=>setTab('punches')}>Machine punches</button>
    <button className={tab==='machines'?'selected':''} aria-pressed={tab==='machines'} onClick={()=>setTab('machines')}>Biometric machines</button>
+   <button className={tab==='master'?'selected':''} aria-pressed={tab==='master'} onClick={()=>setTab('master')}>Machine master</button>
    <button className={tab==='sheet'?'selected':''} aria-pressed={tab==='sheet'} onClick={()=>setTab('sheet')}>ESSL punch log (Excel)</button>
    <button className={tab==='tripPunch'?'selected':''} aria-pressed={tab==='tripPunch'} onClick={()=>setTab('tripPunch')}>Trip card punch</button>
    <button className={tab==='recon'?'selected':''} aria-pressed={tab==='recon'} onClick={()=>setTab('recon')}>Biometric vs trip card</button>
    <button className={tab==='roster'?'selected':''} aria-pressed={tab==='roster'} onClick={()=>setTab('roster')}>Attendance roster</button>
   </div>
   {/* Owner, 22 Nov 2026: the monthly roster (Trip Card and Bio Matric lines, difference drill-down) as a tab after Biometric vs trip card. */}
-  {tab==='roster'&&<AttendanceRosterPage grant={grant} onManageMachines={()=>setTab('machines')}/>}
+  {tab==='roster'&&<AttendanceRosterPage grant={grant} onManageMachines={()=>setTab('master')}/>}
+  {/* Owner, 23 Nov 2026: Machine master — site, machine no., name, location, serial, IP, make and model of every machine. */}
+  {tab==='master'&&status&&<MachineMaster grant={grant} machines={status.devices} sites={sites} canManage={status.canManageDevices}
+   onError={setError} onSaved={async text=>{setError('');setMessage(text);await load(false);}}/>}
   {(tab==='sheet'||tab==='tripPunch'||tab==='recon')&&<iframe key={tab} ref={attendanceFrame} src={legacyModuleUrl(tab==='sheet'?'punch':tab==='tripPunch'?'tpunch':'recon',policy)} sandbox={inPulseII ? "allow-scripts allow-downloads" : undefined} title={tab==='sheet'?'ESSL punch log upload':tab==='tripPunch'?'Trip card punch':'Biometric vs trip card comparison'}/>}
   {tab==='punches'&&<>
 
