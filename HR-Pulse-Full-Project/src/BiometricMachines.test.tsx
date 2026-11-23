@@ -111,3 +111,27 @@ it('site users get no Delete button',()=>{
  render(<BiometricMachines {...props} canManage={false}/>);
  expect(screen.queryByRole('button',{name:/Delete machine/})).toBeNull();
 });
+
+/* Owner, 23 Nov 2026: every machine has Refresh next to Edit; it re-reads the status from HR Pulse. */
+it('Refresh next to Edit re-reads the machines and shows when it was checked',async()=>{
+ let done:()=>void=()=>{};
+ const onRefresh=vi.fn(()=>new Promise<void>(resolve=>{done=resolve;}));
+ render(<BiometricMachines {...props} canManage={false} onRefresh={onRefresh}/>);
+ for(const m of machines)expect(screen.getByRole('button',{name:`Refresh machine ${m.serial}`})).toBeTruthy();
+ const row=screen.getByRole('button',{name:'Refresh machine JNP2260900233'}).closest('tr')!;
+ const buttons=within(row).getAllByRole('button').map(b=>b.textContent);
+ expect(buttons).toEqual(['Fetch log','Refresh']);
+ fireEvent.click(screen.getByRole('button',{name:'Refresh machine JNP2260900233'}));
+ expect(onRefresh).toHaveBeenCalledTimes(1);
+ expect(within(row).getByText('Refreshing…')).toBeTruthy();
+ expect((screen.getByRole('button',{name:'Refresh machine NEW1'}) as HTMLButtonElement).disabled).toBe(true);
+ done();
+ expect(await within(row).findByText(/^Checked /)).toBeTruthy();
+ expect(within(row).getByText('Refresh')).toBeTruthy();
+});
+
+it('Refresh sits between Fetch log and Edit for HR administrators',()=>{
+ render(<BiometricMachines {...props} onRefresh={vi.fn()}/>);
+ const row=screen.getByRole('button',{name:'Refresh machine JNP2260900233'}).closest('tr')!;
+ expect(within(row).getAllByRole('button').map(b=>b.textContent)).toEqual(['Fetch log','Refresh','Edit','Delete']);
+});

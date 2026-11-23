@@ -196,3 +196,8 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .machine-delete-modal button.danger{background:#b42318;border-color:#b42318;color:#fff}
 .machine-delete-modal button.danger:hover:not(:disabled){background:#912018}
 .machine-delete-modal button.danger:disabled{background:#f3c4bf;border-color:#f3c4bf;color:#fff}
+
+/* Refresh next to Edit (owner, 23 Nov 2026): re-reads the machine's status, last contact and logs. */
+.biometric-machines .machine-checked{display:block;margin-top:4px;font-size:11px;color:#8a7f96;white-space:nowrap}
+.biometric-machines .machine-actions .spinning{animation:machine-refresh-spin .8s linear infinite}
+@keyframes machine-refresh-spin{to{transform:rotate(360deg)}}
