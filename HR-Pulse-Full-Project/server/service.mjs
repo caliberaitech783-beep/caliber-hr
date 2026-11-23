@@ -14,6 +14,7 @@ import {createEmployeeMasterRegister,isEmployeeEntry} from './employee-master-re
 import {employeeNumber,heldNumbers,nextEmployeeNumber,otherPersonWithNumber,holderLine,NUMBER_FLOOR,OUR_PREFIXES} from './employee-number.mjs';
 import {createMisEmployeeSync} from './mis-employee-sync.mjs';
 import {createMisSiteMove} from './mis-site-move.mjs';
+import {createMisBiometricPunches} from './mis-biometric-punches.mjs';
 import {createReportingManagers} from './reporting-managers.mjs';
 import {createTransferOptions} from './transfer-options.mjs';
 import {validateTrialJoining} from './trial-joining.mjs';
@@ -250,6 +251,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     ...createEmployeeMasterRegister(pool),
     ...createMisEmployeeSync(pool),
     ...createMisSiteMove(pool),
+    ...createMisBiometricPunches(pool),
     ...createReportingManagers(pool),
     ...createTransferOptions(pool),
     async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests','gatePasses'].includes(kind))}]))}; },
