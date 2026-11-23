@@ -3,6 +3,8 @@ import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {createMisEmployeeSync,mergeEmployees,employeeNumber,employeeChanges,CHANGE_BATCH,RECENT_LIMIT,CHANGES_SQL,RECENT_SQL,REGISTER_FOR_SQL,JOINED_FOR_SQL} from './mis-employee-sync.mjs';
 import {createApi} from './app.mjs';
+// The way back (a site move made in Pulse-II) is checked with the copy: this file is on the list the deploy runs.
+import './mis-site-move.test.mjs';
 
 const KEY='k'.repeat(40);
 
