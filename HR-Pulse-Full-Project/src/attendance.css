@@ -181,7 +181,7 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .roster-export-menu button{display:flex;width:100%;align-items:center;gap:12px;padding:12px;border:0;background:transparent;text-align:left;color:#283650;border-radius:8px}
 .roster-export-menu button:hover{background:#f7f2fb}
 
-/* Delete a machine with the approver's OK on Telegram or the OTP (MachineDeleteDialog, owner 23 Nov 2026). */
+/* Delete a machine after one confirmation (MachineDeleteDialog, owner 23 Nov 2026). */
 .biometric-machines .machine-actions .machine-delete{color:#b42318;border-color:#f3c4bf}
 .biometric-machines .machine-actions .machine-delete:hover:not(:disabled){background:#fef3f2}
 .machine-delete-modal{max-width:520px;width:calc(100vw - 32px)}
@@ -191,16 +191,7 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .machine-delete-details dt{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#8a7f96}
 .machine-delete-details dd{margin:2px 0 0;font-weight:500;color:#2b2233;overflow-wrap:anywhere}
 .machine-delete-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-top:14px}
-.machine-delete-actions svg,.machine-delete-otp svg{width:15px;height:15px}
-.machine-delete-wait{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:14px 0 6px;padding:10px 12px;border-radius:10px;background:#fff6e9;color:#7a4f06}
-.machine-delete-dot{width:9px;height:9px;border-radius:50%;background:#e59a1c;animation:machine-delete-pulse 1.2s ease-in-out infinite}
-@keyframes machine-delete-pulse{50%{opacity:.25}}
-.machine-delete-otp{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:10px}
-.machine-delete-otp label{display:flex;flex-direction:column;gap:6px;flex:1 1 220px;font-size:13px}
-.machine-delete-otp input{font-size:18px;letter-spacing:.3em;font-family:ui-monospace,Consolas,monospace}
-.machine-delete-result{margin:14px 0 4px;padding:10px 12px;border-radius:10px;font-weight:500}
-.machine-delete-result.ok{background:#edf8f1;color:#1f6b3d}
-.machine-delete-result.stop{background:#fef3f2;color:#912018}
+.machine-delete-actions svg{width:15px;height:15px}
 @media (max-width:520px){.machine-delete-details{grid-template-columns:1fr}}
 .machine-delete-modal button.danger{background:#b42318;border-color:#b42318;color:#fff}
 .machine-delete-modal button.danger:hover:not(:disabled){background:#912018}

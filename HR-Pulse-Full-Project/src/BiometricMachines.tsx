@@ -7,8 +7,8 @@ import MachineDeleteDialog from './MachineDeleteDialog';
 /* Biometric machines register: every ESSL machine on every site, with where it
    stands, its name, serial number, IP address, status, last contact and the logs it has
    recorded today. HR administrators without a site restriction add machines to
-   a site and change their site, location or name, and delete a machine once an approver
-   approves it on Telegram or gives its OTP (owner, 23 Nov 2026; MachineDeleteDialog). */
+   a site and change their site, location or name, and delete a machine after one confirmation
+   (owner, 23 Nov 2026; MachineDeleteDialog). */
 export type Machine={serial:string;name:string;location:string;siteId:string|null;siteName:string;online:boolean;lastContact:string|null;lastSeen:string|null;logsToday:number;lastPunch:string|null;
  /** Owner, 22 Nov 2026: the machine's IP address (records only) and the bridge PC it reports to (null = main bridge PC). */
  ipAddress?:string;bridgeId?:string|null;bridgeName?:string;

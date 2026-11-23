@@ -80,47 +80,31 @@ it('a machine pushing straight to HR Pulse is online with no bridge PC, and Fetc
  expect(screen.getByText(DIRECT_SERVER)).toBeTruthy();
 });
 
-/* Owner, 23 Nov 2026: every saved machine has Delete; it deletes only after approval on Telegram or the OTP. */
-it('deletes a machine only after the approver approves on Telegram',async()=>{
- vi.useFakeTimers({shouldAdvanceTime:true});
- const pending={code:'MD-0123456789AB',serial:'JNP2260900400',status:'PENDING',expires:new Date(Date.now()+15*60000).toISOString(),approvers:['Mr Anoop'],attemptsLeft:5,decidedBy:'',decidedAt:null,via:''};
- vi.mocked(api).mockImplementation(async(_g,path,method)=>(path==='attendance/devices/delete'&&method==='POST'?pending
-  :path===`attendance/devices/delete/${pending.code}`?{...pending,status:'APPROVED',decidedBy:'Mr Anoop',via:'telegram'}:{}) as never);
+/* Owner, 23 Nov 2026: every saved machine has Delete; one confirmation removes it (no Telegram approval or OTP). */
+it('deletes a machine after one confirmation',async()=>{
  render(<BiometricMachines {...props}/>);
  for(const m of machines)expect(screen.getByRole('button',{name:`Delete machine ${m.serial}`})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Delete machine JNP2260900400'}));
  const dialog=screen.getByRole('dialog',{name:'Delete machine JNP2260900400?'});
  expect(within(dialog).getByText('Nigahi')).toBeTruthy();
+ expect(within(dialog).queryByText(/Telegram|OTP/)).toBeNull();
  expect(api).not.toHaveBeenCalled();
- fireEvent.click(within(dialog).getByRole('button',{name:/Send for approval on Telegram/}));
+ fireEvent.click(within(dialog).getByRole('button',{name:'Delete machine'}));
  await waitFor(()=>expect(api).toHaveBeenCalledWith('g','attendance/devices/delete','POST',{serial:'JNP2260900400'}));
- expect(await within(dialog).findByText(/Waiting for/)).toBeTruthy();
- expect(props.onSaved).not.toHaveBeenCalled();
- await vi.advanceTimersByTimeAsync(3100);
- await waitFor(()=>expect(props.onSaved).toHaveBeenCalledWith('Machine JNP2260900400 deleted — approved by Mr Anoop on Telegram.'));
- vi.useRealTimers();
+ await waitFor(()=>expect(props.onSaved).toHaveBeenCalledWith('Machine JNP2260900400 deleted.'));
+ expect(screen.queryByRole('dialog')).toBeNull();
 });
 
-it('deletes with the OTP the approver gives, and shows a wrong OTP',async()=>{
- const pending={code:'MD-0123456789AB',serial:'JNP2260900233',status:'PENDING',expires:new Date(Date.now()+15*60000).toISOString(),approvers:['Mr Anoop'],attemptsLeft:5,decidedBy:'',decidedAt:null,via:''};
- vi.mocked(api).mockImplementation(async(_g,path,method,body)=>{
-  if(path==='attendance/devices/delete')return pending as never;
-  if(method==='POST'&&(body as {otp?:string})?.otp==='111111')throw new Error('Wrong OTP (4 attempts left).');
-  if(method==='POST')return {...pending,status:'APPROVED',decidedBy:'OTP entered by hr',via:'otp'} as never;
-  return pending as never;
- });
+it('Cancel deletes nothing, and a server error stays on screen',async()=>{
  render(<BiometricMachines {...props}/>);
- fireEvent.click(screen.getByRole('button',{name:'Delete machine JNP2260900233'}));
- const dialog=screen.getByRole('dialog');
- fireEvent.click(within(dialog).getByRole('button',{name:/Send for approval/}));
- const otp=await within(dialog).findByPlaceholderText('6-digit OTP');
- fireEvent.change(otp,{target:{value:'111111'}});
- fireEvent.submit(within(dialog).getByRole('form',{name:'Delete with OTP'}));
- expect(await within(dialog).findByText('Wrong OTP (4 attempts left).')).toBeTruthy();
- fireEvent.change(otp,{target:{value:'482913'}});
- fireEvent.submit(within(dialog).getByRole('form',{name:'Delete with OTP'}));
- await waitFor(()=>expect(props.onSaved).toHaveBeenCalledWith('Machine JNP2260900233 deleted — approved by OTP.'));
- expect(within(dialog).getByText('Deleted — approved by OTP.')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Delete machine NEW1'}));
+ fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Cancel'}));
+ expect(screen.queryByRole('dialog')).toBeNull();expect(api).not.toHaveBeenCalled();
+ vi.mocked(api).mockRejectedValueOnce(new Error('Machine not found'));
+ fireEvent.click(screen.getByRole('button',{name:'Delete machine NEW1'}));
+ fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Delete machine'}));
+ expect(await screen.findByText('Machine not found')).toBeTruthy();
+ expect(props.onSaved).not.toHaveBeenCalled();
 });
 
 it('site users get no Delete button',()=>{
