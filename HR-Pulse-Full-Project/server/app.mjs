@@ -69,6 +69,12 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         if(!['GET','POST'].includes(req.method))throw problem('Method not allowed',405);
         return send(200,await service.attendanceBridge(req.headers['x-bridge-key'],attendanceRoute.slice('bridge/'.length),req.method,req.method==='POST'?await body(req):{}));
       }
+      // A site move made in Pulse-II with an OTP on a card corrects the Employee Master here (mis-site-move.mjs): Pulse-II's own key.
+      if(path==='/api/integrations/mis/site-move'){
+        if(!service?.misSiteMove)throw problem('Service unavailable',503);
+        if(req.method!=='POST'){res.setHeader('Allow','POST');throw problem('Method not allowed',405);}
+        return send(200,await service.misSiteMove(req.headers['x-mis-sync-key'],await body(req,16_000)));
+      }
       // Pulse-II copying the Employee Master, what changed in it, and the approved transfers (mis-employee-sync.mjs): its own key, read only.
       const misSync=path.match(/^\/api\/integrations\/mis\/(employees|employee-changes|transfers)$/);
       if(misSync){

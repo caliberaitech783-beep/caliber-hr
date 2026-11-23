@@ -1,3 +1,13 @@
+# A site move made in Pulse-II corrects HR Pulse at once
+
+Set by the owner on 23 November 2026: "it should be two-way ... anything which MIS changes during batch creation should get auto updated in HR employee master also", and no second approval in HR Pulse for it.
+
+- In Pulse-II a card of one site can carry a driver of another site; the Project Manager of the site the worker is leaving gives an OTP and the worker moves from the card's date. Pulse-II sends that move to `POST /api/integrations/mis/site-move` (its own key).
+- HR Pulse moves the Employee Master line, and the joined employee if there is one, to the new site; keeps the move as an approved Employee Transfer marked "Pulse-II OTP"; writes the audit; and tells the Site HR of both sites and the Regional HR Head on Telegram (Approval Master › Employee Transfer). Nobody is asked to approve again. If HR disagrees, HR raises a normal transfer.
+- A move is taken once (its Pulse-II id). What cannot be placed is answered "held" with the reason and changes nothing: the number on two lines, another name on the number, a person or a site HR Pulse does not have.
+- Pulse-II never changes a name, designation, category or status in HR Pulse.
+- `HR-Pulse-Full-Project/server/mis-site-move.mjs` holds it; `server/mis-site-move.test.mjs` checks it (run by the deploy through `mis-employee-sync.test.mjs`).
+
 # Pulse-II copies every Employee Master change within a minute
 
 Set by the owner on 23 November 2026: "Pulse HR is now the final authority for employee master. All the creation, edit, and delete will only happen from Pulse HR", copied to Pulse-II "on minute to minute basis".
