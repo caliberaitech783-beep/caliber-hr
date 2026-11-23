@@ -1,5 +1,5 @@
 import {useState,type FormEvent} from 'react';
-import {Pencil,Plus,RefreshCw,Trash2} from 'lucide-react';
+import {Pencil,Plus,RefreshCw,RotateCw,Trash2} from 'lucide-react';
 import {api,type Lookup} from './api';
 import BridgePcs,{type BridgePc} from './BridgePcs';
 import MachineDeleteDialog from './MachineDeleteDialog';
@@ -43,12 +43,20 @@ export function siteOptions(sites:Lookup[],machines:Machine[]){
 }
 
 type Props={grant:string;machines:Machine[];sites:Lookup[];bridgeOnline:boolean;configured:boolean;canManage:boolean;fetching:boolean;bridges?:BridgePc[];
- onFetch:(serial:string)=>void;onSaved:(message:string)=>Promise<void>|void;onError:(message:string)=>void};
+ onFetch:(serial:string)=>void;onSaved:(message:string)=>Promise<void>|void;onError:(message:string)=>void;
+ /** Owner, 23 Nov 2026: Refresh next to Edit re-reads the machines' status, last contact and logs from HR Pulse. */
+ onRefresh?:()=>Promise<void>|void};
 
-export default function BiometricMachines({grant,machines,sites,bridgeOnline,configured,canManage,fetching,bridges,onFetch,onSaved,onError}:Props){
+export default function BiometricMachines({grant,machines,sites,bridgeOnline,configured,canManage,fetching,bridges,onFetch,onSaved,onError,onRefresh}:Props){
  const statusOf=(m:Machine)=>machineStatus(m,bridgeOnlineFor(m,bridges,bridgeOnline));
  const [site,setSite]=useState(ALL_SITES);
  const [adding,setAdding]=useState(false),[editing,setEditing]=useState(''),[busy,setBusy]=useState(false),[deleting,setDeleting]=useState<Machine|null>(null);
+ const [refreshing,setRefreshing]=useState(''),[checked,setChecked]=useState<Record<string,string>>({});
+ async function refresh(serial:string){
+  if(refreshing||!onRefresh)return;setRefreshing(serial);onError('');
+  try{await onRefresh();setChecked(c=>({...c,[serial]:new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'numeric',minute:'2-digit',second:'2-digit'})}));}
+  catch(e){onError((e as Error).message);}finally{setRefreshing('');}
+ }
  const options=siteOptions(sites,machines);
  const rows=machinesForSite(machines,site);
  const online=rows.filter(m=>statusOf(m)==='Online').length;
@@ -122,11 +130,12 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
       <td className="machine-serial">{m.serial}</td>
       <td className="machine-serial">{m.ipAddress||'—'}</td>
       <td>{m.bridgeName||<span className="attendance-unlinked">Not connected yet</span>}</td>
-      <td><span className={'machine-status '+status.split(' ')[0].toLowerCase()}>{status}</span></td>
+      <td><span className={'machine-status '+status.split(' ')[0].toLowerCase()}>{status}</span>{checked[m.serial]&&<small className="machine-checked">Checked {checked[m.serial]}</small>}</td>
       <td>{formatContact(m.lastContact)}</td>
       <td><strong>{m.logsToday}</strong> today{m.lastPunch&&<small className="machine-last-punch">Last punch {formatLastPunch(m.lastPunch)}</small>}</td>
       <td className="machine-actions">
        <button type="button" disabled={fetching||(!configured&&!m.direct)||status!=='Online'} onClick={()=>onFetch(m.serial)}><RefreshCw/>Fetch log</button>
+       {onRefresh&&<button type="button" className="machine-refresh" disabled={Boolean(refreshing)} aria-label={`Refresh machine ${m.serial}`} title="Check this machine's status, last contact and logs again" onClick={()=>void refresh(m.serial)}><RotateCw className={refreshing===m.serial?'spinning':''}/>{refreshing===m.serial?'Refreshing…':'Refresh'}</button>}
        {canManage&&<button type="button" disabled={busy} aria-label={`Edit machine ${m.serial}`} onClick={()=>{setEditing(m.serial);setAdding(false);onError('');}}><Pencil/>Edit</button>}
        {canManage&&<button type="button" className="machine-delete" disabled={busy} aria-label={`Delete machine ${m.serial}`} onClick={()=>{setDeleting(m);setAdding(false);setEditing('');onError('');}}><Trash2/>Delete</button>}
       </td>

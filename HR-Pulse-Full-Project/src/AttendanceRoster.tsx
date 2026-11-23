@@ -3,7 +3,7 @@ import {ChevronDown,Download,Printer,RefreshCw,Save} from 'lucide-react';
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,type BioDayUpdate,fetchFromMachines,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo} from './rosterData';
+import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,type BioDayUpdate,fetchFromMachines,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo} from './rosterData';
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 
@@ -48,7 +48,9 @@ export type TripState={status:'idle'|'loading'|'ready'|'error';message:string;ro
  onSave?:()=>void;saveLabel?:string;canSave?:boolean;savedNote?:string;saveError?:string;saved?:Record<string,SavedInfo>};
 const DAY_STATE:Record<DayState,string>={queued:'Waiting to be read from MIS',loading:'Reading from MIS…',retrying:'MIS was busy · trying again…',done:'Read from MIS',failed:'Could not be read from MIS'};
 /** The Biometric tab's day-by-day reading (owner, 22 Nov 2026): each day's state, punches read and error. */
-export type BioState={running:boolean;message:string;days:Record<string,DayState>;counts:Record<string,number>;errors:Record<string,string>;failed:string[];onRetry?:(days:string[])=>void};
+export type BioState={running:boolean;message:string;days:Record<string,DayState>;counts:Record<string,number>;errors:Record<string,string>;failed:string[];onRetry?:(days:string[])=>void;
+ /** Save biometric (owner, 23 Nov 2026): the button's text, whether it can be pressed, and the note on what is saved. */
+ onSave?:()=>void;saveLabel?:string;canSave?:boolean;savedNote?:string;saveError?:string;saved?:Record<string,SavedInfo>};
 const BIO_DAY_STATE:Record<DayState,string>={queued:'Waiting to be read',loading:'Reading punches…',retrying:'Busy · trying again…',done:'Read',failed:'Could not be read'};
 type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripState;bio?:BioState;monthly:boolean;from:string;to:string;loading?:boolean;error?:string;emptyText?:string};
 
@@ -112,11 +114,14 @@ export function RosterTable({groups,dates,view,trip,bio,monthly,from,to,loading=
   {view!=='bio'&&trip.status==='ready'&&!(trip.rows||[]).length&&(trip.misSites?.length||0)>0&&<p className="roster-warn" role="alert">MIS has trip cards in these dates for {trip.misSites!.join(', ')}, but none for this site. If one of them is this site, its name is written differently in HR and MIS.</p>}
   {view!=='bio'&&trip.savedNote&&<p className="roster-saved" role="status">{trip.savedNote}</p>}
   {view!=='bio'&&trip.saveError&&<p className="roster-warn" role="alert">{trip.saveError}</p>}
+  {view==='bio'&&bio?.savedNote&&<p className="roster-saved" role="status">{bio.savedNote}</p>}
+  {view==='bio'&&bio?.saveError&&<p className="roster-warn" role="alert">{bio.saveError}</p>}
   <div className="roster-bar">
    {compare&&<label className="roster-check"><input type="checkbox" checked={onlyDiff} onChange={e=>setOnlyDiff(e.target.checked)}/>Only employees with a difference</label>}
    <span role="status">{status}</span>
    {view!=='trip'&&<span className="roster-seg" role="group" aria-label="Day boxes"><button type="button" aria-pressed={!times} onClick={()=>setTimes(false)}>Codes only</button><button type="button" aria-pressed={times} onClick={()=>setTimes(true)}>Codes + In / Out</button></span>}
    {view!=='bio'&&trip.onSave&&<button type="button" className="roster-save" disabled={!trip.canSave} onClick={trip.onSave}><Save/>{trip.saveLabel||'Save trip cards'}</button>}
+   {view==='bio'&&bio?.onSave&&<button type="button" className="roster-save" disabled={!bio.canSave} onClick={bio.onSave}><Save/>{bio.saveLabel||'Save biometric'}</button>}
    <div className="roster-export">
     <button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!shown.length||exporting} onClick={()=>setExportOpen(value=>!value)}><Download/>{exporting?'Preparing…':'Print/Export'}<ChevronDown/></button>
     {exportOpen&&<div className="roster-export-menu" role="menu">
@@ -129,7 +134,7 @@ export function RosterTable({groups,dates,view,trip,bio,monthly,from,to,loading=
   <div className="attendance-table"><table ref={rosterTable} className={'register-grid roster-grid'+(compare?'':' roster-nosrc')} aria-label="Attendance roster">
    <thead><tr>{compare&&<th className="roster-fixed roster-src">Source</th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>Sr. No.</th><th className="roster-fixed roster-id">Employee ID</th><th className="roster-fixed roster-name">Name</th><th className="roster-text">Site</th><th className="roster-text">Department</th><th className="roster-text">Designation</th>{machineCol&&<th className="roster-text roster-machine">Machine · ID</th>}
     {dates.map(d=>{const onBio=view==='bio',state=onBio?bio?.days[d]:trip.days?.[d],label=state?(onBio?BIO_DAY_STATE:DAY_STATE)[state]:'',why=onBio?bio?.errors[d]:trip.errors?.[d];
-     return <th key={d} title={show(d)+(!onBio&&state==='done'&&trip.saved?.[d]?' · Saved copy':'')+(state?' · '+label+(onBio&&state==='done'?` · ${(bio?.counts[d]||0).toLocaleString('en-IN')} punches`:'')+(state==='failed'&&why?': '+why:''):'')} className={[weekday(d)==='Su'?'roster-sunday':'',state&&state!=='done'?'roster-day-'+state:''].filter(Boolean).join(' ')||undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small>{state&&state!=='done'&&<i className="roster-day-mark" aria-label={label}/>}</th>;})}
+     return <th key={d} title={show(d)+(state==='done'&&(onBio?bio?.saved:trip.saved)?.[d]?' · Saved copy':'')+(state?' · '+label+(onBio&&state==='done'?` · ${(bio?.counts[d]||0).toLocaleString('en-IN')} punches`:'')+(state==='failed'&&why?': '+why:''):'')} className={[weekday(d)==='Su'?'roster-sunday':'',state&&state!=='done'?'roster-day-'+state:''].filter(Boolean).join(' ')||undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small>{state&&state!=='done'&&<i className="roster-day-mark" aria-label={label}/>}</th>;})}
     {ROSTER_TOTALS.map(([key,label])=><th key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}>{label}</th>)}{monthly&&<th className="roster-total">Gate pass</th>}{hoursCol&&<th className="roster-total">Worked hours</th>}
     {view==='trip'&&<th className="roster-text roster-cards">Cards (days)</th>}{compare&&<th className="roster-diff">{DIFF_HEADING}</th>}</tr></thead>
    <tbody>{shown.length?shown.map((g,i)=>{const picked=g.key===open,diff=diffText(g,tripsLoaded),rows=lines.length;return <Fragment key={g.key}>
@@ -194,11 +199,15 @@ function MachinesPanel({site,machines,pull,onPull,onManage}:{site:string;machine
  </div>;
 }
 /** The Biometric tab's reading, day by day: each day's state, result (one day of the site register) and error. */
-type BioStream={key:string;days:Record<string,DayState>;results:Record<string,SiteRegister>;errors:Record<string,string>;runs:number};
-const noBio:BioStream={key:'',days:{},results:{},errors:{},runs:0};
+type BioStream={key:string;days:Record<string,DayState>;results:Record<string,SiteRegister>;errors:Record<string,string>;runs:number;
+ /** saved: days opened from (or written to) the saved copy; fresh: days read from the punches and not saved yet. */
+ saved?:Record<string,SavedInfo>;fresh?:string[];save?:{running:boolean;done:number;total:number;failed:string[];error:string}|null};
+const noBio:BioStream={key:'',days:{},results:{},errors:{},runs:0,saved:{},fresh:[],save:null};
 export function applyBioDay(stream:BioStream,u:BioDayUpdate):BioStream{
  const errors={...stream.errors};if(u.state==='failed')errors[u.day]=u.error||'HR did not answer';else if(u.state==='done')delete errors[u.day];
- return {...stream,days:{...stream.days,[u.day]:u.state},errors,results:u.state==='done'&&u.result?{...stream.results,[u.day]:u.result}:stream.results};
+ const done=u.state==='done'&&Boolean(u.result),fresh=stream.fresh||[],saved=stream.saved||{};
+ return {...stream,days:{...stream.days,[u.day]:u.state},errors,results:done?{...stream.results,[u.day]:u.result!}:stream.results,
+  saved:done?Object.fromEntries(Object.entries(saved).filter(([d])=>d!==u.day)):saved,fresh:done&&!fresh.includes(u.day)?[...fresh,u.day]:fresh};
 }
 type Source<T>={key:string;status:'idle'|'loading'|'ready'|'error';message:string;data:T|null};
 /** The Trip card tab's reading, day by day: each day's state, rows and MIS error, and the site names MIS returned. */
@@ -225,7 +234,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<BioStream>(noBio);
  const bioRef=useRef('');
  const [pull,setPull]=useState<{running:boolean;message:string;error:string}|null>(null),[bioReload,setBioReload]=useState(0);
- const keyRef=useRef(''),forceMis=useRef(false);
+ const keyRef=useRef(''),forceMis=useRef(false),forceBio=useRef(false);
  const [reload,setReload]=useState(0);
  useEffect(()=>{let live=true;
   api<Lookup[]>(grant,'lookups').then(rows=>{if(!live)return;const list=Array.isArray(rows)?rows:[];
@@ -284,7 +293,21 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  useEffect(()=>{
   if(!wantBio||bio.key===bioKey)return;
   setBio({...noBio,key:bioKey});
-  readBio(datesBetween(from,to));
+  const runKey=bioKey,all=datesBetween(from,to);
+  bioRef.current=runKey;
+  // "Fetch again" and "Fetch from these machines" read every day's punches; otherwise the saved days open at once and
+  // the punches are read for the rest (today is always read: its punches are still coming in).
+  if(forceBio.current){forceBio.current=false;readBio(all);return;}
+  setBio(b=>b.key===runKey?{...b,runs:b.runs+1}:b);
+  readSavedBiometric(grant,site,from,to).then(saved=>{
+   if(bioRef.current!==runKey)return;
+   const have=saved.filter(d=>all.includes(d.day)&&d.day<today);
+   setBio(b=>b.key!==runKey?b:{...b,days:{...b.days,...Object.fromEntries(have.map(d=>[d.day,'done' as DayState]))},results:{...b.results,...Object.fromEntries(have.map(d=>[d.day,d.register]))},
+    saved:{...b.saved,...Object.fromEntries(have.map(d=>[d.day,{savedBy:d.savedBy,savedAt:d.savedAt}]))}});
+   const missing=all.filter(d=>!have.some(x=>x.day===d));
+   if(missing.length)readBio(missing);
+  }).catch(()=>{if(bioRef.current===runKey)readBio(all);})
+   .finally(()=>setBio(b=>b.key===runKey?{...b,runs:b.runs-1}:b));
  },[wantBio,bioKey]); // eslint-disable-line react-hooks/exhaustive-deps
  useEffect(()=>{if(bioRef.current&&bioRef.current!==bioKey)bioRef.current='';},[bioKey]);
  function readBio(list:string[]){
@@ -292,6 +315,17 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   setBio(b=>b.key===runKey?{...b,runs:b.runs+1}:b);
   void streamBiometric(grant,list,site,u=>setBio(b=>b.key===runKey?applyBioDay(b,u):b),()=>bioRef.current===runKey)
    .finally(()=>setBio(b=>b.key===runKey?{...b,runs:b.runs-1}:b));
+ }
+ /** Save biometric: every finished day read from the punches and not saved yet (not today), one day per request. */
+ function saveBio(){
+  const runKey=bioKey,list=(bio.fresh||[]).filter(d=>bio.days[d]==='done'&&d<today).sort();
+  if(!list.length)return;
+  setBio(b=>({...b,save:{running:true,done:0,total:list.length,failed:[],error:''}}));
+  void saveBiometricDays(grant,site,list,(day,info,error)=>setBio(b=>{
+   if(b.key!==runKey||!b.save)return b;
+   const save={...b.save,done:b.save.done+1,failed:info?b.save.failed:[...b.save.failed,day],error:b.save.error||error||''};
+   return info?{...b,save,saved:{...b.saved,[day]:{savedBy:info.savedBy,savedAt:info.savedAt}},fresh:(b.fresh||[]).filter(d=>d!==day)}:{...b,save};
+  })).finally(()=>setBio(b=>b.key===runKey&&b.save?{...b,save:{...b.save,running:false}}:b));
  }
  /** Fetch from these machines: the bridge PC reads each machine of the site in turn, then the roster is read again. */
  async function pullMachines(machines:SiteMachine[]){
@@ -309,7 +343,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    setPull(p=>p&&{...p,message:`Reading ${label}…`});
   });
   setPull({running:false,message:`${added} new punch${added===1?'':'es'} received.`,error:[...new Set(errors)].join(' · ')});
-  setBioReload(n=>n+1);
+  forceBio.current=true;setBioReload(n=>n+1);
  } // eslint-disable-line react-hooks/exhaustive-deps
  const dates=useMemo(()=>ready?datesBetween(from,to):[],[ready,from,to]);
  const tripList=useMemo(()=>trip.key===key?Object.values(trip.rows).flat():[],[trip.key,trip.rows,key]);
@@ -348,6 +382,16 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const bioState:BioState={running:bioRunning,days:bio.key===bioKey?bio.days:{},counts:bioCounts,errors:bio.key===bioKey?bio.errors:{},failed:bioFailed,onRetry:list=>readBio(list),
   message:bioRunning?`Reading biometric punches · ${bioDone} of ${bioTotal||'…'} days${bioNow.length?` · now ${bioNow.map(d=>show(d).slice(0,5)).join(', ')}`:''} · ${bioPunches.toLocaleString('en-IN')} punch${bioPunches===1?'':'es'} so far${bioFailed.length?` · ${bioFailed.length} not read`:''}`
    :bioTotal?`${bioDone-bioFailed.length} of ${bioTotal} days read · ${bioPunches.toLocaleString('en-IN')} punch${bioPunches===1?'':'es'}${bioFailed.length?` · ${bioFailed.length} not read`:''}`:''};
+ const bioSaved=bio.key===bioKey?Object.entries(bio.saved||{}):[],bioFresh=bio.key===bioKey?(bio.fresh||[]).filter(d=>bio.days[d]==='done'&&d<today):[],bioSave=bio.key===bioKey?bio.save:null;
+ const bioLatest=bioSaved.map(([,info])=>info).sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)))[0];
+ const pastDays=datesBetween(from,to).filter(d=>d<today).length;
+ bioState.onSave=saveBio;
+ bioState.saved=bio.key===bioKey?bio.saved:undefined;
+ bioState.canSave=!bioRunning&&!bioSave?.running&&bioFresh.length>0;
+ bioState.saveLabel=bioSave?.running?`Saving ${bioSave.done} of ${bioSave.total} days…`:bioFresh.length?`Save biometric (${bioFresh.length} day${bioFresh.length===1?'':'s'})`:bioSaved.length?'Saved':'Save biometric';
+ bioState.savedNote=bioSaved.length?`Saved biometric logs: ${bioSaved.length} of ${pastDays} day${pastDays===1?'':'s'} (last saved ${bioLatest?when(bioLatest.savedAt):''}${bioLatest?.savedBy?' by '+bioLatest.savedBy:''}).`+
+  (bioFresh.length?` ${bioFresh.length} day${bioFresh.length===1?'':'s'} read from the punches ${bioFresh.length===1?'is':'are'} not saved yet.`:' Today is always read live; press Fetch again to read every day from the punches.'):'';
+ bioState.saveError=bioSave&&!bioSave.running&&bioSave.failed.length?`Could not save ${bioSave.failed.map(show).join(', ')}: ${bioSave.error}`:'';
  const bioLoading=view!=='trip'&&bioRunning&&!bioData;
  const bioError=!bioRunning&&bioTotal>0&&bioFailed.length===bioTotal?bio.errors[bioFailed[0]]||'HR did not answer':'';
  const unlinkedCount=(bioData?.rows||[]).filter(r=>r.linked===false).length;
@@ -363,7 +407,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    <label>To<input type="date" value={to} min={from} max={today} onChange={e=>setTo(e.target.value)}/></label>
    <label>Department<select value={department} onChange={e=>setDepartment(e.target.value)}><option value="">All departments</option>{departments.map(d=><option key={d}>{d}</option>)}</select></label>
    <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>!department||g.department===department).map(g=><option key={g.key} value={g.key}>{g.linked?g.code:'Not linked'} · {g.name}</option>)}</select></label>
-   <button type="button" disabled={!ready||!view||busy} onClick={()=>{forceMis.current=view!=='bio';setReload(n=>n+1);}}><RefreshCw className={busy?'spin':''}/>Fetch again</button>
+   <button type="button" disabled={!ready||!view||busy} onClick={()=>{forceMis.current=view!=='bio';forceBio.current=true;setReload(n=>n+1);}}><RefreshCw className={busy?'spin':''}/>Fetch again</button>
   </div>
   {lookupError&&<p className="error" role="alert">Sites could not be loaded: {lookupError}</p>}
   {sites&&!sites.length&&!lookupError&&<p className="error" role="alert">No site is assigned to your login.</p>}

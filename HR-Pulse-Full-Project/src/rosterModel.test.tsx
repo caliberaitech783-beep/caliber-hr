@@ -211,6 +211,37 @@ it('opens saved trip cards at once, reads MIS only for the other days, and saves
  await waitFor(()=>expect(calls.filter(c=>c.url.includes('attendance/mis')).length).toBe(5));
 });
 
+it('opens saved biometric logs at once, reads the punches only for the other days, and saves them',async()=>{
+ const {AttendanceRosterPage}=await import('./AttendanceRoster');
+ const calls:{url:string;method:string;body?:{site:string;day:string}}[]=[];
+ const dayRegister=(day:string)=>({from:day,to:day,policy:DEFAULT_POLICY,site:'Sasti OC',machines:[{serial:'JNP1',name:'STAFF 1',location:'OFFICE',online:true,lastContact:null,lastPunch:day+' 17:00',punches:3}],
+  rows:[{...bio,site:'Sasti OC',days:bio.days.filter(d=>d.date===day),linked:true,machinesUsed:['OFFICE · 101']}]});
+ vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{const method=init?.method||'GET';const body=init?.body?JSON.parse(String(init.body)):undefined;calls.push({url,method,body});
+  const q=new URL(url,'https://x').searchParams;
+  if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'SO',name:'Sasti OC'}]);
+  if(url.includes('attendance/biometric-days')&&method==='GET')return Response.json({site:'Sasti OC',days:[{day:'2026-11-02',register:dayRegister('2026-11-02'),punches:3,people:1,savedBy:'vinod',savedAt:'2026-11-22T10:00:00Z'}]});
+  if(url.includes('attendance/biometric-days')&&method==='POST')return Response.json({day:body.day,punches:3,people:1,savedBy:'vinod',savedAt:'2026-11-23T08:00:00Z'});
+  if(url.includes('site-register'))return Response.json(dayRegister(q.get('from')!));
+  return Response.json({});}));
+ render(<AttendanceRosterPage grant={'a'.repeat(43)}/>);
+ const site=screen.getByLabelText('Site');
+ await waitFor(()=>expect(within(site).getByRole('option',{name:'Sasti OC'})).toBeTruthy());
+ fireEvent.change(site,{target:{value:'Sasti OC'}});
+ fireEvent.change(screen.getByLabelText('From'),{target:{value:'2026-11-02'}});
+ fireEvent.change(screen.getByLabelText('To'),{target:{value:'2026-11-04'}});
+ fireEvent.click(screen.getByRole('button',{name:'Biometric'}));
+ const save=await screen.findByRole('button',{name:'Save biometric (2 days)'});
+ expect(screen.getByText(/Saved biometric logs: 1 of 3 days .*by vinod\)\. 2 days read from the punches are not saved yet\./)).toBeTruthy();
+ expect(calls.filter(c=>c.url.includes('site-register')).map(c=>new URL(c.url,'https://x').searchParams.get('from')).sort()).toEqual(['2026-11-03','2026-11-04']);
+ fireEvent.click(save);
+ await screen.findByRole('button',{name:'Saved'});
+ expect(calls.filter(c=>c.method==='POST').map(c=>c.body!.day).sort()).toEqual(['2026-11-03','2026-11-04']);
+ expect(calls.filter(c=>c.method==='POST').every(c=>c.body!.site==='Sasti OC'&&Object.keys(c.body!).length===2)).toBe(true);
+ expect(screen.getByText(/Saved biometric logs: 3 of 3 days/)).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:/Fetch again/}));
+ await waitFor(()=>expect(calls.filter(c=>c.url.includes('site-register')).length).toBe(5));
+});
+
 it('Biometric tab says when the site has no machine yet and offers Add machine',async()=>{
  const {AttendanceRosterPage}=await import('./AttendanceRoster');
  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams;

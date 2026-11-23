@@ -114,6 +114,20 @@ CREATE TABLE IF NOT EXISTS hr_trip_card_days(
  PRIMARY KEY(site,day)
 );
 
+-- Attendance roster › Biometric (owner, 23 Nov 2026): one site's biometric roster for one day (every punch on the site's
+-- machines, rated with the attendance policy), saved by "Save biometric" (biometric-day-store.mjs). register: the site
+-- register for that day as loadSiteRegister builds it, so the Biometric tab opens it without reading the punches again.
+CREATE TABLE IF NOT EXISTS hr_biometric_days(
+ site text NOT NULL,
+ day date NOT NULL,
+ register jsonb NOT NULL,
+ punches integer NOT NULL,
+ people integer NOT NULL,
+ saved_by text NOT NULL,
+ saved_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(site,day)
+);
+
 -- Bridge PCs per site (owner, 22 Nov 2026): each site's bridge PC signs in with its own key (attendance-bridges.mjs).
 -- Only the key's SHA-256 fingerprint and last 4 letters are kept. The first bridge PC keeps ATTENDANCE_BRIDGE_KEY and
 -- is the "Main bridge PC" (bridge_id NULL on its machines and fetch requests).

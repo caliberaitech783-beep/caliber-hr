@@ -9,6 +9,7 @@ import {assignedSites,siteIds} from './scope.mjs';
 import {grantedMenus,canWrite} from './modules.mjs';
 import {createMisAttendance} from './mis-attendance.mjs';
 import {createTripCardStore} from './trip-card-store.mjs';
+import {createBiometricDayStore} from './biometric-day-store.mjs';
 import {createBridges,looksLikeSiteKey} from './attendance-bridges.mjs';
 import {createDirectMachines} from './attendance-direct.mjs';
 import {loadRegister,loadSiteRegister,readPolicy,savePolicy} from './attendance-register.mjs';
@@ -92,6 +93,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
  const misAttendance=createMisAttendance(pool);
  const bridges=createBridges(pool);
  const tripCards=createTripCardStore(pool);
+ const biometricDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadSiteRegister(pool,site,from,to,indiaDay()),today:indiaDay});
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
  const permit=profile=>{if(!grantedMenus(profile).has('Attendance Management'))fail('Attendance Management is not assigned to your account',403);};
@@ -193,6 +195,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    return view((await pool.query('SELECT * FROM hr_attendance_fetch_requests WHERE id=$1',[fetchId])).rows[0])||fail('Fetch request not found',404);
   }
   const sites=await siteIds(pool,profile); // null = all sites
+  if(route==='biometric-days')return biometricDays(profile,method,input,params,sites);
   if(route==='status'&&method==='GET'){
    const seen=(await pool.query("SELECT last_seen,last_seen>now()-interval '30 seconds' AS online FROM hr_attendance_bridge")).rows[0];
    // Active logs: punches the machine recorded today (India date) and its latest

@@ -232,6 +232,6 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
 
   </>}
   {tab==='machines'&&status&&<BiometricMachines grant={grant} machines={status.devices} sites={sites} bridges={status.bridges} bridgeOnline={status.bridgeOnline} configured={status.configured} canManage={status.canManageDevices} fetching={fetching}
-   onFetch={serial=>void fetchAttendance(serial)} onError={setError} onSaved={async text=>{setError('');setMessage(text);await load(false);}}/>}
+   onFetch={serial=>void fetchAttendance(serial)} onError={setError} onSaved={async text=>{setError('');setMessage(text);await load(false);}} onRefresh={()=>load(false)}/>}
  </>;
 }
