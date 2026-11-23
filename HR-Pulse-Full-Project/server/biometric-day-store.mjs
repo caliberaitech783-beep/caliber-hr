@@ -17,7 +17,7 @@ const validDay = value => typeof value === 'string' && DAY.test(value) && Number
 export function createBiometricDayStore(pool, {load, today}) {
   async function findSite(name, sites, profile) {
     if (typeof name !== 'string' || !name.trim() || name.length > 200) fail('Choose a site.');
-    const site = (await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1", [name, sites])).rows[0];
+    const site = (await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1", [name, sites])).rows[0];
     if (!site) fail(siteAccessMessage(profile), 403);
     return {id: site.id, name: site.name, siteType: site.site_type || ''};
   }

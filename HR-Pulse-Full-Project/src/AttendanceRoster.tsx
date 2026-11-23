@@ -431,7 +431,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   <h2>Attendance roster</h2>
   <p className="help-text">Choose the site and dates, then press Trip card to read MIS (VLB, ELB and LMV) or Biometric to read the machine punches. Trip card vs Biometric shows both lines and the days they differ.</p>
   <div className="attendance-filters roster-filters">
-   <label>Site<select value={site} required aria-invalid={!site} onChange={e=>{setSite(e.target.value);setEmployee('');}}><option value="">{sites===null?'Loading sites…':'Select a site'}</option>{(sites||[]).map(s=><option key={s}>{s}</option>)}</select></label>
+   <label>Site<select value={site} required aria-invalid={!site} onChange={e=>{setSite(e.target.value);setEmployee('');}}><option value="">{sites===null?'Loading sites…':'Select a site'}</option>{(sites||[]).map(s=><option key={s} value={s}>{s}</option>)}</select></label>
    <label>From<input type="date" value={from} max={to||today} onChange={e=>setFrom(e.target.value)}/></label>
    <label>To<input type="date" value={to} min={from} max={today} onChange={e=>setTo(e.target.value)}/></label>
    <label>Department<select value={department} onChange={e=>setDepartment(e.target.value)}><option value="">All departments</option>{departments.map(d=><option key={d}>{d}</option>)}</select></label>
