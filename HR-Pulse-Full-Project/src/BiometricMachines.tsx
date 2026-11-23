@@ -1,12 +1,14 @@
 import {useState,type FormEvent} from 'react';
-import {Pencil,Plus,RefreshCw} from 'lucide-react';
+import {Pencil,Plus,RefreshCw,Trash2} from 'lucide-react';
 import {api,type Lookup} from './api';
 import BridgePcs,{type BridgePc} from './BridgePcs';
+import MachineDeleteDialog from './MachineDeleteDialog';
 
 /* Biometric machines register: every ESSL machine on every site, with where it
    stands, its name, serial number, IP address, status, last contact and the logs it has
    recorded today. HR administrators without a site restriction add machines to
-   a site and change their site, location or name. */
+   a site and change their site, location or name, and delete a machine once an approver
+   approves it on Telegram or gives its OTP (owner, 23 Nov 2026; MachineDeleteDialog). */
 export type Machine={serial:string;name:string;location:string;siteId:string|null;siteName:string;online:boolean;lastContact:string|null;lastSeen:string|null;logsToday:number;lastPunch:string|null;
  /** Owner, 22 Nov 2026: the machine's IP address (records only) and the bridge PC it reports to (null = main bridge PC). */
  ipAddress?:string;bridgeId?:string|null;bridgeName?:string;
@@ -46,7 +48,7 @@ type Props={grant:string;machines:Machine[];sites:Lookup[];bridgeOnline:boolean;
 export default function BiometricMachines({grant,machines,sites,bridgeOnline,configured,canManage,fetching,bridges,onFetch,onSaved,onError}:Props){
  const statusOf=(m:Machine)=>machineStatus(m,bridgeOnlineFor(m,bridges,bridgeOnline));
  const [site,setSite]=useState(ALL_SITES);
- const [adding,setAdding]=useState(false),[editing,setEditing]=useState(''),[busy,setBusy]=useState(false);
+ const [adding,setAdding]=useState(false),[editing,setEditing]=useState(''),[busy,setBusy]=useState(false),[deleting,setDeleting]=useState<Machine|null>(null);
  const options=siteOptions(sites,machines);
  const rows=machinesForSite(machines,site);
  const online=rows.filter(m=>statusOf(m)==='Online').length;
@@ -126,10 +128,12 @@ export default function BiometricMachines({grant,machines,sites,bridgeOnline,con
       <td className="machine-actions">
        <button type="button" disabled={fetching||(!configured&&!m.direct)||status!=='Online'} onClick={()=>onFetch(m.serial)}><RefreshCw/>Fetch log</button>
        {canManage&&<button type="button" disabled={busy} aria-label={`Edit machine ${m.serial}`} onClick={()=>{setEditing(m.serial);setAdding(false);onError('');}}><Pencil/>Edit</button>}
+       {canManage&&<button type="button" className="machine-delete" disabled={busy} aria-label={`Delete machine ${m.serial}`} onClick={()=>{setDeleting(m);setAdding(false);setEditing('');onError('');}}><Trash2/>Delete</button>}
       </td>
      </tr>;
     })}
    </tbody>
   </table></div>
+  {deleting&&<MachineDeleteDialog grant={grant} machine={deleting} onClose={()=>setDeleting(null)} onDeleted={message=>void onSaved(message)}/>}
  </div></>;
 }

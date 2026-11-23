@@ -140,3 +140,12 @@ Set by the owner on 23 November 2026: "remove the temperature sign from all the 
 
 - The top bar shows no temperature chip (it was a fixed "(28°C) 81.9°F", not a live reading). The same was removed from Pulse and Pulse-II.
 - Do not add a temperature or weather sign back unless the owner asks. `src/App.test.tsx` checks the chip is gone.
+
+# Deleting a biometric machine needs Telegram approval
+
+Set by the owner on 23 November 2026: every saved machine in Attendance Management › Biometric machines has Delete, and it is OTP based with approval on Telegram.
+
+- Delete (HR administrators without a site restriction) opens a window with the machine's details and "Send for approval on Telegram". Nothing is deleted until an approver taps ✅ Approve delete on Telegram, or the requester enters the six-digit OTP sent in that message. Reject, Cancel or 15 minutes without an answer deletes nothing. OTP: single use, five wrong tries.
+- Approvers are the HR logins in the Azure setting `MACHINE_DELETE_APPROVERS` (comma separated) on hr-api-cmll-783. The message goes out like the joining approval (any Caliber HR bot the approver started). The requester never gets it and cannot approve their own request.
+- Deleting removes the machine and cancels its open fetches. Punches already received, names on the machine and employee links stay. Every request, delete and reject goes into the audit log.
+- `HR-Pulse-Full-Project/server/machine-delete.mjs` and `src/MachineDeleteDialog.tsx` hold it. `server/machine-delete.test.mjs` and `src/BiometricMachines.test.tsx` check it.
