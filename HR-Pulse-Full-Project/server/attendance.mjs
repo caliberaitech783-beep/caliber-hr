@@ -196,6 +196,27 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   }
   const sites=await siteIds(pool,profile); // null = all sites
   if(route==='biometric-days')return biometricDays(profile,method,input,params,sites);
+  if(route==='punches/import'&&method==='POST')return tx(async db=>{
+   const siteName=String(input?.site||'').trim(),rows=input?.rows;
+   if(!siteName)fail('Choose a site before importing biometric punches.');
+   if(!Array.isArray(rows)||!rows.length||rows.length>MAX_PUNCHES_PER_UPLOAD)fail(`Import 1–${MAX_PUNCHES_PER_UPLOAD} biometric punches at a time.`);
+   const site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[siteName,sites])).rows[0];
+   if(!site)fail('This site is not assigned to your login.',403);
+   const clean=rows.map(row=>{
+    const serial=String(row?.serial||'').trim();
+    const upload=validateUpload({device:{serial},punches:[{biometricId:row?.biometricId,punchedAt:row?.punchedAt,verify:row?.verify,punchType:row?.punchType}],users:row?.name?[{biometricId:row.biometricId,name:row.name}]:[]});
+    return {serial,punch:upload.punches[0],name:upload.users[0]?.name||''};
+   });
+   const serials=[...new Set(clean.map(row=>row.serial))];
+   const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=$1 AND serial=ANY($2::text[])',[site.id,serials])).rows.map(row=>row.serial);
+   const missing=serials.filter(serial=>!devices.includes(serial));
+   if(missing.length)fail(`Machine Serial is not registered at ${siteName}: ${missing.join(', ')}`);
+   const added=(await db.query('INSERT INTO hr_attendance_punches(device_serial,biometric_id,punched_at,verify,punch_type) SELECT x.s,x.b,x.t::timestamp,x.v,x.p FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[]) AS x(s,b,t,v,p) ON CONFLICT DO NOTHING',[clean.map(row=>row.serial),clean.map(row=>row.punch.biometricId),clean.map(row=>row.punch.punchedAt),clean.map(row=>row.punch.verify),clean.map(row=>row.punch.punchType)])).rowCount;
+   const named=clean.filter(row=>row.name);
+   if(named.length)await db.query('INSERT INTO hr_attendance_device_users(device_serial,biometric_id,name) SELECT DISTINCT ON (x.s,x.b) x.s,x.b,x.n FROM unnest($1::text[],$2::text[],$3::text[]) AS x(s,b,n) ON CONFLICT(device_serial,biometric_id) DO UPDATE SET name=EXCLUDED.name',[named.map(row=>row.serial),named.map(row=>row.punch.biometricId),named.map(row=>row.name)]);
+   await audit(db,profile.actor,'IMPORT_BIOMETRIC_PUNCHES',{site:siteName,received:clean.length,added});
+   return {received:clean.length,added};
+  });
   if(route==='status'&&method==='GET'){
    const seen=(await pool.query("SELECT last_seen,last_seen>now()-interval '30 seconds' AS online FROM hr_attendance_bridge")).rows[0];
    // Active logs: punches the machine recorded today (India date) and its latest

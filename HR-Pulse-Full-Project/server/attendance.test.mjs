@@ -134,6 +134,20 @@ test('adding and editing a machine saves its location; site HR users cannot',asy
  await assert.rejects(service.attendanceApi(siteHr,'devices/register','POST',{serial:'JNP2',siteId:SITE}),e=>e.status===403);
 });
 
+test('biometric text or CSV imports add only registered machines from the selected site',async()=>{
+ const pool=fakePool((sql,params)=>{
+  if(sql.includes("kind='sites'"))return {rows:[{id:SITE}],rowCount:1};
+  if(sql.startsWith('SELECT serial FROM hr_attendance_devices'))return {rows:[{serial:'JNP1'}]};
+  if(sql.startsWith('INSERT INTO hr_attendance_punches'))return {rows:[],rowCount:1};
+  return {rows:[],rowCount:0};
+ });
+ const result=await createAttendance(pool,{bridgeKey:KEY}).attendanceApi(admin,'punches/import','POST',{site:'Amlohri',rows:[{serial:'JNP1',biometricId:'12',name:'Ravi',punchedAt:'2026-11-23 09:01:05',verify:'1',punchType:'0'}]},new URLSearchParams());
+ assert.deepEqual(result,{received:1,added:1});
+ assert.ok(pool.calls.some(([sql])=>sql.startsWith('INSERT INTO hr_attendance_device_users')));
+ assert.ok(pool.calls.some(([sql,params])=>sql.includes('INSERT INTO hr_audit')&&params[0]==='hr'&&params[1]==='IMPORT_BIOMETRIC_PUNCHES'));
+ await assert.rejects(createAttendance(fakePool(sql=>sql.includes("kind='sites'")?{rows:[{id:SITE}]}:sql.startsWith('SELECT serial FROM hr_attendance_devices')?{rows:[]}:undefined),{bridgeKey:KEY}).attendanceApi(admin,'punches/import','POST',{site:'Amlohri',rows:[{serial:'OTHER',biometricId:'12',punchedAt:'2026-11-23 09:01:05'}]},new URLSearchParams()),/not registered/);
+});
+
 test('each site bridge PC signs in with its own key and picks up only its own fetch requests',async()=>{
  const {keyFingerprint}=await import('./attendance-bridges.mjs');
  const siteKey='hrb_'+'s'.repeat(43);

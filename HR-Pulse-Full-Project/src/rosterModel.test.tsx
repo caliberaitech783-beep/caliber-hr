@@ -131,6 +131,9 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  expect(within(roster).getByText('Not linked')).toBeTruthy();
  expect(within(roster).getByText('RAMU (machine)')).toBeTruthy();
  expect(screen.getByText(/1 machine ID punched at Gevra but is not linked/)).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Import'}));
+ expect(screen.getByRole('menuitem',{name:'Import Text'})).toBeTruthy();
+ expect(screen.getByRole('menuitem',{name:'Import CSV'})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Codes only'}));
  expect(within(roster).queryAllByText('08:00').length).toBe(0);
  fireEvent.click(screen.getByRole('button',{name:'Trip card vs Biometric'}));
