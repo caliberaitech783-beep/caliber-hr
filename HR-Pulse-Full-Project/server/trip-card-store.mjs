@@ -3,7 +3,7 @@
    day (hr_trip_card_days), so the roster opens them at once next time and reads MIS only for days not saved.
    GET  attendance/trip-cards?site=&from=&to=  → {days:[{day,rows,duties,savedBy,savedAt}]}
    POST attendance/trip-cards {site,day,rows}  → {day,duties,savedBy,savedAt}  (one day per request, under 2 MB) */
-import {siteIds} from './scope.mjs';
+import {siteAccessMessage,siteIds} from './scope.mjs';
 
 export const MAX_TRIP_ROWS = 5000, MAX_TRIP_DAYS = 31;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -33,7 +33,7 @@ async function checkSite(db, profile, site) {
   if (typeof site !== 'string' || !site.trim() || site.length > 200) fail('Choose a site.');
   const scope = await siteIds(db, profile);
   const found = (await db.query("SELECT 1 FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2)) LIMIT 1", [site, scope])).rowCount;
-  if (!found) fail('This site is not assigned to your login.', 403);
+  if (!found) fail(siteAccessMessage(profile), 403);
 }
 
 export function createTripCardStore(pool) {

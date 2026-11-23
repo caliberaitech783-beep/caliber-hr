@@ -5,7 +5,7 @@
    bridge polls for it, uploads what it has and marks the request done.
    Bridge routes are authenticated by ATTENDANCE_BRIDGE_KEY, never by Pulse. */
 import {createHash,randomUUID,timingSafeEqual} from 'node:crypto';
-import {assignedSites,siteIds} from './scope.mjs';
+import {assignedSites,siteAccessMessage,siteIds} from './scope.mjs';
 import {grantedMenus,canWrite} from './modules.mjs';
 import {createMisAttendance} from './mis-attendance.mjs';
 import {createTripCardStore} from './trip-card-store.mjs';
@@ -201,7 +201,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    if(!siteName)fail('Choose a site before importing biometric punches.');
    if(!Array.isArray(rows)||!rows.length||rows.length>MAX_PUNCHES_PER_UPLOAD)fail(`Import 1–${MAX_PUNCHES_PER_UPLOAD} biometric punches at a time.`);
    const site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[siteName,sites])).rows[0];
-   if(!site)fail('This site is not assigned to your login.',403);
+   if(!site)fail(siteAccessMessage(profile),403);
    const clean=rows.map(row=>{
     const serial=String(row?.serial||'').trim();
     const upload=validateUpload({device:{serial},punches:[{biometricId:row?.biometricId,punchedAt:row?.punchedAt,verify:row?.verify,punchType:row?.punchType}],users:row?.name?[{biometricId:row.biometricId,name:row.name}]:[]});
@@ -254,7 +254,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    // Attendance roster › Biometric: one site's machines, whoever punched on them (loadSiteRegister).
    const {from,to}=validateRange(params);
    const site=(await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[String(params.get('site')||''),sites])).rows[0];
-   if(!site)fail('This site is not assigned to your login.',403);
+   if(!site)fail(siteAccessMessage(profile),403);
    return loadSiteRegister(pool,{id:site.id,name:site.name,siteType:site.site_type||''},from,to,indiaDay());
   }
   if(route==='punctuality'&&method==='GET'){

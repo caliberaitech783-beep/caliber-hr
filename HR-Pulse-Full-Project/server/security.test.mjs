@@ -4,12 +4,17 @@ import {once} from 'node:events';
 import {createApi} from './app.mjs';
 import {createService} from './service.mjs';
 import {validate,canRead,canWrite} from './modules.mjs';
-import {assignedSites} from './scope.mjs';
+import {assignedSites,siteAccessMessage} from './scope.mjs';
 test('Pulse site assignments are normalized and unknown scope formats fail closed',()=>{
  assert.equal(assignedSites({permissions:{site:'All Sites'}}),null);
  assert.deepEqual(assignedSites({permissions:{site:' Site A '}}),['site a']);
  assert.deepEqual(assignedSites({permissions:{site:'Nagpur | Chandrapur'}}),['nagpur','chandrapur']);
  assert.deepEqual(assignedSites({permissions:{adminLevel:'Site',site:''}}),[]);
+ assert.equal(assignedSites({role:'super',permissions:{adminLevel:'Admin',site:'Head Office'}}),null,'a Pulse Super Admin at Admin level has every site, whatever location is on the record');
+ assert.equal(assignedSites({role:'super',permissions:{adminLevel:'Super Admin',site:'Dhoptala OB'}}),null);
+ assert.deepEqual(assignedSites({role:'normal',permissions:{adminLevel:'Admin',site:'Dhoptala OB'}}),['dhoptala ob'],'only the Pulse Super Admin profile');
+ assert.deepEqual(assignedSites({role:'super',permissions:{adminLevel:'Site',site:'Dhoptala OB'}}),['dhoptala ob'],'site-level admins stay limited');
+ assert.match(siteAccessMessage({login:'pm1',permissions:{site:'Nagpur | Chandrapur'}}),/pm1 has: nagpur, chandrapur/);
  assert.throws(()=>assignedSites({permissions:{site:{unexpected:true}}}),e=>e.status===403);
 });
 const profile=(menus,actor='operator')=>({actor,permissions:{application:'HR',hrDesktopAccess:menus}});
