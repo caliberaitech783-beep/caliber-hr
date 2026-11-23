@@ -10,7 +10,8 @@ import {officeStaffHierarchy} from './office-staff-routing.mjs';
 import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval,isDriverOperator} from './joining-hierarchy.mjs';
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
-import {createEmployeeMasterRegister} from './employee-master-register.mjs';
+import {createEmployeeMasterRegister,isEmployeeEntry} from './employee-master-register.mjs';
+import {employeeNumber,heldNumbers,nextEmployeeNumber,otherPersonWithNumber,holderLine,NUMBER_FLOOR,OUR_PREFIXES} from './employee-number.mjs';
 import {createMisEmployeeSync} from './mis-employee-sync.mjs';
 import {createReportingManagers} from './reporting-managers.mjs';
 import {createTransferOptions} from './transfer-options.mjs';
@@ -146,6 +147,11 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     data=validate(kind,input);
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);
+    /* One number, one person (employee-number.mjs): a new or changed employee number must not belong to someone else. */
+    if(kind==='employees'&&(!existing||employeeNumber(existing.code)!==employeeNumber(data.code))){
+      const other=await otherPersonWithNumber(db,{code:data.code,name:data.name,registerFilter:isEmployeeEntry,exceptRecordId:id});
+      if(other)throw problem('Employee number '+data.code+' already belongs to '+holderLine(other)+'. Use the number HR Pulse gives for a new employee.',409);
+    }
     const status=['employeeTransfers','outDutyRequests','gatePasses'].includes(kind)?'DRAFT':kind==='holidays'?'PENDING':['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)?'DRAFT':'ACTIVE';
     let result;
     if(id) result=await db.query('UPDATE hr_records SET code=$1,name=$2,data=$3,status=$4,version=version+1,updated_by=$5,updated_at=now() WHERE id=$6 RETURNING *',[data.code,data.name,data,status,profile.actor,id]);
@@ -597,8 +603,9 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         return {state};
       });
     },
-    /* Next employee code for a company (CMLL001, CMLL002 …). The same Aadhaar always gets the same code; numbers come from
-       existing employees + reservations, so two HR users scanning at the same time never get the same code. */
+    /* Next employee code for a company. The same Aadhaar always gets the same code, and two HR users scanning at the same
+       time never get the same code. For CMLL / CMPL the number is the first one nobody holds above the old numbering
+       (employee-number.mjs): the Employee Master register counts too, so a new joiner never gets a working employee's number. */
     async nextEmployeeCode(profile,input){
       const aadhaar=String(input?.aadhaar||'').replace(/\D/g,'').slice(-12);
       const companyKey=String(input?.company||'').trim().toLowerCase();
@@ -606,11 +613,21 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       const company=companies.find(c=>c.code.toLowerCase()===companyKey||c.name.toLowerCase()===companyKey)||companies.find(c=>c.code.toLowerCase()==='cmll')||companies[0];
       const prefix=(String(input?.prefix||company?.code||'CMLL').replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,6))||'CMLL';
       return transaction(async db=>{
-        await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['employee-code:'+prefix]);
-        if(aadhaar.length===12){const held=(await db.query("SELECT code FROM hr_records WHERE kind='employeeCodes' AND data->>'aadhaar'=$1 AND code LIKE $2",[aadhaar,prefix+'%'])).rows[0];if(held)return {code:held.code,prefix,reused:true};}
+        const ours=OUR_PREFIXES.includes(prefix);
+        await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['employee-code:'+(ours?'CMLL':prefix)]);
+        if(aadhaar.length===12){const held=(await db.query("SELECT code FROM hr_records WHERE kind='employeeCodes' AND data->>'aadhaar'=$1 AND code LIKE $2",[aadhaar,prefix+'%'])).rows[0];
+          if(held){
+            /* A number reserved under the old counting and not yet used by a form may be a working employee's: it is given up. */
+            const stale=ours&&Number(employeeNumber(held.code))<=NUMBER_FLOOR&&!(await db.query("SELECT 1 FROM hr_records WHERE kind='employees' AND code=$1",[held.code])).rowCount;
+            if(!stale)return {code:held.code,prefix,reused:true};
+            await db.query("DELETE FROM hr_records WHERE kind='employeeCodes' AND code=$1",[held.code]);
+          }
+        }
         await db.query("DELETE FROM hr_records r WHERE r.kind='employeeCodes' AND r.created_at<now()-interval '7 days' AND NOT EXISTS(SELECT 1 FROM hr_records e WHERE e.kind='employees' AND e.code=r.code)");
-        const used=(await db.query("SELECT code FROM hr_records WHERE kind IN ('employees','employeeCodes') AND code ~ $1",['^'+prefix+'[0-9]+$'])).rows.map(r=>Number(r.code.slice(prefix.length))).filter(n=>Number.isFinite(n));
-        const next=(used.length?Math.max(...used):0)+1,code=prefix+String(next).padStart(3,'0');
+        let next;
+        if(ours){const {held,issued}=await heldNumbers(db,isEmployeeEntry);next=nextEmployeeNumber(held,issued);}
+        else{const used=(await db.query("SELECT code FROM hr_records WHERE kind IN ('employees','employeeCodes') AND code ~ $1",['^'+prefix+'[0-9]+$'])).rows.map(r=>Number(r.code.slice(prefix.length))).filter(n=>Number.isFinite(n));next=(used.length?Math.max(...used):0)+1;}
+        const code=prefix+String(next).padStart(3,'0');
         await db.query("INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES(gen_random_uuid(),'employeeCodes',$1,$2,$3,'ACTIVE',$4,$4) ON CONFLICT(kind,code) DO NOTHING",[code,'Reserved employee code',{aadhaar,company:company?.code||'',reservedBy:profile.actor,reservedAt:new Date().toISOString()},profile.actor]);
         return {code,prefix,reused:false};
       });

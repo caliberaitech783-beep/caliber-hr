@@ -227,8 +227,10 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       if (payload.format !== 'hr-employee-master-v1' || !Array.isArray(payload.rows) || !payload.rows.length) {
         throw new Error('Choose a prepared HR employee import file.');
       }
-      const result = await api<{inserted:number;alreadyImported:number}>(grant,'employee-master-register','POST',payload);
-      setMessage(`${result.inserted.toLocaleString('en-IN')} entries added. ${(result.alreadyImported+skipped).toLocaleString('en-IN')} already imported.`);
+      const result = await api<{inserted:number;alreadyImported:number;numberOnAnotherLine?:number}>(grant,'employee-master-register','POST',payload);
+      // One number on one line: a line whose Employee ID another line already holds is not added (server/employee-number.mjs).
+      const held = result.numberOnAnotherLine || 0;
+      setMessage(`${result.inserted.toLocaleString('en-IN')} entries added. ${(result.alreadyImported+skipped).toLocaleString('en-IN')} already imported.`+(held?` ${held.toLocaleString('en-IN')} not added: the Employee ID is already on another line.`:''));
       setPage(1);
       setRevision(value=>value+1);
     } catch (error) {

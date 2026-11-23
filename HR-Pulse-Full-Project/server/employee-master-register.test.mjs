@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createEmployeeMasterRegister} from './employee-master-register.mjs';
+// "One employee number, one person" is checked with the register: this file is on the list the deploy runs.
+import './employee-number.test.mjs';
 
 const menus = ['Master Configuration','Employee Master'];
 const admin = {actor:'hr-test',permissions:{hrDesktopAccess:menus}};
@@ -46,8 +48,8 @@ test('import writes to the separate register and can be safely retried', async()
   }};
   const service = createEmployeeMasterRegister({connect:async()=>db});
   const imported = {...employee,employeeId:'cmpl-001a',reportingTo:'CMPL-002'};
-  assert.deepEqual(await service.importEmployeeMasterRegister(admin,[imported]),{inserted:1,alreadyImported:0});
-  assert.deepEqual(await service.importEmployeeMasterRegister(admin,[imported]),{inserted:0,alreadyImported:1});
+  assert.deepEqual(await service.importEmployeeMasterRegister(admin,[imported]),{inserted:1,alreadyImported:0,numberOnAnotherLine:0,notAdded:[]});
+  assert.deepEqual(await service.importEmployeeMasterRegister(admin,[imported]),{inserted:0,alreadyImported:1,numberOnAnotherLine:0,notAdded:[]});
   assert.equal(stored.get(employee.key).site_id,siteId);
   assert.equal(stored.get(employee.key).data.employeeId,'CMLL-001a');
   assert.equal(stored.get(employee.key).data.reportingTo,'CMPL-002');
