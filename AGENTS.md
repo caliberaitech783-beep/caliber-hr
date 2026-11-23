@@ -1,3 +1,12 @@
+# Removing a line of Employee Master, and the leaving date
+
+Set by the owner on 23 November 2026: an employee is created, edited and deleted only in HR Pulse.
+
+- Edit employee details has "Remove this line", for a line that should not be in Employee Master (Duplicate line, Wrong entry, Not our employee). Only a login with every HR site (head office, like the Excel import) sees it; it asks once more before removing. The whole line is kept in the audit (`REMOVE`), and a line with a transfer in progress is refused.
+- A person who has left is not removed: Status is set to LEFT and the new "Leaving date" is filled, so the history stays and Pulse-II knows from which day the person no longer works.
+- Pulse-II takes both within a minute through the change list: a removed person and a LEFT person are no longer matched on new cards there.
+- `removeEmployeeMasterRegister` in `HR-Pulse-Full-Project/server/employee-master-register.mjs` and `EmployeeEditDialog` in `src/EmployeeMasterRegister.tsx` hold it; `server/employee-master-remove.test.mjs` and `src/EmployeeMasterRegister.test.tsx` check it.
+
 # A site move made in Pulse-II corrects HR Pulse at once
 
 Set by the owner on 23 November 2026: "it should be two-way ... anything which MIS changes during batch creation should get auto updated in HR employee master also", and no second approval in HR Pulse for it.

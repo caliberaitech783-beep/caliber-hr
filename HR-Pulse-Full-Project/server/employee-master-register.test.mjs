@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import {createEmployeeMasterRegister} from './employee-master-register.mjs';
 // "One employee number, one person" is checked with the register: this file is on the list the deploy runs.
 import './employee-number.test.mjs';
+import './employee-master-remove.test.mjs';
 
 const menus = ['Master Configuration','Employee Master'];
 const admin = {actor:'hr-test',permissions:{hrDesktopAccess:menus}};

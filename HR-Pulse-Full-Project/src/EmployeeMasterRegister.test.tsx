@@ -34,6 +34,59 @@ it('saves changes for the selected employee and refreshes the register',async()=
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
+// Owner, 23 Nov 2026: an employee is created, edited and deleted only in HR Pulse.
+it('removes a line only after a reason and a second yes',async()=>{
+  let removed = false;
+  const sites = [{code:'WCL-SASTI',label:'Sasti OB'}];
+  const fetchMock = vi.fn(async(url:string,options?:RequestInit)=>{
+    if (options?.method==='POST') {
+      expect(url).toMatch(/\/employee-master-register\/employee-1\/remove$/);
+      expect(JSON.parse(String(options.body))).toEqual({version:4,reason:'Duplicate line'});
+      removed = true;
+      return Response.json({removed:true});
+    }
+    if (url.endsWith('?edit=1')) return Response.json({name:'Sample twice',version:4,siteCode:'WCL-SASTI',sites,fields:{employeeId:'CMLL001'},canRemove:true});
+    return Response.json({rows:removed?[]:[{id:'employee-1',name:'Sample twice',employeeId:'CMLL001',site:'Sasti OB'}],total:removed?0:1,pageSize:50,sites,canImport:true});
+  });
+  vi.stubGlobal('fetch',fetchMock);
+  render(<EmployeeMasterRegister grant={'a'.repeat(43)}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Edit details for Sample twice'}));
+  const dialog = screen.getByRole('dialog',{name:'Edit employee details'});
+  const reason = await within(dialog).findByLabelText('Why it is removed');
+  const start = within(dialog).getByRole('button',{name:'Remove this line'});
+  expect(start).toBeDisabled();
+  fireEvent.change(reason,{target:{value:'Duplicate line'}});
+  fireEvent.click(start);
+  expect(within(dialog).getByText('Remove Sample twice (CMLL001) from Employee Master?')).toBeVisible();
+  expect(fetchMock.mock.calls.some(([,options])=>options?.method==='POST')).toBe(false);
+  fireEvent.click(within(dialog).getByRole('button',{name:'Yes, remove'}));
+  expect(await screen.findByText('The line was removed from Employee Master.')).toBeVisible();
+  await waitFor(()=>expect(screen.queryByRole('button',{name:'Edit details for Sample twice'})).toBeNull());
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('saves the leaving date, and shows no Remove to a login that may not remove',async()=>{
+  const sent:unknown[] = [];
+  const sites = [{code:'WCL-SASTI',label:'Sasti OB'}];
+  vi.stubGlobal('fetch',vi.fn(async(url:string,options?:RequestInit)=>{
+    if (options?.method==='PATCH') {
+      sent.push(JSON.parse(String(options.body)));
+      return Response.json({saved:true});
+    }
+    if (url.endsWith('?edit=1')) return Response.json({name:'Sample left',version:4,siteCode:'WCL-SASTI',sites,fields:{employeeId:'CMLL002',status:'LEFT'},canRemove:false});
+    return Response.json({rows:[{id:'employee-2',name:'Sample left',employeeId:'CMLL002',site:'Sasti OB'}],total:1,pageSize:50,sites,canImport:false});
+  }));
+  render(<EmployeeMasterRegister grant={'a'.repeat(43)}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'Edit details for Sample left'}));
+  const dialog = screen.getByRole('dialog',{name:'Edit employee details'});
+  const date = await within(dialog).findByLabelText('Leaving date (when Status is LEFT)');
+  expect(within(dialog).queryByRole('button',{name:'Remove this line'})).toBeNull();
+  fireEvent.change(date,{target:{value:'2026-11-20'}});
+  fireEvent.click(within(dialog).getByRole('button',{name:'Save changes'}));
+  expect(await screen.findByText('Employee details saved.')).toBeVisible();
+  expect(sent).toEqual([{version:4,changes:{leavingDate:'2026-11-20'}}]);
+});
+
 it('prints all matching rows, including records on later pages, with the current filters',async()=>{
   const first = {id:'1',employeeId:'CMLL001',name:'First employee',site:'Sasti OB'};
   const last = {id:'51',employeeId:'CMLL051',name:'Later & employee',site:'Sasti OB'};

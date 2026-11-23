@@ -213,6 +213,15 @@
 }
 .hr-register-details dt { font-weight: 600; }
 .hr-register-details dd { margin: 0; white-space: pre-wrap; }
+/* "Remove this line" sits under the edit form, apart from Save, so it is not pressed by mistake. */
+.hr-register-remove { margin-top: 28px; padding: 16px 18px 18px; border: 1px solid #f1c9c4; border-radius: 10px; background: #fff8f7; }
+.hr-register-remove h3 { margin: 0 0 6px; font-size: 16px; color: #912018; }
+.hr-register-remove p { margin: 0; font-size: 13px; line-height: 1.5; color: #51415d; }
+.hr-register-remove .record-form { margin-top: 14px; }
+.hr-register-remove .form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top-color: #f1c9c4; }
+.hr-register-remove .form-actions strong { margin-right: auto; font-size: 14px; color: #912018; overflow-wrap: anywhere; }
+.hr-register-remove button.remove { background: #b42318; border-color: #b42318; color: #fff; }
+.hr-register-remove button.remove:hover:not(:disabled) { background: #912018; }
 :is(.leave-management, .transfer-management) .approval-table th:nth-child(n) { width: auto; }
 :is(.leave-management, .transfer-management) .approval-table th:nth-child(4) { min-width: 160px; }
 :is(.leave-management, .transfer-management) .table-scroll .row-actions { white-space: nowrap; }
