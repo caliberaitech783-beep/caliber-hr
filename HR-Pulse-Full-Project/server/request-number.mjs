@@ -13,7 +13,7 @@ export const requestCode=(kind,serial,date,empCode)=>`${formats[kind].prefix}${S
 export function requestSerial(kind,code){const m=new RegExp(formats[kind].pattern).exec(String(code||''));return m?Number(m[1]):0;}
 export async function nextRequestCode(db,kind,existingCode,input){
   const f=formats[kind];
-  const empCode=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='employees'",[String(input.employeeId||'')])).rows[0]?.code||'';
+  const empCode=(await db.query("SELECT code FROM hr_records WHERE id::text=$1 AND kind='employees'",[String(input.employeeId||'')])).rows[0]?.code||String(input.empCode||'');
   let serial=requestSerial(kind,existingCode);
   if(!serial){
     await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',[f.lock]);

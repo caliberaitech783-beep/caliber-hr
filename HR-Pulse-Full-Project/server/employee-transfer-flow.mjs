@@ -24,7 +24,16 @@ export async function transferWorkflow(db,fromSiteId){
 }
 /* On final approval the employee's posting moves to the destination. */
 export async function applyTransfer(db,record,actor){
- const d=record.data,employee=(await db.query("SELECT data FROM hr_records WHERE id=$1 AND kind='employees'",[d.employeeId])).rows[0];
+ const d=record.data;
+ if(!d.employeeId&&d.registerId){
+  /* Owner, 23 Nov 2026: an Employee Master register line moves to the new site, designation and manager. */
+  const site=(await db.query("SELECT code,name FROM hr_records WHERE id::text=$1 AND kind='sites'",[String(d.toSiteId||'')])).rows[0];
+  if(!site)return;
+  const changes={...(d.toDesignation?{designation:d.toDesignation}:{}),...(d.toManager?{reportingTo:d.toManager}:{})};
+  await db.query('UPDATE hr_employee_master_register SET site_id=$1,site_code=$2,site_name=$3,data=data||$4::jsonb,version=version+1 WHERE id=$5',[d.toSiteId,site.code,site.name,JSON.stringify(changes),d.registerId]);
+  return;
+ }
+ const employee=(await db.query("SELECT data FROM hr_records WHERE id=$1 AND kind='employees'",[d.employeeId])).rows[0];
  if(!employee)return;
  const next={...employee.data,siteId:d.toSiteId||employee.data.siteId,companyId:d.toCompanyId||employee.data.companyId,transferredFromSiteId:d.fromSiteId,lastTransferId:record.id,lastTransferDate:d.transferDate};
  if(d.toDesignation)next.designationTitle=d.toDesignation;

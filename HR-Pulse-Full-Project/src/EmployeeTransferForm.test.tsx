@@ -12,7 +12,7 @@ const transferModule={title:'Employee transfers',menu:'Employee Master',fields:m
 it('transfer form lists the site employees, fills the current posting and offers designation and manager dropdowns',async()=>{
  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
   if(url.includes('request-preview'))return new Response(JSON.stringify({employee:{name:'Ankit Tiwari',companyId:'c',siteId:'home',department:'Operations',designation:'Operator',reportingTo:'R. Sharma – Manager'},route:['Site HR (from location)','PM (from location)','Office HR','Regional HR Head','Director'],routeNote:''}));
-  if(url.includes('transfer-options'))return new Response(JSON.stringify({designations:['Operator','Supervisor'],fromManagers:[{label:'CMLL00005 · R. Sharma – Manager',value:'CMLL00005 · R. Sharma'}],toManagers:url.includes('toSiteId=far')?[{label:'CMLL00099 · P. Rao – Project Manager',value:'CMLL00099 · P. Rao'}]:[]}));
+  if(url.includes('transfer-options'))return new Response(JSON.stringify({employees:url.includes('fromSiteId=home')?[{value:'employee',label:'CMLL00012 · Ankit Tiwari'},{value:'e2',label:'CMLL00031 · Ravi Kumar'},{value:'reg:r5',label:'CMLL00440 · Register Only'}]:[],designations:['Operator','Supervisor'],fromManagers:[{label:'CMLL00005 · R. Sharma – Manager',value:'CMLL00005 · R. Sharma'}],toManagers:url.includes('toSiteId=far')?[{label:'CMLL00099 · P. Rao – Project Manager',value:'CMLL00099 · P. Rao'}]:[]}));
   return new Response(JSON.stringify(url.endsWith('/lookups')?lookups:{rows:[],total:0,page:1,pageSize:50}));
  }));
  render(<Records grant="t" kind="employeeTransfers" module={transferModule} notice={()=>{}} actionLabel="Create transfer"/>);
@@ -23,8 +23,10 @@ it('transfer form lists the site employees, fills the current posting and offers
  expect((screen.getByLabelText(/Transfer date/) as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
  expect(screen.getByLabelText(/^Employee/)).toBeEnabled(); // selectable before a site is chosen
  fireEvent.change(screen.getByLabelText(/From location/),{target:{value:'home'}});
+ await waitFor(()=>expect(within(screen.getByLabelText(/^Employee/)).getByText('CMLL00440 · Register Only')).toBeTruthy()); // register staff, not only HR-joined
  const employee=screen.getByLabelText(/^Employee/);
  expect(employee).toBeEnabled();
+ expect(within(employee).getByText('Select employee (3)…')).toBeTruthy();
  expect(within(employee).getByText('CMLL00012 · Ankit Tiwari')).toBeTruthy();expect(within(employee).getByText('CMLL00031 · Ravi Kumar')).toBeTruthy();
  expect(within(employee).queryByText('CMLL00077 · Pauni Person')).toBeNull();
  fireEvent.change(employee,{target:{value:'employee'}});
@@ -63,11 +65,11 @@ it('employee list matches duplicate sites by name and never comes up empty',asyn
  await waitFor(()=>expect(screen.getByRole('button',{name:'Create transfer'})).toBeEnabled());
  fireEvent.click(screen.getByRole('button',{name:'Create transfer'}));
  fireEvent.change(screen.getByLabelText(/From location/),{target:{value:'home'}});
+ await waitFor(()=>expect(within(screen.getByLabelText(/^Employee/)).getByText('CMLL00009 · Dup Site Person')).toBeTruthy());
  const employee=screen.getByLabelText(/^Employee/);
- expect(within(employee).getByText('CMLL00009 · Dup Site Person')).toBeTruthy();
  expect(within(employee).queryByText('CMLL00077 · Pauni Person')).toBeNull();
  fireEvent.change(screen.getByLabelText(/From location/),{target:{value:'empty'}});
- expect(within(screen.getByLabelText(/^Employee/)).getByText('No employee saved at this site · showing all (4)')).toBeTruthy();
+ await waitFor(()=>expect(within(screen.getByLabelText(/^Employee/)).getByText('No employee saved at this site · showing all (4)')).toBeTruthy());
  fireEvent.change(screen.getByLabelText(/^Employee/),{target:{value:'e3'}});
  expect(screen.getByLabelText(/^Employee/)).toHaveValue('e3');
 });
