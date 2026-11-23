@@ -21,7 +21,7 @@ it('transfer form lists the site employees, fills the current posting and offers
  expect(screen.getByRole('heading',{name:'Request employee transfer'})).toBeTruthy();
  expect(screen.queryByLabelText(/Transfer reference/)).toBeNull();
  expect((screen.getByLabelText(/Transfer date/) as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
- expect(screen.getByLabelText(/^Employee/)).toBeEnabled(); // selectable before a site is chosen
+ expect(screen.getByLabelText(/^Employee/)).toBeDisabled();
  fireEvent.change(screen.getByLabelText(/From location/),{target:{value:'home'}});
  await waitFor(()=>expect(within(screen.getByLabelText(/^Employee/)).getByText('CMLL00440 · Register Only')).toBeTruthy()); // register staff, not only HR-joined
  const employee=screen.getByLabelText(/^Employee/);
@@ -59,19 +59,23 @@ it('draws transfers as cards with the approval step bar',async()=>{
  expect(screen.queryByRole('table')).toBeNull();
 });
 
-// Owner, 23 Nov 2026: the Employee box never locks or empties: a duplicate site master with the same name still matches, and a site with nobody saved lists everyone.
-it('employee list matches duplicate sites by name and never comes up empty',async()=>{
+it('lists each site name once and clears employee options when switching to an empty site',async()=>{
  const more=[...lookups,{id:'home2',kind:'sites',code:'SASTI',name:'Sasti OC'},{id:'e9',kind:'employees',code:'CMLL00009',name:'Dup Site Person',site_id:'home2'},{id:'empty',kind:'sites',code:'NEW',name:'New Site'}];
- vi.stubGlobal('fetch',vi.fn(async(url:string)=>new Response(JSON.stringify(url.endsWith('/lookups')?more:url.includes('transfer-options')?{designations:[],fromManagers:[],toManagers:[]}:{rows:[],total:0,page:1,pageSize:50}))));
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>new Response(JSON.stringify(url.endsWith('/lookups')?more:url.includes('transfer-options')?{
+  employees:url.includes('fromSiteId=home')?[{value:'e9',label:'CMLL00009 · Dup Site Person'}]:[],
+  designations:[],fromManagers:[],toManagers:[]
+ }:{rows:[],total:0,page:1,pageSize:50}))));
  render(<Records grant="t" kind="employeeTransfers" module={transferModule} notice={()=>{}} actionLabel="Create transfer"/>);
  await waitFor(()=>expect(screen.getByRole('button',{name:'Create transfer'})).toBeEnabled());
  fireEvent.click(screen.getByRole('button',{name:'Create transfer'}));
+ expect(within(screen.getByLabelText(/From location/)).getAllByRole('option',{name:'Sasti OC'})).toHaveLength(1);
  fireEvent.change(screen.getByLabelText(/From location/),{target:{value:'home'}});
  await waitFor(()=>expect(within(screen.getByLabelText(/^Employee/)).getByText('CMLL00009 · Dup Site Person')).toBeTruthy());
  const employee=screen.getByLabelText(/^Employee/);
  expect(within(employee).queryByText('CMLL00077 · Pauni Person')).toBeNull();
  fireEvent.change(screen.getByLabelText(/From location/),{target:{value:'empty'}});
- await waitFor(()=>expect(within(screen.getByLabelText(/^Employee/)).getByText('No employee saved at this site · showing all (4)')).toBeTruthy());
- fireEvent.change(screen.getByLabelText(/^Employee/),{target:{value:'e3'}});
- expect(screen.getByLabelText(/^Employee/)).toHaveValue('e3');
+ expect(within(employee).queryByText('CMLL00009 · Dup Site Person')).toBeNull();
+ await waitFor(()=>expect(within(employee).getByText('No employees with an ID are available at this site')).toBeTruthy());
+ expect(employee).toBeDisabled();
+ expect(within(employee).getAllByRole('option')).toHaveLength(1);
 });

@@ -19,14 +19,16 @@ const cache=new Map<string,Promise<Options>>();
 export function resetTransferOptions(){cache.clear();}
 
 function useTransferOptions(grant:string,fromSiteId:string,toSiteId:string){
-  const[options,setOptions]=useState<Options|null>(null);
+  const path=`transfer-options?fromSiteId=${encodeURIComponent(fromSiteId)}&toSiteId=${encodeURIComponent(toSiteId)}`;
+  const key=JSON.stringify([grant,path]);
+  const[result,setResult]=useState<{key:string;options?:Options}|null>(null);
   useEffect(()=>{
-    let live=true;const key=`transfer-options?fromSiteId=${encodeURIComponent(fromSiteId)}&toSiteId=${encodeURIComponent(toSiteId)}`;
-    if(!cache.has(key))cache.set(key,api<Options>(grant,key).catch(e=>{cache.delete(key);throw e;}));
-    cache.get(key)!.then(o=>{if(live)setOptions(o);}).catch(()=>{if(live)setOptions({designations:[],fromManagers:[],toManagers:[]});});
+    let live=true;
+    if(!cache.has(key))cache.set(key,api<Options>(grant,path).catch(e=>{cache.delete(key);throw e;}));
+    cache.get(key)!.then(options=>{if(live)setResult({key,options});}).catch(()=>{if(live)setResult({key});});
     return()=>{live=false;};
-  },[grant,fromSiteId,toSiteId]);
-  return options;
+  },[grant,key,path]);
+  return result?.key===key?result:null;
 }
 
 function ListOrOther({value,options,placeholder,disabled,required,onChange,label}:{value:string;options:Option[];placeholder:string;disabled:boolean;required?:boolean;onChange:(v:string)=>void;label:string}){
@@ -47,43 +49,36 @@ function ListOrOther({value,options,placeholder,disabled,required,onChange,label
 export default function TransferField({grant,field,data,setData,lookups,disabled}:Props){
   const sites=lookups.filter(x=>x.kind==='sites'),key=field.key,value=String(data[key]??'');
   const fromSiteId=String(data.fromSiteId||''),toSiteId=String(data.toSiteId||'');
-  const options=useTransferOptions(grant,fromSiteId,toSiteId);
+  const result=useTransferOptions(grant,fromSiteId,toSiteId);
+  const options=result?.options;
   const set=(v:string)=>setData(d=>({...d,[key]:v,...(key==='toSiteId'?{toManager:''}:{})}));
   /* Owner, 23 Nov 2026: site boxes show the site name only (no region code); a name shared by two site masters is listed once. */
-  const siteLabel=(x:Lookup)=>x.name;
-  const siteKey=(x?:Lookup)=>String(x?.name||'').trim().toLowerCase();
-  const siteList=sites.filter((x,i)=>sites.findIndex(y=>siteKey(y)===siteKey(x))===i);
+  const siteLabel=(x:Lookup)=>x.name.trim().replace(/\s+/g,' ');
+  const siteKey=(x?:Lookup)=>x?siteLabel(x).toLowerCase():'';
+  const selectedSite=sites.find(x=>x.id===value);
+  const siteByName=new Map<string,Lookup>();
+  for(const site of sites){
+    const name=siteKey(site);
+    if(!siteByName.has(name)||site===selectedSite)siteByName.set(name,site);
+  }
+  const siteList=[...siteByName.values()];
   const fromName=siteKey(sites.find(x=>x.id===fromSiteId));
   /* One site for this login: choose it straight away. */
   useEffect(()=>{if(key==='fromSiteId'&&!value&&!disabled&&siteList.length===1)setData(d=>({...d,fromSiteId:siteList[0].id}));},[key,value,disabled,siteList.length]);// eslint-disable-line react-hooks/exhaustive-deps
-  if(key==='fromSiteId')return <select disabled={disabled} required={field.required} value={value} onChange={e=>{const next=e.target.value;setData(d=>({...d,fromSiteId:next,employeeId:'',fromDesignation:'',fromManager:'',...(d.toSiteId===next?{toSiteId:'',toManager:''}:{})}));}}>
+  if(key==='fromSiteId')return <select disabled={disabled} required={field.required} value={value} onChange={e=>{const next=e.target.value;const nextName=siteKey(sites.find(x=>x.id===next));setData(d=>({...d,fromSiteId:next,employeeId:'',fromDesignation:'',fromManager:'',...(nextName&&siteKey(sites.find(x=>x.id===d.toSiteId))===nextName?{toSiteId:'',toManager:''}:{})}));}}>
     <option value="">{sites.length?'Select site…':'No site is assigned to this login'}</option>
     {value&&!sites.some(x=>x.id===value)&&<option value={value}>Current site</option>}
     {siteList.map(x=><option key={x.id} value={x.id}>{siteLabel(x)}</option>)}
   </select>;
   if(key==='employeeId'){
-    /* The employee is always selectable (owner, 23 Nov 2026). With a site chosen, that site's employees are listed;
-       a site is matched by ID, code or name, so a duplicate site master with the same name still matches.
-       When nobody matches the site, every employee this login can see is listed rather than none. */
-    const everyone=lookups.filter(x=>x.kind==='employees').sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true}));
-    const norm=(s:unknown)=>String(s||'').trim().toLowerCase();
-    const chosen=sites.find(x=>x.id===fromSiteId),keys=new Set(chosen?[chosen.id,norm(chosen.code),norm(chosen.name)].filter(Boolean):[fromSiteId]);
-    const siteKeys=(id:unknown)=>{const s=lookups.find(x=>x.kind==='sites'&&x.id===id);return s?[s.id,norm(s.code),norm(s.name)]:[String(id||''),norm(id)];};
-    const atSite=fromSiteId?everyone.filter(x=>siteKeys(x.site_id).some(k=>k&&keys.has(k))):everyone;
-    const people=atSite.length?atSite:everyone;
-    /* Owner, 23 Nov 2026: with a site chosen, the list is that site's whole staff from the Employee Master register
-       together with HR-joined employees (server: transfer-options), not only the employees who joined through HR. */
-    const staff=fromSiteId?options?.employees:undefined;
-    if(staff&&staff.length)return <select disabled={disabled} required={field.required} value={value} onChange={e=>set(e.target.value)}>
-      <option value="">{`Select employee (${staff.length})…`}</option>
-      {value&&!staff.some(x=>x.value===value)&&<option value={value}>{String(data.empCode||'')} {String(data.employeeName||lookups.find(x=>x.id===value)?.name||'Saved employee')}</option>}
+    const staff=options?.employees||[];
+    const placeholder=!fromSiteId?'Choose the From location first':!result?'Loading employees…':
+      !options?'Could not load employees for this site':options.staff?.inScope===false?'This login cannot list staff of this site':
+      staff.length?'Select employee ('+staff.length+')…':'No employees with an ID are available at this site';
+    return <select disabled={disabled||!fromSiteId||!staff.length} required={field.required} value={value} onChange={e=>set(e.target.value)}>
+      <option value="">{placeholder}</option>
+      {value&&!staff.some(x=>x.value===value)&&<option value={value} disabled>{[data.empCode,data.employeeName||lookups.find(x=>x.id===value)?.name||'Saved employee'].filter(Boolean).join(' · ')}</option>}
       {staff.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}
-    </select>;
-    if(fromSiteId&&!options)return <select disabled value="" onChange={()=>{}}><option value="">Loading employees…</option></select>;
-    return <select disabled={disabled} required={field.required} value={value} onChange={e=>set(e.target.value)}>
-      <option value="">{fromSiteId&&options?.staff?.inScope===false?`This login cannot list staff of this site · showing ${people.length}`:fromSiteId&&options?.staff&&!options.staff.register?`Employee Master has no staff saved for this site · ${people.length} joined through HR`:!everyone.length?'No active employee is available to this login':fromSiteId&&!atSite.length?`No employee saved at this site · showing all (${people.length})`:`Select employee (${people.length})…`}</option>
-      {value&&!people.some(x=>x.id===value)&&<option value={value}>{lookups.find(x=>x.id===value)?.name||'Saved employee'}</option>}
-      {people.map(x=><option key={x.id} value={x.id}>{x.code} · {x.name}</option>)}
     </select>;
   }
   if(key==='toSiteId')return <select disabled={disabled||!data.employeeId} required={field.required} value={value} onChange={e=>set(e.target.value)}>

@@ -28,10 +28,18 @@ export function siteManagers(rows){
    the employees who joined through HR, one line per employee number; the joined employee wins, as in the Pulse-II sync.
    A register line is chosen as "reg:<id>". People who have left are not listed. */
 export function siteEmployees(register,joined){
-  const lines=new Map(),out=[];
-  for(const row of joined){const n=employeeNumber(row.code)||'hr:'+row.id;if(!lines.has(n)){lines.set(n,true);out.push({value:String(row.id),code:clean(row.code),name:clean(row.name)});}}
-  for(const row of register){if(leftStatus.test(String(row.status||'')))continue;const n=employeeNumber(row.code)||'reg:'+row.id;if(lines.has(n))continue;lines.set(n,true);out.push({value:'reg:'+row.id,code:clean(row.code),name:clean(row.name)});}
-  return out.filter(x=>x.name).sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true})||a.name.localeCompare(b.name)).map(x=>({...x,label:[x.code,x.name].filter(Boolean).join(' · ')}));
+  const seen=new Set(),employees=[];
+  for(const [rows,prefix] of [[joined,''],[register,'reg:']]){
+    for(const row of rows){
+      const code=clean(row.code),name=clean(row.name);
+      if(!code||!name||leftStatus.test(String(row.status||'')))continue;
+      const number=employeeNumber(code)||code.toLowerCase();
+      if(seen.has(number))continue;
+      seen.add(number);
+      employees.push({value:prefix+row.id,code,name,label:`${code} · ${name}`});
+    }
+  }
+  return employees.sort((a,b)=>a.code.localeCompare(b.code,undefined,{numeric:true})||a.name.localeCompare(b.name));
 }
 
 export function designationList(master,register){

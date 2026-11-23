@@ -1,7 +1,21 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {siteManagers,designationList,createTransferOptions} from './transfer-options.mjs';
+import {siteEmployees,siteManagers,designationList,createTransferOptions} from './transfer-options.mjs';
+
+test('employees include IDs from both sources and prefer the joined record for duplicates', () => {
+  const employees = siteEmployees([
+    {id: 'r1', code: 'CMLL00440', name: 'Register duplicate'},
+    {id: 'r2', code: 'CMLL00441', name: 'Register employee'},
+    {id: 'r3', code: '', name: 'Missing ID'},
+  ], [
+    {id: 'h1', code: 'CMLL00440', name: 'Joined employee'},
+  ]);
+  assert.deepEqual(employees.map(({value,label}) => [value,label]), [
+    ['h1','CMLL00440 · Joined employee'],
+    ['reg:r2','CMLL00441 · Register employee'],
+  ]);
+});
 
 // Owner, 23 Nov 2026: transfer form dropdowns.
 test('managers list only Manager-and-above people still working, with employee ID', () => {
