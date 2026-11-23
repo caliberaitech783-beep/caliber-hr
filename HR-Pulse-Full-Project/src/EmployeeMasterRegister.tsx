@@ -18,7 +18,7 @@ type Employee = Record<typeof columns[number][0], string> & {id:string};
 type RegisterColumn = typeof columns[number];
 type EditableColumn = Exclude<RegisterColumn,readonly ['region'|'site',string,number]>;
 const editableColumns = columns.filter((column):column is EditableColumn=>column[0]!=='region'&&column[0]!=='site');
-type EditField = EditableColumn[0] | 'siteCode';
+type EditField = EditableColumn[0] | 'siteCode' | 'leavingDate';
 type EditValues = Record<EditField,string>;
 type EmployeeEditSnapshot = {
   name:string;
@@ -26,7 +26,10 @@ type EmployeeEditSnapshot = {
   siteCode:string;
   fields:Partial<EditValues>;
   sites:{code:string;label:string}[];
+  canRemove?:boolean;
 };
+// Why a line is removed. A person who has left is not removed: the status is set to LEFT with the leaving date.
+const removeReasons = ['Duplicate line','Wrong entry','Not our employee'] as const;
 type EmployeeDetails = {
   name:string;
   fields?:Partial<Employee>;
@@ -45,8 +48,8 @@ function useRegisterDialog() {
   return dialog;
 }
 
-function EmployeeEditDialog({employee,grant,onClose,onSaved}:{
-  employee:Employee;grant:string;onClose:()=>void;onSaved:()=>void;
+function EmployeeEditDialog({employee,grant,onClose,onSaved,onRemoved}:{
+  employee:Employee;grant:string;onClose:()=>void;onSaved:()=>void;onRemoved:()=>void;
 }) {
   const dialog = useRegisterDialog();
   const [snapshot,setSnapshot] = useState<EmployeeEditSnapshot>();
@@ -54,6 +57,8 @@ function EmployeeEditDialog({employee,grant,onClose,onSaved}:{
   const [original,setOriginal] = useState<EditValues>();
   const [error,setError] = useState('');
   const [saving,setSaving] = useState(false);
+  const [reason,setReason] = useState('');
+  const [sure,setSure] = useState(false);
   const path = `employee-master-register/${employee.id}`;
 
   useEffect(()=>{
@@ -66,6 +71,7 @@ function EmployeeEditDialog({employee,grant,onClose,onSaved}:{
       const initial = Object.fromEntries(editableColumns.map(([key])=>[key,result.fields[key] ?? ''])) as EditValues;
       initial.name = result.name;
       initial.siteCode = result.siteCode;
+      initial.leavingDate = result.fields.leavingDate ?? '';
       setOriginal(initial);
       setValues(initial);
       setSnapshot(result);
@@ -89,6 +95,21 @@ function EmployeeEditDialog({employee,grant,onClose,onSaved}:{
     }
   }
 
+  // An employee is deleted only here, never in Pulse-II (owner, 23 Nov 2026). Pulse-II takes the removal within a minute.
+  async function remove() {
+    if (!snapshot || saving || !reason) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api(grant,path+'/remove','POST',{version:snapshot.version,reason});
+      onRemoved();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to remove this line.');
+      setSaving(false);
+      setSure(false);
+    }
+  }
+
   return <dialog ref={dialog} className="modal hr-register-details" aria-labelledby="hr-register-edit-title"
     onCancel={event=>{event.preventDefault();if (!saving) onClose();}}>
     <div className="modal-heading">
@@ -104,6 +125,9 @@ function EmployeeEditDialog({employee,grant,onClose,onSaved}:{
           <input value={values[key]} maxLength={1000} required={key==='name'} disabled={saving}
             onChange={event=>setValues({...values,[key]:event.target.value})}/>
         </label>)}
+        <label>Leaving date (when Status is LEFT)
+          <input type="date" value={values.leavingDate} disabled={saving} onChange={event=>setValues({...values,leavingDate:event.target.value})}/>
+        </label>
         <label>Site / Office
           <select value={values.siteCode} disabled={saving} onChange={event=>setValues({...values,siteCode:event.target.value})}>
             {!snapshot.sites.some(site=>site.code===snapshot.siteCode) &&
@@ -118,6 +142,26 @@ function EmployeeEditDialog({employee,grant,onClose,onSaved}:{
         </button>
       </div>
     </form>}
+    {snapshot?.canRemove && <section className="hr-register-remove" aria-label="Remove this line">
+      <h3>Remove this line</h3>
+      <p>Only for a line that should not be in Employee Master. For a person who has left, set Status to LEFT with the leaving date instead. Pulse-II stops matching a removed person on new cards within a minute.</p>
+      <div className="record-form">
+        <label>Why it is removed
+          <select value={reason} disabled={saving} onChange={event=>{setReason(event.target.value);setSure(false);}}>
+            <option value="">Choose a reason</option>
+            {removeReasons.map(item=><option key={item} value={item}>{item}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="form-actions">
+        {!sure ? <button type="button" disabled={saving||!reason} onClick={()=>setSure(true)}>Remove this line</button>
+          : <>
+            <strong role="alert">Remove {employee.name}{employee.employeeId?` (${employee.employeeId})`:''} from Employee Master?</strong>
+            <button type="button" className="remove" disabled={saving} onClick={remove}>{saving?'Removing…':'Yes, remove'}</button>
+            <button type="button" disabled={saving} onClick={()=>setSure(false)}>No</button>
+          </>}
+      </div>
+    </section>}
   </dialog>;
 }
 
@@ -378,6 +422,11 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       onSaved={()=>{
         closeDetails();
         setMessage('Employee details saved.');
+        setRevision(value=>value+1);
+      }}
+      onRemoved={()=>{
+        closeDetails();
+        setMessage('The line was removed from Employee Master.');
         setRevision(value=>value+1);
       }}/>}
   </section>;

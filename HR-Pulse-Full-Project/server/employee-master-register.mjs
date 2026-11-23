@@ -34,6 +34,10 @@ const siteNames = {
   'WCL-SASTI': 'Sasti OB',
 };
 const fields = ['employeeId','name','department','designation','category','reportingTo','contact','email','status'];
+// Why a line is removed (owner, 23 Nov 2026: an employee is deleted only in HR Pulse). A person who has left is not
+// removed: the status is set to LEFT with the leaving date, so the history stays.
+export const REMOVE_REASONS = Object.freeze(['Duplicate line','Wrong entry','Not our employee']);
+const isDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
 const fail = (message, status = 400) => Object.assign(new Error(message), {status});
 const normalizeEmployeeId = value => value.replace(/^CMPL/i,'CMLL');
 const employeeIdLabels = new Set(['EMPLOYEECODE','EMPLOYEEID','EMPID']);
@@ -57,7 +61,7 @@ function parseChanges(input) {
       typeof input.changes !== 'object' || Array.isArray(input.changes)) throw fail('Invalid employee changes.');
   const changes = {};
   for (const [key,value] of Object.entries(input.changes)) {
-    if ((!fields.includes(key) && key!=='siteCode') || typeof value!=='string' || value.length>1000 || value.includes('\0')) {
+    if ((!fields.includes(key) && key!=='siteCode' && key!=='leavingDate') || typeof value!=='string' || value.length>1000 || value.includes('\0')) {
       throw fail('Invalid employee field or value.');
     }
     changes[key] = key==='employeeId' ? normalizeEmployeeId(value.trim()) : value.trim();
@@ -65,6 +69,7 @@ function parseChanges(input) {
   if (!Object.keys(changes).length) throw fail('Make a change before saving.');
   if (changes.name==='') throw fail('Name is required.');
   if (changes.siteCode!==undefined && !Object.hasOwn(siteNames,changes.siteCode)) throw fail('Select a valid site.');
+  if (changes.leavingDate && !isDate(changes.leavingDate)) throw fail('Leaving date must be a date.');
   return changes;
 }
 
@@ -128,7 +133,8 @@ export function createEmployeeMasterRegister(pool) {
       const entry = result.rows[0];
       if (edit) {
         const sites = (await availableSites(pool,scope)).map(({code})=>({code,label:siteNames[code]}));
-        return {...entry,sites};
+        // Removing a line is for a login with every HR site (head office), like the Excel import.
+        return {...entry,sites,canRemove:scope===null};
       }
       return {name:entry.name,fields:entry.fields,sources:entry.sources.map(source=>({
         ...source,
@@ -174,6 +180,33 @@ export function createEmployeeMasterRegister(pool) {
           [profile.actor,kind,id,{fields:editedFields}]);
         await db.query('COMMIT');
         return {saved:true};
+      } catch (error) {
+        await db.query('ROLLBACK');
+        throw error;
+      } finally {
+        db.release();
+      }
+    },
+    // Removes a line that should not be in Employee Master. The whole line is kept in the audit, so it can be put
+    // back by hand. Pulse-II sees the removal within a minute: the person is no longer matched on new cards there.
+    async removeEmployeeMasterRegister(profile, id, input) {
+      if (await access(pool, profile) !== null) throw fail('Removing a line requires access to all HR sites.', 403);
+      if (!input || !Number.isInteger(input.version) || input.version < 1) throw fail('Invalid request.');
+      if (!REMOVE_REASONS.includes(input.reason)) throw fail('Choose why this line is removed.');
+      const db = await pool.connect();
+      try {
+        await db.query('BEGIN');
+        const entry = (await db.query(`SELECT version,name,site_code,site_name,data-'sources' AS data FROM hr_employee_master_register
+          WHERE id=$1 AND ${isEmployeeEntry} FOR UPDATE`, [id])).rows[0];
+        if (!entry) throw fail('Employee entry not found.',404);
+        if (entry.version!==input.version) throw fail('This entry changed while you were looking at it. Close and reopen it.',409);
+        const moving = await db.query("SELECT 1 FROM hr_records WHERE kind='employeeTransfers' AND data->>'registerId'=$1 AND status IN ('DRAFT','PENDING') LIMIT 1", [id]);
+        if (moving.rowCount) throw fail('A transfer of this employee is in progress. Finish or cancel it first.',409);
+        await db.query('DELETE FROM hr_employee_master_register WHERE id=$1', [id]);
+        await db.query("INSERT INTO hr_audit (actor,action,kind,record_id,detail) VALUES ($1,'REMOVE',$2,$3,$4)",
+          [profile.actor,kind,id,{reason:input.reason,name:entry.name,site:entry.site_name,siteCode:entry.site_code,line:entry.data}]);
+        await db.query('COMMIT');
+        return {removed:true};
       } catch (error) {
         await db.query('ROLLBACK');
         throw error;
