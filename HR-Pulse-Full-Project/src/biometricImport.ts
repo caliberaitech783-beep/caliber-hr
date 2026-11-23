@@ -75,7 +75,8 @@ export function readMachineLog(fileName:string,source:string):MachineLog{
 }
 
 export type CheckedMachine={serial:string;name:string;location:string;machineNo?:string;ids:{biometricId:string;employeeCode:string;employeeName:string;machineName:string}[]};
-export type MachinePick={serial:string;reason:'file-name'|'machine-no'|'only'|'ids'|'none';matched:number};
+/** chosen: the machine picked by hand in the upload screen (Machine master list), used for every file. */
+export type MachinePick={serial:string;reason:'chosen'|'file-name'|'machine-no'|'only'|'ids'|'none';matched:number};
 /** The machine no. a USB download carries in its name: 1_attlog.dat, 12_attlog (2).dat. */
 export const machineNoInFileName=(fileName:string)=>/^0*([1-9]\d{0,2})_attlog/i.exec(fileName.trim())?.[1]||'';
 /** Which machine a log came from: its serial or machine no. (machine master) in the file name, the site's only machine,

@@ -3,7 +3,17 @@
 .machine-log-upload h2{display:flex;align-items:center;gap:8px}
 .machine-log-upload h2 svg{width:20px;height:20px}
 .machine-log-upload h3{margin:18px 0 8px;font-size:16px;color:#2b2233}
-.machine-log-drop{display:grid;justify-items:center;gap:4px;margin-top:12px;padding:22px 16px;border:1.5px dashed #cbbfdc;border-radius:12px;background:#faf8fc;text-align:center;color:#2b2233}
+.machine-log-step{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:14px;color:#2b2233}
+.machine-log-step-no{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#5b2a86;color:#fff;font-size:13px;font-weight:600;flex:none;align-self:center}
+.machine-log-pick{display:grid;gap:4px;flex:1 1 300px;font-size:13px;color:#6d6378}
+.machine-log-pick select{width:100%}
+.machine-log-master{display:inline-flex;align-items:center;gap:6px}
+.machine-log-master svg{width:15px;height:15px}
+.machine-log-list{display:flex;align-items:center;gap:6px;margin:6px 0 0 34px}
+.machine-log-list svg{width:14px;height:14px;flex:none}
+.machine-log-choose{display:inline-flex;align-items:center;gap:8px;margin-bottom:4px}
+.machine-log-choose svg{width:16px!important;height:16px!important;color:inherit!important}
+.machine-log-drop{display:grid;justify-items:center;gap:4px;margin-top:8px;padding:22px 16px;border:1.5px dashed #cbbfdc;border-radius:12px;background:#faf8fc;text-align:center;color:#2b2233}
 .machine-log-drop.dragging{border-color:#5b2a86;background:#f3ecfa}
 .machine-log-drop>svg{width:26px;height:26px;color:#8a7f96}
 .machine-log-drop p{margin:0;font-size:15px}

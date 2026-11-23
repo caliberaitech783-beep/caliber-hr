@@ -1,5 +1,5 @@
-import {useMemo,useRef,useState,type DragEvent} from 'react';
-import {Check,FileText,Sparkles,Upload,X} from 'lucide-react';
+import {useEffect,useMemo,useRef,useState,type DragEvent} from 'react';
+import {Check,FileText,Fingerprint,Settings2,Sparkles,Upload,X} from 'lucide-react';
 import {api} from './api';
 import {pickMachine,readMachineLog,type CheckedMachine,type MachineLog,type MachinePick} from './biometricImport';
 import './machine-log-upload.css';
@@ -18,6 +18,12 @@ export default function MachineLogUpload({grant,site,onClose,onImported,onManage
  const input=useRef<HTMLInputElement>(null);
  const [files,setFiles]=useState<Loaded[]>([]),[machines,setMachines]=useState<CheckedMachine[]|null>(null);
  const [reading,setReading]=useState(false),[importing,setImporting]=useState(''),[error,setError]=useState(''),[dragging,setDragging]=useState(false),[tried,setTried]=useState(false);
+ // Owner, 23 Nov 2026: the site's machines from Machine master show as soon as the screen opens; one picked here is used
+ // for every file, '' finds each file's machine by itself.
+ const [fixed,setFixed]=useState('');
+ const check=(ids:string[])=>api<{machines:CheckedMachine[]}>(grant,'attendance/punches/import/check','POST',{site,ids}).then(r=>Array.isArray(r?.machines)?r.machines:[]);
+ useEffect(()=>{let live=true;check([]).then(list=>{if(live)setMachines(old=>old||list);}).catch(e=>{if(live)setError((e as Error).message);});return()=>{live=false;};},[grant,site]); // eslint-disable-line react-hooks/exhaustive-deps
+ const pickFor=(log:MachineLog,list:CheckedMachine[],serial=fixed):MachinePick=>serial&&list.some(m=>m.serial===serial)?{serial,reason:'chosen',matched:0}:pickMachine(log,list);
 
  async function add(list:File[]){
   if(!list.length||reading||importing)return;
@@ -26,15 +32,17 @@ export default function MachineLogUpload({grant,site,onClose,onImported,onManage
    const logs:MachineLog[]=[],problems:string[]=[];
    for(const file of list){try{logs.push(readMachineLog(file.name,await file.text()));}catch(e){problems.push((e as Error).message);}}
    const all=[...files.map(f=>f.log),...logs];
-   const ids=[...new Set(all.flatMap(l=>l.ids))].slice(0,MAX_IDS);
-   const check=await api<{machines:CheckedMachine[]}>(grant,'attendance/punches/import/check','POST',{site,ids});
-   const found=Array.isArray(check?.machines)?check.machines:[];
+   const found=await check([...new Set(all.flatMap(l=>l.ids))].slice(0,MAX_IDS));
    setMachines(found);
    // Files already on the list keep a machine chosen by hand.
-   setFiles(all.map(log=>{const old=files.find(f=>f.log===log),pick=pickMachine(log,found);return old&&old.serial!==old.pick.serial?{...old,pick}:{log,pick,serial:pick.serial};}));
+   setFiles(all.map(log=>{const old=files.find(f=>f.log===log),pick=pickFor(log,found);return old&&old.serial!==old.pick.serial?{...old,pick}:{log,pick,serial:pick.serial};}));
    if(problems.length)setError(problems.join(' · '));
   }catch(e){setError((e as Error).message);}
   finally{setReading(false);}
+ }
+ function chooseForAll(serial:string){
+  setFixed(serial);setTried(false);
+  setFiles(list=>list.map(f=>{const pick=pickFor(f.log,machines||[],serial);return {...f,pick,serial:pick.serial};}));
  }
  const drop=(event:DragEvent)=>{event.preventDefault();setDragging(false);void add([...event.dataTransfer.files]);};
  const choose=(index:number,serial:string)=>{setFiles(list=>list.map((f,i)=>i===index?{...f,serial}:f));setTried(false);};
@@ -79,9 +87,22 @@ export default function MachineLogUpload({grant,site,onClose,onImported,onManage
  return <div className="modal-backdrop"><section className="modal machine-log-upload" role="dialog" aria-modal="true" aria-labelledby="machine-log-title">
   <div className="modal-heading"><h2 id="machine-log-title"><Upload/>Upload machine log · {site}</h2><button type="button" aria-label="Close" disabled={Boolean(importing)} onClick={onClose}>×</button></div>
 
+  <div className="machine-log-step">
+   <span className="machine-log-step-no">1</span>
+   <label className="machine-log-pick">Machine (from Machine master)
+    <select value={fixed} disabled={busy||!machines} aria-label="Machine (from Machine master)" onChange={e=>chooseForAll(e.target.value)}>
+     <option value="">{machines===null?'Loading machines…':'Find it from the file (recommended)'}</option>
+     {(machines||[]).map(m=><option key={m.serial} value={m.serial}>{label(m)}</option>)}
+    </select>
+   </label>
+   {onManageMachines&&<button type="button" className="machine-log-master" disabled={Boolean(importing)} onClick={()=>{onClose();onManageMachines();}}><Settings2/>Machine master</button>}
+  </div>
+  {machines&&machines.length>0&&<p className="machine-log-note machine-log-list"><Fingerprint aria-hidden="true"/>{site}: {machines.map(label).join(' · ')}</p>}
+
+  <div className="machine-log-step"><span className="machine-log-step-no">2</span><b>.dat file</b></div>
   <div className={'machine-log-drop'+(dragging?' dragging':'')} onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={drop}>
-   <Upload aria-hidden="true"/>
-   <p><b>Drop .dat files here</b> or <button type="button" className="machine-log-link" disabled={busy} onClick={()=>input.current?.click()}>choose files</button></p>
+   <button type="button" className="primary machine-log-choose" disabled={busy} onClick={()=>input.current?.click()}><Upload/>Choose .dat file</button>
+   <p>or drop .dat files here</p>
    <small>The attlog.dat from the machine’s USB download, as it is. Several files at once. CSV and text punch lists work too.</small>
    <input ref={input} hidden type="file" multiple accept=".dat,.txt,.csv,text/plain,text/csv,application/octet-stream" aria-label="Machine log files" onChange={e=>{const list=[...(e.target.files||[])];e.target.value='';void add(list);}}/>
   </div>
@@ -97,6 +118,7 @@ export default function MachineLogUpload({grant,site,onClose,onImported,onManage
      <div className="machine-log-file-head">
       <span className="machine-log-name"><FileText aria-hidden="true"/>{f.log.fileName}</span>
       {!needs?<span className="machine-log-pill ok"><Check aria-hidden="true"/>Machine serial in the file</span>
+       :pick?.reason==='chosen'?<span className="machine-log-pill ok"><Check aria-hidden="true"/>Machine chosen above</span>
        :pick?.reason==='file-name'?<span className="machine-log-pill ok"><Check aria-hidden="true"/>Serial in the file name</span>
        :pick?.reason==='machine-no'?<span className="machine-log-pill ok"><Check aria-hidden="true"/>Machine no. in the file name</span>
        :pick?.reason==='only'?<span className="machine-log-pill ok"><Check aria-hidden="true"/>{site}’s only machine</span>
