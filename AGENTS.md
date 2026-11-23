@@ -124,3 +124,12 @@ Set by the owner on 22 November 2026 (latest), while the HRMS is still being bui
 - An HR login is any HRMS login that is not a PM, not leave-only, and has a Pulse HR menu other than Leave / OD / Gatepass, a role naming HR, or a Site HR / Office HR / Regional HR / HR Manager / Trial Admin trial assignment.
 - PM logins keep their approvals-only menu. Leave-only logins and employees whose only Pulse menu is Leave / OD / Gatepass keep only their own request forms (`leaveMenuOnly` in `server/modules.mjs`).
 - `server/hr-staff-access.test.mjs`, `src/siteHrMenus.test.tsx` and `src/siteOnlyCorporate.test.tsx` check it. `siteHrOnly` / `officeOrRegionalHr` in `src/siteHrAccess.ts` and `siteOnlyLogin` in `src/siteRights.ts` are no longer used by the sidebar; they stay for when the owner narrows site HR again.
+
+# Top bar never overlaps
+
+Set by the owner on 23 November 2026: with the side menu open, Sign out sat on top of the clock and date.
+
+- The top bar (`workspace-header` in `HR-Pulse-Full-Project/src/Workspace.tsx`) measures its own width, because the side menu open, closed or on auto-hide all change it, and gives way in this order as it narrows: "Operations ›", the temperature chip, a smaller clock, the menu button's words, Sign out's words (the door stays), then the clock moves to a second line. A long page name ends in "…" and shows in full on hover.
+- Sign out, the clock and date, the page name and the Day / Night, search, directory and notification buttons never sit on top of each other and never run off the right edge, at any window width.
+- The rules are the "Top bar" block in `HR-Pulse-Full-Project/src/styles.css` (`@container hr-header`); the widths there are the bar's own inner width, not the window's. Keep the `header-row` wrapper: the bar cannot restyle itself from its own width without it.
+- After any change to the top bar, check every window width from 320 to 1920 px with the menu open and closed (a long and a short page name, Day and Night) in a browser. `src/headerLayout.test.tsx` keeps the `header-row` structure but cannot measure layout.
