@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS hr_attendance_punches(
  UNIQUE(device_serial,biometric_id,punched_at)
 );
 CREATE INDEX IF NOT EXISTS hr_attendance_punches_time ON hr_attendance_punches(punched_at);
+-- One machine's punches in time order: the roster's day count and last punch per machine (attendance-register.mjs).
+CREATE INDEX IF NOT EXISTS hr_attendance_punches_device_time ON hr_attendance_punches(device_serial,punched_at);
 
 -- Names stored on the machine for each user ID. Shown only as a hint to help
 -- HR link a machine ID to the right employee.

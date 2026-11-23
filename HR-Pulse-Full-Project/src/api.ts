@@ -14,8 +14,9 @@ export async function pulse(action:string,data:object){
 }
 export function clearSession(){localStorage.removeItem('hrPulseSession');sessionStorage.removeItem('hrPulseSession');}
 export function savedSession():Session|null{try{return JSON.parse(sessionStorage.getItem('hrPulseSession')||localStorage.getItem('hrPulseSession')||'null');}catch{return null;}}
-export async function api<T>(grant:string,path:string,method='GET',body?:unknown):Promise<T>{
-  const response=await fetch(API+'/api/'+path,{method,headers:{Authorization:'Bearer '+grant,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(30000)});
+/** timeoutMs: how long the browser waits; a heavier read (a site's biometric day) may ask for longer. */
+export async function api<T>(grant:string,path:string,method='GET',body?:unknown,timeoutMs=30000):Promise<T>{
+  const response=await fetch(API+'/api/'+path,{method,headers:{Authorization:'Bearer '+grant,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(timeoutMs)});
   if(!response.ok){
     if(response.status===401){clearSession();window.dispatchEvent(new Event('hr-session-expired'));}
     const result=await response.json().catch(()=>null);

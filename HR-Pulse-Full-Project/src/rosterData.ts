@@ -91,8 +91,10 @@ export type SiteRegister = Register & {site?: string; machines: SiteMachine[]};
  * Biometric for a site (owner, 22 Nov 2026): every punch on that site's machines (Biometric machines › site), whoever
  * punched, with In / Out and each punch's machine; machine IDs not linked to an employee are included (linked: false).
  */
+export const BIO_DAY_TIMEOUT_MS = 60_000;
 export async function fetchBiometric(grant: string, from: string, to: string, site: string): Promise<SiteRegister> {
-  const register = await api<SiteRegister>(grant, 'attendance/site-register?' + new URLSearchParams({site, from, to}));
+  // A site's day reads every punch on its machines and the HR records of everyone who punched: wait up to a minute.
+  const register = await api<SiteRegister>(grant, 'attendance/site-register?' + new URLSearchParams({site, from, to}), 'GET', undefined, BIO_DAY_TIMEOUT_MS);
   return {...register, rows: Array.isArray(register?.rows) ? register.rows : [], machines: Array.isArray(register?.machines) ? register.machines : []};
 }
 export type FetchRequest = {id: string; state: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'; punchesReceived: number; newPunches: number; error: string};
