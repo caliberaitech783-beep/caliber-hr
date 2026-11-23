@@ -40,23 +40,34 @@ export function designationList(master,register){
   return [...byKey.values()].sort((a,b)=>a.localeCompare(b));
 }
 
+/* A site is matched by its ID, code or name (owner, 23 Nov 2026): the register import ties each line to a site by its code,
+   and two site masters can share a code or name, so an exact ID match can miss a whole site's staff. */
+const norm="regexp_replace(lower(COALESCE(%s,'')),'[^a-z0-9]','','g')";
+const n=column=>norm.replace('%s',column);
+export const REGISTER_AT_SITE=`(r.site_id::text=$1 OR ($2<>'' AND ${n('r.site_code')}=$2) OR ($3<>'' AND ${n('r.site_name')}=$3))`;
+export const JOINED_AT_SITE=`EXISTS(SELECT 1 FROM hr_records s WHERE s.kind='sites' AND s.id::text=e.data->>'siteId' AND (s.id::text=$1 OR ($2<>'' AND ${n('s.code')}=$2) OR ($3<>'' AND ${n('s.name')}=$3)))`;
+const key=value=>String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+
 export function createTransferOptions(pool){
   return {
     async transferOptions(profile,params){
       if(!canRead(profile,'employeeTransfers'))fail('Your Pulse HR permissions do not allow this operation',403);
-      const managersOf=async siteId=>uuid(siteId)?siteManagers((await pool.query(`SELECT name,data->>'employeeId' AS "employeeId",data->>'designation' AS designation,data->>'status' AS status
-        FROM hr_employee_master_register WHERE site_id=$1 AND COALESCE(data->>'designation','')<>''`,[siteId])).rows):[];
+      const siteArgs=async siteId=>{const site=(await pool.query("SELECT code,name FROM hr_records WHERE kind='sites' AND id::text=$1",[siteId])).rows[0];return [siteId,key(site?.code),key(site?.name)];};
+      const managersOf=async siteId=>uuid(siteId)?siteManagers((await pool.query(`SELECT r.name,r.data->>'employeeId' AS "employeeId",r.data->>'designation' AS designation,r.data->>'status' AS status
+        FROM hr_employee_master_register r WHERE ${REGISTER_AT_SITE} AND COALESCE(r.data->>'designation','')<>''`,await siteArgs(siteId))).rows):[];
       const master=(await pool.query("SELECT name FROM hr_records WHERE kind='designations' AND status IN ('ACTIVE','APPROVED')")).rows.map(r=>r.name);
       const register=(await pool.query("SELECT DISTINCT data->>'designation' AS name FROM hr_employee_master_register WHERE COALESCE(data->>'designation','')<>''")).rows.map(r=>r.name);
       const fromSiteId=params.get('fromSiteId')||'',ids=await siteIds(pool,profile);
-      let employees=[];
+      let employees=[],staff={register:0,joined:0,inScope:false};
       if(uuid(fromSiteId)&&(ids===null||ids.map(String).includes(fromSiteId))){
+        staff.inScope=true;
         const [reg,joined]=await Promise.all([
-          pool.query(`SELECT id,name,data->>'employeeId' AS code,data->>'status' AS status FROM hr_employee_master_register WHERE site_id=$1 AND ${isEmployeeEntry}`,[fromSiteId]),
-          pool.query("SELECT id,code,name FROM hr_records WHERE kind='employees' AND status IN ('ACTIVE','APPROVED') AND data->>'siteId'=$1",[fromSiteId])]);
-        employees=siteEmployees(reg.rows,joined.rows);
+          siteArgs(fromSiteId).then(args=>pool.query(`SELECT r.id,r.name,r.data->>'employeeId' AS code,r.data->>'status' AS status FROM hr_employee_master_register r WHERE ${REGISTER_AT_SITE} AND ${isEmployeeEntry}`,args)),
+          siteArgs(fromSiteId).then(args=>pool.query(`SELECT e.id,e.code,e.name FROM hr_records e WHERE e.kind='employees' AND e.status IN ('ACTIVE','APPROVED') AND ${JOINED_AT_SITE}`,args))]);
+        employees=siteEmployees(reg.rows,joined.rows);staff={register:reg.rows.length,joined:joined.rows.length,inScope:true};
       }
-      return {employees,designations:designationList(master,register),fromManagers:await managersOf(params.get('fromSiteId')),toManagers:await managersOf(params.get('toSiteId'))};
+      /* staff: how many lines were found for the site, so the form can say why a list is short. */
+      return {employees,staff,designations:designationList(master,register),fromManagers:await managersOf(params.get('fromSiteId')),toManagers:await managersOf(params.get('toSiteId'))};
     },
   };
 }

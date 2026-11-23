@@ -42,3 +42,21 @@ test('the API serves the request preview and transfer options addresses', () => 
   assert.match(app, /'\/api\/request-preview':'requestPreview'/);
   assert.match(app, /'\/api\/transfer-options':'transferOptions'/);
 });
+
+// Owner, 23 Nov 2026: Jayant OB showed one employee: staff saved under another copy of the site (same code / name) must still be listed.
+test('site staff are matched by site ID, code or name', async () => {
+  const site = '00000000-0000-4000-8000-0000000000a1', calls = [];
+  const pool = {async query(sql, args) {
+    calls.push([sql, args]);
+    if (sql.startsWith("SELECT code,name FROM hr_records WHERE kind='sites'")) return {rows: [{code: 'NCL-JAYANT', name: 'Jayant OB'}]};
+    if (sql.includes('FROM hr_employee_master_register r WHERE') && sql.includes('r.id,r.name')) return {rows: [{id: 'r1', name: 'Staff One', code: 'CMLL00440', status: ''}, {id: 'r2', name: 'Staff Two', code: 'CMLL00441', status: ''}]};
+    if (sql.includes('FROM hr_records e WHERE')) return {rows: [{id: 'h1', code: 'CMLL21124', name: 'Avinash Thakur'}]};
+    return {rows: []};
+  }};
+  const result = await createTransferOptions(pool).transferOptions({permissions: {hrDesktopAccess: ['Employee Master']}}, new URLSearchParams({fromSiteId: site}));
+  assert.equal(result.employees.length, 3);
+  assert.deepEqual(result.staff, {register: 2, joined: 1, inScope: true});
+  const staffQuery = calls.find(([sql]) => sql.includes('r.id,r.name'));
+  assert.match(staffQuery[0], /r\.site_id::text=\$1 OR/);
+  assert.deepEqual(staffQuery[1], [site, 'ncljayant', 'jayantob']);
+});
