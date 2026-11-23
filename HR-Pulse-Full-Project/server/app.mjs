@@ -75,6 +75,12 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         if(req.method!=='POST'){res.setHeader('Allow','POST');throw problem('Method not allowed',405);}
         return send(200,await service.misSiteMove(req.headers['x-mis-sync-key'],await body(req,16_000)));
       }
+      // Pulse-II reading the site machines' punches for its Attendance Sheet Mismatch (mis-biometric-punches.mjs): its own key, read only.
+      if(path==='/api/integrations/mis/biometric-punches'){
+        if(!service?.misBiometricPunches)throw problem('Service unavailable',503);
+        if(req.method!=='GET'){res.setHeader('Allow','GET');throw problem('Method not allowed',405);}
+        return send(200,await service.misBiometricPunches(req.headers['x-mis-sync-key'],{from:url.searchParams.get('from'),to:url.searchParams.get('to')}));
+      }
       // Pulse-II copying the Employee Master, what changed in it, and the approved transfers (mis-employee-sync.mjs): its own key, read only.
       const misSync=path.match(/^\/api\/integrations\/mis\/(employees|employee-changes|transfers)$/);
       if(misSync){
