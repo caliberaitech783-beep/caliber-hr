@@ -106,11 +106,13 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
    </aside>
    <main className="main">
     <header className="workspace-header">
+     {/* The bar measures its own width (styles.css, "Top bar"), so this row can drop words or move the clock down instead of overlapping. */}
+     <div className="header-row">
      <div className="header-left">
-      <button className="header-menu" aria-label={collapsed?'Show menu':'Hide menu'} onClick={()=>setCollapsed(!collapsed)}><Menu/><span>{collapsed?'Show menu':'Hide menu'}</span></button>
+      <button className="header-menu" aria-label={collapsed?'Show menu':'Hide menu'} title={collapsed?'Show menu':'Hide menu'} onClick={()=>setCollapsed(!collapsed)}><Menu/><span>{collapsed?'Show menu':'Hide menu'}</span></button>
       <button className="header-back" aria-label="Go back" onClick={()=>window.history.back()}><ArrowLeft/></button>
-      <div className="header-breadcrumbs"><span>Operations</span><ChevronDown/><strong>{currentArea}</strong></div>
-      <button className="header-signout" aria-label="Sign out" onClick={logout}><LogOut/><span>Sign out</span></button>
+      <div className="header-breadcrumbs"><span>Operations</span><ChevronDown/><strong title={currentArea}>{currentArea}</strong></div>
+      <button className="header-signout" aria-label="Sign out" title="Sign out" onClick={logout}><LogOut/><span>Sign out</span></button>
      </div>
      <HeaderClock/>
      <div className="header-utilities">
@@ -119,6 +121,7 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
       <button type="button" aria-label="Search menus" onClick={()=>{setCollapsed(false);requestAnimationFrame(()=>navSearch.current?.focus());}}><Search/></button>
       <button type="button" aria-label="Open employee directory" onClick={()=>access.has('Employee Directory')?navigate('Employee Directory'):setNotice('Employee Directory access is not assigned.')}><Folder/></button>
       <button type="button" aria-label="Notifications" onClick={()=>setNotice('No new notifications.')}><Bell/></button>
+     </div>
      </div>
     </header>
     <div className="content">{pmOnly?pmContent:<>{page==='Master Configuration'&&<section className="master-configuration" aria-label="Master Configuration">
