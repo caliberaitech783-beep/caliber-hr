@@ -10,6 +10,7 @@ import {withTrialRouting} from './trial-routing.mjs';
 import {trialAccess,requireTrialRole,canReadTrial,trialSite,assignedTrialSites} from './trial-access.mjs';
 import {trialStatusRoster,trialStatusInvite,TRIAL_STATUS_CONNECTED,TRIAL_STATUS_WELCOME} from './trial-status-bot.mjs';
 import {employeeTrackRoster,employeeTrackInvite,EMPLOYEE_TRACK_CONNECTED,EMPLOYEE_TRACK_ALREADY,EMPLOYEE_TRACK_WELCOME} from './employee-track.mjs';
+import {decideMachineDelete,parseMachineDeleteCallback} from './machine-delete.mjs';
 import {leaveSteps,leaveRequestRoster,leaveRequestInvite,leaveOtpNeededMessage,LEAVE_REQUEST_CONNECTED,LEAVE_REQUEST_ALREADY,LEAVE_REQUEST_WELCOME} from './leave-request-bot.mjs';
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -1115,6 +1116,13 @@ export function createTelegram(pool){
      callback={bot,id:cb.id,text:action==='mt:trial'?'Your assigned vehicle trial results and approvals arrive in this chat.':'Your assigned joining requests and approvals arrive in this chat.'};return;
     }
    }
+   /* Delete a biometric machine (machine-delete.mjs): Approve / Reject from an approver who linked any Caliber HR bot. */
+   if(cb&&action.startsWith('md:')){const p=parseMachineDeleteCallback(action);if(!p||!cb.from?.id){callback={bot,id:cb.id,text:'Unknown action'};return;}
+    const actor=(await db.query('SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1',[String(cb.from.id)])).rows[0]?.actor||'';
+    const name=(await db.query("SELECT name FROM hr_records WHERE kind='employees' AND lower(code)=$1",[actor])).rows[0]?.name||cb.from.first_name||actor;
+    const result=await decideMachineDelete(db,p.code,{actor,name,approve:p.approve,via:'telegram'});
+    if(result.done&&cb.message)edit={bot,chat:cb.message.chat?.id,message:cb.message.message_id,markup:null};
+    callback={bot,id:cb.id,text:result.text};return;}
    if(cb&&(bot==='joining'||action.startsWith('ja:'))){   /* buttons may arrive on any Caliber HR bot that carried the request */const m=action.match(/^ja:(JA-[0-9A-F]{12}):(approve|reject)$/);if(!m||!cb.from?.id){callback={bot,id:cb.id,text:'Unknown action'};return;}
     const actor=(await db.query(`SELECT actor FROM hr_telegram_accounts WHERE telegram_user_id=$1 AND (${joiningConnectedSql()} OR $2)`,[String(cb.from.id),mt])).rows[0]?.actor;
     const row=(await db.query("SELECT data FROM hr_records WHERE kind='joiningApprovals' AND code=$1 FOR UPDATE",[m[1]])).rows[0];
