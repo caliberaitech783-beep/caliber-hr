@@ -6,7 +6,9 @@ import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type Roster
 import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,type BioDayUpdate,fetchFromMachines,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo} from './rosterData';
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
-import {parseBiometricCsv,parseBiometricText,type BiometricImportRow} from './biometricImport';
+import {parseBiometricCsv,parseBiometricDat,parseBiometricText,type BiometricImportRow} from './biometricImport';
+
+const IMPORT_CHUNK=2000;
 
 /* Attendance roster (owner, 22 Nov 2026). Three views of the same roster format, built in rosterModel.ts:
    - Trip card (VLB · ELB · LMV): one line per employee from MIS trip cards, job cards and vehicle log books;
@@ -351,12 +353,23 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   setPull({running:false,message:`${added} new punch${added===1?'':'es'} received.`,error:[...new Set(errors)].join(' · ')});
   forceBio.current=true;setBioReload(n=>n+1);
  } // eslint-disable-line react-hooks/exhaustive-deps
- async function importPunches(file:File,kind:'text'|'csv'){
+ async function importPunches(file:File,kind:'text'|'csv'|'dat'){
   setImporting(true);setImportNote('');setImportError('');
   try{
    const machines=bioData?.machines||[],defaultSerial=machines.length===1?machines[0].serial:'';
-   const rows:BiometricImportRow[]=kind==='csv'?parseBiometricCsv(await file.text(),defaultSerial):parseBiometricText(await file.text(),defaultSerial);
-   const result=await api<{received:number;added:number}>(grant,'attendance/punches/import','POST',{site,rows});
+   // A .dat has no machine serial inside: the site's only machine, or the machine whose serial is in the file name (e.g. CQZ7224460123_attlog.dat).
+   const named=machines.filter(m=>m.serial&&file.name.toLowerCase().includes(m.serial.toLowerCase()));
+   const datSerial=named.length===1?named[0].serial:defaultSerial;
+   if(kind==='dat'&&!datSerial&&machines.length>1)throw new Error(`${site} has ${machines.length} machines (${machines.map(m=>m.serial).join(', ')}). Put the machine serial in the .dat file name, e.g. ${machines[0].serial}_attlog.dat, and import again.`);
+   const source=await file.text();
+   const rows:BiometricImportRow[]=kind==='csv'?parseBiometricCsv(source,defaultSerial):kind==='dat'?parseBiometricDat(source,datSerial):parseBiometricText(source,defaultSerial);
+   // The server takes up to 2000 punches a request; a machine's attlog holds many more.
+   const result={received:0,added:0};
+   for(let at=0;at<rows.length;at+=IMPORT_CHUNK){
+    if(rows.length>IMPORT_CHUNK)setImportNote(`Importing ${file.name} · ${Math.min(at+IMPORT_CHUNK,rows.length)} of ${rows.length} punches…`);
+    const part=await api<{received:number;added:number}>(grant,'attendance/punches/import','POST',{site,rows:rows.slice(at,at+IMPORT_CHUNK)});
+    result.received+=part.received;result.added+=part.added;
+   }
    setImportNote(`${result.added} new biometric punch${result.added===1?'':'es'} imported from ${file.name}${result.received-result.added?` · ${result.received-result.added} duplicate${result.received-result.added===1?'':'s'} skipped`:''}.`);
    forceBio.current=true;setBioReload(value=>value+1);
   }catch(error){setImportError((error as Error).message);}finally{setImporting(false);}
@@ -433,7 +446,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    ready&&<>{view!=='trip'&&bioError&&<p className="error" role="alert">Biometric punches unavailable: {bioError}</p>}
    {view!=='trip'&&bioData&&<MachinesPanel site={site} machines={bioData.machines} pull={pull} onPull={()=>void pullMachines(bioData.machines)} onManage={onManageMachines}/>}
    {view!=='trip'&&bioData&&unlinkedCount>0&&<p className="roster-warn" role="alert">{unlinkedCount} machine ID{unlinkedCount===1?'':'s'} punched at {site} but {unlinkedCount===1?'is':'are'} not linked to an employee yet. {unlinkedCount===1?'It is':'They are'} shown with the name on the machine; link them in Machine punches to see the employee code.</p>}
-   {view==='bio'&&<><input ref={textImport} hidden type="file" accept=".txt,text/plain" aria-label="Import biometric text file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'text');}}/><input ref={csvImport} hidden type="file" accept=".csv,text/csv" aria-label="Import biometric CSV file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'csv');}}/><input ref={datImport} hidden type="file" accept=".dat,application/octet-stream" aria-label="Import biometric DAT file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'text');}}/>{importNote&&<p className="roster-saved" role="status">{importNote}</p>}{importError&&<p className="error" role="alert">Import failed: {importError}</p>}</>}
+   {view==='bio'&&<><input ref={textImport} hidden type="file" accept=".txt,text/plain" aria-label="Import biometric text file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'text');}}/><input ref={csvImport} hidden type="file" accept=".csv,text/csv" aria-label="Import biometric CSV file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'csv');}}/><input ref={datImport} hidden type="file" accept=".dat,application/octet-stream" aria-label="Import biometric DAT file" onChange={event=>{const file=event.target.files?.[0];event.target.value='';if(file)void importPunches(file,'dat');}}/>{importNote&&<p className="roster-saved" role="status">{importNote}</p>}{importError&&<p className="error" role="alert">Import failed: {importError}</p>}</>}
    <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} bio={bioState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} loading={bioLoading} error={view!=='trip'?bioError:''}
     onImportText={view==='bio'?()=>textImport.current?.click():undefined} onImportCsv={view==='bio'?()=>csvImport.current?.click():undefined} onImportDat={view==='bio'?()=>datImport.current?.click():undefined} importing={importing}
     emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):undefined}/></>}
