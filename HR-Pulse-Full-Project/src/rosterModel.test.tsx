@@ -17,19 +17,22 @@ const duty=(date:string,extra:Partial<AttendanceRow>={}):AttendanceRow=>({id:dat
  sources:['Trip card'],equipment:['DT-12'],references:'',note:'',output:'14 trips',window:at(date,'06:00','14:00'),status:'Present',verification:'MIS batch closed',verified:true,otHours:0,otNote:'',...extra});
 const trips=[duty('2026-11-02'),duty('2026-11-03'),duty('2026-11-04',{window:at('2026-11-04','06:00','11:00')}),duty('2026-11-05',{verified:false,status:'Pending',verification:'MIS batch open'})];
 
-it('rates a trip card duty with the attendance hours rule',()=>{
- expect(tripDutyCode(trips[0],DEFAULT_POLICY)).toBe('P');
- expect(tripDutyCode(trips[2],DEFAULT_POLICY)).toBe('HD');
- expect(tripDutyCode(trips[3],DEFAULT_POLICY)).toBe('?');
+it('marks a punched trip card Present whatever its hours (no 4-hour half day)',()=>{
+ expect(tripDutyCode(trips[0])).toBe('P');
+ expect(tripDutyCode(trips[2])).toBe('P');
+ expect(tripDutyCode(duty('2026-11-06',{window:at('2026-11-06','06:00','08:00')}))).toBe('P');
+ expect(tripDutyCode(duty('2026-11-06',{window:undefined}))).toBe('P');
+ expect(tripDutyCode(duty('2026-11-06',{status:'Absent'}))).toBe('A');
+ expect(tripDutyCode(trips[3])).toBe('?');
 });
 
 it('joins trip card and biometric on the Caliber code and lists the days that differ',()=>{
  const [g]=buildRoster([bio],trips,dates,'2026-11-06',DEFAULT_POLICY);
- expect(dates.map(d=>g.tripCodes[d])).toEqual(['WO','P','P','HD','?']);
+ expect(dates.map(d=>g.tripCodes[d])).toEqual(['WO','P','P','P','?']);
  expect(dates.map(d=>g.bioCodes[d])).toEqual(['WO','P','A','P','MP']);
- expect(g.mismatches.map(m=>[m.date,m.reason])).toEqual([['2026-11-03','Trip card present, biometric absent'],['2026-11-04','Trip card half day, biometric present']]);
+ expect(g.mismatches.map(m=>[m.date,m.reason])).toEqual([['2026-11-03','Trip card present, biometric absent']]);
  expect(g.pending).toBe(1);
- expect(lineTotals(g.tripCodes,dates)).toMatchObject({present:2,half:1,weeklyOff:1,paidDays:3.5});
+ expect(lineTotals(g.tripCodes,dates)).toMatchObject({present:3,half:0,weeklyOff:1,paidDays:4});
  const other=buildRoster([],[duty('2026-11-02',{caliberCode:'CMPL900',employeeName:'Not linked'})],dates,'2026-11-06');
  expect(other[0].code).toBe('CMPL900');
  expect(other[0].bio).toBeUndefined();
@@ -65,9 +68,9 @@ it('writes the coloured roster workbook with both lines and a Differences sheet'
  const last=ws.getRow(4).cellCount;
  expect([ws.getCell('A5').value,ws.getCell('A6').value]).toEqual(['Trip Card','Bio Matric']);
  expect(ws.getRow(4).getCell(last).value).toBe('Diff. of Trip Card and Bio-matric');
- expect(ws.getRow(5).getCell(last).value).toBe(2);
+ expect(ws.getRow(5).getCell(last).value).toBe(1);
  expect((ws.getCell('I5').fill as {fgColor:{argb:string}}).fgColor.argb).toBe('FFEAF3DE');
- expect(wb.getWorksheet('Differences')!.rowCount).toBe(3);
+ expect(wb.getWorksheet('Differences')!.rowCount).toBe(2);
 });
 
 

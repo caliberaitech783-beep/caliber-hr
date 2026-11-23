@@ -4,13 +4,9 @@ import {api} from './api';
 import {assetPrintHtml} from './assetPrint';
 import {downloadExcel} from './excelFiles';
 import {mapMisAttendance, type AttendanceRow, type CorrectionStatus} from './misAttendanceModel';
-import {DEFAULT_POLICY, dutyStatus, workedMinutes, type AttendancePolicy} from '../server/attendance-policy.mjs';
+import {DEFAULT_POLICY, type AttendancePolicy} from '../server/attendance-policy.mjs';
 import './mis-attendance.css';
 
-const DUTY: Record<string, string> = {A: 'Absent', HD: 'Half duty', P: 'Full duty'};
-/** Trip card / logbook hours rated with the attendance policy (lunch excluded). */
-export const logbookDuty = (startMs: number, endMs: number, policy: AttendancePolicy = DEFAULT_POLICY) =>
-  DUTY[dutyStatus(workedMinutes(0, Math.round((endMs - startMs) / 60_000), policy), policy)];
 
 const startOfRecords = '2026-11-01';
 const dateInIndia = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
@@ -155,7 +151,7 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
         <div>
           <h2 id="trip-card-heading">{shiftManagement ? 'Shift roster' : overtimeOnly ? 'Overtime' : 'Trip cards & driver logbooks'}</h2>
           <p>Closed MIS batches verify attendance. Two verified back-to-back 8-hour shifts give 8 hours of OT.{!shiftManagement && !overtimeOnly &&
-            ` Logbook hours follow the attendance policy: less a ${policy.lunchMinutes} min lunch, under ${policy.absentBelowHours} h is absent, ${policy.fullDutyHours} h or more is full duty, otherwise half duty. The first trip / logbook start counts as the In punch.`}</p>
+            ' A driver or operator with a punched trip card or logbook is present for the day, whatever the hours: no half day from trip card hours.'}</p>
         </div>
         <div className="trip-attendance-header-actions">
           <button type="button" className="trip-attendance-refresh" disabled={loading || !valid} onClick={() => setRefresh(n => n + 1)}>
@@ -206,7 +202,7 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
                 {row.window && <small>{row.correction?.start ? 'HR corrected' : 'Scheduled'}{row.window.start.slice(0, 10) !== row.window.end.slice(0, 10) && ' · next day end'}</small>}
               </td>
               <td>{row.output || '—'}{row.note && <small>{row.note}</small>}</td>
-              <td>{row.window ? <>{`${(row.window.endMs - row.window.startMs) / 3_600_000} h`}{row.status !== 'Absent' && <small>{logbookDuty(row.window.startMs, row.window.endMs, policy)}</small>}</> : '—'}</td>
+              <td>{row.window ? <>{`${(row.window.endMs - row.window.startMs) / 3_600_000} h`}</> : '—'}</td>
               <td><span className={`trip-attendance-tag ${row.status === 'Absent' ? 'trip-absent' : row.verified ? 'trip-present' : 'trip-pending'}`}>{row.status}</span></td>
               <td>{row.verification}{row.correction && <small>{row.correction.reason} · {row.correction.updatedBy}</small>}</td>
               <td className="trip-attendance-ot" title={row.otNote || undefined}>{row.otHours === null ? '—' : `${row.otHours} h`}{row.otNote && <small>{row.otNote}</small>}</td>

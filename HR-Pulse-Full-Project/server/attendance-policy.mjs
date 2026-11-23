@@ -1,5 +1,5 @@
-/* Attendance HR policy: how one day of punches (biometric) or trip card /
-   logbook hours becomes Absent, Half duty or Full duty, plus late come /
+/* Attendance HR policy: how one day of biometric punches becomes Absent,
+   Half duty or Full duty (a punched trip card / logbook is always Present), plus late come /
    early going, the monthly half-duty cut and the gate pass deduction.
    Pure functions only, shared by the API (day calculation) and the website
    (policy page and trip card hours). All times are minutes. */
@@ -159,7 +159,7 @@ export function policyRules(policy = DEFAULT_POLICY) {
   return [
     ['Working hours', `Hours between In and Out, less a ${policy.lunchMinutes} min lunch break.`],
     ['Day status', `Under ${hours(policy.absentBelowHours)} = Absent · ${hours(policy.absentBelowHours)} to under ${hours(policy.fullDutyHours)} = Half duty · ${hours(policy.fullDutyHours)} or more = Full duty.`],
-    ['Trip card / logbook', 'The same hours rule uses logbook hours. The first trip / logbook start counts as the In punch.'],
+    ['Trip card / logbook', 'A driver or operator with a punched trip card or logbook (VLB, ELB, LMV) is Present for the day, whatever the hours. The hours rule above is for biometric punches only.'],
     ['Late come', `In punch up to ${policy.graceMinutes} min after shift start is on time (for an 08:00 shift, ${clock(policy.graceMinutes)} is on time and ${clock(policy.graceMinutes + 1)} is late).`],
     ['Early going', 'Out punch before shift end is early going. There is no grace.'],
     ['Half duty cut', `Every ${policy.lateEarlyPerHalfCut} late comings or early goings in a month, counted together, cut one half duty (${policy.lateEarlyPerHalfCut * 2} = two). The count starts again each month.`],

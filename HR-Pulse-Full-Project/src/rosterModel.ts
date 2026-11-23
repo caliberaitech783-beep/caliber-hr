@@ -1,9 +1,9 @@
 /* Attendance roster: trip card line against biometric line (owner, 22 Nov 2026).
-   Every employee has two lines in the monthly roster: "Trip Card" (MIS trip cards / log books, rated with the
-   attendance policy hours rule) and "Bio Matric" (biometric punches, the server register). Weekly off, holiday,
+   Every employee has two lines in the monthly roster: "Trip Card" (MIS trip cards / log books: a saved card is
+   Present, whatever its hours) and "Bio Matric" (biometric punches, the server register). Weekly off, holiday,
    leave, comp off and OD come from the HR records and are shown on both lines. The last column,
    "Diff. of Trip Card and Bio-matric", counts the days the two lines disagree; pressing it lists those days. */
-import {DEFAULT_POLICY, dutyStatus, workedMinutes, type AttendancePolicy} from '../server/attendance-policy.mjs';
+import {DEFAULT_POLICY, type AttendancePolicy} from '../server/attendance-policy.mjs';
 import type {AttendanceRow} from './misAttendanceModel';
 import type {RegisterDay, RegisterRow} from './AttendanceRegister';
 
@@ -59,23 +59,23 @@ const hoursText = (minutes: number | null) => minutes == null ? '' : `${Math.flo
 const LABEL: Record<string, string> = {P: 'Present', HD: 'Half day', A: 'Absent', WO: 'Weekly off', H: 'Holiday', CO: 'Comp off', L: 'Leave', OD: 'On duty', MP: 'Miss punch', IN: 'In, no Out yet', '?': 'Trip card not verified yet', '': 'No record'};
 export const codeLabel = (code: string) => LABEL[code] ?? code;
 
-/** A trip card duty rated like a biometric day: hours between start and end, less lunch → P / HD / A. */
-export function tripDutyCode(row: AttendanceRow, policy: AttendancePolicy = DEFAULT_POLICY): string {
+/** A trip card duty: a saved VLB / ELB / LMV card (trip card punched) marks the driver or operator Present, whatever
+    its hours (owner, 23 Nov 2026: the 4-hour half day rule no longer applies to trip cards). Absent only when HR marks it. */
+export function tripDutyCode(row: AttendanceRow): string {
   if (row.status === 'Absent') return 'A';
   if (!row.verified || row.status === 'Pending') return '?';
-  if (!row.window) return 'P';
-  return dutyStatus(workedMinutes(0, Math.round((row.window.endMs - row.window.startMs) / 60_000), policy), policy);
+  return 'P';
 }
 
 /** One code per employee and date from that day's trip card duties (best duty wins; any unverified duty with no verified one is "?"). */
-export function tripCardDays(rows: AttendanceRow[], policy: AttendancePolicy = DEFAULT_POLICY) {
+export function tripCardDays(rows: AttendanceRow[]) {
   const byEmployee = new Map<string, {name: string; site: string; designation: string; days: Record<string, TripDay>}>();
   for (const row of rows) {
     const key = normal(row.caliberCode || row.employeeId);
     if (!key) continue;
     const person = byEmployee.get(key) || {name: row.employeeName, site: row.site, designation: row.designation, days: {}};
     const day = person.days[row.date] || {date: row.date, code: '', duties: []};
-    const code = tripDutyCode(row, policy);
+    const code = tripDutyCode(row);
     day.duties.push({shift: row.shift, site: row.site, equipment: row.equipment.join(', '), output: row.output, status: row.status, verification: row.verification, code, cards: cardTypes(row.sources),
       time: row.window ? `${hm(row.window.startMs)}–${hm(row.window.endMs)}` : ''});
     const verified = day.duties.filter(d => d.code !== '?');
@@ -115,7 +115,7 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
   tripRead?: Set<string>,
   /** While the Biometric tab is still being read: only these days have punches; the others stay blank and are not compared. */
   bioRead?: Set<string>): RosterGroup[] {
-  const tripPeople = trips ? tripCardDays(trips, policy) : new Map();
+  const tripPeople = trips ? tripCardDays(trips) : new Map();
   const groups: RosterGroup[] = register.map(row => ({
     key: row.id, code: row.code, name: row.name, site: row.site, department: row.department || '', designation: row.designation, shift: row.shift, exempt: row.exempt,
     bio: row, bioCodes: {}, tripCodes: {}, tripDays: {}, hasTripCards: false, mismatches: [], pending: 0,

@@ -34,8 +34,8 @@ test('hours boundaries: 3:59 absent, 4:00 half, 6:59 half, 7:00 full', () => {
   assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('16:00')}).status, 'P');
 });
 
-test('trip card / logbook staff use logbook hours with the first trip as the In punch', () => {
-  // logbook 06:10 first trip → 13:10 last trip end, 06:00 shift: 6 h worked → half duty, on time
+test('biometric punches of an operator follow the hours rule (trip cards do not: a punched card is Present)', () => {
+  // In 06:10 → Out 13:10, 06:00 shift: 6 h worked → half duty, on time
   const result = evaluateDay({inMinute: at('06:10'), outMinute: at('13:10'), shiftStart: at('06:00'), shiftEnd: at('14:00'), designation: 'Dumper Operator'});
   assert.equal(result.status, 'HD');
   assert.equal(result.workedMinutes, span(6, 0));
@@ -129,4 +129,5 @@ test('policy page wording follows the settings', () => {
   assert.match(rules['Late come'], /08:15 is on time and 08:16 is late/);
   assert.match(rules['Day status'], /Under 4 hrs = Absent · 4 hrs to under 7 hrs = Half duty · 7 hrs or more = Full duty/);
   assert.match(Object.fromEntries(policyRules({...DEFAULT_POLICY, graceMinutes: 10}))['Late come'], /08:11 is late/);
+  assert.match(rules['Trip card / logbook'], /punched trip card or logbook \(VLB, ELB, LMV\) is Present for the day, whatever the hours/);
 });

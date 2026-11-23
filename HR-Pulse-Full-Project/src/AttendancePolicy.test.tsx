@@ -3,12 +3,10 @@ import {afterEach,expect,it,vi} from 'vitest';
 import AttendancePolicySettings from './AttendancePolicy';
 import AttendanceRegister,{hoursText,monthRange,siteTotals,weekStart,type RegisterRow} from './AttendanceRegister';
 import AttendanceManagement,{ATTENDANCE_MENU,attendanceGroup,legacyModuleUrl} from './AttendanceManagement';
-import {logbookDuty} from './MisAttendance';
 import {DEFAULT_POLICY} from '../server/attendance-policy.mjs';
 
 afterEach(()=>{vi.unstubAllGlobals();});
 const policy={...DEFAULT_POLICY,exemptRoles:[...DEFAULT_POLICY.exemptRoles]};
-const hour=3_600_000,minute=60_000;
 
 it('groups the Attendance Management sub menus as approved',()=>{
  expect(ATTENDANCE_MENU.map(g=>[g.group,[...g.items]])).toEqual([
@@ -19,15 +17,6 @@ it('groups the Attendance Management sub menus as approved',()=>{
  ]);
  expect(attendanceGroup('Gate pass')).toBe('Attendance regularization');
  expect(legacyModuleUrl('punch',{...policy,graceMinutes:10})).toMatch(/attendance-module\.html\?view=punch&grace=10&full=7&absent=4&lunch=60&perCut=3$/);
-});
-
-it('rates trip card / logbook hours with the same policy: 3:59 absent, 4:00 half, 6:59 half, 7:00 full (after 1 hr lunch)',()=>{
- const duty=(h:number,m:number)=>logbookDuty(0,(h+1)*hour+m*minute);
- expect(duty(3,59)).toBe('Absent');
- expect(duty(4,0)).toBe('Half duty');
- expect(duty(6,59)).toBe('Half duty');
- expect(duty(7,0)).toBe('Full duty');
- expect(logbookDuty(0,8*hour,{...policy,lunchMinutes:0,fullDutyHours:8})).toBe('Full duty');
 });
 
 it('formats register periods and site totals',()=>{
