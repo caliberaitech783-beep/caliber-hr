@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { grantedMenus } from './modules.mjs';
 import { siteIds } from './scope.mjs';
+import {employeeNumber,typedIdProblem,numberHolders,holderLine,samePerson} from './employee-number.mjs';
 
 const kind = 'employeeMasterRegister';
 const pageSize = 50;
@@ -142,11 +143,21 @@ export function createEmployeeMasterRegister(pool) {
       const db = await pool.connect();
       try {
         await db.query('BEGIN');
-        const result = await db.query(`SELECT version,site_id,site_code,site_name FROM hr_employee_master_register
+        const result = await db.query(`SELECT version,site_id,site_code,site_name,name,data->>'employeeId' AS employee_id FROM hr_employee_master_register
           WHERE id=$1 AND ($2::uuid[] IS NULL OR site_id=ANY($2)) AND ${isEmployeeEntry} FOR UPDATE`, [id,scope]);
         const entry = result.rows[0];
         if (!entry) throw fail('Employee entry not found.',404);
         if (entry.version!==input.version) throw fail('This entry changed while you were editing. Close and reopen it before saving.',409);
+        // One number on one line (employee-number.mjs). Only a changed ID is checked, so a line that already shares its
+        // number can still be opened and corrected.
+        if (changes.employeeId!==undefined && changes.employeeId!==(entry.employee_id||'')) {
+          const typed = typedIdProblem(changes.employeeId);
+          if (typed) throw fail(typed);
+          const number = employeeNumber(changes.employeeId);
+          const holders = number ? await numberHolders(db,number,{registerFilter:isEmployeeEntry,exceptRegisterId:id}) : [];
+          const other = holders.find(holder=>holder.where==='Employee Master') || holders.find(holder=>!samePerson(holder.name,changes.name ?? entry.name));
+          if (other) throw fail(changes.employeeId+' is already held by '+holderLine(other)+'. One number can be on one line only.',409);
+        }
         const moving = siteCode!==undefined && siteCode!==entry.site_code;
         if (!moving && !Object.keys(changes).length) throw fail('Make a change before saving.');
         const destination = moving ? (await availableSites(db,scope)).find(site=>site.code===siteCode) : undefined;
@@ -181,9 +192,26 @@ export function createEmployeeMasterRegister(pool) {
         const codes = [...new Set(entries.map(row=>row.siteCode))];
         const sites = new Map((await db.query("SELECT id, code FROM hr_records WHERE kind='sites' AND code=ANY($1) AND status='ACTIVE'", [codes])).rows.map(site=>[site.code,site.id]));
         if (sites.size !== codes.length) throw fail('One or more import sites are missing from the HR site master.');
+        // One number on one line (employee-number.mjs): a line whose number another line already holds, in the register
+        // or earlier in this file, is not added. The same line imported again is simply "already imported".
+        const present = new Map();
+        for (const row of (await db.query("SELECT import_key,data->>'employeeId' AS id FROM hr_employee_master_register WHERE "+isEmployeeEntry)).rows || []) {
+          const number = employeeNumber(row.id);
+          if (number) (present.get(number) || present.set(number,new Set()).get(number)).add(row.import_key);
+        }
+        const kept = [], notAdded = [], inFile = new Set();
+        for (const entry of entries) {
+          const number = employeeNumber(entry.data.employeeId), keys = number && present.get(number);
+          if (number && ((keys && !keys.has(entry.key)) || inFile.has(number))) {
+            notAdded.push({employeeId:entry.data.employeeId,name:entry.data.name,site:siteNames[entry.siteCode]});
+            continue;
+          }
+          if (number) inFile.add(number);
+          kept.push(entry);
+        }
         let inserted = 0;
-        for (let offset = 0; offset < entries.length; offset += 500) {
-          const batch = entries.slice(offset, offset+500).map(({key,siteCode,data})=>({
+        for (let offset = 0; offset < kept.length; offset += 500) {
+          const batch = kept.slice(offset, offset+500).map(({key,siteCode,data})=>({
             id:randomUUID(),import_key:key,name:data.name,site_id:sites.get(siteCode),site_code:siteCode,site_name:siteNames[siteCode],data,
           }));
           const result = await db.query(`
@@ -197,7 +225,7 @@ export function createEmployeeMasterRegister(pool) {
           await db.query("INSERT INTO hr_audit (actor,action,kind,detail) VALUES ($1,'IMPORT',$2,$3)", [profile.actor,kind,{inserted}]);
         }
         await db.query('COMMIT');
-        return {inserted,alreadyImported:entries.length-inserted};
+        return {inserted,alreadyImported:kept.length-inserted,numberOnAnotherLine:notAdded.length,notAdded:notAdded.slice(0,200)};
       } catch (error) {
         await db.query('ROLLBACK');
         throw error;

@@ -7,13 +7,11 @@
 // number, the joined employee wins, because a transfer approved in HR moves that record (employee-transfer-flow.mjs).
 import {keyMatches} from './attendance.mjs';
 import {isEmployeeEntry} from './employee-master-register.mjs';
+import {employeeNumber} from './employee-number.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const text=value=>value===null||value===undefined?'':String(value).trim();
-export const employeeNumber=value=>{
- const match=text(value).toUpperCase().replace(/[\s/-]/g,'').match(/^(?:CMPL|CMLL)?(\d{1,9})$/);
- return match&&Number(match[1])>0?String(Number(match[1])):'';
-};
+export {employeeNumber};
 
 export const REGISTER_SQL=`SELECT data->>'employeeId' AS "employeeId",name,site_name AS site,split_part(site_code,'-',1) AS region,
  data->>'department' AS department,data->>'designation' AS designation,data->>'category' AS category,data->>'status' AS status

@@ -1,3 +1,13 @@
+# One employee number, one person
+
+Set by the owner on 23 November 2026: HR Pulse is the final authority for Employee Master, and Pulse-II books every trip card, attendance day and salary line by the employee number.
+
+- A new joiner's number is the first one nobody holds above the old numbering (`NUMBER_FLOOR` 22500, so the first is CMLL22501). The Employee Master register, the joining forms and the reserved numbers all count, and CMPL123 = CMLL123 = 123. Before this, numbers were counted from the joining forms alone and landed on working drivers' numbers.
+- A joining form cannot be saved under a number that belongs to another person (the same person rejoining may keep the number). Forms saved before this rule are not blocked when edited without changing the number.
+- A register line cannot be given an ID that is not a number ("CMLL6665/1" is refused) or a number another line or another person's form holds. An unchanged ID never blocks an edit, so a line can still be corrected.
+- The register's Excel import does not add a second line for a number that is already on another line, or twice in the file; the message says how many were not added.
+- `HR-Pulse-Full-Project/server/employee-number.mjs` holds the rule; `server/employee-number.test.mjs` checks it (run by the deploy through `employee-master-register.test.mjs`). Never count a new number from the joining forms alone again.
+
 # Notifications go to the assigned user only, never to the sender
 
 Set by the owner on 20 November 2026.
