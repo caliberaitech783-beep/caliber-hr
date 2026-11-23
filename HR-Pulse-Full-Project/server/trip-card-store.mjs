@@ -3,6 +3,7 @@
    day (hr_trip_card_days), so the roster opens them at once next time and reads MIS only for days not saved.
    GET  attendance/trip-cards?site=&from=&to=  → {days:[{day,rows,duties,savedBy,savedAt}]}
    POST attendance/trip-cards {site,day,rows}  → {day,duties,savedBy,savedAt}  (one day per request, under 2 MB) */
+import {siteNameMatch, exactNameFirst, siteNameKeys} from './site-display-names.mjs';
 import {siteAccessMessage,siteIds} from './scope.mjs';
 
 export const MAX_TRIP_ROWS = 5000, MAX_TRIP_DAYS = 31;
@@ -32,7 +33,7 @@ export function tripDuty(row, day) {
 async function checkSite(db, profile, site) {
   if (typeof site !== 'string' || !site.trim() || site.length > 200) fail('Choose a site.');
   const scope = await siteIds(db, profile);
-  const found = (await db.query("SELECT 1 FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2)) LIMIT 1", [site, scope])).rowCount;
+  const found = (await db.query("SELECT 1 FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND "+siteNameMatch('$1','$3')+" AND ($2::uuid[] IS NULL OR id=ANY($2)) " + exactNameFirst('$1') + " LIMIT 1", [site, scope, siteNameKeys(site)])).rowCount;
   if (!found) fail(siteAccessMessage(profile), 403);
 }
 

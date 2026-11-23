@@ -7,6 +7,7 @@
    GET  attendance/biometric-days?site=&from=&to=  → {days:[{day,register,punches,people,savedBy,savedAt}]}
    POST attendance/biometric-days {site,day}       → {day,punches,people,savedBy,savedAt}  (one day per request) */
 import {siteAccessMessage} from './scope.mjs';
+import {siteNameMatch, exactNameFirst, siteNameKeys} from './site-display-names.mjs';
 
 export const MAX_BIO_DAYS = 31;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -17,7 +18,7 @@ const validDay = value => typeof value === 'string' && DAY.test(value) && Number
 export function createBiometricDayStore(pool, {load, today}) {
   async function findSite(name, sites, profile) {
     if (typeof name !== 'string' || !name.trim() || name.length > 200) fail('Choose a site.');
-    const site = (await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1", [name, sites])).rows[0];
+    const site = (await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND "+siteNameMatch('$1','$3')+" AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) " + exactNameFirst('$1') + " LIMIT 1", [name, sites, siteNameKeys(name)])).rows[0];
     if (!site) fail(siteAccessMessage(profile), 403);
     return {id: site.id, name: site.name, siteType: site.site_type || ''};
   }
