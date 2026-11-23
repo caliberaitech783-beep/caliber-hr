@@ -150,3 +150,8 @@ ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS bridge_id uuid;
 ALTER TABLE hr_attendance_fetch_requests ADD COLUMN IF NOT EXISTS bridge_id uuid;
 -- Last time the machine pushed straight to HR Pulse without a bridge PC (attendance-direct.mjs, owner 22 Nov 2026).
 ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS direct_contact timestamptz;
+-- Machine master (owner, 23 Nov 2026): the machine no. set on the machine (Menu › Comm. › Device ID; its USB log is
+-- named <no.>_attlog.dat, so an upload finds the machine by it), and its make and model. '' = not entered.
+ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS machine_no text NOT NULL DEFAULT '';
+ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS make text NOT NULL DEFAULT '';
+ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT '';

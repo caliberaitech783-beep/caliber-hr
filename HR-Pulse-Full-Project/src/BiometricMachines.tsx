@@ -13,7 +13,9 @@ export type Machine={serial:string;name:string;location:string;siteId:string|nul
  /** Owner, 22 Nov 2026: the machine's IP address (records only) and the bridge PC it reports to (null = main bridge PC). */
  ipAddress?:string;bridgeId?:string|null;bridgeName?:string;
  /** Owner, 22 Nov 2026: the machine pushes straight to HR Pulse, with no bridge PC. */
- direct?:boolean};
+ direct?:boolean;
+ /** Machine master (owner, 23 Nov 2026): the Device ID set on the machine (its USB log is <no.>_attlog.dat), make and model. */
+ machineNo?:string;make?:string;model?:string};
 export type MachineStatus='Online'|'Offline'|'Awaiting contact';
 export const ALL_SITES='',UNASSIGNED='unassigned';
 const OCTET='(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)';

@@ -81,7 +81,7 @@ test('API routes bridge calls by key and user calls by Pulse sign-in',async()=>{
 
 const SITE='22222222-2222-4222-8222-222222222222';
 test('a biometric machine is added to a site with its location, name and serial',()=>{
- assert.deepEqual(validateDevice({serial:' JNP2260900233 ',siteId:SITE,name:' ESSL\u0000K90 ',location:'Main  gate',ipAddress:'192.168.1.201'},true),{serial:'JNP2260900233',siteId:SITE,name:'ESSL K90',location:'Main gate',ipAddress:'192.168.1.201'});
+ assert.deepEqual(validateDevice({serial:' JNP2260900233 ',siteId:SITE,name:' ESSL\u0000K90 ',location:'Main  gate',ipAddress:'192.168.1.201'},true),{serial:'JNP2260900233',siteId:SITE,name:'ESSL K90',location:'Main gate',ipAddress:'192.168.1.201',machineNo:null,make:null,model:null});
  assert.equal(validateDevice({serial:'JNP1',siteId:SITE,ipAddress:''},true).ipAddress,'');
  assert.throws(()=>validateDevice({serial:'JNP1',siteId:SITE,ipAddress:'300.1.1.1'},true),/IP address/);
  assert.equal(cleanText('x'.repeat(200)).length,80);
@@ -108,7 +108,7 @@ test('machine status lists every site with location, contact and today\'s logs',
   if(sql.includes('FROM hr_attendance_devices d'))return {rows:[{serial:'JNP1',name:'K90',location:'Main gate',ip_address:'192.168.1.201',site_id:SITE,site_name:'Amlohri',last_seen:null,last_contact:'2026-11-20T05:00:00Z',online:true,logs_today:12,last_punch:'2026-11-20 10:31'}]};
  });
  const status=await createAttendance(pool,{bridgeKey:KEY}).attendanceApi(admin,'status','GET',{},new URLSearchParams());
- assert.deepEqual(status.devices[0],{serial:'JNP1',name:'K90',location:'Main gate',ipAddress:'192.168.1.201',siteId:SITE,siteName:'Amlohri',lastContact:'2026-11-20T05:00:00Z',online:true,lastSeen:null,logsToday:12,lastPunch:'2026-11-20 10:31',bridgeId:null,direct:false,bridgeName:'Main bridge PC'});
+ assert.deepEqual(status.devices[0],{serial:'JNP1',name:'K90',location:'Main gate',ipAddress:'192.168.1.201',machineNo:'',make:'',model:'',siteId:SITE,siteName:'Amlohri',lastContact:'2026-11-20T05:00:00Z',online:true,lastSeen:null,logsToday:12,lastPunch:'2026-11-20 10:31',bridgeId:null,direct:false,bridgeName:'Main bridge PC'});
  assert.deepEqual(status.bridges.map(b=>[b.name,b.main,b.machines]),[['Main bridge PC',true,['JNP1']]]);
  assert.equal(status.canManageDevices,true);
  const [sql,params]=pool.calls.find(([q])=>q.includes('FROM hr_attendance_devices d'));
@@ -123,8 +123,8 @@ test('adding and editing a machine saves its location; site HR users cannot',asy
   if(sql.includes('UPDATE hr_attendance_devices'))return {rows:[{serial:'JNP1',location:'Workshop',ip_address:'192.168.1.201'}]};
  });
  const service=createAttendance(pool,{bridgeKey:KEY});
- assert.deepEqual(await service.attendanceApi(admin,'devices/register','POST',{serial:'JNP1',siteId:SITE,name:'K90',location:'Main gate',ipAddress:' 192.168.1.201 '}),{serial:'JNP1',siteId:SITE,name:'K90',location:'Main gate',ipAddress:'192.168.1.201'});
- assert.deepEqual(pool.calls.find(([q])=>q.includes('INSERT INTO hr_attendance_devices'))[1],['JNP1',SITE,'K90','Main gate','192.168.1.201']);
+ assert.deepEqual(await service.attendanceApi(admin,'devices/register','POST',{serial:'JNP1',siteId:SITE,name:'K90',location:'Main gate',ipAddress:' 192.168.1.201 '}),{serial:'JNP1',siteId:SITE,name:'K90',location:'Main gate',ipAddress:'192.168.1.201',machineNo:'',make:'',model:''});
+ assert.deepEqual(pool.calls.find(([q])=>q.includes('INSERT INTO hr_attendance_devices'))[1],['JNP1',SITE,'K90','Main gate','192.168.1.201',null,null,null]);
  for(const ipAddress of ['192.168.1.256','10.0.0','01.2.3.4','1.2.3.4.5','abc'])
   await assert.rejects(service.attendanceApi(admin,'devices/register','POST',{serial:'JNP3',siteId:SITE,ipAddress}),e=>e.status===400&&/IP address/.test(e.message));
  await service.attendanceApi(admin,'devices','POST',{serial:'JNP1',siteId:SITE,name:'K90'});
@@ -146,6 +146,35 @@ test('biometric text or CSV imports add only registered machines from the select
  assert.ok(pool.calls.some(([sql])=>sql.startsWith('INSERT INTO hr_attendance_device_users')));
  assert.ok(pool.calls.some(([sql,params])=>sql.includes('INSERT INTO hr_audit')&&params[0]==='hr'&&params[1]==='IMPORT_BIOMETRIC_PUNCHES'));
  await assert.rejects(createAttendance(fakePool(sql=>sql.includes("kind='sites'")?{rows:[{id:SITE}]}:sql.startsWith('SELECT serial FROM hr_attendance_devices')?{rows:[]}:undefined),{bridgeKey:KEY}).attendanceApi(admin,'punches/import','POST',{site:'Amlohri',rows:[{serial:'OTHER',biometricId:'12',punchedAt:'2026-11-23 09:01:05'}]},new URLSearchParams()),/not registered/);
+});
+
+test('machine master: machine no., make and model are checked, kept when left out, and one machine no. per site',async()=>{
+ assert.deepEqual(validateDevice({serial:'JNP1',siteId:SITE,machineNo:' 007 ',make:' eSSL ',model:'K90'},true),{serial:'JNP1',siteId:SITE,name:'',location:null,ipAddress:null,machineNo:'7',make:'eSSL',model:'K90'});
+ assert.equal(validateDevice({serial:'JNP1'},false).machineNo,null);
+ assert.throws(()=>validateDevice({serial:'JNP1',machineNo:'A1'},false),/Device ID/);
+ assert.throws(()=>validateDevice({serial:'JNP1',machineNo:'1000'},false),/1 to 999/);
+ const pool=fakePool(sql=>{
+  if(sql.includes("kind='sites'"))return {rows:[{}],rowCount:1};
+  if(sql.includes('machine_no=$2 AND serial<>$3'))return {rows:[{serial:'JNP9',name:'STAFF 1'}]};
+  return {rows:[],rowCount:0};
+ });
+ await assert.rejects(createAttendance(pool,{bridgeKey:KEY}).attendanceApi(admin,'devices','POST',{serial:'JNP1',siteId:SITE,machineNo:'1'}),e=>e.status===409&&/already given to STAFF 1/.test(e.message));
+});
+
+test('a machine log check lists the site machines and which file IDs each already knows',async()=>{
+ const pool=fakePool(sql=>{
+  if(sql.includes("kind='sites'"))return {rows:[{id:SITE}],rowCount:1};
+  if(sql.startsWith('SELECT serial,name,location,machine_no FROM hr_attendance_devices'))return {rows:[{serial:'JNP1',name:'STAFF 1',location:'Gate',machine_no:'2'},{serial:'JNP2',name:'',location:'',machine_no:''}]};
+  if(sql.includes('CROSS JOIN unnest'))return {rows:[{serial:'JNP1',biometric_id:'12',employee_code:'E12',employee_name:'Ravi',machine_name:'RAVI'},{serial:'JNP1',biometric_id:'13',employee_code:null,employee_name:null,machine_name:null}]};
+  return {rows:[],rowCount:0};
+ });
+ const result=await createAttendance(pool,{bridgeKey:KEY}).attendanceApi(admin,'punches/import/check','POST',{site:'Amlohri',ids:['12','13','12',' 99 ','bad id!']},new URLSearchParams());
+ assert.deepEqual(result.machines,[
+  {serial:'JNP1',name:'STAFF 1',location:'Gate',machineNo:'2',ids:[{biometricId:'12',employeeCode:'E12',employeeName:'Ravi',machineName:'RAVI'},{biometricId:'13',employeeCode:'',employeeName:'',machineName:''}]},
+  {serial:'JNP2',name:'',location:'',machineNo:'',ids:[]}]);
+ const lookup=pool.calls.find(([sql])=>sql.includes('CROSS JOIN unnest'));
+ assert.deepEqual(lookup[1],[SITE,['12','13','99']]);
+ await assert.rejects(createAttendance(pool,{bridgeKey:KEY}).attendanceApi(admin,'punches/import/check','POST',{site:'',ids:[]},new URLSearchParams()),/Choose a site/);
 });
 
 test('each site bridge PC signs in with its own key and picks up only its own fetch requests',async()=>{
