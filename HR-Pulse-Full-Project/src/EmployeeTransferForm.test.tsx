@@ -34,7 +34,9 @@ it('transfer form lists the site employees, fills the current posting and offers
  expect(screen.getByLabelText(/From designation/).tagName).toBe('SELECT');
  expect(within(screen.getByLabelText(/From reporting manager/)).getByText('CMLL00005 · R. Sharma – Manager')).toBeTruthy();
  const to=screen.getByLabelText(/To location/);
- expect(within(to).queryByText('SASTI · Sasti OC')).toBeNull();
+ expect(within(to).queryByText('Sasti OC')).toBeNull();expect(within(to).getByText('Pauni OC')).toBeTruthy();
+ expect(within(screen.getByLabelText(/From location/)).getByText('Sasti OC')).toBeTruthy(); // site name only, no region code
+ expect(screen.queryByText(/SASTI · /)).toBeNull();
  fireEvent.change(to,{target:{value:'far'}});
  await waitFor(()=>expect(within(screen.getByLabelText(/To reporting manager/)).getByText('CMLL00099 · P. Rao – Project Manager')).toBeTruthy());
  fireEvent.change(screen.getByLabelText(/To reporting manager/),{target:{value:'CMLL00099 · P. Rao'}});
