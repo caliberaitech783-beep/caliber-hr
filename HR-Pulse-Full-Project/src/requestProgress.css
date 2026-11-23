@@ -58,3 +58,9 @@
 /* Employee transfer: the reason box spans the form like the leave reason. */
 .rfs-field:has(.transfer-reason){grid-column:1/-1}.record-form .transfer-reason{display:block;box-sizing:border-box;width:100%;min-height:90px;margin-top:7px;padding:11px;border:1px solid #dcd1e3;border-radius:8px;background:#fff;color:#30223e;font:inherit;line-height:1.5;resize:vertical}
 .record-form .transfer-other{margin-top:8px}
+.transfer-picker{position:relative;min-width:0}
+.transfer-picker input{width:100%}
+.transfer-picker-menu{position:absolute;z-index:3;top:100%;left:0;right:0;max-height:14rem;overflow:auto;background:Canvas;color:CanvasText;border:1px solid #c9b8d8;border-radius:8px;box-shadow:0 6px 18px #29144526}
+.transfer-picker-menu [role="option"],.transfer-picker-menu [role="status"]{padding:8px 12px}
+.transfer-picker-menu [role="option"]{cursor:pointer}
+.transfer-picker-menu [role="option"]:hover,.transfer-picker-menu [data-active="true"]{background:#ede5f6;color:#28163b}

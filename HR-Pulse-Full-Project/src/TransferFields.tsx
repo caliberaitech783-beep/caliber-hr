@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
 import {api,type Field,type Lookup} from './api';
+import TransferPicker from './TransferPicker';
 
 /* Employee transfer form boxes (owner, 23 Nov 2026):
    - From location comes first and lists only the sites this login covers (chosen by itself when there is one).
@@ -32,17 +33,12 @@ function useTransferOptions(grant:string,fromSiteId:string,toSiteId:string){
 }
 
 function ListOrOther({value,options,placeholder,disabled,required,onChange,label}:{value:string;options:Option[];placeholder:string;disabled:boolean;required?:boolean;onChange:(v:string)=>void;label:string}){
-  const listed=options.some(o=>o.value===value);
-  const[other,setOther]=useState(false);
-  const writing=other||(!!value&&!listed&&options.length===0);
-  const list=value&&!listed&&!other?[{label:value,value},...options]:options;
+  const[writing,setWriting]=useState(false);
   return <>
-    <select disabled={disabled} required={required&&!writing} value={writing?OTHER:value} onChange={e=>{if(e.target.value===OTHER){setOther(true);onChange('');}else{setOther(false);onChange(e.target.value);}}}>
-      <option value="">{placeholder}</option>
-      {list.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-      <option value={OTHER}>Other (write it)</option>
-    </select>
-    {writing&&<input className="transfer-other" aria-label={label} disabled={disabled} required={required} maxLength={300} autoComplete="off" placeholder="Write it here" value={value} onChange={e=>onChange(e.target.value)}/>}
+    <TransferPicker label={label} disabled={disabled} required={required&&!writing} value={writing?OTHER:value}
+      savedLabel={value} placeholder={placeholder} options={[...options,{label:'Other (write it)',value:OTHER}]}
+      onChange={next=>{setWriting(next===OTHER);onChange(next===OTHER?'':next);}}/>
+    {writing&&<input className="transfer-other" aria-label={label+' (custom)'} disabled={disabled} required={required} maxLength={300} autoComplete="off" placeholder="Write it here" value={value} onChange={e=>onChange(e.target.value)}/>}
   </>;
 }
 
@@ -51,7 +47,8 @@ export default function TransferField({grant,field,data,setData,lookups,disabled
   const fromSiteId=String(data.fromSiteId||''),toSiteId=String(data.toSiteId||'');
   const result=useTransferOptions(grant,fromSiteId,toSiteId);
   const options=result?.options;
-  const set=(v:string)=>setData(d=>({...d,[key]:v,...(key==='toSiteId'?{toManager:''}:{})}));
+  const set=(v:string)=>setData(d=>d[key]===v?d:{...d,[key]:v,...(key==='toSiteId'?{toManager:''}:{})});
+  const picker={label:field.label,value,required:field.required,onChange:set};
   /* Owner, 23 Nov 2026: site boxes show the site name only (no region code); a name shared by two site masters is listed once. */
   const siteLabel=(x:Lookup)=>x.name.trim().replace(/\s+/g,' ');
   const siteKey=(x?:Lookup)=>x?siteLabel(x).toLowerCase():'';
@@ -65,27 +62,28 @@ export default function TransferField({grant,field,data,setData,lookups,disabled
   const fromName=siteKey(sites.find(x=>x.id===fromSiteId));
   /* One site for this login: choose it straight away. */
   useEffect(()=>{if(key==='fromSiteId'&&!value&&!disabled&&siteList.length===1)setData(d=>({...d,fromSiteId:siteList[0].id}));},[key,value,disabled,siteList.length]);// eslint-disable-line react-hooks/exhaustive-deps
-  if(key==='fromSiteId')return <select disabled={disabled} required={field.required} value={value} onChange={e=>{const next=e.target.value;const nextName=siteKey(sites.find(x=>x.id===next));setData(d=>({...d,fromSiteId:next,employeeId:'',fromDesignation:'',fromManager:'',...(nextName&&siteKey(sites.find(x=>x.id===d.toSiteId))===nextName?{toSiteId:'',toManager:''}:{})}));}}>
-    <option value="">{sites.length?'Select site…':'No site is assigned to this login'}</option>
-    {value&&!sites.some(x=>x.id===value)&&<option value={value}>Current site</option>}
-    {siteList.map(x=><option key={x.id} value={x.id}>{siteLabel(x)}</option>)}
-  </select>;
+  const siteOption=(site:Lookup)=>({value:site.id,label:siteLabel(site)});
+  if(key==='fromSiteId')return <TransferPicker {...picker} disabled={disabled}
+    placeholder={sites.length?'Search sites…':'No site is assigned to this login'}
+    options={siteList.map(siteOption)} savedLabel={value?'Current site':undefined}
+    onChange={next=>{
+      const nextName=siteKey(sites.find(x=>x.id===next));
+      setData(d=>d.fromSiteId===next?d:{...d,fromSiteId:next,employeeId:'',fromDesignation:'',fromManager:'',
+        ...(nextName&&siteKey(sites.find(x=>x.id===d.toSiteId))===nextName?{toSiteId:'',toManager:''}:{})});
+    }}/>;
   if(key==='employeeId'){
     const staff=options?.employees||[];
     const placeholder=!fromSiteId?'Choose the From location first':!result?'Loading employees…':
       !options?'Could not load employees for this site':options.staff?.inScope===false?'This login cannot list staff of this site':
-      staff.length?'Select employee ('+staff.length+')…':'No employees with an ID are available at this site';
-    return <select disabled={disabled||!fromSiteId||!staff.length} required={field.required} value={value} onChange={e=>set(e.target.value)}>
-      <option value="">{placeholder}</option>
-      {value&&!staff.some(x=>x.value===value)&&<option value={value} disabled>{[data.empCode,data.employeeName||lookups.find(x=>x.id===value)?.name||'Saved employee'].filter(Boolean).join(' · ')}</option>}
-      {staff.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}
-    </select>;
+      staff.length?'Search by employee ID or name…':'No employees with an ID are available at this site';
+    const savedLabel=value?[data.empCode,data.employeeName||lookups.find(x=>x.id===value)?.name||'Saved employee'].filter(Boolean).join(' · '):undefined;
+    return <TransferPicker key={fromSiteId} {...picker} disabled={disabled||!fromSiteId||!staff.length}
+      options={staff} placeholder={placeholder} savedLabel={savedLabel}/>;
   }
-  if(key==='toSiteId')return <select disabled={disabled||!data.employeeId} required={field.required} value={value} onChange={e=>set(e.target.value)}>
-    <option value="">{data.employeeId?'Select…':'Choose the employee first'}</option>
-    {value&&!lookups.some(x=>x.kind==='sites'&&x.id===value)&&<option value={value}>Existing inactive site</option>}
-    {siteList.filter(x=>x.id!==fromSiteId&&siteKey(x)!==fromName).map(x=><option key={x.id} value={x.id}>{siteLabel(x)}</option>)}
-  </select>;
+  if(key==='toSiteId')return <TransferPicker {...picker} disabled={disabled||!data.employeeId}
+    placeholder={data.employeeId?'Search sites…':'Choose the employee first'}
+    options={siteList.filter(x=>x.id!==fromSiteId&&siteKey(x)!==fromName).map(siteOption)}
+    savedLabel={value?selectedSite?siteLabel(selectedSite):'Existing inactive site':undefined}/>;
   if(key==='fromDesignation'||key==='toDesignation')return <ListOrOther label={field.label} value={value} disabled={disabled} required={field.required} onChange={set}
     options={(options?.designations||[]).map(name=>({label:name,value:name}))} placeholder={options?'Select designation…':'Loading designations…'}/>;
   const managers=(key==='fromManager'?options?.fromManagers:options?.toManagers)||[],site=key==='fromManager'?fromSiteId:toSiteId;
