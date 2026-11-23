@@ -200,7 +200,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const siteName=String(input?.site||'').trim(),rows=input?.rows;
    if(!siteName)fail('Choose a site before importing biometric punches.');
    if(!Array.isArray(rows)||!rows.length||rows.length>MAX_PUNCHES_PER_UPLOAD)fail(`Import 1–${MAX_PUNCHES_PER_UPLOAD} biometric punches at a time.`);
-   const site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[siteName,sites])).rows[0];
+   const site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[siteName,sites])).rows[0];
    if(!site)fail(siteAccessMessage(profile),403);
    const clean=rows.map(row=>{
     const serial=String(row?.serial||'').trim();
@@ -253,7 +253,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   if(route==='site-register'&&method==='GET'){
    // Attendance roster › Biometric: one site's machines, whoever punched on them (loadSiteRegister).
    const {from,to}=validateRange(params);
-   const site=(await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[String(params.get('site')||''),sites])).rows[0];
+   const site=(await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[String(params.get('site')||''),sites])).rows[0];
    if(!site)fail(siteAccessMessage(profile),403);
    return loadSiteRegister(pool,{id:site.id,name:site.name,siteType:site.site_type||''},from,to,indiaDay());
   }

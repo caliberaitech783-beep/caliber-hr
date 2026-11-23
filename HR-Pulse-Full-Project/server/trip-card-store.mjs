@@ -32,7 +32,7 @@ export function tripDuty(row, day) {
 async function checkSite(db, profile, site) {
   if (typeof site !== 'string' || !site.trim() || site.length > 200) fail('Choose a site.');
   const scope = await siteIds(db, profile);
-  const found = (await db.query("SELECT 1 FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND name=$1 AND ($2::uuid[] IS NULL OR id=ANY($2)) LIMIT 1", [site, scope])).rowCount;
+  const found = (await db.query("SELECT 1 FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2)) LIMIT 1", [site, scope])).rowCount;
   if (!found) fail(siteAccessMessage(profile), 403);
 }
 
