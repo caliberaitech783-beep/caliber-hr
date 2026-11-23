@@ -13,7 +13,7 @@ import LeaveMaster,{LeaveRequests} from './LeaveMaster';
 import ShiftMaster from './ShiftMaster';
 import AttendanceManagement,{attendanceGroup,attendanceViews} from './AttendanceManagement';
 import {Fragment,useEffect,useRef,useState} from 'react';
-import {ArrowLeft,Banknote,Bell,Boxes,CalendarDays,ChevronDown,Clock,FileBarChart,Folder,LayoutDashboard,LogOut,Menu,Moon,PanelLeftClose,Search,Settings,ShieldCheck,Sun,Thermometer,UserPlus,Users,X} from 'lucide-react';
+import {ArrowLeft,Banknote,Bell,Boxes,CalendarDays,ChevronDown,Clock,FileBarChart,Folder,LayoutDashboard,LogOut,Menu,Moon,PanelLeftClose,Search,Settings,ShieldCheck,Sun,UserPlus,Users,X} from 'lucide-react';
 import {api,savedSession,type Session,type HRConfig} from './api';
 import Logo from './Logo';
 import {Records,Approvals,Overview,Audit,AccessAdministration} from './Modules';
@@ -35,7 +35,7 @@ function HeaderClock(){
 }
 export default function Workspace({session,initialConfig,logout,leaveOnly=false}:{session:Session;initialConfig:HRConfig;logout:()=>void;leaveOnly?:boolean}){
   const[config,setConfig]=useState(initialConfig.modules),[profile,setProfile]=useState(initialConfig.profile),[page,setPage]=useState(()=>decodeURIComponent(window.location.hash.slice(1))),[kind,setKind]=useState('companies'),[group,setGroup]=useState(0),[error,setError]=useState(''),[collapsed,setCollapsed]=useState(()=>window.innerWidth<=760),[notice,setNotice]=useState('');
-  const[autoHide,setAutoHide]=useState(false),[navQuery,setNavQuery]=useState(''),[dayMode,setDayMode]=useState(true),[celsius,setCelsius]=useState(true);
+  const[autoHide,setAutoHide]=useState(false),[navQuery,setNavQuery]=useState(''),[dayMode,setDayMode]=useState(true);
   const navSearch=useRef<HTMLInputElement>(null);
   const[dashboardTab,setDashboardTab]=useState<DashboardTab>('HR Dashboard');
   const[masterMenu,setMasterMenu]=useState('Shift Master');
@@ -116,7 +116,6 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
      </div>
      <HeaderClock/>
      <div className="header-utilities">
-      <button className="weather-chip" type="button" aria-label="Toggle temperature unit" onClick={()=>setCelsius(value=>!value)}><Thermometer/><span>{celsius?'(28°C) 81.9°F':'(81.9°F) 28°C'}</span><i>●</i></button>
       <button className="day-toggle" type="button" aria-pressed={!dayMode} onClick={()=>setDayMode(value=>!value)}><span className="day-scene" aria-hidden="true">{dayMode?<Sun/>:<Moon/>}<i/></span><span>{dayMode?'Day':'Night'}</span></button>
       <button type="button" aria-label="Search menus" onClick={()=>{setCollapsed(false);requestAnimationFrame(()=>navSearch.current?.focus());}}><Search/></button>
       <button type="button" aria-label="Open employee directory" onClick={()=>access.has('Employee Directory')?navigate('Employee Directory'):setNotice('Employee Directory access is not assigned.')}><Folder/></button>

@@ -123,10 +123,9 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  fireEvent.click(autoHide);
  expect(autoHide).toHaveAttribute('aria-checked','true');
  expect(document.querySelector('.app')).toHaveClass('auto-hide');
- const temperature=screen.getByRole('button',{name:'Toggle temperature unit'});
- expect(temperature).toHaveTextContent('(28°C) 81.9°F');
- fireEvent.click(temperature);
- expect(temperature).toHaveTextContent('(81.9°F) 28°C');
+ // Owner, 23 Nov 2026: no temperature sign on any site.
+ expect(screen.queryByRole('button',{name:'Toggle temperature unit'})).toBeNull();
+ expect(document.querySelector('.weather-chip')).toBeNull();
  expect(screen.getByRole('button',{name:'Go back'})).toBeTruthy();
  expect(document.querySelector('.day-scene')).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Notifications'}));
