@@ -34,7 +34,9 @@ test('employee transfer gets a TR number, From location from Employee Master, an
  const db={release(){},async query(sql,args){
   if(sql.startsWith('SELECT id FROM hr_records')||sql.startsWith('SELECT * FROM hr_records'))return {rows:[{id:args?.[0],data:{}}],rowCount:1};
   if(sql.startsWith("SELECT data->>'siteId'"))return {rows:[{site:home}]};
-  if(sql.startsWith("SELECT code FROM hr_records"))return {rows:[{code:'E-77'}]};
+  if(sql.startsWith("SELECT code,name,data->>'siteId'"))return {rows:[{code:'E-77',name:'Joined Person',site:home}]};
+  if(sql.startsWith("SELECT code FROM hr_records"))return {rows:args[0]?[{code:'E-77'}]:[]};
+  if(sql.includes('FROM hr_employee_master_register WHERE id=$1'))return {rows:[{site:home,name:'Register Person',code:'CMLL00440'}]};
   if(sql.startsWith('SELECT COALESCE(MAX'))return {rows:[{next:5}]};
   if(sql.startsWith('INSERT INTO hr_records')){inserted={code:args[2],data:args[4]};return {rows:[{id:args[0],code:args[2],status:args[5]}]};}
   return {rows:[]};
@@ -46,4 +48,23 @@ test('employee transfer gets a TR number, From location from Employee Master, an
  await service.save(profile,'employeeTransfers',input);
  assert.equal(inserted.code,'TR0005/24-11-2026/E-77');
  assert.equal(inserted.data.fromSiteId,home); // typed From location is replaced by the employee's site
+ assert.equal(inserted.data.employeeName,'Joined Person');
+ // Owner, 23 Nov 2026: an Employee Master register line can be transferred too ("reg:<id>").
+ const line='00000000-0000-4000-8000-0000000000c3';
+ await service.save(profile,'employeeTransfers',{...input,employeeId:'reg:'+line});
+ assert.equal(inserted.data.employeeId,'');assert.equal(inserted.data.registerId,line);
+ assert.equal(inserted.data.empCode,'CMLL00440');assert.equal(inserted.data.employeeName,'Register Person');
+ assert.equal(inserted.data.fromSiteId,home);assert.equal(inserted.code,'TR0005/24-11-2026/CMLL00440');
+ await assert.rejects(service.save(profile,'employeeTransfers',{...input,employeeId:''}),/Employee is required/);
+});
+
+test('approving a register-line transfer moves that line to the new site and designation',async()=>{
+ const {applyTransfer}=await import('./employee-transfer-flow.mjs');
+ const calls=[];
+ const db={async query(sql,args){calls.push([sql,args]);if(sql.includes("kind='sites'"))return {rows:[{code:'NCL-JAYANT',name:'Jayant OB'}]};return {rows:[]};}};
+ await applyTransfer(db,{id:'t1',data:{employeeId:'',registerId:'r1',toSiteId:'s2',toDesignation:'Supervisor',toManager:'CMLL00099 · P. Rao'}},'hr');
+ const update=calls.find(([sql])=>sql.startsWith('UPDATE hr_employee_master_register'));
+ assert.ok(update);assert.deepEqual(update[1].slice(0,3),['s2','NCL-JAYANT','Jayant OB']);
+ assert.deepEqual(JSON.parse(update[1][3]),{designation:'Supervisor',reportingTo:'CMLL00099 · P. Rao'});assert.equal(update[1][4],'r1');
+ assert.ok(!calls.some(([sql])=>sql.startsWith('UPDATE hr_records')));
 });

@@ -11,10 +11,12 @@ import {api,type Field,type Lookup} from './api';
 export const transferFieldKeys=['fromSiteId','employeeId','toSiteId','fromDesignation','toDesignation','fromManager','toManager'];
 type Data=Record<string,string|number>;
 type Option={label:string;value:string};
-type Options={designations:string[];fromManagers:Option[];toManagers:Option[]};
+type Options={employees?:Option[];designations:string[];fromManagers:Option[];toManagers:Option[]};
 type Props={grant:string;field:Field;data:Data;setData:(f:(d:Data)=>Data)=>void;lookups:Lookup[];disabled:boolean};
 const OTHER='__other__';
 const cache=new Map<string,Promise<Options>>();
+/* Fresh lists every time the form opens (called by the record editor). */
+export function resetTransferOptions(){cache.clear();}
 
 function useTransferOptions(grant:string,fromSiteId:string,toSiteId:string){
   const[options,setOptions]=useState<Options|null>(null);
@@ -65,6 +67,15 @@ export default function TransferField({grant,field,data,setData,lookups,disabled
     const siteKeys=(id:unknown)=>{const s=lookups.find(x=>x.kind==='sites'&&x.id===id);return s?[s.id,norm(s.code),norm(s.name)]:[String(id||''),norm(id)];};
     const atSite=fromSiteId?everyone.filter(x=>siteKeys(x.site_id).some(k=>k&&keys.has(k))):everyone;
     const people=atSite.length?atSite:everyone;
+    /* Owner, 23 Nov 2026: with a site chosen, the list is that site's whole staff from the Employee Master register
+       together with HR-joined employees (server: transfer-options), not only the employees who joined through HR. */
+    const staff=fromSiteId?options?.employees:undefined;
+    if(staff&&staff.length)return <select disabled={disabled} required={field.required} value={value} onChange={e=>set(e.target.value)}>
+      <option value="">{`Select employee (${staff.length})…`}</option>
+      {value&&!staff.some(x=>x.value===value)&&<option value={value}>{String(data.empCode||'')} {String(data.employeeName||lookups.find(x=>x.id===value)?.name||'Saved employee')}</option>}
+      {staff.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}
+    </select>;
+    if(fromSiteId&&!options)return <select disabled value="" onChange={()=>{}}><option value="">Loading employees…</option></select>;
     return <select disabled={disabled} required={field.required} value={value} onChange={e=>set(e.target.value)}>
       <option value="">{!everyone.length?'No active employee is available to this login':fromSiteId&&!atSite.length?`No employee saved at this site · showing all (${people.length})`:`Select employee (${people.length})…`}</option>
       {value&&!people.some(x=>x.id===value)&&<option value={value}>{lookups.find(x=>x.id===value)?.name||'Saved employee'}</option>}

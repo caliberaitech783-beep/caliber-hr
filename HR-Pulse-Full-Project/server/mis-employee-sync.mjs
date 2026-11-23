@@ -29,7 +29,7 @@ export const JOINED_SQL=`SELECT e.code AS "employeeId",e.name,s.name AS site,spl
  LEFT JOIN hr_records dep ON dep.kind='departments' AND dep.id::text=e.data->>'departmentId'
  LEFT JOIN hr_records des ON des.kind='designations' AND des.id::text=e.data->>'designationId'
  WHERE e.kind='employees' AND e.status IN ('ACTIVE','APPROVED','INACTIVE') ORDER BY e.code`;
-export const TRANSFERS_SQL=`SELECT t.id,t.code,t.data->>'transferDate' AS "transferDate",e.code AS "employeeId",e.name,
+export const TRANSFERS_SQL=`SELECT t.id,t.code,t.data->>'transferDate' AS "transferDate",COALESCE(e.code,t.data->>'empCode') AS "employeeId",COALESCE(e.name,t.data->>'employeeName') AS name,
  fs.name AS "fromSite",ts.name AS "toSite",t.data->>'fromDesignation' AS "fromDesignation",t.data->>'toDesignation' AS "toDesignation",
  t.updated_at AS "approvedAt"
  FROM hr_records t

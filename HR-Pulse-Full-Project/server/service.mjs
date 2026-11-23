@@ -64,12 +64,31 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     if (write&&kind==='employees'&&isProjectManager(profile)) throw problem(PM_EMPLOYEE_WRITE_ERROR,403);
     if (!(write?canWrite:canRead)(profile,kind)) throw problem('Your Pulse HR permissions do not allow this operation',403);
   }
+  /* The employee of a transfer: an HR-joined employee (uuid) or an Employee Master register line ("reg:<uuid>", owner 23 Nov 2026).
+     From location, employee ID and name always come from that record, never from the form. */
+  async function transferEmployee(db,input,existing){
+    const picked=String(input.employeeId||'');let employeeId=picked,registerId=String(input.registerId||''),site='',empCode='',employeeName='';
+    if(picked.startsWith('reg:')){registerId=picked.slice(4);employeeId='';}
+    if(employeeId){
+      if(!uuid(employeeId))throw problem('Employee: choose an existing record');
+      const e=(await db.query("SELECT code,name,data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[employeeId])).rows[0];
+      site=e?.site||'';empCode=e?.code||'';employeeName=e?.name||'';registerId='';
+    }else if(registerId){
+      if(!uuid(registerId))throw problem('Employee: choose an existing record');
+      const r=(await db.query("SELECT site_id::text AS site,name,data->>'employeeId' AS code FROM hr_employee_master_register WHERE id=$1",[registerId])).rows[0];
+      if(!r)throw problem('This employee is no longer in Employee Master',404);
+      site=r.site||'';empCode=r.code||'';employeeName=r.name||'';
+    }
+    const next={...input,employeeId,registerId,empCode,employeeName,fromSiteId:site||input.fromSiteId};
+    return {...next,code:await nextRequestCode(db,'employeeTransfers',existing?.code,next)};
+  }
   async function locationAccess(db,profile,kind,data,id){
     const ids=await siteIds(db,profile);if(ids===null)return;
     let site=data.siteId;
     if(kind==='holidays'&&site&&!ids.includes(site))site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND (code=$1 OR name=$1)",[site])).rows.find(r=>ids.includes(r.id))?.id;
     if(kind==='sites')site=id;
-    if(['assetEmployees','assetAllocationLog','assetExitClearances','employeeTransfers','outDutyRequests','gatePasses'].includes(kind)||employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
+    if(kind==='employeeTransfers'&&!data.employeeId)site=data.fromSiteId;
+    else if(['assetEmployees','assetAllocationLog','assetExitClearances','employeeTransfers','outDutyRequests','gatePasses'].includes(kind)||employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
     if(!Object.hasOwn(managementModules,kind)&&![...complianceKinds,'calendarEvents','assetEmployees','assetAllocationLog','assetExitClearances','assets','employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers','outDutyRequests','gatePasses'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
     if(!ids.includes(site))throw problem('This record is outside your assigned Pulse site',403);
   }
@@ -123,7 +142,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     if(kind==='outDutyRequests')input={...input,code:await nextRequestCode(db,kind,existing?.code,input)};
     if(kind==='gatePasses')input={...input,code:await nextRequestCode(db,kind,existing?.code,input)};
     /* A transfer always starts from the employee's current posting: From location is read from Employee Master, never typed. */
-    if(kind==='employeeTransfers'){const current=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[input.employeeId])).rows[0]?.site;input={...input,fromSiteId:current||input.fromSiteId,code:await nextRequestCode(db,kind,existing?.code,input)};}
+    if(kind==='employeeTransfers')input=await transferEmployee(db,input,existing);
     data=validate(kind,input);
     await locationAccess(db,profile,kind,data,id);
     await references(db,kind,data,id);
@@ -247,6 +266,16 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     /* Read-only: the employee details a leave / OD form fills in, and the approval route it would take. Nothing is saved. */
     async requestPreview(profile,params) {
       const kind=params.get('kind')||'',employeeId=params.get('employeeId')||'';
+      if(kind==='employeeTransfers'&&employeeId.startsWith('reg:')){
+        authorize(profile,kind);
+        const id=employeeId.slice(4);if(!uuid(id))throw problem('Invalid request preview');
+        const ids=await siteIds(pool,profile),r=(await pool.query("SELECT site_id::text AS site,name,data FROM hr_employee_master_register WHERE id=$1",[id])).rows[0];
+        if(!r||(ids!==null&&!ids.map(String).includes(r.site)))throw problem('Employee not found',404);
+        let route=null,routeNote='';
+        try{const steps=(await transferWorkflow(pool,r.site))?.data?.steps;if(steps?.length)route=steps.map(s=>stepLabel(s.label));else routeNote='Transfer routing is not switched on. Set it in Approval Master › Employee Transfer.';}catch(e){routeNote=e.message||'The approval route is not configured for this site yet.';}
+        const d=r.data||{};
+        return {employee:{name:r.name,companyId:'',siteId:r.site,department:String(d.department||''),designation:String(d.designation||''),reportingTo:String(d.reportingTo||'')},route,routeNote,missing:[]};
+      }
       if(!['leaveRequests','outDutyRequests','gatePasses','employeeTransfers'].includes(kind)||!uuid(employeeId))throw problem('Invalid request preview');
       authorize(profile,kind);
       const employee=(await pool.query("SELECT r.id,r.name,r.data FROM hr_records r WHERE r.id=$1 AND r.kind='employees' AND "+scopeSql('r','$2','$3'),[employeeId,await siteIds(pool,profile),profile.actor])).rows[0];
