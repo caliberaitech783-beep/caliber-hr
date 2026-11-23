@@ -3,7 +3,7 @@ import {useEffect,useId,useState} from 'react';
 type Props={
   label:string;
   value:string;
-  options:{label:string;value:string}[];
+  options:{label:string;value:string;employeeCode?:string}[];
   placeholder:string;
   disabled:boolean;
   required?:boolean;
@@ -17,8 +17,14 @@ export default function TransferPicker({label,value,options,placeholder,disabled
   const [active,setActive]=useState(-1);
   const open=query!==null&&!disabled;
   const selected=options.find(option=>option.value===value)?.label||savedLabel||'';
-  const terms=(query||'').toLowerCase().trim().split(/\s+/);
-  const matches=open?options.filter(option=>terms.every(term=>option.label.toLowerCase().includes(term))):[];
+  const search=(query||'').toLowerCase().trim();
+  const terms=search.split(/\s+/);
+  const exactEmployees=open&&search?options.filter(({employeeCode})=>{
+    if(!employeeCode)return false;
+    const code=employeeCode.toLowerCase();
+    return code===search||(/^\d+$/.test(search)&&code.match(/\d+$/)?.[0].replace(/^0+(?=\d)/,'')===search.replace(/^0+(?=\d)/,''));
+  }):[];
+  const matches=exactEmployees.length?exactEmployees:open?options.filter(option=>terms.every(term=>option.label.toLowerCase().includes(term))):[];
   const activeId=open&&matches[active]?`${id}-${active}`:undefined;
   useEffect(()=>{if(activeId)document.getElementById(activeId)?.scrollIntoView?.({block:'nearest'});},[activeId]);
   const close=()=>{setQuery(null);setActive(-1);};

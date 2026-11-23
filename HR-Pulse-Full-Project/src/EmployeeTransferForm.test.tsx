@@ -21,7 +21,13 @@ function pick(label:string,query:string,option:string){
 it('transfer form lists the site employees, fills the current posting and offers designation and manager dropdowns',async()=>{
  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
   if(url.includes('request-preview'))return new Response(JSON.stringify({employee:{name:'Ankit Tiwari',companyId:'c',siteId:'home',department:'Operations',designation:'Operator',reportingTo:'R. Sharma – Manager'},route:['Site HR (from location)','PM (from location)','Office HR','Regional HR Head','Director'],routeNote:''}));
-  if(url.includes('transfer-options'))return new Response(JSON.stringify({employees:url.includes('fromSiteId=home')?[{value:'employee',label:'CMLL00502 · Ankit Tiwari'},{value:'e2',label:'CMLL00031 · Ravi Kumar'},{value:'reg:r5',label:'CMLL00440 · Register Only'}]:[],designations:['Operator','Supervisor'],fromManagers:[{label:'CMLL00005 · R. Sharma – Manager',value:'CMLL00005 · R. Sharma'}],toManagers:url.includes('toSiteId=far')?[{label:'CMLL00099 · P. Rao – Project Manager',value:'CMLL00099 · P. Rao'}]:[]}));
+  if(url.includes('transfer-options'))return new Response(JSON.stringify({employees:url.includes('fromSiteId=home')?[
+   {value:'employee',code:'CMLL00502',label:'CMLL00502 · Ankit Tiwari'},
+   {value:'e2',code:'CMLL00031',label:'CMLL00031 · Ravi Kumar'},
+   {value:'reg:r5',code:'CMLL00440',label:'CMLL00440 · Register Only'},
+   {value:'reg:r6',code:'CMLL6665',label:'CMLL6665 · Mohammad Aabid Sheikh'},
+   {value:'reg:r7',code:'CMLL16665',label:'CMLL16665 · Ashif Raja'}
+  ]:[],designations:['Operator','Supervisor'],fromManagers:[{label:'CMLL00005 · R. Sharma – Manager',value:'CMLL00005 · R. Sharma'}],toManagers:url.includes('toSiteId=far')?[{label:'CMLL00099 · P. Rao – Project Manager',value:'CMLL00099 · P. Rao'}]:[]}));
   return new Response(JSON.stringify(url.endsWith('/lookups')?lookups:{rows:[],total:0,page:1,pageSize:50}));
  }));
  render(<Records grant="t" kind="employeeTransfers" module={transferModule} notice={()=>{}} actionLabel="Create transfer"/>);
@@ -37,6 +43,11 @@ it('transfer form lists the site employees, fills the current posting and offers
  const staff=search('Employee','');
  expect(staff.getByText('CMLL00440 · Register Only')).toBeTruthy();
  expect(staff.queryByText('CMLL00077 · Pauni Person')).toBeNull();
+ fireEvent.change(employee,{target:{value:'665'}});
+ expect(staff.getAllByRole('option')).toHaveLength(2);
+ fireEvent.change(employee,{target:{value:'6665'}});
+ expect(staff.getAllByRole('option')).toHaveLength(1);
+ expect(staff.getByText('CMLL6665 · Mohammad Aabid Sheikh')).toBeTruthy();
  fireEvent.change(employee,{target:{value:'502'}});
  expect(staff.getAllByRole('option')).toHaveLength(1);
  expect(staff.getByText('CMLL00502 · Ankit Tiwari')).toBeTruthy();

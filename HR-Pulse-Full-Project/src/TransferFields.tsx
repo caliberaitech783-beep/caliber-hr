@@ -12,7 +12,7 @@ import TransferPicker from './TransferPicker';
 export const transferFieldKeys=['fromSiteId','employeeId','toSiteId','fromDesignation','toDesignation','fromManager','toManager'];
 type Data=Record<string,string|number>;
 type Option={label:string;value:string};
-type Options={employees?:Option[];staff?:{register:number;joined:number;inScope:boolean};designations:string[];fromManagers:Option[];toManagers:Option[]};
+type Options={employees?:(Option&{code:string})[];staff?:{register:number;joined:number;inScope:boolean};designations:string[];fromManagers:Option[];toManagers:Option[]};
 type Props={grant:string;field:Field;data:Data;setData:(f:(d:Data)=>Data)=>void;lookups:Lookup[];disabled:boolean};
 const OTHER='__other__';
 const cache=new Map<string,Promise<Options>>();
@@ -78,7 +78,7 @@ export default function TransferField({grant,field,data,setData,lookups,disabled
       staff.length?'Search by employee ID or name…':'No employees with an ID are available at this site';
     const savedLabel=value?[data.empCode,data.employeeName||lookups.find(x=>x.id===value)?.name||'Saved employee'].filter(Boolean).join(' · '):undefined;
     return <TransferPicker key={fromSiteId} {...picker} disabled={disabled||!fromSiteId||!staff.length}
-      options={staff} placeholder={placeholder} savedLabel={savedLabel}/>;
+      options={staff.map(employee=>({...employee,employeeCode:employee.code}))} placeholder={placeholder} savedLabel={savedLabel}/>;
   }
   if(key==='toSiteId')return <TransferPicker {...picker} disabled={disabled||!data.employeeId}
     placeholder={data.employeeId?'Search sites…':'Choose the employee first'}
