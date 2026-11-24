@@ -16,11 +16,14 @@ function fakeDb({machines = [], punches = [], employeeCodes = {}} = {}) {
       for (const p of punches) seen.set(p.serial + '|' + p.id, {device_serial: p.serial, biometric_id: p.id, employee_id: links[p.serial + '|' + p.id] || employeeCodes[p.id]?.id || null, machine_name: names[p.serial + '|' + p.id] || ''});
       return {rows: [...seen.values()]};
     }
+    if (/FROM hr_employee_master_register e\s+WHERE e.id=ANY/.test(sql)) {
+      return {rows: params[1].map(id=>({...Object.values(employeeCodes).find(e=>e.id===id),site_id:'site-sasti',site_code:'WCL-SASTI',site:'Sasti OC',site_type:'',shift:'',starts:null,ends:null,daily_wage:'0'}))};
+    }
     if (/FROM hr_attendance_links l\s+JOIN hr_records e/.test(sql)) {
       return {rows: params[1].map(id=>id==='emp-1'?{id: 'emp-1', code: 'CMLL1021', name: 'Ramesh Kumar', site_id: 'other-site', site: 'Gevra', site_type: 'Site', shift: 'A', starts: '06:00', ends: '14:00', designation: 'Dumper operator', department: 'Operations', daily_wage: '800'}:
        {...Object.values(employeeCodes).find(e=>e.id===id),site_id:'site-sasti',site:'Sasti OC',site_type:'Site',shift:'A',starts:'06:00',ends:'14:00',daily_wage:'800'})};
     }
-    if (/SELECT l.employee_id,to_char/.test(sql)) {
+    if (/SELECT (?:l.employee_id|e.id AS employee_id),to_char/.test(sql)) {
       assert.deepEqual(params[3], machines.map(machine=>machine.serial));
       return {rows: punches.filter(p => links[p.serial + '|' + p.id]||employeeCodes[p.id]).map(p => ({employee_id: links[p.serial + '|' + p.id]||employeeCodes[p.id].id, at: p.at, place: place[p.serial]}))};
     }
@@ -65,4 +68,5 @@ test('manual biometric treats the imported value as employee code and shows the 
  const employee=result.rows[0];
  assert.deepEqual([employee.code,employee.name,employee.department,employee.designation,employee.linked],['CMLL17416','Anil Kumar','Operations','Driver',true]);
  assert.deepEqual(employee.machinesUsed,['JNP2242101100']);
+ assert.ok(db.calls.some(sql=>/THEN 'CMLL'\|\|btrim\(p\.biometric_id\)/.test(sql)));
 });
