@@ -11,13 +11,20 @@
 import {keyMatches} from './attendance.mjs';
 
 export const MIS_PUNCH_MAX_DAYS=31;
-export const MIS_PUNCH_MAX_ROWS=400_000;
+// Raised from 400,000 (24 Nov 2026): with the Manual Biometric logs of every site, 20 days can pass 400,000 punches.
+export const MIS_PUNCH_MAX_ROWS=1_000_000;
 const DAY=86_400_000;
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const text=value=>value===null||value===undefined?'':String(value).trim();
 const validDay=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(Date.parse(value)).toISOString().slice(0,10)===value;
 
-export const MIS_PUNCHES_SQL=`SELECT coalesce(e.code,'') AS code,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+// Owner, 24 Nov 2026: the Manual Biometric logs HR imports for a site (Attendance roster › Manual Biometric,
+// hr_manual_biometric_punches) are sent too, so Pulse-II's Caliber Punch Re-check sees the attendance of every site whose
+// logs reach HR, not only the machines that push live. HR's own Manual Biometric roster reads the machine user ID there
+// as the employee number, so its code is '' and Pulse-II does the same. A punch in both tables comes twice and Pulse-II
+// reads the repeat as one punch.
+export const MIS_PUNCHES_SQL=`SELECT code,biometric_id,at,site,punch_type FROM (
+ SELECT coalesce(e.code,'') AS code,p.biometric_id,p.punched_at,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
   coalesce(s.name,'') AS site,p.punch_type
  FROM hr_attendance_punches p
  LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
@@ -25,7 +32,15 @@ export const MIS_PUNCHES_SQL=`SELECT coalesce(e.code,'') AS code,p.biometric_id,
  LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
  LEFT JOIN hr_records s ON s.id=d.site_id AND s.kind='sites'
  WHERE p.punched_at>=$1::date AND p.punched_at<$2::date+2
- ORDER BY p.punched_at
+ UNION ALL
+ SELECT '' AS code,m.biometric_id,m.punched_at,to_char(m.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+  coalesce(s.name,'') AS site,m.punch_type
+ FROM hr_manual_biometric_punches m
+ LEFT JOIN hr_attendance_devices d ON d.serial=m.device_serial
+ LEFT JOIN hr_records s ON s.id=d.site_id AND s.kind='sites'
+ WHERE m.punched_at>=$1::date AND m.punched_at<$2::date+2
+) punches
+ ORDER BY punched_at
  LIMIT ${MIS_PUNCH_MAX_ROWS+1}`;
 
 export function readPunchRange({from,to}={}){

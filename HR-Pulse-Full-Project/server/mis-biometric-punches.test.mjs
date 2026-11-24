@@ -28,6 +28,9 @@ test('only Pulse-II\'s key reads, and the morning after the last date is include
  const answer=await api.misBiometricPunches(KEY,{from:'2026-11-01',to:'2026-11-02'});
  assert.deepEqual(asked[0].params,['2026-11-01','2026-11-02']);
  assert.match(MIS_PUNCHES_SQL,/punched_at<\$2::date\+2/);
+ // The Manual Biometric logs HR imports go to Pulse-II too (owner, 24 Nov 2026), for the same dates.
+ assert.match(MIS_PUNCHES_SQL,/FROM hr_attendance_punches p/);
+ assert.match(MIS_PUNCHES_SQL,/UNION ALL[\s\S]*FROM hr_manual_biometric_punches m[\s\S]*m\.punched_at>=\$1::date AND m\.punched_at<\$2::date\+2/);
  assert.deepEqual(answer.punches,[['CMLL1','1','2026-11-02 06:00',0,'0']]);
  assert.deepEqual(answer.sites,['Sasti OC']);
 });
