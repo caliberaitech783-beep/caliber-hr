@@ -169,13 +169,13 @@ export async function readSavedManualBiometric(grant: string, site: string, from
   const result = await api<{days?: SavedBioDay[]}>(grant, 'attendance/manual-biometric-days?' + new URLSearchParams({site, from, to}));
   return (Array.isArray(result?.days) ? result.days : []).filter(d => d?.register && typeof d.register === 'object');
 }
-export async function saveManualBiometricDays(grant: string, site: string, days: string[], onDay: (day: string, info: (SavedInfo & {punches: number}) | null, error?: string) => void) {
+export async function saveManualBiometricDays(grant: string, site: string, days: string[], onDay: (day: string, info: (SavedInfo & {punches: number; people: number}) | null, error?: string) => void) {
   let next = 0;
   const failed: string[] = [];
   async function worker() {
     while (next < days.length) {
       const day = days[next++];
-      try { onDay(day, await api<SavedInfo & {day: string; punches: number}>(grant, 'attendance/manual-biometric-days', 'POST', {site, day})); }
+      try { onDay(day, await api<SavedInfo & {day: string; punches: number; people: number}>(grant, 'attendance/manual-biometric-days', 'POST', {site, day})); }
       catch (e) { failed.push(day); onDay(day, null, (e as Error).message); }
     }
   }
