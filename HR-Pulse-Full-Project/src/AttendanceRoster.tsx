@@ -291,6 +291,20 @@ export function applyDay(stream:TripStream,u:DayUpdate):TripStream{
 }
 const idle={key:'',status:'idle' as const,message:'',data:null};
 
+function useElapsedLoad(running:boolean,token:string){
+ const started=useRef<number|null>(null),[elapsed,setElapsed]=useState<number|null>(null),[complete,setComplete]=useState(false);
+ useEffect(()=>{started.current=null;setElapsed(null);setComplete(false);},[token]);
+ useEffect(()=>{
+  if(running){
+   if(started.current===null){started.current=performance.now();setComplete(false);setElapsed(0);}
+   const tick=()=>setElapsed(performance.now()-(started.current??performance.now()));tick();
+   const timer=window.setInterval(tick,100);return()=>window.clearInterval(timer);
+  }
+  if(started.current!==null){setElapsed(performance.now()-started.current);started.current=null;setComplete(true);}
+ },[running,token]);
+ return {elapsed,complete};
+}
+
 /** Attendance roster page: site, dates, department and employee first; then the Trip card, Biometric or comparison tab. */
 export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onManageMachines?:()=>void}){
  const today=india();
@@ -479,6 +493,8 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const bioError=manualView&&manual.status==='error'?manual.message:!bioRunning&&bioTotal>0&&bioFailed.length===bioTotal?bio.errors[bioFailed[0]]||'HR did not answer':'';
  const choose=(next:RosterView)=>{setView(next);setEmployee('');};
  const busy=tripState.status==='loading'||(manualView?manual.status==='loading':view!=='trip'&&bioRunning);
+ const loadTimer=useElapsedLoad(busy,[view,site,from,to,reload,bioReload,manualReload].join('|'));
+ const elapsedSeconds=loadTimer.elapsed===null?'':(loadTimer.elapsed/1000).toFixed(1);
 
  return <section className="data-card attendance-register attendance-roster" aria-label="Attendance roster">
   <h2>Attendance roster</h2>
@@ -494,6 +510,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   {sites&&!sites.length&&!lookupError&&<p className="error" role="alert">No site is assigned to your login.</p>}
   {rangeError&&<p className="error" role="alert">{rangeError}</p>}
   <div className="module-tabs roster-tabs" aria-label="Roster source">{VIEW_TABS.map(([id,label])=><button key={id} type="button" className={view===id?'selected':''} aria-pressed={view===id} disabled={!site} title={site?undefined:'Select a site first'} onClick={()=>choose(id)}>{label}</button>)}</div>
+  {view&&loadTimer.elapsed!==null&&<div className={'roster-load-timer'+(busy?' loading':' complete')} role="status" aria-live="polite"><RefreshCw className={busy?'spin':''}/><strong>{busy?'Loading data…':'Data loaded.'}</strong><span>Time taken: {elapsedSeconds} sec.</span></div>}
   {!site?<p className="roster-hint">Select a site first.</p>:!view?<p className="roster-hint">Press <b>Trip card</b> to fetch from MIS, or <b>Biometric</b> to fetch the machine punches, for {site} · {show(from)} to {show(to)}.</p>:
    ready&&<>{view!=='trip'&&bioError&&<p className="error" role="alert">Biometric punches unavailable: {bioError}</p>}
    {(view==='bio'||view==='compare')&&liveBioData&&<MachinesPanel site={site} machines={liveBioData.machines} pull={pull} onPull={()=>void pullMachines(liveBioData.machines)} onManage={onManageMachines}/>}

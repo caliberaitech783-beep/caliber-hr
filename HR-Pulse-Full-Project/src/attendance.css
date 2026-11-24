@@ -138,6 +138,8 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .roster-filters select[aria-invalid="true"]{border-color:#d97706;box-shadow:0 0 0 2px #fde7c2}
 .roster-tabs{margin:6px 0 12px}
 .roster-tabs button:disabled{opacity:.55;cursor:not-allowed}
+.roster-load-timer{display:flex;align-items:center;gap:8px;width:max-content;max-width:100%;margin:-2px 0 12px;padding:8px 12px;border:1px solid #d8cde6;border-radius:9px;background:#f8f4fc;color:#5c4d6e;font-size:12.5px;font-variant-numeric:tabular-nums}
+.roster-load-timer svg{width:15px;height:15px}.roster-load-timer strong{color:#3c2a55}.roster-load-timer.complete{border-color:#bfe3cc;background:#edf8f1;color:#1f6b3d}.roster-load-timer.complete strong{color:#1f6b3d}
 .roster-hint{margin:14px 0;padding:14px 16px;border:1px dashed #d8cde6;border-radius:10px;background:#fcfbfe;color:#5c4d6e;font-size:14px}
 .roster-warn{margin:0 0 10px;padding:9px 12px;border:1px solid #f0c674;border-radius:8px;background:#fff7e6;color:#7a4b00;font-size:13px}
 /* Trip card tab: each date heading shows whether that day is still being read from MIS */
