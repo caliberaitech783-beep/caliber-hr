@@ -134,7 +134,7 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  expect(within(roster).getAllByText('17:00').length).toBeGreaterThan(0);
  expect(within(roster).getByText('Not linked')).toBeTruthy();
  expect(within(roster).getByText('RAMU (machine)')).toBeTruthy();
- expect(screen.getByText(/1 machine ID punched at Gevra but is not linked/)).toBeTruthy();
+ expect(screen.queryByText(/machine ID punched at Gevra but is not linked/)).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Upload machine log'}));
  const upload=screen.getByRole('dialog',{name:'Upload machine log · Gevra'});
  expect(within(upload).getByLabelText('Machine log files')).toBeTruthy();
