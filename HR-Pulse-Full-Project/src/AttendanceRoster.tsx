@@ -253,7 +253,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const key=[site,from,to,reload].join('|');
  // The Trip card tab also reads the HR employee details (department, designation, leave and holidays) from the register;
  // its day codes still come only from MIS.
- const wantTrip=ready&&(view==='trip'||view==='compare'),wantBio=ready&&(view==='bio'||view==='compare');
+ const wantTrip=ready&&(view==='trip'||view==='compare'),wantBio=ready&&Boolean(view)&&view!=='manual';
  useEffect(()=>{
   if(!wantTrip||trip.key===key)return;
   setTrip({...noStream,key});
