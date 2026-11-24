@@ -1,9 +1,9 @@
 import {Fragment,useEffect,useMemo,useRef,useState,type Dispatch,type SetStateAction} from 'react';
-import {ArrowDown,ArrowUp,ChevronDown,Download,Filter,Printer,RefreshCw,Save,Search,X,Upload} from 'lucide-react';
+import {ArrowDown,ArrowUp,ChevronDown,Download,Filter,Lock,Printer,RefreshCw,Save,Search,X,Upload} from 'lucide-react';
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo} from './rosterData';
+import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo} from './rosterData';
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 import MachineLogUpload from './MachineLogUpload';
@@ -178,14 +178,14 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
   {!biometricView&&trip.status==='ready'&&!(trip.rows||[]).length&&(trip.misSites?.length||0)>0&&<p className="roster-warn" role="alert">MIS has trip cards in these dates for {trip.misSites!.join(', ')}, but none for this site. If one of them is this site, its name is written differently in HR and MIS.</p>}
   {!biometricView&&trip.savedNote&&<p className="roster-saved" role="status">{trip.savedNote}</p>}
   {!biometricView&&trip.saveError&&<p className="roster-warn" role="alert">{trip.saveError}</p>}
-  {view==='bio'&&bio?.savedNote&&<p className="roster-saved" role="status">{bio.savedNote}</p>}
-  {view==='bio'&&bio?.saveError&&<p className="roster-warn" role="alert">{bio.saveError}</p>}
+  {biometricView&&bio?.savedNote&&<p className="roster-saved" role="status">{bio.savedNote}</p>}
+  {biometricView&&bio?.saveError&&<p className="roster-warn" role="alert">{bio.saveError}</p>}
   <div className="roster-bar">
    {compare&&<label className="roster-check"><input type="checkbox" checked={onlyDiff} onChange={e=>setOnlyDiff(e.target.checked)}/>Only employees with a difference</label>}
    <span role="status">{status}</span>
    {view!=='trip'&&<span className="roster-seg" role="group" aria-label="Day boxes"><button type="button" aria-pressed={!times} onClick={()=>setTimes(false)}>Codes only</button><button type="button" aria-pressed={times} onClick={()=>setTimes(true)}>Codes + In / Out</button></span>}
    {!biometricView&&trip.onSave&&<button type="button" className="roster-save" disabled={!trip.canSave} onClick={trip.onSave}><Save/>{trip.saveLabel||'Save trip cards'}</button>}
-   {view==='bio'&&bio?.onSave&&<button type="button" className="roster-save" disabled={!bio.canSave} onClick={bio.onSave}><Save/>{bio.saveLabel||'Save biometric'}</button>}
+   {biometricView&&bio?.onSave&&<button type="button" className="roster-save" disabled={!bio.canSave} onClick={bio.onSave}>{bio.saveLabel==='Saved'?<Lock/>:<Save/>}{bio.saveLabel||'Save biometric'}</button>}
    {biometricView&&onImport&&<div className="roster-export roster-import">
     <button type="button" onClick={onImport}><Upload/>{view==='manual'?'Import attendance log':'Upload machine log'}</button>
    </div>}
@@ -313,6 +313,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const [department,setDepartment]=useState(''),[employee,setEmployee]=useState('');
  const [view,setView]=useState<RosterView|''>('');
  const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<BioStream>(noBio),[manual,setManual]=useState<Source<SiteRegister>>(idle);
+ const [manualSaved,setManualSaved]=useState<{key:string;days:Record<string,SavedInfo>}>({key:'',days:{}}),[manualSave,setManualSave]=useState<{running:boolean;done:number;total:number;failed:string[];error:string}|null>(null);
  const bioRef=useRef('');
  const [pull,setPull]=useState<{running:boolean;message:string;error:string}|null>(null),[bioReload,setBioReload]=useState(0);
  const [uploading,setUploading]=useState<''|'bio'|'manual'>(''),[importNote,setImportNote]=useState(''),[manualReload,setManualReload]=useState(0);
@@ -392,9 +393,9 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    .finally(()=>setBio(b=>b.key===runKey?{...b,runs:b.runs-1}:b));
  },[wantBio,bioKey]); // eslint-disable-line react-hooks/exhaustive-deps
  useEffect(()=>{if(bioRef.current&&bioRef.current!==bioKey)bioRef.current='';},[bioKey]);
- const manualKey=[site,from,to,manualReload].join('|');
+ const manualSaveKey=[site,from,to].join('|'),manualKey=[manualSaveKey,manualReload].join('|');
  useEffect(()=>{if(!ready||(view!=='manual'&&view!=='manualMismatch')||manual.key===manualKey)return;let live=true;setManual({key:manualKey,status:'loading',message:'Reading imported biometric attendance…',data:null});
-  fetchManualBiometric(grant,from,to,site).then(data=>{if(live)setManual({key:manualKey,status:'ready',message:'Manual biometric attendance',data});}).catch(e=>{if(live)setManual({key:manualKey,status:'error',message:(e as Error).message,data:null});});
+  Promise.all([fetchManualBiometric(grant,from,to,site),readSavedManualBiometric(grant,site,from,to)]).then(([data,saved])=>{if(live){setManual({key:manualKey,status:'ready',message:'Manual biometric attendance',data});setManualSaved({key:manualSaveKey,days:Object.fromEntries(saved.map(day=>[day.day,{savedBy:day.savedBy,savedAt:day.savedAt}]))});setManualSave(null);}}).catch(e=>{if(live)setManual({key:manualKey,status:'error',message:(e as Error).message,data:null});});
   return()=>{live=false;};
  },[ready,view,manualKey,grant,from,to,site]); // manual.key is intentionally excluded: setting the loading state must not cancel this request.
  function readBio(list:string[]){
@@ -413,6 +414,16 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    const save={...b.save,done:b.save.done+1,failed:info?b.save.failed:[...b.save.failed,day],error:b.save.error||error||''};
    return info?{...b,save,saved:{...b.saved,[day]:{savedBy:info.savedBy,savedAt:info.savedAt}},fresh:(b.fresh||[]).filter(d=>d!==day)}:{...b,save};
   })).finally(()=>setBio(b=>b.key===runKey&&b.save?{...b,save:{...b.save,running:false}}:b));
+ }
+ function saveManual(){
+  const saved=manualSaved.key===manualSaveKey?manualSaved.days:{};
+  const list=datesBetween(from,to).filter(day=>day<today&&!saved[day]&&manual.data?.rows.some(row=>row.days.some(entry=>entry.date===day&&Boolean(entry.punches?.length))));
+  if(!list.length)return;
+  const runKey=manualSaveKey;setManualSave({running:true,done:0,total:list.length,failed:[],error:''});
+  void saveManualBiometricDays(grant,site,list,(day,info,error)=>{
+   if(info)setManualSaved(current=>current.key===runKey?{...current,days:{...current.days,[day]:{savedBy:info.savedBy,savedAt:info.savedAt}}}:current);
+   setManualSave(current=>current?{...current,done:current.done+1,failed:info?current.failed:[...current.failed,day],error:current.error||error||''}:current);
+  }).finally(()=>setManualSave(current=>current?{...current,running:false}:current));
  }
  /** Fetch from these machines: the bridge PC reads each machine of the site in turn, then the roster is read again. */
  async function pullMachines(machines:SiteMachine[]){
@@ -487,7 +498,13 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  bioState.savedNote=bioSaved.length?`Saved biometric logs: ${bioSaved.length} of ${pastDays} day${pastDays===1?'':'s'} (last saved ${bioLatest?when(bioLatest.savedAt):''}${bioLatest?.savedBy?' by '+bioLatest.savedBy:''}).`+
   (bioFresh.length?` ${bioFresh.length} day${bioFresh.length===1?'':'s'} read from the punches ${bioFresh.length===1?'is':'are'} not saved yet.`:' Today is always read live; press Fetch again to read every day from the punches.'):'';
  bioState.saveError=bioSave&&!bioSave.running&&bioSave.failed.length?`Could not save ${bioSave.failed.map(show).join(', ')}: ${bioSave.error}`:'';
- const manualState:BioState={running:manual.status==='loading',message:manual.status==='ready'?'Imported biometric attendance':'Reading imported biometric attendance…',days:{},counts:{},errors:{},failed:[]};
+ const currentManualSaved=manualSaved.key===manualSaveKey?manualSaved.days:{},manualSavedDays=Object.entries(currentManualSaved),manualLogDays=dates.filter(day=>manual.data?.rows.some(row=>row.days.some(entry=>entry.date===day&&Boolean(entry.punches?.length)))),manualUnsaved=manualLogDays.filter(day=>day<today&&!currentManualSaved[day]);
+ const manualLatest=manualSavedDays.map(([,info])=>info).sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)))[0];
+ const manualState:BioState={running:manual.status==='loading',message:manual.status==='ready'?'Imported biometric attendance':'Reading imported biometric attendance…',days:{},counts:{},errors:{},failed:[],onSave:saveManual,
+  saved:currentManualSaved,canSave:manual.status==='ready'&&!manualSave?.running&&manualUnsaved.length>0,
+  saveLabel:manualSave?.running?`Saving ${manualSave.done} of ${manualSave.total} days…`:manualUnsaved.length?`Save manual biometric (${manualUnsaved.length} day${manualUnsaved.length===1?'':'s'})`:manualSavedDays.length?'Saved':'Save manual biometric',
+  savedNote:manualSavedDays.length?`Saved and locked: ${manualSavedDays.length} day${manualSavedDays.length===1?'':'s'} for ${site} (last saved ${manualLatest?when(manualLatest.savedAt):''}${manualLatest?.savedBy?' by '+manualLatest.savedBy:''}). Saved logs cannot be edited or replaced.`:'',
+  saveError:manualSave&&!manualSave.running&&manualSave.failed.length?`Could not save ${manualSave.failed.map(show).join(', ')}: ${manualSave.error}`:''};
  const shownBioState=manualView?manualState:bioState;
  const bioLoading=manualView?manual.status==='loading':view!=='trip'&&bioRunning&&!bioData;
  const bioError=manualView&&manual.status==='error'?manual.message:!bioRunning&&bioTotal>0&&bioFailed.length===bioTotal?bio.errors[bioFailed[0]]||'HR did not answer':'';
@@ -517,7 +534,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    {(view==='bio'||view==='manual')&&importNote&&<p className="roster-saved" role="status">{importNote}</p>}
    {uploading&&<MachineLogUpload grant={grant} site={site} onClose={()=>setUploading('')} onImported={imported} onManageMachines={onManageMachines} importPath={uploading==='manual'?'attendance/manual-biometric/import':undefined} title={uploading==='manual'?'Import manual biometric attendance':undefined}/>}
    <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} bio={shownBioState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} loading={bioLoading||(view==='manualMismatch'&&tripState.status==='loading')} error={view!=='trip'?bioError:''}
-    onImport={view==='bio'||view==='manual'?()=>{setImportNote('');setUploading(view);}:undefined}
+    onImport={view==='bio'||(view==='manual'&&!dates.every(day=>Boolean(currentManualSaved[day])))?()=>{setImportNote('');setUploading(view as 'bio'|'manual');}:undefined}
     emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):view==='manual'?`No manual biometric attendance imported for ${site} in these dates.`:undefined}/></>}
  </section>;
 }

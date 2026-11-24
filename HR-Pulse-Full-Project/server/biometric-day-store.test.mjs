@@ -2,15 +2,16 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createBiometricDayStore} from './biometric-day-store.mjs';
 
-function fakePool({sites = ['Sasti OC']} = {}) {
+function fakePool({sites = ['Sasti OC'], manual = false} = {}) {
   const saved = new Map(), audit = [];
   return {saved, audit, async query(sql, params = []) {
     if (/FROM hr_records WHERE kind='sites'/.test(sql)) return {rows: sites.includes(params[0]) ? [{id: 'site-1', name: params[0], site_type: 'Site'}] : []};
-    if (/INSERT INTO hr_biometric_days/.test(sql)) {
-      saved.set(params[0] + '|' + params[1], {day: params[1], register: JSON.parse(params[2]), punches: params[3], people: params[4], saved_by: params[5], saved_at: '2026-11-23T08:00:00Z'});
-      return {rows: [{day: params[1], punches: params[3], people: params[4], saved_by: params[5], saved_at: '2026-11-23T08:00:00Z'}]};
+    if (new RegExp(`INSERT INTO hr_${manual?'manual_':''}biometric_days`).test(sql)) {
+      const key=params[0] + '|' + params[1], existing=saved.get(key);
+      if(!existing||!manual)saved.set(key, {day: params[1], register: JSON.parse(params[2]), punches: params[3], people: params[4], saved_by: params[5], saved_at: '2026-11-23T08:00:00Z'});
+      const row=saved.get(key);return {rows: [{day: row.day, punches: row.punches, people: row.people, saved_by: row.saved_by, saved_at: row.saved_at}]};
     }
-    if (/FROM hr_biometric_days/.test(sql)) return {rows: [...saved.entries()].filter(([k]) => k.startsWith(params[0] + '|')).map(([, v]) => v).filter(v => v.day >= params[1] && v.day <= params[2])};
+    if (new RegExp(`FROM hr_${manual?'manual_':''}biometric_days`).test(sql)) return {rows: [...saved.entries()].filter(([k]) => k.startsWith(params[0] + '|')).map(([, v]) => v).filter(v => v.day >= params[1] && v.day <= params[2])};
     if (/INSERT INTO hr_audit/.test(sql)) { audit.push(params); return {rows: []}; }
     throw new Error('Unexpected SQL ' + sql);
   }};
@@ -29,6 +30,15 @@ test('saves a day of biometric logs built by the server and reads saved days bac
   assert.equal(read.days.length, 1);
   assert.equal(read.days[0].register.rows[0].name, 'Ram', 'the saved copy is the server register, not what the browser sent');
   assert.equal(pool.audit.length, 1);
+});
+
+test('manual biometric save is immutable for the same site and day', async () => {
+  const pool=fakePool({manual:true});let version=0;
+  const store=createBiometricDayStore(pool,{manual:true,today:()=> '2026-11-23',load:async (_site,day)=>({...register(day),machines:[{serial:'JNP1',punches:++version}]})});
+  const first=await store(hr,'POST',{site:'Sasti OC',day:'2026-11-02'},null,null);
+  const second=await store(hr,'POST',{site:'Sasti OC',day:'2026-11-02'},null,null);
+  assert.equal(first.punches,1);assert.equal(second.punches,1,'a saved manual day remains frozen');
+  assert.equal(pool.audit[1][1],'SAVE_MANUAL_BIOMETRIC_DAY');
 });
 
 test('refuses today, another site, a bad day and too many days', async () => {

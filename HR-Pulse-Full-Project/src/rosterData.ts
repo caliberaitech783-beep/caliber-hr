@@ -164,6 +164,25 @@ export async function saveBiometricDays(grant: string, site: string, days: strin
   return failed.sort();
 }
 
+/** Manual biometric snapshots are immutable after Save; imports for those site/days are also rejected by the API. */
+export async function readSavedManualBiometric(grant: string, site: string, from: string, to: string) {
+  const result = await api<{days?: SavedBioDay[]}>(grant, 'attendance/manual-biometric-days?' + new URLSearchParams({site, from, to}));
+  return (Array.isArray(result?.days) ? result.days : []).filter(d => d?.register && typeof d.register === 'object');
+}
+export async function saveManualBiometricDays(grant: string, site: string, days: string[], onDay: (day: string, info: (SavedInfo & {punches: number}) | null, error?: string) => void) {
+  let next = 0;
+  const failed: string[] = [];
+  async function worker() {
+    while (next < days.length) {
+      const day = days[next++];
+      try { onDay(day, await api<SavedInfo & {day: string; punches: number}>(grant, 'attendance/manual-biometric-days', 'POST', {site, day})); }
+      catch (e) { failed.push(day); onDay(day, null, (e as Error).message); }
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(2, days.length)}, worker));
+  return failed.sort();
+}
+
 /* Biometric tab, day by day (owner, 22 Nov 2026: "the same way as the trip card"): the site's machines are read one day
    per request, three days at a time, each day tried three times, so the muster fills in as each day arrives. */
 export type BioDayUpdate = {day: string; state: DayState; result?: SiteRegister; error?: string; attempt?: number};

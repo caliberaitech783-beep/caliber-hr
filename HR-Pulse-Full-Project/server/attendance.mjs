@@ -111,6 +111,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
  const bridges=createBridges(pool);
  const tripCards=createTripCardStore(pool);
  const biometricDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadSiteRegister(pool,site,from,to,indiaDay()),today:indiaDay});
+ const manualBiometricDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadSiteRegister(pool,site,from,to,indiaDay(),{manual:true}),today:indiaDay,manual:true});
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
  const permit=profile=>{if(!grantedMenus(profile).has('Attendance Management'))fail('Attendance Management is not assigned to your account',403);};
@@ -213,6 +214,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   }
   const sites=await siteIds(pool,profile); // null = all sites
   if(route==='biometric-days')return biometricDays(profile,method,input,params,sites);
+  if(route==='manual-biometric-days')return manualBiometricDays(profile,method,input,params,sites);
   const findSite=async(db,siteName)=>{
    const exact=(await db.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[siteName,sites])).rows[0];
    if(exact)return exact;
@@ -266,6 +268,9 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    if(!Array.isArray(rows)||!rows.length||rows.length>MAX_PUNCHES_PER_UPLOAD)fail(`Import 1–${MAX_PUNCHES_PER_UPLOAD} biometric punches at a time.`);
    const site=await findSite(db,siteName);
    const clean=rows.map(row=>{const serial=String(row?.serial||'').trim();const upload=validateUpload({device:{serial},punches:[{biometricId:row?.biometricId,punchedAt:row?.punchedAt,verify:row?.verify,punchType:row?.punchType}],users:[]});return {serial,punch:upload.punches[0]};});
+   const days=[...new Set(clean.map(row=>row.punch.punchedAt.slice(0,10)))];
+   const locked=(await db.query('SELECT to_char(day,\'YYYY-MM-DD\') AS day FROM hr_manual_biometric_days WHERE site=$1 AND day=ANY($2::date[])',[site.name,days])).rows.map(row=>row.day);
+   if(locked.length)fail(`Manual biometric logs are saved and locked for ${locked.join(', ')}. Upload only unsaved dates.`,409);
    const serials=[...new Set(clean.map(row=>row.serial))];
    const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=$1 AND serial=ANY($2::text[])',[site.id,serials])).rows.map(row=>row.serial);
    const missing=serials.filter(serial=>!devices.includes(serial));

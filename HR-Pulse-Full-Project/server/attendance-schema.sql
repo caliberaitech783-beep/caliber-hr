@@ -146,6 +146,18 @@ CREATE TABLE IF NOT EXISTS hr_biometric_days(
  PRIMARY KEY(site,day)
 );
 
+-- Manual Biometric snapshots. A saved site/day is immutable and also blocks any later manual-log import for that day.
+CREATE TABLE IF NOT EXISTS hr_manual_biometric_days(
+ site text NOT NULL,
+ day date NOT NULL,
+ register jsonb NOT NULL,
+ punches integer NOT NULL,
+ people integer NOT NULL,
+ saved_by text NOT NULL,
+ saved_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(site,day)
+);
+
 -- Bridge PCs per site (owner, 22 Nov 2026): each site's bridge PC signs in with its own key (attendance-bridges.mjs).
 -- Only the key's SHA-256 fingerprint and last 4 letters are kept. The first bridge PC keeps ATTENDANCE_BRIDGE_KEY and
 -- is the "Main bridge PC" (bridge_id NULL on its machines and fetch requests).
