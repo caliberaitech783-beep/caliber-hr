@@ -133,6 +133,8 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  expect(within(columnFilter).getByPlaceholderText('Filter...')).toBeTruthy();
  expect(within(columnFilter).getByRole('button',{name:'All values'})).toBeTruthy();
  fireEvent.click(within(columnFilter).getByRole('button',{name:'CMPL101'}));
+ expect(within(columnFilter).getByRole('button',{name:'CMPL101'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(within(columnFilter).getByRole('button',{name:'Close'}));
  expect(within(table).getByText('Ramesh Kumar')).toBeTruthy();
  expect(within(table).queryByText('Other Site')).toBeNull();
  expect(within(table).getByText(/VLB \d/)).toBeTruthy();
@@ -150,6 +152,15 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  expect(within(roster).getAllByText('08:00').length).toBeGreaterThan(0);
  expect(within(roster).getAllByText('17:00').length).toBeGreaterThan(0);
  expect(within(roster).getByText('Not linked')).toBeTruthy();
+ expect(within(roster).getByText('RAMU (machine)')).toBeTruthy();
+ fireEvent.click(within(roster).getByRole('button',{name:'Filter Name'}));
+ const nameFilter=screen.getByRole('dialog',{name:'Name column filter'});
+ fireEvent.click(within(nameFilter).getByRole('button',{name:'Ramesh Kumar'}));
+ fireEvent.click(within(nameFilter).getByRole('button',{name:'RAMU (machine)'}));
+ expect(within(nameFilter).getByRole('button',{name:'Ramesh Kumar'})).toHaveAttribute('aria-pressed','true');
+ expect(within(nameFilter).getByRole('button',{name:'RAMU (machine)'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(within(nameFilter).getByRole('button',{name:'Close'}));
+ expect(within(roster).getByText('Ramesh Kumar')).toBeTruthy();
  expect(within(roster).getByText('RAMU (machine)')).toBeTruthy();
  expect(screen.queryByText(/machine ID punched at Gevra but is not linked/)).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Upload machine log'}));
