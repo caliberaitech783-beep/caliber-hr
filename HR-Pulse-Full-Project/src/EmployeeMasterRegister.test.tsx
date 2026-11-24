@@ -87,7 +87,7 @@ it('saves the leaving date, and shows no Remove to a login that may not remove',
   expect(sent).toEqual([{version:4,changes:{leavingDate:'2026-11-20'}}]);
 });
 
-it('prints all matching rows and the four bank columns, including records on later pages, with the current filters',async()=>{
+it('prints all matching Employee Master rows without the Bank Details-only columns',async()=>{
   const first = {id:'1',employeeId:'CMLL001',name:'First employee',site:'Sasti OB',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Sasti'};
   const last = {id:'51',employeeId:'CMLL051',name:'Later & employee',site:'Sasti OB',bankName:'BOI',ifscCode:'BKID0000001',accountNo:'00456',branch:'Nagpur'};
   const fetchMock = vi.fn(async(url:string)=>{
@@ -106,7 +106,7 @@ it('prints all matching rows and the four bank columns, including records on lat
   const open = vi.spyOn(window,'open').mockReturnValue(mockPopup as unknown as Window);
   render(<EmployeeMasterRegister grant={'a'.repeat(43)}/>);
   await screen.findByText('First employee');
-  for(const heading of ['BANK NAME','IFSC CODE','ACCOUNT NO','BRANCH'])expect(screen.getByRole('columnheader',{name:heading})).toBeVisible();
+  for(const heading of ['BANK NAME','IFSC CODE','ACCOUNT NO','BRANCH'])expect(screen.queryByRole('columnheader',{name:heading})).toBeNull();
   fireEvent.change(screen.getByLabelText('Site'),{target:{value:'WCL-SASTI'}});
   fireEvent.change(screen.getByRole('searchbox'),{target:{value:'employee'}});
   fireEvent.click(screen.getByRole('button',{name:'Search'}));
@@ -127,8 +127,8 @@ it('prints all matching rows and the four bank columns, including records on lat
   expect(new URL(url).searchParams.toString()).toBe('site=WCL-SASTI&search=employee&export=1');
   expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('Later &amp; employee'));
   expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('CMLL051'));
-  expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('BKID0000001'));
-  expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('00456'));
+  expect(documentWrite).not.toHaveBeenCalledWith(expect.stringContaining('BKID0000001'));
+  expect(documentWrite).not.toHaveBeenCalledWith(expect.stringContaining('00456'));
   expect(mockPopup.opener).toBeNull();
 });
 
@@ -167,21 +167,21 @@ it('routes Excel rows using their own sites while another site is selected and r
   expect(posts[0].rows.map(({siteCode,employeeId})=>[siteCode,employeeId])).toEqual([['WCL-GAURI','0002'],['NCL-JAYANT','0003']]);
 });
 
-it('shows a linked Bank Details report and imports its seven-column Excel form',async()=>{
+it('shows a linked Bank Details report and imports its eight-column Excel form',async()=>{
   const {utils,write}=await import('xlsx');const posts:unknown[]=[];
   vi.stubGlobal('fetch',vi.fn(async(url:string,options?:RequestInit)=>{
     if(options?.method==='POST'){posts.push(JSON.parse(String(options.body)));return Response.json({updated:1});}
-    return Response.json({rows:[{id:'1',employeeId:'CMLL123',name:'Test Employee',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}],total:1,pageSize:50,sites:[],canImport:true});
+    return Response.json({rows:[{id:'1',employeeId:'CMLL123',aFormNo:'AF-009',name:'Test Employee',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}],total:1,pageSize:50,sites:[],canImport:true});
   }));
   render(<EmployeeMasterRegister grant={'a'.repeat(43)}/>);await screen.findByText('Test Employee');
   fireEvent.click(screen.getByRole('button',{name:'Bank Details'}));
-  for(const heading of ['Serial No','EMPLOYEE ID','NAME','BANK NAME','IFSC CODE','ACCOUNT NO','BRANCH'])expect(screen.getByRole('columnheader',{name:heading})).toBeVisible();
+  expect(screen.getAllByRole('columnheader').map(header=>header.textContent)).toEqual(['Serial No','EMPLOYEE ID','A-FORM NO','NAME','BANK NAME','IFSC CODE','ACCOUNT NO','BRANCH']);
   expect(screen.queryByRole('columnheader',{name:'DETAILS'})).toBeNull();
   const book=utils.book_new();utils.book_append_sheet(book,utils.aoa_to_sheet([
-    ['Serial No','EMPLOYEE ID','NAME','BANK NAME','IFSC CODE','ACCOUNT NO','BRANCH'],[1,'CMLL123','Test Employee','SBI','SBIN0001234','00123','Nagpur'],
+    ['Serial No','EMPLOYEE ID','A-FORM NO','NAME','BANK NAME','IFSC CODE','ACCOUNT NO','BRANCH'],[1,'CMLL123','AF-009','Test Employee','SBI','SBIN0001234','00123','Nagpur'],
   ]),'Bank Details');
   const file=Object.assign(new File([],'bank-details.xlsx'),{arrayBuffer:async()=>write(book,{type:'array',bookType:'xlsx'})});
   fireEvent.change(screen.getByLabelText('Import Bank Details Excel'),{target:{files:[file]}});
   expect(await screen.findByText('1 employee bank detail updated.')).toBeVisible();
-  expect(posts).toEqual([{rows:[{employeeId:'CMLL123',name:'Test Employee',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}]}]);
+  expect(posts).toEqual([{rows:[{employeeId:'CMLL123',aFormNo:'AF-009',name:'Test Employee',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}]}]);
 });

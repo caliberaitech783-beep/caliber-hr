@@ -101,13 +101,13 @@ test('export returns the full filtered register within the assigned sites',async
 
 test('report exposes only the requested bank detail fields and accepts their common workbook headings',()=>{
   const details=reportBankDetails({sources:[{fields:[
-    ['Name of Bank','State Bank of India'],['IFSC Code','SBIN0001234'],['Bank Account Number','0012345'],['Branch Name','Nagpur'],
+    ['A-Form No','AF-009'],['Name of Bank','State Bank of India'],['IFSC Code','SBIN0001234'],['Bank Account Number','0012345'],['Branch Name','Nagpur'],
     ['UAN','not a bank report column'],
   ]}]});
-  assert.deepEqual(details,{bankName:'State Bank of India',ifscCode:'SBIN0001234',accountNo:'0012345',branch:'Nagpur'});
+  assert.deepEqual(details,{aFormNo:'AF-009',bankName:'State Bank of India',ifscCode:'SBIN0001234',accountNo:'0012345',branch:'Nagpur'});
 });
 
-test('Bank Details import links by Employee ID and updates only the four bank fields',async()=>{
+test('Bank Details import links by Employee ID and updates only its five detail fields',async()=>{
   const writes=[];const db={release(){},query:async(sql,params)=>{
     if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rows:[]};
     if(sql.startsWith('SELECT id,name'))return {rows:[{id:'line-1',name:'Test Employee',employee_id:'CMLL123'}]};
@@ -115,9 +115,9 @@ test('Bank Details import links by Employee ID and updates only the four bank fi
     return {rowCount:1,rows:[]};
   }};
   const service=createEmployeeMasterRegister({connect:async()=>db});
-  const result=await service.importEmployeeBankDetails(admin,[{employeeId:'CMPL123',name:'Test Employee',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}]);
+  const result=await service.importEmployeeBankDetails(admin,[{employeeId:'CMPL123',aFormNo:'AF-009',name:'Test Employee',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}]);
   assert.deepEqual(result,{updated:1});
-  assert.deepEqual(writes,[{bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}]);
+  assert.deepEqual(writes,[{aFormNo:'AF-009',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}]);
 });
 
 test('editing a register entry preserves site scope and rejects stale saves',async()=>{

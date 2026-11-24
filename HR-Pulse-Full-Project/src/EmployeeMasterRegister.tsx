@@ -11,15 +11,11 @@ const columns = [
 const bankColumns = [
   ['bankName','Bank Name',28],['ifscCode','IFSC Code',18],['accountNo','Account No',22],['branch','Branch',28],
 ] as const;
-const reportColumns = [...columns,...bankColumns] as const;
-const bankReportColumns = [columns[0],columns[1],...bankColumns] as const;
-const exportColumns: {key:'serial' | typeof reportColumns[number][0];label:string}[] = [
-  {key:'serial',label:'Serial No'},
-  ...reportColumns.map(([key,label])=>({key,label:label.toUpperCase()})),
-];
+const aFormColumn = ['aFormNo','A-Form No',18] as const;
+const bankReportColumns = [columns[0],aFormColumn,columns[1],...bankColumns] as const;
 const formats = [['excel','Excel'], ['pdf','PDF']] as const;
 type ExportFormat = typeof formats[number][0];
-type Employee = Record<typeof reportColumns[number][0], string> & {id:string};
+type Employee = Record<typeof columns[number][0] | typeof bankColumns[number][0] | 'aFormNo', string> & {id:string};
 type RegisterColumn = typeof columns[number];
 type EditableColumn = Exclude<RegisterColumn,readonly ['region'|'site',string,number]>;
 const editableColumns = columns.filter((column):column is EditableColumn=>column[0]!=='region'&&column[0]!=='site');
@@ -43,13 +39,13 @@ type EmployeeDetails = {
 type Register = {rows:Employee[];total:number;pageSize:number;sites:{code:string;label:string}[];canImport:boolean};
 type RegisterView='employees'|'bank';
 const headerKey=(value:string)=>value.toLowerCase().replace(/[^a-z0-9]/g,'');
-const bankHeaders:Record<string,'employeeId'|'name'|'bankName'|'ifscCode'|'accountNo'|'branch'>={employeeid:'employeeId',employeecode:'employeeId',empid:'employeeId',name:'name',employeename:'name',bankname:'bankName',nameofthebank:'bankName',nameofbank:'bankName',ifsccode:'ifscCode',ifsc:'ifscCode',accountno:'accountNo',accountnumber:'accountNo',bankaccountno:'accountNo',bankaccountnumber:'accountNo',acno:'accountNo',branch:'branch',branchname:'branch',bankbranch:'branch'};
+const bankHeaders:Record<string,'employeeId'|'aFormNo'|'name'|'bankName'|'ifscCode'|'accountNo'|'branch'>={employeeid:'employeeId',employeecode:'employeeId',empid:'employeeId',aformno:'aFormNo',aformnumber:'aFormNo',formano:'aFormNo',formanumber:'aFormNo',name:'name',employeename:'name',bankname:'bankName',nameofthebank:'bankName',nameofbank:'bankName',ifsccode:'ifscCode',ifsc:'ifscCode',accountno:'accountNo',accountnumber:'accountNo',bankaccountno:'accountNo',bankaccountnumber:'accountNo',acno:'accountNo',branch:'branch',branchname:'branch',bankbranch:'branch'};
 async function readBankWorkbook(file:File){
-  const {read,utils}=await import('xlsx'),book=read(await file.arrayBuffer(),{type:'array'}),rows:{employeeId:string;name:string;bankName:string;ifscCode:string;accountNo:string;branch:string}[]=[];
+  const {read,utils}=await import('xlsx'),book=read(await file.arrayBuffer(),{type:'array'}),rows:{employeeId:string;aFormNo:string;name:string;bankName:string;ifscCode:string;accountNo:string;branch:string}[]=[];
   for(const sheetName of book.SheetNames){const grid=utils.sheet_to_json<string[]>(book.Sheets[sheetName],{header:1,raw:false,defval:'',blankrows:false});if(!grid.length)continue;
     const first=grid.findIndex(row=>row.some(value=>String(value).trim()));if(first<0)continue;const keys=grid[first].map(value=>bankHeaders[headerKey(String(value))]);
     if(!keys.includes('employeeId'))throw new Error(`${sheetName} needs an EMPLOYEE ID column.`);
-    for(let i=first+1;i<grid.length;i++){if(!grid[i].some(value=>String(value).trim()))continue;const row={employeeId:'',name:'',bankName:'',ifscCode:'',accountNo:'',branch:''};keys.forEach((key,column)=>{if(key)row[key]=String(grid[i][column]??'').trim();});if(!row.employeeId)throw new Error(`${sheetName} row ${i+1}: Employee ID is required.`);rows.push(row);}
+    for(let i=first+1;i<grid.length;i++){if(!grid[i].some(value=>String(value).trim()))continue;const row={employeeId:'',aFormNo:'',name:'',bankName:'',ifscCode:'',accountNo:'',branch:''};keys.forEach((key,column)=>{if(key)row[key]=String(grid[i][column]??'').trim();});if(!row.employeeId)throw new Error(`${sheetName} row ${i+1}: Employee ID is required.`);rows.push(row);}
   }
   if(!rows.length)throw new Error('The Bank Details workbook contains no employee rows.');return rows;
 }
@@ -326,7 +322,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       if (!complete) throw new Error('The full employee export is temporarily unavailable. Try again shortly.');
       if (!rows.length) throw new Error('No employees match the current selection.');
       if (format==='excel') {
-        const activeColumns=view==='bank'?bankReportColumns:reportColumns;
+        const activeColumns=view==='bank'?bankReportColumns:columns;
         const {regionEmployeeExcel} = await import('./regionEmployeeExcel');
         const workbook = await regionEmployeeExcel(
           activeColumns.map(([,header,width])=>({header,width})),
@@ -336,7 +332,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
         downloadBlob(view==='bank'?'bank-details.xlsx':'hr-employee-master.xlsx',workbook);
       } else {
         const records = rows.map((row,index)=>({...row,serial:index+1}));
-        const activeColumns=view==='bank'?bankReportColumns:reportColumns;
+        const activeColumns=view==='bank'?bankReportColumns:columns;
         const activeExportColumns=[{key:'serial',label:'Serial No'},...activeColumns.map(([key,label])=>({key,label:label.toUpperCase()}))];
         if (popup) {
           if (popup.closed) throw new Error('The PDF window was closed. Choose PDF from the Export menu again.');
@@ -367,7 +363,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
   }
 
   const first = (page-1)*(data?.pageSize ?? 50);
-  const activeColumns=view==='bank'?bankReportColumns:reportColumns;
+  const activeColumns=view==='bank'?bankReportColumns:columns;
   const canDownload = !loading && !importing && !exporting && Boolean(data?.total);
   return <section className="data-card employee-report" aria-labelledby="employee-master-register-title">
     <div className="data-heading">

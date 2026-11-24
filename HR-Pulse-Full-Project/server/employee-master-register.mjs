@@ -43,15 +43,16 @@ const normalizeEmployeeId = value => value.replace(/^CMPL/i,'CMLL');
 const employeeIdLabels = new Set(['EMPLOYEECODE','EMPLOYEEID','EMPID']);
 const bankField = label => {
   const key=String(label??'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if (['AFORMNO','AFORMNUMBER','FORMANO','FORMANUMBER'].includes(key)) return 'aFormNo';
   if (['BANKNAME','NAMEOFBANK'].includes(key)) return 'bankName';
   if (['IFSC','IFSCCODE'].includes(key)) return 'ifscCode';
   if (['ACCOUNTNO','ACCOUNTNUMBER','ACNO','ACNUMBER','BANKACNO','BANKACCOUNTNO','BANKACCOUNTNUMBER'].includes(key)) return 'accountNo';
   if (['BRANCH','BRANCHNAME','BANKBRANCH'].includes(key)) return 'branch';
   return '';
 };
-/** Only the four requested bank values are exposed in the Employee Master report. */
+/** Values used by the separate Bank Details report. */
 export function reportBankDetails(data={}) {
-  const result={bankName:String(data.bankName??''),ifscCode:String(data.ifscCode??''),accountNo:String(data.accountNo??''),branch:String(data.branch??'')};
+  const result={aFormNo:String(data.aFormNo??''),bankName:String(data.bankName??''),ifscCode:String(data.ifscCode??''),accountNo:String(data.accountNo??''),branch:String(data.branch??'')};
   for (const source of Array.isArray(data.sources)?data.sources:[]) for (const pair of Array.isArray(source?.fields)?source.fields:[]) {
     if (!Array.isArray(pair)||pair.length<2) continue;
     const key=bankField(pair[0]),value=String(pair[1]??'').trim();
@@ -69,10 +70,10 @@ function parseBankRows(rows) {
     if (seen.has(number)) throw fail(`Bank Details row ${index+2}: Employee ID ${employeeId} appears more than once.`);
     seen.add(number);
     const clean=(key,max)=>{const value=String(row?.[key]??'').trim();if(value.length>max||value.includes('\0'))throw fail(`Bank Details row ${index+2}: invalid ${key}.`);return value;};
-    const bankName=clean('bankName',200),ifscCode=clean('ifscCode',11).toUpperCase(),accountNo=clean('accountNo',30),branch=clean('branch',200),name=clean('name',300);
+    const aFormNo=clean('aFormNo',100),bankName=clean('bankName',200),ifscCode=clean('ifscCode',11).toUpperCase(),accountNo=clean('accountNo',30),branch=clean('branch',200),name=clean('name',300);
     if(ifscCode&&!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifscCode))throw fail(`Bank Details row ${index+2}: IFSC Code must contain 11 valid characters.`);
     if(accountNo&&!/^[0-9]{1,30}$/.test(accountNo))throw fail(`Bank Details row ${index+2}: Account No must contain digits only.`);
-    return {row:index+2,employeeId,number,name,bankName,ifscCode,accountNo,branch};
+    return {row:index+2,employeeId,number,aFormNo,name,bankName,ifscCode,accountNo,branch};
   });
 }
 
@@ -315,7 +316,7 @@ export function createEmployeeMasterRegister(pool) {
           if(matches.length>1)throw fail(`Bank Details row ${entry.row}: Employee ID ${entry.employeeId} matches more than one Employee Master line.`,409);
           const employee=matches[0];
           if(entry.name&&!samePerson(employee.name,entry.name))throw fail(`Bank Details row ${entry.row}: Name does not match Employee ID ${entry.employeeId}.`,409);
-          const bank={bankName:entry.bankName,ifscCode:entry.ifscCode,accountNo:entry.accountNo,branch:entry.branch};
+          const bank={aFormNo:entry.aFormNo,bankName:entry.bankName,ifscCode:entry.ifscCode,accountNo:entry.accountNo,branch:entry.branch};
           await db.query('UPDATE hr_employee_master_register SET data=data||$2::jsonb,version=version+1 WHERE id=$1',[employee.id,JSON.stringify(bank)]);
           await db.query("INSERT INTO hr_audit (actor,action,kind,record_id,detail) VALUES ($1,'BANK_IMPORT',$2,$3,$4)",[profile.actor,kind,employee.id,{fields:Object.keys(bank)}]);
         }
