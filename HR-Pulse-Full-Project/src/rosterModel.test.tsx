@@ -156,6 +156,18 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  expect(screen.getByRole('menuitem',{name:'Download as PDF'})).toBeTruthy();
  expect(screen.getByRole('menuitem',{name:'Smart Print'})).toBeTruthy();
  expect(screen.getByRole('menuitem',{name:'Download as Excel'})).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'M.B-Trip card Mismatch'}));
+ const comparison=await screen.findByLabelText('Comparison percentages');
+ fireEvent.click(within(comparison).getByRole('button',{name:/Mismatch/}));
+ const breakdown=await screen.findByRole('region',{name:'Mismatch employee details'});
+ const viewDates=within(breakdown).getAllByRole('button',{name:'View dates'})[0];
+ const employeeRow=viewDates.closest('tr')!;
+ fireEvent.click(viewDates);
+ expect(employeeRow.nextElementSibling).toHaveClass('manual-date-row');
+ expect(within(employeeRow.nextElementSibling as HTMLElement).getByText(/exact mismatch records/)).toBeTruthy();
+ fireEvent.click(within(breakdown).getByRole('button',{name:'Print/Export'}));
+ expect(within(breakdown).getByRole('menuitem',{name:'Smart Print / PDF'})).toBeTruthy();
+ expect(within(breakdown).getByRole('menuitem',{name:'Download as Excel'})).toBeTruthy();
 });
 
 it('reads MIS one day per request, retries failed days, and keeps the days that worked',async()=>{
