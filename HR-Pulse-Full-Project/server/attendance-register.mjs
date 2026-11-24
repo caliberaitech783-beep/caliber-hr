@@ -182,8 +182,7 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   const [punches, holidays, leaves, ods, passes, pay] = await Promise.all([
     db.query(manual?`SELECT e.id AS employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
-     JOIN hr_employee_master_register e ON upper(btrim(e.data->>'employeeId'))=
-       upper(CASE WHEN btrim(p.biometric_id)~'^[0-9]+$' THEN 'CMLL'||btrim(p.biometric_id) ELSE btrim(p.biometric_id) END)
+     JOIN hr_employee_master_register e ON hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id)
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
      WHERE e.id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
       AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`:`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
@@ -245,17 +244,22 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   if (!machines.length) return {from, to, policy, site: site.name, machines: machineList, rows: []};
   const serials = machines.map(m => m.serial);
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
-  const codeEmployee=manual?`LEFT JOIN LATERAL (SELECT e.id FROM hr_employee_master_register e
-    WHERE upper(btrim(e.data->>'employeeId'))=upper(CASE WHEN btrim(p.biometric_id)~'^[0-9]+$' THEN 'CMLL'||btrim(p.biometric_id) ELSE btrim(p.biometric_id) END)
-    LIMIT 1) code_employee ON true`:'';
-  const employeeId=manual?'code_employee.id':'l.employee_id';
-  const {rows: ids} = await db.query(`SELECT p.device_serial,p.biometric_id,${employeeId} AS employee_id,coalesce(u.name,'') AS machine_name
+  const idQuery=manual?`WITH punch_ids AS (
+    SELECT p.device_serial,p.biometric_id FROM ${punchTable} p
+    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
+    GROUP BY 1,2
+   )
+   SELECT p.device_serial,p.biometric_id,e.id AS employee_id,coalesce(u.name,'') AS machine_name
+   FROM punch_ids p
+   LEFT JOIN hr_employee_master_register e ON hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id)
+   LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id
+   GROUP BY 1,2,3,4`:`SELECT p.device_serial,p.biometric_id,l.employee_id,coalesce(u.name,'') AS machine_name
    FROM ${punchTable} p
    LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
    LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id
-   ${codeEmployee}
    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
-   GROUP BY 1,2,3,4`, [serials, from, to]);
+   GROUP BY 1,2,3,4`;
+  const {rows: ids} = await db.query(idQuery, [serials, from, to]);
   const used = new Map();
   for (const r of ids) {
     const key = r.employee_id ? String(r.employee_id) : `u:${r.device_serial}|${r.biometric_id}`;

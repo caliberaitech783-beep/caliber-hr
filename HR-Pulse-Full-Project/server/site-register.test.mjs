@@ -69,5 +69,5 @@ test('manual biometric treats the imported value as employee code and shows the 
  const employee=result.rows[0];
  assert.deepEqual([employee.code,employee.name,employee.department,employee.designation,employee.linked],['CMLL17416','Anil Kumar','Operations','Driver',true]);
  assert.deepEqual(employee.machinesUsed,['JNP2242101100']);
- assert.ok(db.calls.some(sql=>/THEN 'CMLL'\|\|btrim\(p\.biometric_id\)/.test(sql)));
+ assert.ok(db.calls.some(sql=>/WITH punch_ids AS/.test(sql)&&/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)));
 });
