@@ -33,7 +33,9 @@ const NO_BRIDGE='The bridge PC did not respond. Check that it is switched on, co
 export const attendanceSiteKey=value=>{
  const key=String(value||'').trim().toLowerCase()
   .replace(/[()]/g,' ').replace(/\b(?:ob|oc)\b/g,'oc').replace(/\s+/g,' ').trim();
- return /^dhoptala oc(?: 2nd)?$/.test(key)?'wcl-dhoptala':key;
+ if(/^dhoptala oc(?: 2nd)?$/.test(key))return 'wcl-dhoptala';
+ if(/^gauri pauni oc(?: 2nd)?$/.test(key))return 'wcl-gauri-pauni';
+ return key;
 };
 
 export function keyMatches(expected,supplied){
