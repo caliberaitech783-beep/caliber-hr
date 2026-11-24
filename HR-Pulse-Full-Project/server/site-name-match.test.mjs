@@ -30,12 +30,14 @@ test('a site saved with extra spaces or another letter case is found; an unknown
   await assert.rejects(read('Majri OB'), e => e.status === 403);
 });
 
-test('every site lookup by name in the attendance routes uses the same rule', () => {
-  for (const file of ['attendance.mjs', 'biometric-day-store.mjs', 'trip-card-store.mjs']) {
+test('every exact site lookup by name uses the same whitespace rule', () => {
+  for (const file of ['biometric-day-store.mjs', 'trip-card-store.mjs']) {
     const source = readFileSync(new URL('./' + file, import.meta.url), 'utf8');
     assert.ok(!/kind='sites' AND status IN \('ACTIVE','APPROVED'\) AND name=\$1/.test(source), file + ' still matches the name exactly');
     assert.ok(source.includes(RULE), file);
   }
+  const attendance = readFileSync(new URL('./attendance.mjs', import.meta.url), 'utf8');
+  assert.ok(attendance.includes('attendanceSiteKey(row.name)===attendanceSiteKey(siteName)'), 'attendance imports use the OB/OC-aware site resolver');
   const roster = readFileSync(new URL('../src/AttendanceRoster.tsx', import.meta.url), 'utf8');
   assert.ok(roster.includes('<option key={s} value={s}>{s}</option>'), 'the site option sends the name as saved');
 });

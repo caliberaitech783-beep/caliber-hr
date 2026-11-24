@@ -28,6 +28,11 @@ const DIRECT="(direct_contact IS NOT NULL AND direct_contact>=coalesce(last_cont
 export const DIRECT_NAME='Direct to HR Pulse';
 const NO_BRIDGE='The bridge PC did not respond. Check that it is switched on, connected to the internet and running the bridge program.';
 
+// Attendance/MIS calls the mining location an OB while HR Site Master may call the same location an OC.
+// Parentheses around an ordinal are presentation only ("2nd" and "(2nd)" are the same site).
+export const attendanceSiteKey=value=>String(value||'').trim().toLowerCase()
+ .replace(/[()]/g,' ').replace(/\b(?:ob|oc)\b/g,'oc').replace(/\s+/g,' ').trim();
+
 export function keyMatches(expected,supplied){
  if(typeof expected!=='string'||expected.length<32||typeof supplied!=='string')return false;
  const digest=value=>createHash('sha256').update(value).digest();
@@ -206,7 +211,10 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   const sites=await siteIds(pool,profile); // null = all sites
   if(route==='biometric-days')return biometricDays(profile,method,input,params,sites);
   const findSite=async(db,siteName)=>{
-   const site=(await db.query("SELECT id FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[siteName,sites])).rows[0];
+   const exact=(await db.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[siteName,sites])).rows[0];
+   if(exact)return exact;
+   const allowed=(await db.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND ($1::uuid[] IS NULL OR id=ANY($1::uuid[]))",[sites])).rows;
+   const site=allowed.find(row=>attendanceSiteKey(row.name)===attendanceSiteKey(siteName));
    return site||fail(siteAccessMessage(profile),403);
   };
   // Before a machine log (.dat) is imported: the site's machines and, for the machine user IDs in the file,
@@ -299,13 +307,13 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   if(route==='site-register'&&method==='GET'){
    // Attendance roster › Biometric: one site's machines, whoever punched on them (loadSiteRegister).
    const {from,to}=validateRange(params);
-   const site=(await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[String(params.get('site')||''),sites])).rows[0];
+   const site=await findSite(pool,String(params.get('site')||''));
    if(!site)fail(siteAccessMessage(profile),403);
    return loadSiteRegister(pool,{id:site.id,name:site.name,siteType:site.site_type||''},from,to,indiaDay());
   }
   if(route==='manual-biometric'&&method==='GET'){
    const {from,to}=validateRange(params);
-   const site=(await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[String(params.get('site')||''),sites])).rows[0];
+   const site=await findSite(pool,String(params.get('site')||''));
    if(!site)fail(siteAccessMessage(profile),403);
    return loadSiteRegister(pool,{id:site.id,name:site.name,siteType:site.site_type||''},from,to,indiaDay(),{manual:true});
   }
