@@ -87,9 +87,9 @@ it('saves the leaving date, and shows no Remove to a login that may not remove',
   expect(sent).toEqual([{version:4,changes:{leavingDate:'2026-11-20'}}]);
 });
 
-it('prints all matching rows, including records on later pages, with the current filters',async()=>{
-  const first = {id:'1',employeeId:'CMLL001',name:'First employee',site:'Sasti OB'};
-  const last = {id:'51',employeeId:'CMLL051',name:'Later & employee',site:'Sasti OB'};
+it('prints all matching rows and the four bank columns, including records on later pages, with the current filters',async()=>{
+  const first = {id:'1',employeeId:'CMLL001',name:'First employee',site:'Sasti OB',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Sasti'};
+  const last = {id:'51',employeeId:'CMLL051',name:'Later & employee',site:'Sasti OB',bankName:'BOI',ifscCode:'BKID0000001',accountNo:'00456',branch:'Nagpur'};
   const fetchMock = vi.fn(async(url:string)=>{
     const params = new URL(url).searchParams;
     return Response.json(params.has('export') ? {complete:true,rows:[first,last]} : {
@@ -106,6 +106,7 @@ it('prints all matching rows, including records on later pages, with the current
   const open = vi.spyOn(window,'open').mockReturnValue(mockPopup as unknown as Window);
   render(<EmployeeMasterRegister grant={'a'.repeat(43)}/>);
   await screen.findByText('First employee');
+  for(const heading of ['BANK NAME','IFSC CODE','ACCOUNT NO','BRANCH'])expect(screen.getByRole('columnheader',{name:heading})).toBeVisible();
   fireEvent.change(screen.getByLabelText('Site'),{target:{value:'WCL-SASTI'}});
   fireEvent.change(screen.getByRole('searchbox'),{target:{value:'employee'}});
   fireEvent.click(screen.getByRole('button',{name:'Search'}));
@@ -126,6 +127,8 @@ it('prints all matching rows, including records on later pages, with the current
   expect(new URL(url).searchParams.toString()).toBe('site=WCL-SASTI&search=employee&export=1');
   expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('Later &amp; employee'));
   expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('CMLL051'));
+  expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('BKID0000001'));
+  expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('00456'));
   expect(mockPopup.opener).toBeNull();
 });
 

@@ -8,13 +8,17 @@ const columns = [
   ['department','Department',24], ['designation','Designation',29], ['category','Category',18],
   ['reportingTo','Reporting to',25], ['contact','Contact',19], ['email','Email',36], ['status','Status',16],
 ] as const;
-const exportColumns: {key:'serial' | typeof columns[number][0];label:string}[] = [
+const bankColumns = [
+  ['bankName','Bank Name',28],['ifscCode','IFSC Code',18],['accountNo','Account No',22],['branch','Branch',28],
+] as const;
+const reportColumns = [...columns,...bankColumns] as const;
+const exportColumns: {key:'serial' | typeof reportColumns[number][0];label:string}[] = [
   {key:'serial',label:'Serial No'},
-  ...columns.map(([key,label])=>({key,label:label.toUpperCase()})),
+  ...reportColumns.map(([key,label])=>({key,label:label.toUpperCase()})),
 ];
 const formats = [['excel','Excel'], ['pdf','PDF']] as const;
 type ExportFormat = typeof formats[number][0];
-type Employee = Record<typeof columns[number][0], string> & {id:string};
+type Employee = Record<typeof reportColumns[number][0], string> & {id:string};
 type RegisterColumn = typeof columns[number];
 type EditableColumn = Exclude<RegisterColumn,readonly ['region'|'site',string,number]>;
 const editableColumns = columns.filter((column):column is EditableColumn=>column[0]!=='region'&&column[0]!=='site');
@@ -305,8 +309,8 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       if (format==='excel') {
         const {regionEmployeeExcel} = await import('./regionEmployeeExcel');
         const workbook = await regionEmployeeExcel(
-          columns.map(([,header,width])=>({header,width})),
-          rows.map(row=>columns.map(([key])=>row[key] ?? '')),
+          reportColumns.map(([,header,width])=>({header,width})),
+          rows.map(row=>reportColumns.map(([key])=>row[key] ?? '')),
         );
         downloadBlob('hr-employee-master.xlsx',workbook);
       } else {
@@ -396,9 +400,9 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       : data && (data.rows.length ? <>
       <div className="table-scroll" role="region" aria-label="HR employee list" tabIndex={0}>
         <table className="employee-report-table">
-          <thead><tr><th scope="col">Serial No</th>{columns.map(([key,label])=><th key={key} scope="col">{label.toUpperCase()}</th>)}<th scope="col">DETAILS</th></tr></thead>
+          <thead><tr><th scope="col">Serial No</th>{reportColumns.map(([key,label])=><th key={key} scope="col">{label.toUpperCase()}</th>)}<th scope="col">DETAILS</th></tr></thead>
           <tbody>{data.rows.map((row,index)=><tr key={row.id}>
-            <td>{first+index+1}</td>{columns.map(([key])=><td key={key}>{row[key]}</td>)}
+            <td>{first+index+1}</td>{reportColumns.map(([key])=><td key={key}>{row[key]}</td>)}
             <td className="row-actions">
               <button type="button" aria-label={`View details for ${row.name}`} onClick={event=>{
                 dialogButton.current = event.currentTarget;

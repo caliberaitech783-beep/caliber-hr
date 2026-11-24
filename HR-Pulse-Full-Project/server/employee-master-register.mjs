@@ -41,6 +41,24 @@ const isDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
 const fail = (message, status = 400) => Object.assign(new Error(message), {status});
 const normalizeEmployeeId = value => value.replace(/^CMPL/i,'CMLL');
 const employeeIdLabels = new Set(['EMPLOYEECODE','EMPLOYEEID','EMPID']);
+const bankField = label => {
+  const key=String(label??'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if (['BANKNAME','NAMEOFBANK'].includes(key)) return 'bankName';
+  if (['IFSC','IFSCCODE'].includes(key)) return 'ifscCode';
+  if (['ACCOUNTNO','ACCOUNTNUMBER','ACNO','ACNUMBER','BANKACNO','BANKACCOUNTNO','BANKACCOUNTNUMBER'].includes(key)) return 'accountNo';
+  if (['BRANCH','BRANCHNAME','BANKBRANCH'].includes(key)) return 'branch';
+  return '';
+};
+/** Only the four requested bank values are exposed in the Employee Master report. */
+export function reportBankDetails(data={}) {
+  const result={bankName:'',ifscCode:'',accountNo:'',branch:''};
+  for (const source of Array.isArray(data.sources)?data.sources:[]) for (const pair of Array.isArray(source?.fields)?source.fields:[]) {
+    if (!Array.isArray(pair)||pair.length<2) continue;
+    const key=bankField(pair[0]),value=String(pair[1]??'').trim();
+    if (key&&value&&!result[key]) result[key]=value;
+  }
+  return result;
+}
 
 async function access(db, profile) {
   const menus = grantedMenus(profile);
@@ -108,11 +126,12 @@ export function createEmployeeMasterRegister(pool) {
         AND ($2='' OR site_code=$2)
         AND ($3='' OR strpos(lower(concat_ws(' ',name,data->>'employeeId',data->>'department',data->>'designation')),lower($3))>0)
         AND ${isEmployeeEntry}`;
-      const selectRows = `SELECT id, site_name, site_code, data-'sources' AS data FROM hr_employee_master_register
+      const selectRows = `SELECT id, site_name, site_code, data FROM hr_employee_master_register
         WHERE ${filter} ORDER BY lower(name),id`;
-      const formatRows = ({rows}) => rows.map(row=>({
-        id:row.id,...row.data,site:row.site_name,region:row.site_code.split('-')[0],
-      }));
+      const formatRows = ({rows}) => rows.map(row=>{
+        const {sources:_,...data}=row.data||{};
+        return {id:row.id,...data,...reportBankDetails(row.data),site:row.site_name,region:row.site_code.split('-')[0]};
+      });
       if (params.get('export') === '1') {
         return {complete:true,rows:formatRows(await pool.query(selectRows,values))};
       }

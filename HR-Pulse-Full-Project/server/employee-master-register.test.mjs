@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {createEmployeeMasterRegister} from './employee-master-register.mjs';
+import {createEmployeeMasterRegister,reportBankDetails} from './employee-master-register.mjs';
 // "One employee number, one person" is checked with the register: this file is on the list the deploy runs.
 import './employee-number.test.mjs';
 import './employee-master-remove.test.mjs';
@@ -80,7 +80,7 @@ test('export returns the full filtered register within the assigned sites',async
     if (sql.includes("kind='sites'")) return {rows:[{id:siteId}]};
     queries.push({sql,params});
     return {rows:Array.from({length:51},(_,index)=>({
-      id:String(index),site_name:'Sasti OB',site_code:'WCL-SASTI',data:{employeeId:`CMLL${index}`,name:'Test Operator'},
+      id:String(index),site_name:'Sasti OB',site_code:'WCL-SASTI',data:{employeeId:`CMLL${index}`,name:'Test Operator',sources:[{label:'Sheet',fields:[['Bank Name','SBI'],['IFSC','SBIN0001234'],['A/C No.','00123'],['Bank Branch','Sasti'],['Father Name','Parent']]}]},
     }))};
   }});
   const scoped = {actor:'hr-test',permissions:{hrDesktopAccess:menus,site:'WCL-SASTI'}};
@@ -88,10 +88,23 @@ test('export returns the full filtered register within the assigned sites',async
   assert.equal(queries.length,1);
   assert.deepEqual(queries[0].params,[[siteId],'WCL-SASTI','Operator']);
   assert.match(queries[0].sql,/site_id=ANY\(\$1\)/);
-  assert.match(queries[0].sql,/data-'sources'/);
+  assert.match(queries[0].sql,/\bdata\b/);
   assert.doesNotMatch(queries[0].sql,/\b(?:LIMIT|OFFSET)\b/i);
   assert.equal(result.rows.length,51);
   assert.equal(result.rows.at(-1).region,'WCL');
+  assert.deepEqual(
+    {bankName:result.rows[0].bankName,ifscCode:result.rows[0].ifscCode,accountNo:result.rows[0].accountNo,branch:result.rows[0].branch},
+    {bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Sasti'},
+  );
+  assert.equal(result.rows[0].sources,undefined);
+});
+
+test('report exposes only the requested bank detail fields and accepts their common workbook headings',()=>{
+  const details=reportBankDetails({sources:[{fields:[
+    ['Name of Bank','State Bank of India'],['IFSC Code','SBIN0001234'],['Bank Account Number','0012345'],['Branch Name','Nagpur'],
+    ['UAN','not a bank report column'],
+  ]}]});
+  assert.deepEqual(details,{bankName:'State Bank of India',ifscCode:'SBIN0001234',accountNo:'0012345',branch:'Nagpur'});
 });
 
 test('editing a register entry preserves site scope and rejects stale saves',async()=>{
