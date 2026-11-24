@@ -107,6 +107,19 @@ test('report exposes only the requested bank detail fields and accepts their com
   assert.deepEqual(details,{bankName:'State Bank of India',ifscCode:'SBIN0001234',accountNo:'0012345',branch:'Nagpur'});
 });
 
+test('Bank Details import links by Employee ID and updates only the four bank fields',async()=>{
+  const writes=[];const db={release(){},query:async(sql,params)=>{
+    if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rows:[]};
+    if(sql.startsWith('SELECT id,name'))return {rows:[{id:'line-1',name:'Test Employee',employee_id:'CMLL123'}]};
+    if(sql.startsWith('UPDATE hr_employee_master_register')){writes.push(JSON.parse(params[1]));return {rowCount:1};}
+    return {rowCount:1,rows:[]};
+  }};
+  const service=createEmployeeMasterRegister({connect:async()=>db});
+  const result=await service.importEmployeeBankDetails(admin,[{employeeId:'CMPL123',name:'Test Employee',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}]);
+  assert.deepEqual(result,{updated:1});
+  assert.deepEqual(writes,[{bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}]);
+});
+
 test('editing a register entry preserves site scope and rejects stale saves',async()=>{
   const writes = [];
   const employeeId = '20000000-0000-4000-8000-000000000009';

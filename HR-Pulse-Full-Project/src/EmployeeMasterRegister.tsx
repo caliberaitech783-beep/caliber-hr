@@ -12,6 +12,7 @@ const bankColumns = [
   ['bankName','Bank Name',28],['ifscCode','IFSC Code',18],['accountNo','Account No',22],['branch','Branch',28],
 ] as const;
 const reportColumns = [...columns,...bankColumns] as const;
+const bankReportColumns = [columns[0],columns[1],...bankColumns] as const;
 const exportColumns: {key:'serial' | typeof reportColumns[number][0];label:string}[] = [
   {key:'serial',label:'Serial No'},
   ...reportColumns.map(([key,label])=>({key,label:label.toUpperCase()})),
@@ -40,6 +41,18 @@ type EmployeeDetails = {
   sources:{label:string;fields:[string,string][]}[];
 };
 type Register = {rows:Employee[];total:number;pageSize:number;sites:{code:string;label:string}[];canImport:boolean};
+type RegisterView='employees'|'bank';
+const headerKey=(value:string)=>value.toLowerCase().replace(/[^a-z0-9]/g,'');
+const bankHeaders:Record<string,'employeeId'|'name'|'bankName'|'ifscCode'|'accountNo'|'branch'>={employeeid:'employeeId',employeecode:'employeeId',empid:'employeeId',name:'name',employeename:'name',bankname:'bankName',nameofthebank:'bankName',nameofbank:'bankName',ifsccode:'ifscCode',ifsc:'ifscCode',accountno:'accountNo',accountnumber:'accountNo',bankaccountno:'accountNo',bankaccountnumber:'accountNo',acno:'accountNo',branch:'branch',branchname:'branch',bankbranch:'branch'};
+async function readBankWorkbook(file:File){
+  const {read,utils}=await import('xlsx'),book=read(await file.arrayBuffer(),{type:'array'}),rows:{employeeId:string;name:string;bankName:string;ifscCode:string;accountNo:string;branch:string}[]=[];
+  for(const sheetName of book.SheetNames){const grid=utils.sheet_to_json<string[]>(book.Sheets[sheetName],{header:1,raw:false,defval:'',blankrows:false});if(!grid.length)continue;
+    const first=grid.findIndex(row=>row.some(value=>String(value).trim()));if(first<0)continue;const keys=grid[first].map(value=>bankHeaders[headerKey(String(value))]);
+    if(!keys.includes('employeeId'))throw new Error(`${sheetName} needs an EMPLOYEE ID column.`);
+    for(let i=first+1;i<grid.length;i++){if(!grid[i].some(value=>String(value).trim()))continue;const row={employeeId:'',name:'',bankName:'',ifscCode:'',accountNo:'',branch:''};keys.forEach((key,column)=>{if(key)row[key]=String(grid[i][column]??'').trim();});if(!row.employeeId)throw new Error(`${sheetName} row ${i+1}: Employee ID is required.`);rows.push(row);}
+  }
+  if(!rows.length)throw new Error('The Bank Details workbook contains no employee rows.');return rows;
+}
 
 function useRegisterDialog() {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -216,6 +229,7 @@ function EmployeeDetailsDialog({employee,grant,onClose}:{employee:Employee;grant
 }
 
 export default function EmployeeMasterRegister({grant}:{grant:string}) {
+  const [view,setView]=useState<RegisterView>('employees');
   const [data,setData] = useState<Register>();
   const [site,setSite] = useState('');
   const [search,setSearch] = useState('');
@@ -256,6 +270,11 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
     setError('');
     setMessage('');
     try {
+      if(view==='bank'){
+        if(!/\.xlsx?$/i.test(file.name))throw new Error('Choose a Bank Details Excel file.');
+        const rows=await readBankWorkbook(file),result=await api<{updated:number}>(grant,'employee-master-bank-details','POST',{rows});
+        setMessage(`${result.updated.toLocaleString('en-IN')} employee bank detail${result.updated===1?'':'s'} updated.`);setRevision(value=>value+1);return;
+      }
       let skipped = 0;
       let payload;
       if (/\.xlsx?$/i.test(file.name)) {
@@ -297,7 +316,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
     }
     if (popup) {
       popup.opener = null;
-      popup.document.title = 'Employee Master';
+      popup.document.title = view==='bank'?'Bank Details':'Employee Master';
       popup.document.body.textContent = 'Preparing employee report…';
     }
     setExporting(format);
@@ -307,18 +326,22 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       if (!complete) throw new Error('The full employee export is temporarily unavailable. Try again shortly.');
       if (!rows.length) throw new Error('No employees match the current selection.');
       if (format==='excel') {
+        const activeColumns=view==='bank'?bankReportColumns:reportColumns;
         const {regionEmployeeExcel} = await import('./regionEmployeeExcel');
         const workbook = await regionEmployeeExcel(
-          reportColumns.map(([,header,width])=>({header,width})),
-          rows.map(row=>reportColumns.map(([key])=>row[key] ?? '')),
+          activeColumns.map(([,header,width])=>({header,width})),
+          rows.map(row=>activeColumns.map(([key])=>row[key] ?? '')),
+          view==='bank'?'Bank Details':'Employee Master Report',
         );
-        downloadBlob('hr-employee-master.xlsx',workbook);
+        downloadBlob(view==='bank'?'bank-details.xlsx':'hr-employee-master.xlsx',workbook);
       } else {
         const records = rows.map((row,index)=>({...row,serial:index+1}));
+        const activeColumns=view==='bank'?bankReportColumns:reportColumns;
+        const activeExportColumns=[{key:'serial',label:'Serial No'},...activeColumns.map(([key,label])=>({key,label:label.toUpperCase()}))];
         if (popup) {
           if (popup.closed) throw new Error('The PDF window was closed. Choose PDF from the Export menu again.');
           popup.document.open();
-          popup.document.write(assetPrintHtml('Employee Master',exportColumns,records));
+          popup.document.write(assetPrintHtml(view==='bank'?'Bank Details':'Employee Master',activeExportColumns,records));
           popup.document.close();
           popup.focus();
           popup.print();
@@ -344,11 +367,12 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
   }
 
   const first = (page-1)*(data?.pageSize ?? 50);
+  const activeColumns=view==='bank'?bankReportColumns:reportColumns;
   const canDownload = !loading && !importing && !exporting && Boolean(data?.total);
   return <section className="data-card employee-report" aria-labelledby="employee-master-register-title">
     <div className="data-heading">
       <div>
-        <h2 id="employee-master-register-title">Employee Master</h2>
+        <h2 id="employee-master-register-title">{view==='bank'?'Bank Details':'Employee Master'}</h2>
         {data && <p>{data.total.toLocaleString('en-IN')} employee entries</p>}
       </div>
       <div className="employee-export hr-register-download"
@@ -376,12 +400,16 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
         </div>
       </div>
       {data?.canImport && <label className="file-label">Import Excel
-        <input aria-label="Import HR employee data" type="file" accept=".xlsx,.xls,.json" disabled={importing||loading} onChange={event=>{
+        <input aria-label={view==='bank'?'Import Bank Details Excel':'Import HR employee data'} type="file" accept={view==='bank'?'.xlsx,.xls':'.xlsx,.xls,.json'} disabled={importing||loading} onChange={event=>{
           const file = event.target.files?.[0];
           event.target.value = '';
           if (file) void importData(file);
         }}/>
       </label>}
+    </div>
+    <div className="module-tabs" aria-label="Employee Master reports">
+      <button type="button" className={view==='employees'?'selected':''} aria-pressed={view==='employees'} onClick={()=>{setView('employees');setMessage('');setError('');}}>Employee Master</button>
+      <button type="button" className={view==='bank'?'selected':''} aria-pressed={view==='bank'} onClick={()=>{setView('bank');setMessage('');setError('');}}>Bank Details</button>
     </div>
     {data && <form className="filter-bar" onSubmit={searchEmployees}>
       <label>Site
@@ -389,7 +417,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
           <option value="">All sites</option>{data.sites.map(entry=><option key={entry.code} value={entry.code}>{entry.label}</option>)}
         </select>
       </label>
-      <label>Name, employee ID, department or designation
+      <label>{view==='bank'?'Employee ID or name':'Name, employee ID, department or designation'}
         <input type="search" value={search} onChange={event=>setSearch(event.target.value)}/>
       </label>
       <button type="submit">Search</button>
@@ -400,10 +428,10 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       : data && (data.rows.length ? <>
       <div className="table-scroll" role="region" aria-label="HR employee list" tabIndex={0}>
         <table className="employee-report-table">
-          <thead><tr><th scope="col">Serial No</th>{reportColumns.map(([key,label])=><th key={key} scope="col">{label.toUpperCase()}</th>)}<th scope="col">DETAILS</th></tr></thead>
+          <thead><tr><th scope="col">Serial No</th>{activeColumns.map(([key,label])=><th key={key} scope="col">{label.toUpperCase()}</th>)}{view==='employees'&&<th scope="col">DETAILS</th>}</tr></thead>
           <tbody>{data.rows.map((row,index)=><tr key={row.id}>
-            <td>{first+index+1}</td>{reportColumns.map(([key])=><td key={key}>{row[key]}</td>)}
-            <td className="row-actions">
+            <td>{first+index+1}</td>{activeColumns.map(([key])=><td key={key}>{row[key]}</td>)}
+            {view==='employees'&&<td className="row-actions">
               <button type="button" aria-label={`View details for ${row.name}`} onClick={event=>{
                 dialogButton.current = event.currentTarget;
                 setSelected({employee:row,mode:'view'});
@@ -412,7 +440,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
                 dialogButton.current = event.currentTarget;
                 setSelected({employee:row,mode:'edit'});
               }}>Edit</button>
-            </td>
+            </td>}
           </tr>)}</tbody>
         </table>
       </div>

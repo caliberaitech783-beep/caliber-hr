@@ -10,9 +10,10 @@ const whiteFill = rowFill('FFFFFFFF');
 export async function regionEmployeeExcel(
   columns: readonly { header: string; width: number }[],
   values: string[][],
+  title = 'Employee Master Report',
 ) {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('Employee Master Report', {
+  const sheet = workbook.addWorksheet(title, {
     properties: { defaultRowHeight: 16.5 },
     views: [{ state: 'frozen', xSplit: 1, ySplit: 1, showGridLines: false }],
   });
@@ -21,7 +22,7 @@ export async function regionEmployeeExcel(
     ...columns.map(column => ({ ...column, header: column.header.toUpperCase() })),
   ];
   sheet.addTable({
-    name: 'RegionEmployeeDetails',
+    name: title==='Bank Details'?'EmployeeBankDetails':'RegionEmployeeDetails',
     ref: 'A1',
     headerRow: true,
     columns: reportColumns.map(({ header }) => ({ name: header, filterButton: false })),

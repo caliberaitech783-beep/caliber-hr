@@ -36,3 +36,12 @@ it('writes a styled Excel report and preserves identifier and contact text', asy
   expect(table).toBeDefined();
   expect(table.getColumn(0).filterButton).toBe(false);
 });
+
+it('creates the separate Bank Details Excel form with its own table',async()=>{
+  const blob=await regionEmployeeExcel([{header:'Employee ID',width:18},{header:'Name',width:28},{header:'Account No',width:22}],[['CMLL123','Test Employee','00123']],'Bank Details');
+  const workbook=new Workbook();await workbook.xlsx.load(await blob.arrayBuffer());
+  const sheet=workbook.getWorksheet('Bank Details')!;
+  expect(sheet.getRow(1).values).toEqual([undefined,'Serial No','EMPLOYEE ID','NAME','ACCOUNT NO']);
+  expect(sheet.getCell('D2').value).toBe('00123');
+  expect(sheet.getTable('EmployeeBankDetails')).toBeDefined();
+});
