@@ -144,7 +144,7 @@ export function RosterTable({groups,dates,view,trip,bio,monthly,from,to,loading=
    <tbody>{shown.length?shown.map((g,i)=>{const picked=g.key===open,diff=diffText(g,tripsLoaded),rows=lines.length;return <Fragment key={g.key}>
     {lines.map((line,j)=><tr key={line} className={(line==='trip'?'roster-trip':'roster-bio')+(rows===1?' roster-single':'')+(picked?' roster-picked':'')+(g.linked?'':' roster-unlinked')}>
      {compare&&<th scope="row" className="roster-fixed roster-src">{line==='trip'?'Trip Card':'Bio Matric'}</th>}
-     {j===0&&<><td rowSpan={rows} className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>{i+1}</td><td rowSpan={rows} className={'roster-fixed roster-id'+(g.linked?'':' roster-unlinked-id')}>{g.linked?g.code:'Not linked'}</td>
+     {j===0&&<><td rowSpan={rows} className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>{i+1}</td><td rowSpan={rows} className={'roster-fixed roster-id'+(g.linked?'':' roster-unlinked-id')}>{g.linked||view==='manual'?g.code:'Not linked'}</td>
       <td rowSpan={rows} className="roster-fixed roster-name"><strong>{g.name}</strong>{(g.shift||g.exempt)&&<small className="register-sub">{[g.shift,g.exempt?'Exempt':''].filter(Boolean).join(' · ')}</small>}</td>
       <td rowSpan={rows} className="roster-text">{g.site||'—'}</td><td rowSpan={rows} className="roster-text">{g.department||'—'}</td><td rowSpan={rows} className="roster-text">{g.designation||'—'}</td>{machineCol&&<td rowSpan={rows} className="roster-text roster-machine">{g.machines.length?g.machines.map(m=><span key={m}>{m}</span>):'—'}</td>}</>}
      {lineCells(g,line)}
@@ -425,7 +425,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    <label>From<input type="date" value={from} max={to||today} onChange={e=>setFrom(e.target.value)}/></label>
    <label>To<input type="date" value={to} min={from} max={today} onChange={e=>setTo(e.target.value)}/></label>
    <label>Department<select value={department} onChange={e=>setDepartment(e.target.value)}><option value="">All departments</option>{departments.map(d=><option key={d}>{d}</option>)}</select></label>
-   <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>!department||g.department===department).map(g=><option key={g.key} value={g.key}>{g.linked?g.code:'Not linked'} · {g.name}</option>)}</select></label>
+   <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>!department||g.department===department).map(g=><option key={g.key} value={g.key}>{g.linked||view==='manual'?g.code:'Not linked'} · {g.name}</option>)}</select></label>
    <button type="button" disabled={!ready||!view||busy} onClick={()=>{if(view==='manual')setManualReload(n=>n+1);else{forceMis.current=view!=='bio';forceBio.current=true;setReload(n=>n+1);}}}><RefreshCw className={busy?'spin':''}/>Fetch again</button>
   </div>
   {lookupError&&<p className="error" role="alert">Sites could not be loaded: {lookupError}</p>}

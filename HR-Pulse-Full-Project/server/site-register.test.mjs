@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {loadSiteRegister} from './attendance-register.mjs';
 
 // A stand-in database for the queries loadSiteRegister and loadRegister make.
-function fakeDb({machines = [], punches = []} = {}) {
+function fakeDb({machines = [], punches = [], employeeCodes = {}} = {}) {
   const links = {'SST01|1021': 'emp-1', 'SST02|1021': 'emp-1'}, names = {'SST01|1021': 'RAMESH', 'SST02|77': 'RAMU'};
   const place = {SST01: 'Main gate', SST02: 'Workshop'};
   const calls = [];
@@ -13,16 +13,16 @@ function fakeDb({machines = [], punches = []} = {}) {
     if (/FROM hr_attendance_devices d LEFT JOIN hr_attendance_bridges/.test(sql)) return {rows: machines};
     if (/GROUP BY 1,2,3,4/.test(sql)) {
       const seen = new Map();
-      for (const p of punches) seen.set(p.serial + '|' + p.id, {device_serial: p.serial, biometric_id: p.id, employee_id: links[p.serial + '|' + p.id] || null, machine_name: names[p.serial + '|' + p.id] || ''});
+      for (const p of punches) seen.set(p.serial + '|' + p.id, {device_serial: p.serial, biometric_id: p.id, employee_id: links[p.serial + '|' + p.id] || employeeCodes[p.id]?.id || null, machine_name: names[p.serial + '|' + p.id] || ''});
       return {rows: [...seen.values()]};
     }
     if (/FROM hr_attendance_links l\s+JOIN hr_records e/.test(sql)) {
-      assert.deepEqual(params[1], ['emp-1']);
-      return {rows: [{id: 'emp-1', code: 'CMLL1021', name: 'Ramesh Kumar', site_id: 'other-site', site: 'Gevra', site_type: 'Site', shift: 'A', starts: '06:00', ends: '14:00', designation: 'Dumper operator', department: 'Operations', daily_wage: '800'}]};
+      return {rows: params[1].map(id=>id==='emp-1'?{id: 'emp-1', code: 'CMLL1021', name: 'Ramesh Kumar', site_id: 'other-site', site: 'Gevra', site_type: 'Site', shift: 'A', starts: '06:00', ends: '14:00', designation: 'Dumper operator', department: 'Operations', daily_wage: '800'}:
+       {...Object.values(employeeCodes).find(e=>e.id===id),site_id:'site-sasti',site:'Sasti OC',site_type:'Site',shift:'A',starts:'06:00',ends:'14:00',daily_wage:'800'})};
     }
     if (/SELECT l.employee_id,to_char/.test(sql)) {
-      assert.deepEqual(params[3], ['SST01', 'SST02']);
-      return {rows: punches.filter(p => links[p.serial + '|' + p.id]).map(p => ({employee_id: links[p.serial + '|' + p.id], at: p.at, place: place[p.serial]}))};
+      assert.deepEqual(params[3], machines.map(machine=>machine.serial));
+      return {rows: punches.filter(p => links[p.serial + '|' + p.id]||employeeCodes[p.id]).map(p => ({employee_id: links[p.serial + '|' + p.id]||employeeCodes[p.id].id, at: p.at, place: place[p.serial]}))};
     }
     if (/l.employee_id IS NULL/.test(sql)) return {rows: punches.filter(p => !links[p.serial + '|' + p.id]).map(p => ({device_serial: p.serial, biometric_id: p.id, at: p.at}))};
     return {rows: []};
@@ -54,4 +54,15 @@ test('site roster with no machine returns the empty list without reading punches
   const result = await loadSiteRegister(db, site, '2026-11-01', '2026-11-22', '2026-11-22');
   assert.deepEqual([result.machines, result.rows, result.site], [[], [], 'Sasti OC']);
   assert.ok(!db.calls.some(sql => /GROUP BY 1,2,3,4/.test(sql)));
+});
+
+test('manual biometric treats the imported value as employee code and shows the imported machine serial',async()=>{
+ const importedMachine={...machines[0],serial:'JNP2242101100'};
+ const db=fakeDb({machines:[importedMachine],employeeCodes:{'17416':{id:'emp-17416',code:'CMLL17416',name:'Anil Kumar',department:'Operations',designation:'Driver'}},punches:[
+  {serial:'JNP2242101100',id:'17416',at:'2026-11-02 04:42'},{serial:'JNP2242101100',id:'17416',at:'2026-11-02 20:37'}
+ ]});
+ const result=await loadSiteRegister(db,site,'2026-11-02','2026-11-02','2026-11-22',{manual:true});
+ const employee=result.rows[0];
+ assert.deepEqual([employee.code,employee.name,employee.department,employee.designation,employee.linked],['CMLL17416','Anil Kumar','Operations','Driver',true]);
+ assert.deepEqual(employee.machinesUsed,['JNP2242101100']);
 });

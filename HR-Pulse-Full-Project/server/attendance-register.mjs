@@ -232,33 +232,38 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   if (!machines.length) return {from, to, policy, site: site.name, machines: machineList, rows: []};
   const serials = machines.map(m => m.serial);
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
-  const {rows: ids} = await db.query(`SELECT p.device_serial,p.biometric_id,l.employee_id,coalesce(u.name,'') AS machine_name
+  const codeEmployee=manual?`LEFT JOIN LATERAL (SELECT e.id FROM hr_records e WHERE e.kind='employees' AND e.status IN ('ACTIVE','APPROVED')
+    AND (lower(btrim(e.code))=lower(btrim(p.biometric_id)) OR regexp_replace(lower(btrim(e.code)),'^[a-z]+[- ]*','')=lower(btrim(p.biometric_id))) LIMIT 1) code_employee ON true`:'';
+  const employeeId=manual?'coalesce(l.employee_id,code_employee.id)':'l.employee_id';
+  const {rows: ids} = await db.query(`SELECT p.device_serial,p.biometric_id,${employeeId} AS employee_id,coalesce(u.name,'') AS machine_name
    FROM ${punchTable} p
    LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
    LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id
+   ${codeEmployee}
    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
    GROUP BY 1,2,3,4`, [serials, from, to]);
   const used = new Map();
   for (const r of ids) {
     const key = r.employee_id ? String(r.employee_id) : `u:${r.device_serial}|${r.biometric_id}`;
-    used.set(key, [...(used.get(key) || []), `${place.get(r.device_serial)} · ${r.biometric_id}`]);
+    used.set(key, [...(used.get(key) || []), manual?r.device_serial:`${place.get(r.device_serial)} · ${r.biometric_id}`]);
   }
   const linkedIds = [...new Set(ids.filter(r => r.employee_id).map(r => String(r.employee_id)))];
   const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual})).rows : [];
   const unlinked = ids.filter(r => !r.employee_id);
+  const unlinkedKeys=new Set(unlinked.map(r=>`${r.device_serial}|${r.biometric_id}`));
   let others = [];
   if (unlinked.length) {
     const [{rows: punches}, {rows: holidays}] = await Promise.all([
       db.query(`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM ${punchTable} p
        LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
-       WHERE l.employee_id IS NULL AND p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, [serials, from, to]),
+       WHERE ${manual?'true':'l.employee_id IS NULL'} AND p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, [serials, from, to]),
       db.query(`SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
        WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to])
     ]);
     others = buildRegister({from, to, today, policy,
-      employees: unlinked.map(r => ({id: `u:${r.device_serial}|${r.biometric_id}`, code: '', name: r.machine_name || `Machine ID ${r.biometric_id}`,
+      employees: unlinked.map(r => ({id: `u:${r.device_serial}|${r.biometric_id}`, code: manual?r.biometric_id:'', name: manual?'Employee not found':r.machine_name || `Machine ID ${r.biometric_id}`,
         siteId: String(site.id), site: site.name, siteType: site.siteType || '', designation: ''})),
-      punches: punches.map(p => ({employeeId: `u:${p.device_serial}|${p.biometric_id}`, at: p.at, where: place.get(p.device_serial)})),
+      punches: punches.filter(p=>!manual||unlinkedKeys.has(`${p.device_serial}|${p.biometric_id}`)).map(p => ({employeeId: `u:${p.device_serial}|${p.biometric_id}`, at: p.at, where: manual?p.device_serial:place.get(p.device_serial)})),
       holidays: holidays.map(h => ({date: h.date, siteId: h.site_id, name: h.name}))}).rows;
   }
   const rows = [...linked.map(r => ({...r, linked: true})), ...others.map(r => ({...r, linked: false}))]
