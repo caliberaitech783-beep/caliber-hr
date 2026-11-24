@@ -122,8 +122,11 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  const table=await screen.findByRole('table',{name:'Attendance roster'});
  await waitFor(()=>expect(within(table).getByText('Ramesh Kumar')).toBeTruthy());
  expect(within(table).queryByPlaceholderText('Search')).toBeNull();
- fireEvent.click(within(table).getByRole('button',{name:'Filter Employee ID'}));
+ const employeeFilter=within(table).getByRole('button',{name:'Filter Employee ID'});
+ vi.spyOn(employeeFilter,'getBoundingClientRect').mockReturnValue({left:120,bottom:200} as DOMRect);
+ fireEvent.click(employeeFilter);
  const columnFilter=screen.getByRole('dialog',{name:'Employee ID column filter'});
+ expect(columnFilter).toHaveStyle({left:'120px',top:'205px'});
  expect(within(columnFilter).getByRole('button',{name:'Sort Employee ID ascending'})).toBeTruthy();
  expect(within(columnFilter).getByRole('button',{name:'Sort Employee ID descending'})).toBeTruthy();
  expect(within(columnFilter).getByRole('button',{name:'Clear Employee ID filter and sort'})).toBeTruthy();
