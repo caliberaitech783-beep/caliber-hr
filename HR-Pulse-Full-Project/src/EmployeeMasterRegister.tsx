@@ -14,7 +14,7 @@ const exportColumns: {key:'serial' | typeof columns[number][0];label:string}[] =
 ];
 const formats = [['excel','Excel'], ['pdf','PDF']] as const;
 type ExportFormat = typeof formats[number][0];
-type Employee = Record<typeof columns[number][0], string> & {id:string;details?:Record<string,string>};
+type Employee = Record<typeof columns[number][0], string> & {id:string};
 type RegisterColumn = typeof columns[number];
 type EditableColumn = Exclude<RegisterColumn,readonly ['region'|'site',string,number]>;
 const editableColumns = columns.filter((column):column is EditableColumn=>column[0]!=='region'&&column[0]!=='site');
@@ -35,7 +35,7 @@ type EmployeeDetails = {
   fields?:Partial<Employee>;
   sources:{label:string;fields:[string,string][]}[];
 };
-type Register = {rows:Employee[];detailColumns?:string[];total:number;pageSize:number;sites:{code:string;label:string}[];canImport:boolean};
+type Register = {rows:Employee[];total:number;pageSize:number;sites:{code:string;label:string}[];canImport:boolean};
 
 function useRegisterDialog() {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -258,7 +258,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
         const {employeeWorkbook} = await import('./employeeWorkbook');
         const existing = await api<{complete:boolean;rows:Employee[]}>(grant,'employee-master-register?export=1');
         if (!existing.complete || !data) throw new Error('Could not verify the current register. Please retry.');
-        const parsed = await employeeWorkbook(await file.arrayBuffer(),data.sites,columns,existing.rows.map(({details:_,...row})=>row));
+        const parsed = await employeeWorkbook(await file.arrayBuffer(),data.sites,columns,existing.rows);
         skipped = parsed.skipped;
         if (!parsed.rows.length) {
           setMessage(`0 entries added. ${skipped.toLocaleString('en-IN')} already imported.`);
@@ -299,23 +299,22 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
     setExporting(format);
     try {
       const params = new URLSearchParams({site,search:query,export:'1'});
-      const {complete,rows,detailColumns=[]} = await api<{complete:boolean;rows:Employee[];detailColumns?:string[]}>(grant,`employee-master-register?${params}`);
+      const {complete,rows} = await api<{complete:boolean;rows:Employee[]}>(grant,`employee-master-register?${params}`);
       if (!complete) throw new Error('The full employee export is temporarily unavailable. Try again shortly.');
       if (!rows.length) throw new Error('No employees match the current selection.');
       if (format==='excel') {
         const {regionEmployeeExcel} = await import('./regionEmployeeExcel');
         const workbook = await regionEmployeeExcel(
-          [...columns.map(([,header,width])=>({header,width})),...detailColumns.map(header=>({header,width:24}))],
-          rows.map(row=>[...columns.map(([key])=>row[key] ?? ''),...detailColumns.map(label=>row.details?.[label] ?? '')]),
+          columns.map(([,header,width])=>({header,width})),
+          rows.map(row=>columns.map(([key])=>row[key] ?? '')),
         );
         downloadBlob('hr-employee-master.xlsx',workbook);
       } else {
-        const records = rows.map((row,index)=>({...row,...row.details,serial:index+1}));
-        const allExportColumns=[...exportColumns,...detailColumns.map(label=>({key:label,label}))];
+        const records = rows.map((row,index)=>({...row,serial:index+1}));
         if (popup) {
           if (popup.closed) throw new Error('The PDF window was closed. Choose PDF from the Export menu again.');
           popup.document.open();
-          popup.document.write(assetPrintHtml('Employee Master',allExportColumns,records));
+          popup.document.write(assetPrintHtml('Employee Master',exportColumns,records));
           popup.document.close();
           popup.focus();
           popup.print();
@@ -397,9 +396,9 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       : data && (data.rows.length ? <>
       <div className="table-scroll" role="region" aria-label="HR employee list" tabIndex={0}>
         <table className="employee-report-table">
-          <thead><tr><th scope="col">Serial No</th>{columns.map(([key,label])=><th key={key} scope="col">{label.toUpperCase()}</th>)}{(data.detailColumns||[]).map(label=><th key={label} scope="col">{label.toUpperCase()}</th>)}<th scope="col">DETAILS</th></tr></thead>
+          <thead><tr><th scope="col">Serial No</th>{columns.map(([key,label])=><th key={key} scope="col">{label.toUpperCase()}</th>)}<th scope="col">DETAILS</th></tr></thead>
           <tbody>{data.rows.map((row,index)=><tr key={row.id}>
-            <td>{first+index+1}</td>{columns.map(([key])=><td key={key}>{row[key]}</td>)}{(data.detailColumns||[]).map(label=><td key={label}>{row.details?.[label]||''}</td>)}
+            <td>{first+index+1}</td>{columns.map(([key])=><td key={key}>{row[key]}</td>)}
             <td className="row-actions">
               <button type="button" aria-label={`View details for ${row.name}`} onClick={event=>{
                 dialogButton.current = event.currentTarget;

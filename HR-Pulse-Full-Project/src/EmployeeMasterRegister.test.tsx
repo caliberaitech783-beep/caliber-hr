@@ -92,8 +92,8 @@ it('prints all matching rows, including records on later pages, with the current
   const last = {id:'51',employeeId:'CMLL051',name:'Later & employee',site:'Sasti OB'};
   const fetchMock = vi.fn(async(url:string)=>{
     const params = new URL(url).searchParams;
-    return Response.json(params.has('export') ? {complete:true,rows:[first,{...last,details:{'Father Name':'Later Parent','UAN':'U-51'}}],detailColumns:['Father Name','UAN']} : {
-      rows:[{...first,details:{'Father Name':'First Parent'}}],detailColumns:['Father Name'],total:51,pageSize:50,sites:[{code:'WCL-SASTI',label:'Sasti OB'}],canImport:false,
+    return Response.json(params.has('export') ? {complete:true,rows:[first,last]} : {
+      rows:[first],total:51,pageSize:50,sites:[{code:'WCL-SASTI',label:'Sasti OB'}],canImport:false,
     });
   });
   vi.stubGlobal('fetch',fetchMock);
@@ -126,8 +126,6 @@ it('prints all matching rows, including records on later pages, with the current
   expect(new URL(url).searchParams.toString()).toBe('site=WCL-SASTI&search=employee&export=1');
   expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('Later &amp; employee'));
   expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('CMLL051'));
-  expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('Father Name'));
-  expect(documentWrite).toHaveBeenCalledWith(expect.stringContaining('Later Parent'));
   expect(mockPopup.opener).toBeNull();
 });
 

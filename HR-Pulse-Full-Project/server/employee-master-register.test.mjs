@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {createEmployeeMasterRegister,fullRegisterRows} from './employee-master-register.mjs';
+import {createEmployeeMasterRegister} from './employee-master-register.mjs';
 // "One employee number, one person" is checked with the register: this file is on the list the deploy runs.
 import './employee-number.test.mjs';
 import './employee-master-remove.test.mjs';
@@ -80,7 +80,7 @@ test('export returns the full filtered register within the assigned sites',async
     if (sql.includes("kind='sites'")) return {rows:[{id:siteId}]};
     queries.push({sql,params});
     return {rows:Array.from({length:51},(_,index)=>({
-      id:String(index),site_name:'Sasti OB',site_code:'WCL-SASTI',data:{employeeId:`CMLL${index}`,name:'Test Operator',sources:[{label:'Sheet',fields:[['Father Name','Parent'],['Blood Group','O+']]}]},
+      id:String(index),site_name:'Sasti OB',site_code:'WCL-SASTI',data:{employeeId:`CMLL${index}`,name:'Test Operator'},
     }))};
   }});
   const scoped = {actor:'hr-test',permissions:{hrDesktopAccess:menus,site:'WCL-SASTI'}};
@@ -88,21 +88,10 @@ test('export returns the full filtered register within the assigned sites',async
   assert.equal(queries.length,1);
   assert.deepEqual(queries[0].params,[[siteId],'WCL-SASTI','Operator']);
   assert.match(queries[0].sql,/site_id=ANY\(\$1\)/);
-  assert.match(queries[0].sql,/\bdata\b/);
+  assert.match(queries[0].sql,/data-'sources'/);
   assert.doesNotMatch(queries[0].sql,/\b(?:LIMIT|OFFSET)\b/i);
   assert.equal(result.rows.length,51);
   assert.equal(result.rows.at(-1).region,'WCL');
-  assert.deepEqual(result.detailColumns,['Father Name','Blood Group']);
-  assert.deepEqual(result.rows[0].details,{'Father Name':'Parent','Blood Group':'O+'});
-});
-
-test('full report keeps every source parameter and joins conflicting values without losing data',()=>{
-  const result=fullRegisterRows([{id:'1',site_name:'Sasti OB',site_code:'WCL-SASTI',data:{name:'Employee',sources:[
-    {label:'A',fields:[['Aadhaar No','1111'],['Father Name','One']]},
-    {label:'B',fields:[['Aadhaar No','2222'],['UAN','U-1'],['Father Name','One']]},
-  ]}}]);
-  assert.deepEqual(result.detailColumns,['Aadhaar No','Father Name','UAN']);
-  assert.deepEqual(result.rows[0].details,{'Aadhaar No':'1111 | 2222','Father Name':'One',UAN:'U-1'});
 });
 
 test('editing a register entry preserves site scope and rejects stale saves',async()=>{
