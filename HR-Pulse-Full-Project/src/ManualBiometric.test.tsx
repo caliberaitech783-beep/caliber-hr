@@ -22,17 +22,17 @@ describe('Manual Biometric attendance roster',()=>{
    mismatches:[{date:'2026-11-02',bio:'A',trip:'P',reason:'Attendance status differs',bioDetail:'',tripDetail:''}]},
    {key:'2',code:'CMLL17417',name:'Matching Employee',site:'Dhoptala OB 2nd',department:'Driver',designation:'Driver',shift:'',exempt:false,bioCodes:{'2026-11-01':'P'},tripCodes:{'2026-11-01':'P'},tripDays:{},hasTripCards:true,pending:0,machines:[],linked:true,mismatches:[]}];
   render(<RosterTable groups={groups as never} dates={['2026-11-01','2026-11-02']} view="manualMismatch" trip={trip} monthly={false} from="2026-11-01" to="2026-11-02"/>);
-  expect(screen.getAllByText('P / P')).toHaveLength(2);
+  expect(screen.getAllByText('P / P')).toHaveLength(1);
   expect(screen.getByText('A / P')).toBeInTheDocument();
-  expect(screen.getByText('Matching Employee')).toBeInTheDocument();
-  expect(screen.getByRole('button',{name:/Match 50.0%/})).toBeInTheDocument();
-  expect(screen.getByRole('button',{name:/Mismatch 25.0%/})).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button',{name:/Mismatch 25.0%/}));
-  expect(screen.getByRole('region',{name:'Mismatch employee details'})).toBeInTheDocument();
+  expect(screen.queryByText('Matching Employee')).not.toBeInTheDocument();
+  expect(screen.getByRole('tab',{name:/Affected Employees 1/})).toBeInTheDocument();
+  expect(screen.getByRole('tab',{name:/All OK 1/})).toBeInTheDocument();
+  expect(screen.getByRole('region',{name:'Affected employee details'})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'View dates'}));
   expect(screen.getByText('Attendance status differs')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button',{name:'Mismatches Only'}));
-  expect(screen.queryByText('Matching Employee')).not.toBeInTheDocument();
-  expect(screen.getByText(/2 employees · 2 days · 1 mismatches/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab',{name:/All OK 1/}));
+  expect(screen.getAllByText('Matching Employee').length).toBeGreaterThan(0);
+  expect(screen.queryByText('Balasani Srinivas')).not.toBeInTheDocument();
+  expect(screen.getByRole('region',{name:'All OK employee details'})).toBeInTheDocument();
  });
 });
