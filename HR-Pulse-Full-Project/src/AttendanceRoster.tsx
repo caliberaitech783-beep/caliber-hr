@@ -466,7 +466,6 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
 
  return <section className="data-card attendance-register attendance-roster" aria-label="Attendance roster">
   <h2>Attendance roster</h2>
-  <p className="help-text">Choose the site and dates, then press Trip card to read MIS (VLB, ELB and LMV), Biometric to read machine punches, or Manual Biometric to review an imported attendance file. M.B-Trip card Mismatch compares that imported attendance with the MIS trip cards.</p>
   <div className="attendance-filters roster-filters">
    <label>Site<select value={site} required aria-invalid={!site} onChange={e=>{setSite(e.target.value);setEmployee('');}}><option value="">{sites===null?'Loading sites…':'Select a site'}</option>{(sites||[]).map(s=><option key={s} value={s}>{s}</option>)}</select></label>
    <label>From<input type="date" value={from} max={to||today} onChange={e=>setFrom(e.target.value)}/></label>

@@ -70,7 +70,7 @@ export default function AttendanceManagement({grant,view='Biometric integration'
  const current=(attendanceViews.includes(view)?view:'Biometric integration') as AttendanceView;
  return <section className="attendance-module attendance" aria-label="Attendance Management">
   <div className="attendance-head">
-   <div><h1>Attendance Management</h1><p className="attendance-crumb">{attendanceGroup(current)} › {current}</p></div>
+   <div><h1>Attendance Management</h1>{current!=='Biometric integration'&&<p className="attendance-crumb">{attendanceGroup(current)} › {current}</p>}</div>
   </div>
   {current==='Biometric integration'&&<BiometricIntegration grant={grant} policy={policy} onNavigate={onNavigate}/>}
   {current==='Trip card and logbook'&&<MisAttendance grant={grant} policy={policy}/>}
@@ -174,8 +174,16 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
  const bridge=!status?'':direct&&!status.bridgeOnline?`${direct} machine${direct===1?'':'s'} direct to HR Pulse`:!status.configured?'Bridge not set up':status.bridgeOnline?'Bridge PC online':status.bridgeLastSeen?`Bridge PC offline · last seen ${new Date(status.bridgeLastSeen).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'medium',timeStyle:'short'})}`:'Bridge PC has not connected yet';
 
  return <>
-  <div className="attendance-head">
-   <p className="help-text">Punches from the ESSL fingerprint / face machines, collected by the bridge PC at each site. Link each machine ID to an employee once; the attendance register then rates their days with the HR policy.</p>
+  <div className="attendance-topbar">
+   <div className="module-tabs" aria-label="Biometric views">
+    <button className={tab==='punches'?'selected':''} aria-pressed={tab==='punches'} onClick={()=>setTab('punches')}>Machine punches</button>
+    <button className={tab==='machines'?'selected':''} aria-pressed={tab==='machines'} onClick={()=>setTab('machines')}>Biometric machines</button>
+    <button className={tab==='master'?'selected':''} aria-pressed={tab==='master'} onClick={()=>setTab('master')}>Machine master</button>
+    <button className={tab==='sheet'?'selected':''} aria-pressed={tab==='sheet'} onClick={()=>setTab('sheet')}>ESSL punch log (Excel)</button>
+    <button className={tab==='tripPunch'?'selected':''} aria-pressed={tab==='tripPunch'} onClick={()=>setTab('tripPunch')}>Trip card punch</button>
+    <button className={tab==='recon'?'selected':''} aria-pressed={tab==='recon'} onClick={()=>setTab('recon')}>Biometric vs trip card</button>
+    <button className={tab==='roster'?'selected':''} aria-pressed={tab==='roster'} onClick={()=>setTab('roster')}>Attendance roster</button>
+   </div>
    <div className="attendance-actions">
     {status&&<span className={'attendance-bridge '+(status.bridgeOnline||direct?'online':'offline')} role="status">{bridge}</span>}
     <button className="primary" disabled={fetching||loading||!status?.configured} onClick={()=>void fetchAttendance()}><RefreshCw className={fetching?'spin':''}/>{fetching?'Fetching…':'Fetch attendance'}</button>
@@ -184,15 +192,6 @@ function BiometricIntegration({grant,policy,onNavigate}:{grant:string;policy?:At
   {error&&<p className="error" role="alert">{error}</p>}
   {message&&!error&&<p className="attendance-success" role="status">{message}</p>}
   {status&&!status.configured&&<p className="help-text">The bridge key has not been added to the HR API settings yet, so attendance cannot be fetched.</p>}
-  <div className="module-tabs" aria-label="Biometric views">
-   <button className={tab==='punches'?'selected':''} aria-pressed={tab==='punches'} onClick={()=>setTab('punches')}>Machine punches</button>
-   <button className={tab==='machines'?'selected':''} aria-pressed={tab==='machines'} onClick={()=>setTab('machines')}>Biometric machines</button>
-   <button className={tab==='master'?'selected':''} aria-pressed={tab==='master'} onClick={()=>setTab('master')}>Machine master</button>
-   <button className={tab==='sheet'?'selected':''} aria-pressed={tab==='sheet'} onClick={()=>setTab('sheet')}>ESSL punch log (Excel)</button>
-   <button className={tab==='tripPunch'?'selected':''} aria-pressed={tab==='tripPunch'} onClick={()=>setTab('tripPunch')}>Trip card punch</button>
-   <button className={tab==='recon'?'selected':''} aria-pressed={tab==='recon'} onClick={()=>setTab('recon')}>Biometric vs trip card</button>
-   <button className={tab==='roster'?'selected':''} aria-pressed={tab==='roster'} onClick={()=>setTab('roster')}>Attendance roster</button>
-  </div>
   {/* Owner, 22 Nov 2026: the monthly roster (Trip Card and Bio Matric lines, difference drill-down) as a tab after Biometric vs trip card. */}
   {tab==='roster'&&<AttendanceRosterPage grant={grant} onManageMachines={()=>setTab('master')}/>}
   {/* Owner, 23 Nov 2026: Machine master — site, machine no., name, location, serial, IP, make and model of every machine. */}

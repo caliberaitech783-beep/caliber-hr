@@ -102,9 +102,13 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
     {...bio,id:'u:SST01|77',code:'',name:'RAMU (machine)',department:'',designation:'',linked:false,machinesUsed:['Main gate · 77']}]:[]});
   return Response.json({rows:[],total:0});}));
  render(<AttendanceManagement grant={'a'.repeat(43)} view="Biometric integration"/>);
+ expect(screen.queryByText('Attendance fetch › Biometric integration')).toBeNull();
+ expect(screen.queryByText(/Punches from the ESSL fingerprint/)).toBeNull();
  const tabs=document.querySelector('[aria-label="Biometric views"]')!.querySelectorAll('button');
+ expect(document.querySelector('.attendance-topbar')?.contains(screen.getByRole('button',{name:'Fetch attendance'}))).toBe(true);
  expect([...tabs].map(b=>b.textContent).slice(-2)).toEqual(['Biometric vs trip card','Attendance roster']);
  fireEvent.click(screen.getByRole('button',{name:'Attendance roster'}));
+ expect(screen.queryByText(/Choose the site and dates, then press Trip card/)).toBeNull();
  const trip=await screen.findByRole('button',{name:'Trip card (VLB · ELB · LMV)'});
  expect(trip).toBeDisabled();
  expect(screen.getByText('Select a site first.')).toBeTruthy();

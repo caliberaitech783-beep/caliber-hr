@@ -1,5 +1,9 @@
 .attendance{gap:14px}
 .attendance-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.attendance-topbar{display:flex;align-items:center;gap:16px;min-width:0}
+.attendance-topbar .module-tabs{display:flex;flex:1;flex-wrap:nowrap;min-width:0;overflow-x:auto}
+.attendance-topbar .module-tabs button{flex:0 0 auto;white-space:nowrap}
+.attendance-topbar .attendance-actions{flex:0 0 auto;flex-wrap:nowrap}
 .attendance .module-tabs{margin:0}
 .attendance-success+.help-text,.attendance>.help-text,.attendance>.error{margin:0}
 .attendance-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -25,6 +29,7 @@
 .attendance .spin{animation:attendance-spin 1s linear infinite}
 @keyframes attendance-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.attendance .spin{animation:none}}
+@media (max-width:900px){.attendance-topbar{flex-wrap:wrap}.attendance-topbar .module-tabs{flex-basis:100%}}
 .attendance-crumb{margin:2px 0 0;font-size:13px;color:#7a698b}
 .attendance-head .help-text{margin:0;max-width:720px}
 .attendance iframe{width:100%;min-height:720px;border:1px solid #eee7f3;border-radius:10px;background:#fff}
