@@ -156,7 +156,13 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   const {devices = null, employeeIds = null, manual = false} = options;
   const punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
   const {policy} = await readPolicy(db);
-  const employees = (await db.query(`
+  const employeeQuery=manual?`
+   SELECT e.id,e.data->>'employeeId' AS code,e.name,e.site_id,e.site_code,e.site_name AS site,'' AS site_type,
+    '' AS shift,NULL AS starts,NULL AS ends,coalesce(e.data->>'designation','') AS designation,
+    coalesce(e.data->>'department','') AS department,'0' AS daily_wage
+   FROM hr_employee_master_register e
+   WHERE e.id=ANY($2::uuid[])
+   ORDER BY e.name,e.data->>'employeeId'`:`
    SELECT DISTINCT e.id,e.code,e.name,e.data->>'siteId' AS site_id,site.code AS site_code,site.name AS site,site.data->>'siteType' AS site_type,
     sh.name AS shift,sh.data->>'startTime' AS starts,sh.data->>'endTime' AS ends,
     coalesce(nullif(des.name,''),e.data->>'designation',e.data#>>'{fields,Designation}',e.data#>>'{officeData,Designation}','') AS designation,
@@ -169,11 +175,18 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
    LEFT JOIN hr_records dep ON dep.id::text=e.data->>'departmentId' AND dep.kind='departments'
    LEFT JOIN hr_records des ON des.id::text=e.data->>'designationId' AND des.kind='designations'
    WHERE CASE WHEN $2::uuid[] IS NULL THEN ($1::text[] IS NULL OR e.data->>'siteId'=ANY($1)) ELSE e.id=ANY($2::uuid[]) END
-   ORDER BY e.name,e.code`, [employeeIds ? null : sites, employeeIds])).rows;
+   ORDER BY e.name,e.code`;
+  const employees = (await db.query(employeeQuery, [employeeIds ? null : sites, employeeIds])).rows;
   const ids = employees.map(e => e.id);
   if (!ids.length) return buildRegister({from, to, today, policy});
   const [punches, holidays, leaves, ods, passes, pay] = await Promise.all([
-    db.query(`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+    db.query(manual?`SELECT e.id AS employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+      coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
+     JOIN hr_employee_master_register e ON upper(btrim(e.data->>'employeeId'))=
+       upper(CASE WHEN btrim(p.biometric_id)~'^[0-9]+$' THEN 'CMLL'||btrim(p.biometric_id) ELSE btrim(p.biometric_id) END)
+     LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
+     WHERE e.id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
+      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`:`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
      JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
@@ -232,9 +245,10 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   if (!machines.length) return {from, to, policy, site: site.name, machines: machineList, rows: []};
   const serials = machines.map(m => m.serial);
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
-  const codeEmployee=manual?`LEFT JOIN LATERAL (SELECT e.id FROM hr_records e WHERE e.kind='employees' AND e.status IN ('ACTIVE','APPROVED')
-    AND (lower(btrim(e.code))=lower(btrim(p.biometric_id)) OR regexp_replace(lower(btrim(e.code)),'^[a-z]+[- ]*','')=lower(btrim(p.biometric_id))) LIMIT 1) code_employee ON true`:'';
-  const employeeId=manual?'coalesce(l.employee_id,code_employee.id)':'l.employee_id';
+  const codeEmployee=manual?`LEFT JOIN LATERAL (SELECT e.id FROM hr_employee_master_register e
+    WHERE upper(btrim(e.data->>'employeeId'))=upper(CASE WHEN btrim(p.biometric_id)~'^[0-9]+$' THEN 'CMLL'||btrim(p.biometric_id) ELSE btrim(p.biometric_id) END)
+    LIMIT 1) code_employee ON true`:'';
+  const employeeId=manual?'code_employee.id':'l.employee_id';
   const {rows: ids} = await db.query(`SELECT p.device_serial,p.biometric_id,${employeeId} AS employee_id,coalesce(u.name,'') AS machine_name
    FROM ${punchTable} p
    LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
