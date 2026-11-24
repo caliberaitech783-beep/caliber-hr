@@ -196,10 +196,12 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .manual-key-card{display:grid;grid-template-columns:12px auto auto;grid-template-rows:auto auto;align-items:center;column-gap:6px;min-width:108px;padding:7px 9px;border:1px solid #e3d9ed;border-radius:9px;background:#fff;box-shadow:0 1px 2px #2a12300d;font:inherit;color:inherit;text-align:left;cursor:pointer}
 .manual-key-card i{grid-row:1/3;width:12px;height:30px;border-radius:5px}.manual-key-card b{font-size:13px;color:#29183d}.manual-key-card small{grid-column:2/4;color:#756981;font-size:10px}.manual-key-card.match i{background:#dcefc7}.manual-key-card.diff i{background:#f9dede}.manual-key-card.empty i{background:#e9e4ef}
 .manual-key-card[aria-pressed="true"]{border-color:#7c3aed;box-shadow:0 0 0 2px #eadcf8;background:#fbf8ff}
+.manual-compare-grid{width:max-content!important;min-width:100%;table-layout:fixed}
+.manual-compare-grid .manual-col-id{width:110px}.manual-compare-grid .manual-col-name{width:160px}.manual-compare-grid .manual-col-department{width:150px}.manual-compare-grid .manual-col-designation{width:170px}.manual-compare-grid .manual-col-day{width:62px}
 .manual-compare-grid .roster-id.roster-first{left:0}
-.manual-compare-grid .roster-name{left:92px}
+.manual-compare-grid .roster-id{--w:110px}.manual-compare-grid .roster-name{--w:160px;left:110px}
 .manual-compare-grid .roster-name{box-shadow:2px 0 0 #e7dfef}
-.manual-compare-grid .roster-department{left:262px;z-index:2;width:150px;min-width:150px!important;max-width:150px;padding-left:12px;text-align:left;box-shadow:2px 0 0 #e7dfef}
+.manual-compare-grid .roster-department{left:270px;z-index:2;width:150px;min-width:150px!important;max-width:150px;padding-left:12px;text-align:left;box-shadow:2px 0 0 #e7dfef}
 .manual-compare-grid thead .roster-department{z-index:3;background:#fff}
 .manual-compare-grid th.roster-text,.manual-compare-grid td.roster-text{min-width:150px;padding-left:12px}
 .manual-summary-drill{margin:0 0 12px;padding:14px;border:1px solid #d8c9e8;border-radius:12px;background:#fbf8ff;box-shadow:0 4px 16px #3e20500d}
