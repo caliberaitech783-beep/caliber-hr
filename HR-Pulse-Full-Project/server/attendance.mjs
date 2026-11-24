@@ -30,8 +30,11 @@ const NO_BRIDGE='The bridge PC did not respond. Check that it is switched on, co
 
 // Attendance/MIS calls the mining location an OB while HR Site Master may call the same location an OC.
 // Parentheses around an ordinal are presentation only ("2nd" and "(2nd)" are the same site).
-export const attendanceSiteKey=value=>String(value||'').trim().toLowerCase()
- .replace(/[()]/g,' ').replace(/\b(?:ob|oc)\b/g,'oc').replace(/\s+/g,' ').trim();
+export const attendanceSiteKey=value=>{
+ const key=String(value||'').trim().toLowerCase()
+  .replace(/[()]/g,' ').replace(/\b(?:ob|oc)\b/g,'oc').replace(/\s+/g,' ').trim();
+ return /^dhoptala oc(?: 2nd)?$/.test(key)?'wcl-dhoptala':key;
+};
 
 export function keyMatches(expected,supplied){
  if(typeof expected!=='string'||expected.length<32||typeof supplied!=='string')return false;
