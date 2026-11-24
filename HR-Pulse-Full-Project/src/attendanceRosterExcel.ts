@@ -10,10 +10,11 @@ export const CODE_COLOURS:Record<string,[string,string]>={P:['EAF3DE','27500A'],
  CO:['E1F5EE','085041'],L:['FBEAF0','72243E'],OD:['E6F1FB','0C447C'],MP:['FAECE7','712B13'],IN:['E1F5EE','085041'],'?':['F1EFE8','5F5E5A']};
 const fill=(argb:string):ExcelJS.Fill=>({type:'pattern',pattern:'solid',fgColor:{argb:'FF'+argb}});
 const show=(date:string)=>date.split('-').reverse().join('-');
-const TITLE:Record<RosterView,string>={trip:'Trip card (VLB · ELB · LMV)',bio:'Biometric',compare:'Trip Card against Bio Matric',manual:'Manual Biometric'};
+const TITLE:Record<RosterView,string>={trip:'Trip card (VLB · ELB · LMV)',bio:'Biometric',compare:'Trip Card against Bio Matric',manual:'Manual Biometric',manualMismatch:'M.B-Trip card Mismatch'};
 type Input={groups:RosterGroup[];dates:string[];tripsLoaded:boolean;monthly:boolean;from:string;to:string;view?:RosterView};
 
 export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,view='compare'}:Input){
+ if(view==='manualMismatch')return manualMismatchWorkbook(groups,dates,from,to);
  const compare=view==='compare';
  const wb=new ExcelJS.Workbook();
  const fixed=[...(compare?['Source']:[]),'Sr. No.','Employee ID','Name','Site','Department','Designation'];
@@ -106,6 +107,21 @@ export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,v
 
 export async function downloadRosterExcel(input:Input){
  const wb=await rosterWorkbook(input);
- const name=input.view==='trip'?'trip-card':input.view==='bio'?'biometric':'trip-vs-biometric';
+ const name=input.view==='trip'?'trip-card':input.view==='bio'?'biometric':input.view==='manualMismatch'?'manual-biometric-vs-trip-card':'trip-vs-biometric';
  downloadBlob(`attendance-roster-${name}-${input.from}-to-${input.to}.xlsx`,new Blob([await wb.xlsx.writeBuffer()],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+}
+
+function manualMismatchWorkbook(groups:RosterGroup[],dates:string[],from:string,to:string){
+ const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('MB - Trip Card',{views:[{state:'frozen',xSplit:4,ySplit:4}]});
+ const fixed=['Employee ID','Name','Department','Designation'],heads=[...fixed,...dates.map(d=>Number(d.slice(8)))],first=fixed.length+1;
+ ws.mergeCells(1,1,1,heads.length);ws.getCell(1,1).value=`M.B-Trip card Mismatch · ${show(from)} to ${show(to)}`;ws.getCell(1,1).font={bold:true,size:13,color:{argb:'FF3C2A55'}};
+ ws.mergeCells(2,1,2,heads.length);ws.getCell(2,1).value='Each date is Manual Biometric / Trip Card. Green = match · Red = mismatch · Amber = one source missing.';ws.getCell(2,1).font={size:10,color:{argb:'FF5C4D6E'}};
+ dates.forEach((d,i)=>{const c=ws.getRow(3).getCell(first+i);c.value=weekday(d);c.alignment={horizontal:'center'};});
+ heads.forEach((h,i)=>{const c=ws.getRow(4).getCell(i+1);c.value=h;c.font={bold:true,color:{argb:'FF5C4D6E'}};c.fill=fill('F3F0F7');c.alignment={horizontal:i<4?'left':'center'};});
+ groups.forEach((g,n)=>{const row=ws.getRow(5+n);[g.code,g.name,g.department||'—',g.designation||'—'].forEach((v,i)=>row.getCell(i+1).value=v);const mismatches=new Map(g.mismatches.map(m=>[m.date,m]));
+  dates.forEach((d,i)=>{const bio=g.bioCodes[d]||'',trip=g.tripCodes[d]||'',m=mismatches.get(d),c=row.getCell(first+i);c.value=`${bio||'—'} / ${trip||'—'}`;c.alignment={horizontal:'center'};const missing=Boolean(bio)!==Boolean(trip);c.fill=fill(m?(missing?'FAEEDA':'FCEBEB'):bio&&trip?'EAF3DE':'F3F0F7');if(m)c.note=m.reason;});});
+ [14,24,16,19].forEach((w,i)=>ws.getColumn(i+1).width=w);dates.forEach((_,i)=>ws.getColumn(first+i).width=9);ws.pageSetup={orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0};
+ const ds=wb.addWorksheet('Mismatches');ds.addRow(['Employee ID','Name','Department','Designation','Date','Manual Biometric','Trip Card','Reason']).eachCell(c=>{c.font={bold:true};c.fill=fill('F3F0F7');});
+ for(const g of groups)for(const m of g.mismatches)ds.addRow([g.code,g.name,g.department,g.designation,show(m.date),m.bio||'—',m.trip||'—',m.reason]);[14,24,16,19,13,18,12,42].forEach((w,i)=>ds.getColumn(i+1).width=w);
+ return wb;
 }

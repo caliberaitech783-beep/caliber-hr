@@ -1,11 +1,11 @@
 import '@testing-library/jest-dom/vitest';
-import {render,screen} from '@testing-library/react';
+import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
 import {RosterTable,VIEW_TABS,type TripState} from './AttendanceRoster';
 
 describe('Manual Biometric attendance roster',()=>{
  it('is a separate tab with import and no trip-card comparison controls',()=>{
-  expect(VIEW_TABS.map(([,label])=>label)).toEqual(['Trip card (VLB · ELB · LMV)','Biometric','Trip card vs Biometric','Manual Biometric']);
+  expect(VIEW_TABS.map(([,label])=>label)).toEqual(['Trip card (VLB · ELB · LMV)','Biometric','Trip card vs Biometric','Manual Biometric','M.B-Trip card Mismatch']);
   const trip:TripState={status:'idle',message:'',rows:null};
   render(<RosterTable groups={[]} dates={['2026-11-24']} view="manual" trip={trip}
    bio={{running:false,message:'Imported biometric attendance',days:{},counts:{},errors:{},failed:[]}}
@@ -14,5 +14,19 @@ describe('Manual Biometric attendance roster',()=>{
   expect(screen.getByText('No manual biometric attendance imported.')).toBeInTheDocument();
   expect(screen.queryByText('Only employees with a difference')).not.toBeInTheDocument();
   expect(screen.queryByRole('columnheader',{name:'Diff. of Trip Card and Bio-matric'})).not.toBeInTheDocument();
+ });
+ it('shows all dates with MB / Trip Card values and can keep only mismatched employees',()=>{
+  const trip:TripState={status:'ready',message:'',rows:[]};
+  const groups=[{key:'1',code:'CMLL17416',name:'Balasani Srinivas',site:'Dhoptala OB 2nd',department:'Driver',designation:'Tipper Driver',shift:'',exempt:false,
+   bioCodes:{'2026-11-01':'P','2026-11-02':'A'},tripCodes:{'2026-11-01':'P','2026-11-02':'P'},tripDays:{},hasTripCards:true,pending:0,machines:[],linked:true,
+   mismatches:[{date:'2026-11-02',bio:'A',trip:'P',reason:'Attendance status differs',bioDetail:'',tripDetail:''}]},
+   {key:'2',code:'CMLL17417',name:'Matching Employee',site:'Dhoptala OB 2nd',department:'Driver',designation:'Driver',shift:'',exempt:false,bioCodes:{'2026-11-01':'P'},tripCodes:{'2026-11-01':'P'},tripDays:{},hasTripCards:true,pending:0,machines:[],linked:true,mismatches:[]}];
+  render(<RosterTable groups={groups as never} dates={['2026-11-01','2026-11-02']} view="manualMismatch" trip={trip} monthly={false} from="2026-11-01" to="2026-11-02"/>);
+  expect(screen.getAllByText('P / P')).toHaveLength(2);
+  expect(screen.getByText('A / P')).toBeInTheDocument();
+  expect(screen.getByText('Matching Employee')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Mismatches Only'}));
+  expect(screen.queryByText('Matching Employee')).not.toBeInTheDocument();
+  expect(screen.getByText(/2 employees · 2 days · 1 mismatches/)).toBeInTheDocument();
  });
 });

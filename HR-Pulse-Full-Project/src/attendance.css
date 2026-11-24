@@ -181,6 +181,17 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .roster-export-menu button{display:flex;width:100%;align-items:center;gap:12px;padding:12px;border:0;background:transparent;text-align:left;color:#283650;border-radius:8px}
 .roster-export-menu button:hover{background:#f7f2fb}
 
+/* Manual Biometric against Trip Card: one compact cell per date, MB / TC. */
+.manual-compare-bar .roster-grow{flex:1}
+.manual-compare-key{display:flex;align-items:center;gap:5px 10px;font-size:12px;white-space:nowrap}
+.manual-compare-key i{width:11px;height:11px;border-radius:3px}.manual-compare-key i.match{background:#eaf3de}.manual-compare-key i.diff{background:#fcebeb}.manual-compare-key i.empty{background:#f3f0f7}
+.manual-compare-grid .roster-id.roster-first{left:0}
+.manual-compare-grid .roster-name{left:92px}
+.manual-compare-grid td.manual-compare-day{padding:4px 2px;min-width:52px}
+.manual-compare-day>span{display:flex;min-height:38px;flex-direction:column;align-items:center;justify-content:center;border-radius:6px;padding:3px 4px}
+.manual-compare-day b{font-size:11px}.manual-compare-day small{display:block;font-size:9px;color:inherit}
+.manual-compare-match>span{background:#eaf3de;color:#27500a}.manual-compare-diff>span{background:#fcebeb;color:#791f1f}.manual-compare-missing>span{background:#faeeda;color:#633806}.manual-compare-empty>span{background:#f3f0f7;color:#6b5a80}
+
 /* Delete a machine after one confirmation (MachineDeleteDialog, owner 23 Nov 2026). */
 .biometric-machines .machine-actions .machine-delete{color:#b42318;border-color:#f3c4bf}
 .biometric-machines .machine-actions .machine-delete:hover:not(:disabled){background:#fef3f2}
