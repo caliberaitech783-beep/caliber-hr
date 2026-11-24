@@ -17,7 +17,8 @@ function fakeDb({machines = [], punches = [], employeeCodes = {}} = {}) {
       return {rows: [...seen.values()]};
     }
     if (/FROM hr_employee_master_register e\s+WHERE e.id=ANY/.test(sql)) {
-      return {rows: params[1].map(id=>({...Object.values(employeeCodes).find(e=>e.id===id),site_id:'site-sasti',site_code:'WCL-SASTI',site:'Sasti OC',site_type:'',shift:'',starts:null,ends:null,daily_wage:'0'}))};
+      assert.ok(!sql.includes('$2::uuid[]'));
+      return {rows: params[0].map(id=>({...Object.values(employeeCodes).find(e=>e.id===id),site_id:'site-sasti',site_code:'WCL-SASTI',site:'Sasti OC',site_type:'',shift:'',starts:null,ends:null,daily_wage:'0'}))};
     }
     if (/FROM hr_attendance_links l\s+JOIN hr_records e/.test(sql)) {
       return {rows: params[1].map(id=>id==='emp-1'?{id: 'emp-1', code: 'CMLL1021', name: 'Ramesh Kumar', site_id: 'other-site', site: 'Gevra', site_type: 'Site', shift: 'A', starts: '06:00', ends: '14:00', designation: 'Dumper operator', department: 'Operations', daily_wage: '800'}:

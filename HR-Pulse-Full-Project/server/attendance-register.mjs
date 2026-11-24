@@ -161,7 +161,7 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
     '' AS shift,NULL AS starts,NULL AS ends,coalesce(e.data->>'designation','') AS designation,
     coalesce(e.data->>'department','') AS department,'0' AS daily_wage
    FROM hr_employee_master_register e
-   WHERE e.id=ANY($2::uuid[])
+   WHERE e.id=ANY($1::uuid[])
    ORDER BY e.name,e.data->>'employeeId'`:`
    SELECT DISTINCT e.id,e.code,e.name,e.data->>'siteId' AS site_id,site.code AS site_code,site.name AS site,site.data->>'siteType' AS site_type,
     sh.name AS shift,sh.data->>'startTime' AS starts,sh.data->>'endTime' AS ends,
@@ -176,7 +176,7 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
    LEFT JOIN hr_records des ON des.id::text=e.data->>'designationId' AND des.kind='designations'
    WHERE CASE WHEN $2::uuid[] IS NULL THEN ($1::text[] IS NULL OR e.data->>'siteId'=ANY($1)) ELSE e.id=ANY($2::uuid[]) END
    ORDER BY e.name,e.code`;
-  const employees = (await db.query(employeeQuery, [employeeIds ? null : sites, employeeIds])).rows;
+  const employees = (await db.query(employeeQuery, manual?[employeeIds]:[employeeIds ? null : sites, employeeIds])).rows;
   const ids = employees.map(e => e.id);
   if (!ids.length) return buildRegister({from, to, today, policy});
   const [punches, holidays, leaves, ods, passes, pay] = await Promise.all([
