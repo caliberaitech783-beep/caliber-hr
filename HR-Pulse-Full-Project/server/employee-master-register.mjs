@@ -41,6 +41,28 @@ const isDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
 const fail = (message, status = 400) => Object.assign(new Error(message), {status});
 const normalizeEmployeeId = value => value.replace(/^CMPL/i,'CMLL');
 const employeeIdLabels = new Set(['EMPLOYEECODE','EMPLOYEEID','EMPID']);
+const cleanLabel = value => String(value ?? '').trim();
+const addDetail = (details,label,value) => {
+  const key=cleanLabel(label),text=String(value ?? '').trim();
+  if (!key || !text) return;
+  const current=details[key] ? details[key].split(' | ') : [];
+  if (!current.includes(text)) details[key]=[...current,text].join(' | ');
+};
+/** Flatten every imported workbook field without losing conflicting values from another source row. */
+export function fullRegisterRows(rows) {
+  const detailColumns=[];const seen=new Set();
+  const result=rows.map(row=>{
+    const {sources=[], ...data}=row.data&&typeof row.data==='object'?row.data:{};
+    const details={};
+    for (const source of Array.isArray(sources)?sources:[]) for (const pair of Array.isArray(source?.fields)?source.fields:[]) {
+      if (!Array.isArray(pair)||pair.length<2) continue;
+      const label=cleanLabel(pair[0]);addDetail(details,label,pair[1]);
+      if (label&&!seen.has(label)){seen.add(label);detailColumns.push(label);}
+    }
+    return {id:row.id,...data,site:row.site_name,region:row.site_code.split('-')[0],details};
+  });
+  return {rows:result,detailColumns};
+}
 
 async function access(db, profile) {
   const menus = grantedMenus(profile);
@@ -108,13 +130,10 @@ export function createEmployeeMasterRegister(pool) {
         AND ($2='' OR site_code=$2)
         AND ($3='' OR strpos(lower(concat_ws(' ',name,data->>'employeeId',data->>'department',data->>'designation')),lower($3))>0)
         AND ${isEmployeeEntry}`;
-      const selectRows = `SELECT id, site_name, site_code, data-'sources' AS data FROM hr_employee_master_register
+      const selectRows = `SELECT id, site_name, site_code, data FROM hr_employee_master_register
         WHERE ${filter} ORDER BY lower(name),id`;
-      const formatRows = ({rows}) => rows.map(row=>({
-        id:row.id,...row.data,site:row.site_name,region:row.site_code.split('-')[0],
-      }));
       if (params.get('export') === '1') {
-        return {complete:true,rows:formatRows(await pool.query(selectRows,values))};
+        return {complete:true,...fullRegisterRows((await pool.query(selectRows,values)).rows)};
       }
       const [count, listing, sites] = await Promise.all([
         pool.query(`SELECT count(*) AS total FROM hr_employee_master_register WHERE ${filter}`, values),
@@ -122,7 +141,7 @@ export function createEmployeeMasterRegister(pool) {
         pool.query(`SELECT DISTINCT site_code AS code, site_name AS label FROM hr_employee_master_register
           WHERE ($1::uuid[] IS NULL OR site_id=ANY($1)) AND ${isEmployeeEntry} ORDER BY label`, [scope]),
       ]);
-      return {rows:formatRows(listing), total:Number(count.rows[0].total), page, pageSize, sites:sites.rows, canImport:scope===null};
+      return {...fullRegisterRows(listing.rows), total:Number(count.rows[0].total), page, pageSize, sites:sites.rows, canImport:scope===null};
     },
     async employeeMasterRegisterDetails(profile, id, edit=false) {
       const scope = await access(pool, profile);
