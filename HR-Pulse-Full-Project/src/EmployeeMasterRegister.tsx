@@ -12,7 +12,7 @@ const bankColumns = [
   ['bankName','Bank Name',28],['ifscCode','IFSC Code',18],['accountNo','Account No',22],['branch','Branch',28],
 ] as const;
 const aFormColumn = ['aFormNo','A-Form No',18] as const;
-const bankReportColumns = [columns[0],aFormColumn,columns[1],...bankColumns] as const;
+const bankReportColumns = [columns[0],aFormColumn,columns[1],columns[3],...bankColumns] as const;
 const formats = [['excel','Excel'], ['pdf','PDF']] as const;
 type ExportFormat = typeof formats[number][0];
 type Employee = Record<typeof columns[number][0] | typeof bankColumns[number][0] | 'aFormNo', string> & {id:string};
@@ -236,6 +236,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
   const dialogButton = useRef<HTMLButtonElement>(null);
   const [loading,setLoading] = useState(true);
   const [importing,setImporting] = useState(false);
+  const [deletingAll,setDeletingAll] = useState(false);
   const [exporting,setExporting] = useState<ExportFormat>();
   const [downloadOpen,setDownloadOpen] = useState(false);
   const downloadButton = useRef<HTMLButtonElement>(null);
@@ -351,6 +352,17 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
     }
   }
 
+  async function deleteAllBankEmployees() {
+    const confirmation=window.prompt('This permanently deletes every employee in Bank Details from the database. Type DELETE ALL to continue.');
+    if(confirmation!=='DELETE ALL')return;
+    setDeletingAll(true);setError('');setMessage('');
+    try{
+      const result=await api<{removed:number}>(grant,'employee-master-bank-details/delete-all','POST',{confirmation});
+      setMessage(`${result.removed.toLocaleString('en-IN')} employee records permanently deleted.`);setPage(1);setRevision(value=>value+1);
+    }catch(error){setError(error instanceof Error?error.message:'Unable to delete employee records.');}
+    finally{setDeletingAll(false);}
+  }
+
   function searchEmployees(event:FormEvent) {
     event.preventDefault();
     setPage(1);
@@ -402,6 +414,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
           if (file) void importData(file);
         }}/>
       </label>}
+      {view==='bank'&&data?.canImport&&<button type="button" className="danger" disabled={loading||importing||deletingAll} onClick={()=>void deleteAllBankEmployees()}>{deletingAll?'Deleting…':'Delete all'}</button>}
     </div>
     <div className="module-tabs" aria-label="Employee Master reports">
       <button type="button" className={view==='employees'?'selected':''} aria-pressed={view==='employees'} onClick={()=>{setView('employees');setMessage('');setError('');}}>Employee Master</button>

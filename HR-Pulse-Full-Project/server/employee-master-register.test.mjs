@@ -120,6 +120,21 @@ test('Bank Details import links by Employee ID and updates only its five detail 
   assert.deepEqual(writes,[{aFormNo:'AF-009',bankName:'SBI',ifscCode:'SBIN0001234',accountNo:'00123',branch:'Nagpur'}]);
 });
 
+test('delete all Bank Details employees requires all-site access and explicit confirmation',async()=>{
+  const statements=[];const db={release(){},query:async(sql,params)=>{
+    statements.push({sql,params});
+    if(sql.startsWith('DELETE FROM hr_employee_master_register'))return {rowCount:8849,rows:[]};
+    return {rowCount:1,rows:[]};
+  }};
+  const service=createEmployeeMasterRegister({connect:async()=>db,query:async()=>({rows:[]})});
+  await assert.rejects(service.deleteAllEmployeeMasterBankDetails(admin,{}),{status:400});
+  const scoped={actor:'site-hr',permissions:{hrDesktopAccess:menus,site:'WCL-SASTI'}};
+  await assert.rejects(service.deleteAllEmployeeMasterBankDetails(scoped,{confirmation:'DELETE ALL'}),{status:403});
+  assert.deepEqual(await service.deleteAllEmployeeMasterBankDetails(admin,{confirmation:'DELETE ALL'}),{removed:8849});
+  assert.match(statements.find(entry=>entry.sql.startsWith('DELETE FROM'))?.sql??'',/hr_employee_master_register/);
+  assert.ok(statements.some(entry=>entry.sql.includes("'REMOVE_ALL'")));
+});
+
 test('editing a register entry preserves site scope and rejects stale saves',async()=>{
   const writes = [];
   const employeeId = '20000000-0000-4000-8000-000000000009';

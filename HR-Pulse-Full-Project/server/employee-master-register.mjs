@@ -250,6 +250,18 @@ export function createEmployeeMasterRegister(pool) {
         db.release();
       }
     },
+    async deleteAllEmployeeMasterBankDetails(profile,input) {
+      if (await access(pool,profile)!==null) throw fail('Deleting all employees requires access to all HR sites.',403);
+      if (input?.confirmation!=='DELETE ALL') throw fail('Type DELETE ALL to confirm permanent deletion.');
+      const db=await pool.connect();
+      try{
+        await db.query('BEGIN');
+        const removed=await db.query(`DELETE FROM hr_employee_master_register WHERE ${isEmployeeEntry}`);
+        await db.query("INSERT INTO hr_audit (actor,action,kind,detail) VALUES ($1,'REMOVE_ALL',$2,$3)",[profile.actor,kind,{removed:removed.rowCount,source:'Bank Details'}]);
+        await db.query('COMMIT');
+        return {removed:removed.rowCount};
+      }catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+    },
     async importEmployeeMasterRegister(profile, rows) {
       if (await access(pool, profile) !== null) throw fail('Import requires access to all HR sites.', 403);
       if (!Array.isArray(rows) || !rows.length || rows.length > 10000) throw fail('Import 1–10,000 employee entries at a time.');
