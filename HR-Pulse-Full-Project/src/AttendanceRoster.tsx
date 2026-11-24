@@ -1,4 +1,4 @@
-import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
+import {Fragment,useEffect,useMemo,useRef,useState,type Dispatch,type SetStateAction} from 'react';
 import {ChevronDown,Download,Printer,RefreshCw,Save,Upload} from 'lucide-react';
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
@@ -42,6 +42,18 @@ export const tripTotals=(group:RosterGroup,dates:string[])=>lineTotals(group.tri
 export const diffText=(group:RosterGroup,tripsLoaded:boolean)=>!tripsLoaded?'—':!group.hasTripCards?'No trip card':String(group.mismatches.length);
 /** The groups a view lists: trip card people, biometric people, or everyone. */
 export const viewGroups=(groups:RosterGroup[],view:RosterView)=>groups.filter(g=>view==='trip'?g.hasTripCards:view==='bio'||view==='manual'?Boolean(g.bio):true);
+type ColumnFilters=Record<string,string>;
+const filterNeedle=(filters:ColumnFilters,key:string)=>filters[key]?.trim().toLowerCase()||'';
+const contains=(value:unknown,needle:string)=>!needle||String(value??'').toLowerCase().includes(needle);
+const setColumnFilter=(setFilters:Dispatch<SetStateAction<ColumnFilters>>,key:string,value:string)=>setFilters(old=>({...old,[key]:value}));
+const filterInput=(filters:ColumnFilters,setFilters:Dispatch<SetStateAction<ColumnFilters>>,key:string,label:string)=><input aria-label={`Filter ${label}`} value={filters[key]||''} onChange={e=>setColumnFilter(setFilters,key,e.target.value)} placeholder="Search"/>;
+const groupMatches=(g:RosterGroup,filters:ColumnFilters,dates:string[],view:RosterView,index:number)=>{
+ if(!contains(index+1,filterNeedle(filters,'sr'))||!contains(view==='manual'||g.linked?g.code:'Not linked',filterNeedle(filters,'code'))||!contains(g.name,filterNeedle(filters,'name'))||!contains(g.site,filterNeedle(filters,'site'))||!contains(g.department,filterNeedle(filters,'department'))||!contains(g.designation,filterNeedle(filters,'designation'))||!contains(g.machines.join(' '),filterNeedle(filters,'machine')))return false;
+ if(!contains('Trip Card Bio Matric',filterNeedle(filters,'source'))||!contains(cardSummary(g,dates),filterNeedle(filters,'cards'))||!contains(workedHours(g),filterNeedle(filters,'hours'))||!contains(diffText(g,true),filterNeedle(filters,'diff')))return false;
+ const totals=[...(view==='trip'||view==='compare'?[tripTotals(g,dates)]:[]),...(view!=='trip'?[bioTotals(g,dates)]:[])];
+ if(dates.some(d=>{const n=filterNeedle(filters,'date:'+d);return n&&!contains(`${g.tripCodes[d]||''} ${g.bioCodes[d]||''}`,n);} ))return false;
+ return ROSTER_TOTALS.every(([key])=>{const n=filterNeedle(filters,'total:'+key);return !n||totals.some(t=>contains(t[key],n));});
+};
 
 /** rows: the trip cards read so far (shown while the other days are still being read); days: each day's reading state. */
 export type TripState={status:'idle'|'loading'|'ready'|'error';message:string;rows:AttendanceRow[]|null;failed?:string[];misSites?:string[];days?:Record<string,DayState>;errors?:Record<string,string>;onRetry?:(days:string[])=>void;
@@ -61,9 +73,9 @@ export function RosterTable(props:TableProps){
 }
 
 function ManualMismatchTable({groups,dates,trip,from,to,loading=false,error=''}:TableProps){
- const [onlyDiff,setOnlyDiff]=useState(false),[exporting,setExporting]=useState(false),[exportOpen,setExportOpen]=useState(false);
+ const [onlyDiff,setOnlyDiff]=useState(false),[exporting,setExporting]=useState(false),[exportOpen,setExportOpen]=useState(false),[filters,setFilters]=useState<ColumnFilters>({});
  const table=useRef<HTMLTableElement>(null),tripsLoaded=trip.rows!==null;
- const all=viewGroups(groups,'manualMismatch'),shown=all.filter(g=>!onlyDiff||g.mismatches.length>0);
+ const all=viewGroups(groups,'manualMismatch'),shown=all.filter((g,i)=>(!onlyDiff||g.mismatches.length>0)&&groupMatches(g,filters,dates,'manualMismatch',i));
  const mismatchDays=all.reduce((sum,g)=>sum+g.mismatches.length,0),affected=all.filter(g=>g.mismatches.length>0).length;
  const miss=(g:RosterGroup,date:string)=>g.mismatches.find(m=>m.date===date);
  const cell=(g:RosterGroup,date:string)=>{const bio=g.bioCodes[date]||'',tripCode=g.tripCodes[date]||'',difference=miss(g,date),missing=Boolean(bio)!==Boolean(tripCode);
@@ -77,16 +89,16 @@ function ManualMismatchTable({groups,dates,trip,from,to,loading=false,error=''}:
  return <><div className="roster-bar manual-compare-bar"><span className="roster-seg" role="group" aria-label="Mismatch records"><button type="button" aria-pressed={!onlyDiff} onClick={()=>setOnlyDiff(false)}>All Records</button><button type="button" aria-pressed={onlyDiff} onClick={()=>setOnlyDiff(true)}>Mismatches Only</button></span>
   <span role="status">{all.length} employees · {dates.length} days · {mismatchDays} mismatches · {affected} employees affected</span><span className="roster-grow"/><span className="manual-compare-key"><i className="match"/>Match <i className="diff"/>Mismatch <i className="empty"/>No record</span>
   <div className="roster-export"><button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!shown.length||exporting} onClick={()=>setExportOpen(v=>!v)}><Download/>{exporting?'Preparing…':'Print/Export'}<ChevronDown/></button>{exportOpen&&<div className="roster-export-menu" role="menu"><button type="button" role="menuitem" onClick={printRoster}><Printer/>Smart Print / PDF</button><button type="button" role="menuitem" onClick={()=>void exportExcel()}><Download/>Download as Excel</button></div>}</div></div>
-  <div className="attendance-table"><table ref={table} className="register-grid roster-grid roster-nosrc manual-compare-grid" aria-label="Manual Biometric and Trip Card comparison"><thead><tr><th className="roster-fixed roster-id roster-first">Employee ID</th><th className="roster-fixed roster-name">Name</th><th className="roster-text">Department</th><th className="roster-text">Designation</th>{dates.map(d=><th key={d} className={weekday(d)==='Su'?'roster-sunday':undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small></th>)}</tr></thead><tbody>{shown.length?shown.map(g=><tr key={g.key}><td className="roster-fixed roster-id roster-first">{g.code||'—'}</td><td className="roster-fixed roster-name"><strong>{g.name}</strong></td><td className="roster-text">{g.department||'—'}</td><td className="roster-text">{g.designation||'—'}</td>{dates.map(d=>cell(g,d))}</tr>):empty}</tbody></table></div>
+  <div className="attendance-table"><table ref={table} className="register-grid roster-grid roster-nosrc manual-compare-grid" aria-label="Manual Biometric and Trip Card comparison"><thead><tr><th className="roster-fixed roster-id roster-first">Employee ID</th><th className="roster-fixed roster-name">Name</th><th className="roster-text">Department</th><th className="roster-text">Designation</th>{dates.map(d=><th key={d} className={weekday(d)==='Su'?'roster-sunday':undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small></th>)}</tr><tr className="roster-filter-row"><th className="roster-fixed roster-id roster-first">{filterInput(filters,setFilters,'code','Employee ID')}</th><th className="roster-fixed roster-name">{filterInput(filters,setFilters,'name','Name')}</th><th>{filterInput(filters,setFilters,'department','Department')}</th><th>{filterInput(filters,setFilters,'designation','Designation')}</th>{dates.map(d=><th key={d}>{filterInput(filters,setFilters,'date:'+d,show(d))}</th>)}</tr></thead><tbody>{shown.length?shown.map(g=><tr key={g.key}><td className="roster-fixed roster-id roster-first">{g.code||'—'}</td><td className="roster-fixed roster-name"><strong>{g.name}</strong></td><td className="roster-text">{g.department||'—'}</td><td className="roster-text">{g.designation||'—'}</td>{dates.map(d=>cell(g,d))}</tr>):empty}</tbody></table></div>
   <p className="help-text">Each date shows Manual Biometric / Trip Card. All Records includes matches and differences; Mismatches Only keeps employees who have at least one difference.</p></>;
 }
 
 function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading=false,error='',emptyText,onImport}:TableProps){
- const [onlyDiff,setOnlyDiff]=useState(false),[open,setOpen]=useState(''),[exporting,setExporting]=useState(false),[exportOpen,setExportOpen]=useState(false),[times,setTimes]=useState(true);
+ const [onlyDiff,setOnlyDiff]=useState(false),[open,setOpen]=useState(''),[exporting,setExporting]=useState(false),[exportOpen,setExportOpen]=useState(false),[times,setTimes]=useState(true),[filters,setFilters]=useState<ColumnFilters>({});
  const drill=useRef<HTMLDivElement>(null);
  const rosterTable=useRef<HTMLTableElement>(null);
  const compare=view==='compare',tripsLoaded=trip.rows!==null,tripRunning=trip.status==='loading';
- const shown=viewGroups(groups,view).filter(g=>!compare||!onlyDiff||g.mismatches.length>0);
+ const shown=viewGroups(groups,view).filter((g,i)=>(!compare||!onlyDiff||g.mismatches.length>0)&&groupMatches(g,filters,dates,view,i));
  const openGroup=compare?shown.find(g=>g.key===open):undefined;
  const openKey=openGroup?.key||'';
  useEffect(()=>{if(openKey)drill.current?.scrollIntoView?.({block:'nearest',behavior:'smooth'});},[openKey]);
@@ -165,7 +177,8 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
     {dates.map(d=>{const onBio=biometricView,state=onBio?bio?.days[d]:trip.days?.[d],label=state?(onBio?BIO_DAY_STATE:DAY_STATE)[state]:'',why=onBio?bio?.errors[d]:trip.errors?.[d];
      return <th key={d} title={show(d)+(state==='done'&&(onBio?bio?.saved:trip.saved)?.[d]?' · Saved copy':'')+(state?' · '+label+(onBio&&state==='done'?` · ${(bio?.counts[d]||0).toLocaleString('en-IN')} punches`:'')+(state==='failed'&&why?': '+why:''):'')} className={[weekday(d)==='Su'?'roster-sunday':'',state&&state!=='done'?'roster-day-'+state:''].filter(Boolean).join(' ')||undefined}>{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small>{state&&state!=='done'&&<i className="roster-day-mark" aria-label={label}/>}</th>;})}
     {ROSTER_TOTALS.map(([key,label])=><th key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}>{label}</th>)}{monthly&&<th className="roster-total">Gate pass</th>}{hoursCol&&<th className="roster-total">Worked hours</th>}
-    {view==='trip'&&<th className="roster-text roster-cards">Cards (days)</th>}{compare&&<th className="roster-diff">{DIFF_HEADING}</th>}</tr></thead>
+    {view==='trip'&&<th className="roster-text roster-cards">Cards (days)</th>}{compare&&<th className="roster-diff">{DIFF_HEADING}</th>}</tr>
+    <tr className="roster-filter-row">{compare&&<th className="roster-fixed roster-src">{filterInput(filters,setFilters,'source','Source')}</th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>{filterInput(filters,setFilters,'sr','Sr. No.')}</th><th className="roster-fixed roster-id">{filterInput(filters,setFilters,'code','Employee ID')}</th><th className="roster-fixed roster-name">{filterInput(filters,setFilters,'name','Name')}</th><th>{filterInput(filters,setFilters,'site','Site')}</th><th>{filterInput(filters,setFilters,'department','Department')}</th><th>{filterInput(filters,setFilters,'designation','Designation')}</th>{machineCol&&<th>{filterInput(filters,setFilters,'machine','Machine ID')}</th>}{dates.map(d=><th key={d}>{filterInput(filters,setFilters,'date:'+d,show(d))}</th>)}{ROSTER_TOTALS.map(([key,label])=><th key={key}>{filterInput(filters,setFilters,'total:'+key,label)}</th>)}{monthly&&<th>{filterInput(filters,setFilters,'gate','Gate pass')}</th>}{hoursCol&&<th>{filterInput(filters,setFilters,'hours','Worked hours')}</th>}{view==='trip'&&<th>{filterInput(filters,setFilters,'cards','Cards')}</th>}{compare&&<th>{filterInput(filters,setFilters,'diff',DIFF_HEADING)}</th>}</tr></thead>
    <tbody>{shown.length?shown.map((g,i)=>{const picked=g.key===open,diff=diffText(g,tripsLoaded),rows=lines.length;return <Fragment key={g.key}>
     {lines.map((line,j)=><tr key={line} className={(line==='trip'?'roster-trip':'roster-bio')+(rows===1?' roster-single':'')+(picked?' roster-picked':'')+(g.linked?'':' roster-unlinked')}>
      {compare&&<th scope="row" className="roster-fixed roster-src">{line==='trip'?'Trip Card':'Bio Matric'}</th>}
