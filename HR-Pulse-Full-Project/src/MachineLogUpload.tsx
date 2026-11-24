@@ -12,9 +12,9 @@ import './machine-log-upload.css';
 const CHUNK=2000,MAX_IDS=5000,SAMPLE=8;
 const show=(day:string)=>day.slice(8,10)+'-'+day.slice(5,7)+'-'+day.slice(0,4);
 type Loaded={log:MachineLog;pick:MachinePick;serial:string};
-type Props={grant:string;site:string;onClose:()=>void;onImported:(message:string,range:{from:string;to:string})=>void;onManageMachines?:()=>void};
+type Props={grant:string;site:string;onClose:()=>void;onImported:(message:string,range:{from:string;to:string})=>void;onManageMachines?:()=>void;importPath?:string;title?:string};
 
-export default function MachineLogUpload({grant,site,onClose,onImported,onManageMachines}:Props){
+export default function MachineLogUpload({grant,site,onClose,onImported,onManageMachines,importPath='attendance/punches/import',title='Upload machine log'}:Props){
  const input=useRef<HTMLInputElement>(null);
  const [files,setFiles]=useState<Loaded[]>([]),[machines,setMachines]=useState<CheckedMachine[]|null>(null);
  const [reading,setReading]=useState(false),[importing,setImporting]=useState(''),[error,setError]=useState(''),[dragging,setDragging]=useState(false),[tried,setTried]=useState(false);
@@ -73,7 +73,7 @@ export default function MachineLogUpload({grant,site,onClose,onImported,onManage
   try{
    for(let at=0;at<rows.length;at+=CHUNK){
     setImporting(`Importing ${Math.min(at+CHUNK,rows.length).toLocaleString('en-IN')} of ${rows.length.toLocaleString('en-IN')} punches…`);
-    const part=await api<{received:number;added:number}>(grant,'attendance/punches/import','POST',{site,rows:rows.slice(at,at+CHUNK)});
+    const part=await api<{received:number;added:number}>(grant,importPath,'POST',{site,rows:rows.slice(at,at+CHUNK)});
     received+=Number(part.received)||0;added+=Number(part.added)||0;
    }
    const same=received-added;
@@ -85,7 +85,7 @@ export default function MachineLogUpload({grant,site,onClose,onImported,onManage
 
  const busy=reading||Boolean(importing);
  return <div className="modal-backdrop"><section className="modal machine-log-upload" role="dialog" aria-modal="true" aria-labelledby="machine-log-title">
-  <div className="modal-heading"><h2 id="machine-log-title"><Upload/>Upload machine log · {site}</h2><button type="button" aria-label="Close" disabled={Boolean(importing)} onClick={onClose}>×</button></div>
+  <div className="modal-heading"><h2 id="machine-log-title"><Upload/>{title} · {site}</h2><button type="button" aria-label="Close" disabled={Boolean(importing)} onClick={onClose}>×</button></div>
 
   <div className="machine-log-step">
    <span className="machine-log-step-no">1</span>

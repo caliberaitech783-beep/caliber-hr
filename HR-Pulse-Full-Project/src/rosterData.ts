@@ -97,6 +97,10 @@ export async function fetchBiometric(grant: string, from: string, to: string, si
   const register = await api<SiteRegister>(grant, 'attendance/site-register?' + new URLSearchParams({site, from, to}), 'GET', undefined, BIO_DAY_TIMEOUT_MS);
   return {...register, rows: Array.isArray(register?.rows) ? register.rows : [], machines: Array.isArray(register?.machines) ? register.machines : []};
 }
+export async function fetchManualBiometric(grant:string,from:string,to:string,site:string):Promise<SiteRegister>{
+ const register=await api<SiteRegister>(grant,'attendance/manual-biometric?'+new URLSearchParams({site,from,to}));
+ return {...register,rows:Array.isArray(register?.rows)?register.rows:[],machines:Array.isArray(register?.machines)?register.machines:[]};
+}
 export type FetchRequest = {id: string; state: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'; punchesReceived: number; newPunches: number; error: string};
 /** Fetch from these machines: asks the bridge PC to read each machine in turn and waits for it (2 s polls, 2 minutes a machine). */
 export async function fetchFromMachines(grant: string, serials: string[], onStep: (serial: string, request: FetchRequest | null, error?: string) => void, wait = (ms: number) => new Promise(r => setTimeout(r, ms))) {

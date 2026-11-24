@@ -249,6 +249,20 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    await audit(db,profile.actor,'IMPORT_BIOMETRIC_PUNCHES',{site:siteName,received:clean.length,added});
    return {received:clean.length,added};
   });
+  if(route==='manual-biometric/import'&&method==='POST')return tx(async db=>{
+   const siteName=String(input?.site||'').trim(),rows=input?.rows;
+   if(!siteName)fail('Choose a site before importing biometric punches.');
+   if(!Array.isArray(rows)||!rows.length||rows.length>MAX_PUNCHES_PER_UPLOAD)fail(`Import 1–${MAX_PUNCHES_PER_UPLOAD} biometric punches at a time.`);
+   const site=await findSite(db,siteName);
+   const clean=rows.map(row=>{const serial=String(row?.serial||'').trim();const upload=validateUpload({device:{serial},punches:[{biometricId:row?.biometricId,punchedAt:row?.punchedAt,verify:row?.verify,punchType:row?.punchType}],users:[]});return {serial,punch:upload.punches[0]};});
+   const serials=[...new Set(clean.map(row=>row.serial))];
+   const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=$1 AND serial=ANY($2::text[])',[site.id,serials])).rows.map(row=>row.serial);
+   const missing=serials.filter(serial=>!devices.includes(serial));
+   if(missing.length)fail(`Machine Serial is not registered at ${siteName}: ${missing.join(', ')}`);
+   const added=(await db.query('INSERT INTO hr_manual_biometric_punches(device_serial,biometric_id,punched_at,verify,punch_type,imported_by) SELECT x.s,x.b,x.t::timestamp,x.v,x.p,$6 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[]) AS x(s,b,t,v,p) ON CONFLICT DO NOTHING',[clean.map(row=>row.serial),clean.map(row=>row.punch.biometricId),clean.map(row=>row.punch.punchedAt),clean.map(row=>row.punch.verify),clean.map(row=>row.punch.punchType),profile.actor])).rowCount;
+   await audit(db,profile.actor,'IMPORT_MANUAL_BIOMETRIC_PUNCHES',{site:siteName,received:clean.length,added});
+   return {received:clean.length,added};
+  });
   if(route==='status'&&method==='GET'){
    const seen=(await pool.query("SELECT last_seen,last_seen>now()-interval '30 seconds' AS online FROM hr_attendance_bridge")).rows[0];
    // Active logs: punches the machine recorded today (India date) and its latest
@@ -288,6 +302,12 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const site=(await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[String(params.get('site')||''),sites])).rows[0];
    if(!site)fail(siteAccessMessage(profile),403);
    return loadSiteRegister(pool,{id:site.id,name:site.name,siteType:site.site_type||''},from,to,indiaDay());
+  }
+  if(route==='manual-biometric'&&method==='GET'){
+   const {from,to}=validateRange(params);
+   const site=(await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[String(params.get('site')||''),sites])).rows[0];
+   if(!site)fail(siteAccessMessage(profile),403);
+   return loadSiteRegister(pool,{id:site.id,name:site.name,siteType:site.site_type||''},from,to,indiaDay(),{manual:true});
   }
   if(route==='punctuality'&&method==='GET'){
    // Late come / early going come from the same day calculation as the register.

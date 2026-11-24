@@ -27,6 +27,22 @@ CREATE INDEX IF NOT EXISTS hr_attendance_punches_time ON hr_attendance_punches(p
 -- One machine's punches in time order: the roster's day count and last punch per machine (attendance-register.mjs).
 CREATE INDEX IF NOT EXISTS hr_attendance_punches_device_time ON hr_attendance_punches(device_serial,punched_at);
 
+-- Punches uploaded in Attendance roster > Manual Biometric. Kept separate from
+-- live machine punches so a manual file can never change the live biometric register.
+CREATE TABLE IF NOT EXISTS hr_manual_biometric_punches(
+ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ device_serial text NOT NULL,
+ biometric_id text NOT NULL,
+ punched_at timestamp NOT NULL,
+ verify text NOT NULL DEFAULT '',
+ punch_type text NOT NULL DEFAULT '',
+ imported_by text NOT NULL DEFAULT '',
+ imported_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(device_serial,biometric_id,punched_at)
+);
+CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_time ON hr_manual_biometric_punches(punched_at);
+CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_device_time ON hr_manual_biometric_punches(device_serial,punched_at);
+
 -- Names stored on the machine for each user ID. Shown only as a hint to help
 -- HR link a machine ID to the right employee.
 CREATE TABLE IF NOT EXISTS hr_attendance_device_users(

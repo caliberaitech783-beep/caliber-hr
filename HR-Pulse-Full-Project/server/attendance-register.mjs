@@ -153,7 +153,8 @@ export async function savePolicy(db, actor, input) {
  * machine it came from (day.punches).
  */
 export async function loadRegister(db, sites, from, to, today, options = {}) {
-  const {devices = null, employeeIds = null} = options;
+  const {devices = null, employeeIds = null, manual = false} = options;
+  const punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
   const {policy} = await readPolicy(db);
   const employees = (await db.query(`
    SELECT DISTINCT e.id,e.code,e.name,e.data->>'siteId' AS site_id,site.code AS site_code,site.name AS site,site.data->>'siteType' AS site_type,
@@ -173,7 +174,7 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   if (!ids.length) return buildRegister({from, to, today, policy});
   const [punches, holidays, leaves, ods, passes, pay] = await Promise.all([
     db.query(`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
-      coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM hr_attendance_punches p
+      coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
      JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
      WHERE l.employee_id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
@@ -214,11 +215,12 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
  * Machine IDs not linked to an employee are listed too (linked: false), rated on calendar days.
  * site {id,name,siteType}. Returns the register plus the site's machines (status, last punch, punches in these dates).
  */
-export async function loadSiteRegister(db, site, from, to, today) {
+export async function loadSiteRegister(db, site, from, to, today, options = {}) {
+  const manual=options.manual===true,punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
   const {rows: machines} = await db.query(`SELECT d.serial,d.name,d.location,d.ip_address,d.last_contact,coalesce(d.last_contact>now()-interval '2 minutes',false) AS online,
     coalesce(max(b.name),CASE WHEN d.bridge_id IS NULL AND (d.last_contact IS NOT NULL OR d.last_seen IS NOT NULL) THEN 'Main bridge PC' ELSE '' END) AS bridge_name,
-    (SELECT to_char(max(p.punched_at),'YYYY-MM-DD HH24:MI') FROM hr_attendance_punches p WHERE p.device_serial=d.serial AND p.punched_at<$3::date+2) AS last_punch,
-    (SELECT count(*) FROM hr_attendance_punches p WHERE p.device_serial=d.serial AND p.punched_at>=$2::date AND p.punched_at<$3::date+1)::int AS punches
+    (SELECT to_char(max(p.punched_at),'YYYY-MM-DD HH24:MI') FROM ${punchTable} p WHERE p.device_serial=d.serial AND p.punched_at<$3::date+2) AS last_punch,
+    (SELECT count(*) FROM ${punchTable} p WHERE p.device_serial=d.serial AND p.punched_at>=$2::date AND p.punched_at<$3::date+1)::int AS punches
    FROM hr_attendance_devices d LEFT JOIN hr_attendance_bridges b ON b.id=d.bridge_id AND b.removed_at IS NULL
    WHERE d.site_id=$1 GROUP BY d.serial ORDER BY d.location,d.name,d.serial`, [site.id, from, to]);
   // Owner, 23 Nov 2026 ("signal timed out" on Attendance roster › Biometric): this runs once for every day asked and used
@@ -231,7 +233,7 @@ export async function loadSiteRegister(db, site, from, to, today) {
   const serials = machines.map(m => m.serial);
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
   const {rows: ids} = await db.query(`SELECT p.device_serial,p.biometric_id,l.employee_id,coalesce(u.name,'') AS machine_name
-   FROM hr_attendance_punches p
+   FROM ${punchTable} p
    LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
    LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id
    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
@@ -242,12 +244,12 @@ export async function loadSiteRegister(db, site, from, to, today) {
     used.set(key, [...(used.get(key) || []), `${place.get(r.device_serial)} · ${r.biometric_id}`]);
   }
   const linkedIds = [...new Set(ids.filter(r => r.employee_id).map(r => String(r.employee_id)))];
-  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds})).rows : [];
+  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual})).rows : [];
   const unlinked = ids.filter(r => !r.employee_id);
   let others = [];
   if (unlinked.length) {
     const [{rows: punches}, {rows: holidays}] = await Promise.all([
-      db.query(`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM hr_attendance_punches p
+      db.query(`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM ${punchTable} p
        LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
        WHERE l.employee_id IS NULL AND p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, [serials, from, to]),
       db.query(`SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
