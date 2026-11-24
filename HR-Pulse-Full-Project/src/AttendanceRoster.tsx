@@ -319,7 +319,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  useEffect(()=>{if(!ready||view!=='manual'||manual.key===manualKey)return;let live=true;setManual({key:manualKey,status:'loading',message:'Reading imported biometric attendance…',data:null});
   fetchManualBiometric(grant,from,to,site).then(data=>{if(live)setManual({key:manualKey,status:'ready',message:'Manual biometric attendance',data});}).catch(e=>{if(live)setManual({key:manualKey,status:'error',message:(e as Error).message,data:null});});
   return()=>{live=false;};
- },[ready,view,manualKey,grant,from,to,site,manual.key]);
+ },[ready,view,manualKey,grant,from,to,site]); // manual.key is intentionally excluded: setting the loading state must not cancel this request.
  function readBio(list:string[]){
   const runKey=bioKey;bioRef.current=runKey;
   setBio(b=>b.key===runKey?{...b,runs:b.runs+1}:b);

@@ -95,6 +95,7 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
   if(url.includes('attendance/policy'))return Response.json({policy:DEFAULT_POLICY,version:1,canEdit:false});
   if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'GV',name:'Gevra'},{id:'s2',kind:'sites',code:'DP',name:'Dipka'},{id:'d1',kind:'departments',code:'OP',name:'Operations'}]);
   if(url.includes('attendance/mis'))return Response.json(misReport());
+  if(url.includes('attendance/manual-biometric'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,site:q.get('site'),machines:[],rows:[{...bio,linked:true,machinesUsed:['Main gate · 101']}]});
   if(url.includes('attendance/site-register'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,site:q.get('site'),
    machines:[{serial:'SST01',name:'ESSL K90',location:'Main gate',online:true,lastContact:null,lastPunch:'2026-11-10 16:10',punches:42}],
    rows:q.get('site')==='Gevra'?[{...bio,linked:true,machinesUsed:['Main gate · 101'],days:bio.days.map(d=>({...d,punches:d.in?[d.in+' Main gate',d.out+' Main gate']:[]}))},
@@ -143,6 +144,10 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  expect(within(roster).queryAllByText('08:00').length).toBe(0);
  fireEvent.click(screen.getByRole('button',{name:'Trip card vs Biometric'}));
  expect(await screen.findByRole('button',{name:/days differ for Ramesh Kumar/})).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Manual Biometric'}));
+ await waitFor(()=>expect(within(screen.getByRole('table',{name:'Attendance roster'})).getByText('Ramesh Kumar')).toBeTruthy());
+ expect(calls.some(u=>u.includes('attendance/manual-biometric')&&u.includes('site=Gevra'))).toBe(true);
+ expect(screen.queryByText('Only employees with a difference')).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:/Print\/Export/}));
  expect(screen.getByRole('menuitem',{name:'Download as PDF'})).toBeTruthy();
  expect(screen.getByRole('menuitem',{name:'Smart Print'})).toBeTruthy();
