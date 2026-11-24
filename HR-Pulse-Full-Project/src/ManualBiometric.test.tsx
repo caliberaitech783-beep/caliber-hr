@@ -25,6 +25,12 @@ describe('Manual Biometric attendance roster',()=>{
   expect(screen.getAllByText('P / P')).toHaveLength(2);
   expect(screen.getByText('A / P')).toBeInTheDocument();
   expect(screen.getByText('Matching Employee')).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:/Match 50.0%/})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:/Mismatch 25.0%/})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:/Mismatch 25.0%/}));
+  expect(screen.getByRole('region',{name:'Mismatch employee details'})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'View dates'}));
+  expect(screen.getByText('Attendance status differs')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Mismatches Only'}));
   expect(screen.queryByText('Matching Employee')).not.toBeInTheDocument();
   expect(screen.getByText(/2 employees · 2 days · 1 mismatches/)).toBeInTheDocument();
