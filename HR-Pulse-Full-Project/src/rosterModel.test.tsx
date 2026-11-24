@@ -121,6 +121,16 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  fireEvent.click(trip);
  const table=await screen.findByRole('table',{name:'Attendance roster'});
  await waitFor(()=>expect(within(table).getByText('Ramesh Kumar')).toBeTruthy());
+ expect(within(table).queryByPlaceholderText('Search')).toBeNull();
+ fireEvent.click(within(table).getByRole('button',{name:'Filter Employee ID'}));
+ const columnFilter=screen.getByRole('dialog',{name:'Employee ID column filter'});
+ expect(within(columnFilter).getByRole('button',{name:'Sort Employee ID ascending'})).toBeTruthy();
+ expect(within(columnFilter).getByRole('button',{name:'Sort Employee ID descending'})).toBeTruthy();
+ expect(within(columnFilter).getByRole('button',{name:'Clear Employee ID filter and sort'})).toBeTruthy();
+ expect(within(columnFilter).getByPlaceholderText('Filter...')).toBeTruthy();
+ expect(within(columnFilter).getByRole('button',{name:'All values'})).toBeTruthy();
+ fireEvent.click(within(columnFilter).getByRole('button',{name:'CMPL101'}));
+ expect(within(table).getByText('Ramesh Kumar')).toBeTruthy();
  expect(within(table).queryByText('Other Site')).toBeNull();
  expect(within(table).getByText(/VLB \d/)).toBeTruthy();
  expect(calls.filter(u=>u.includes('attendance/mis')).map(u=>new URL(u,'https://x').searchParams.get('from')).sort()).toEqual(['01','02','03','04','05','06','07','08','09','10'].map(d=>'2026-11-'+d));
