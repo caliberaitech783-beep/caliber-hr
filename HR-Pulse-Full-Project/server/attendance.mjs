@@ -110,8 +110,8 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
  const misAttendance=createMisAttendance(pool);
  const bridges=createBridges(pool);
  const tripCards=createTripCardStore(pool);
- const biometricDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadSiteRegister(pool,site,from,to,indiaDay()),today:indiaDay});
- const manualBiometricDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadSiteRegister(pool,site,from,to,indiaDay(),{manual:true}),today:indiaDay,manual:true});
+ const biometricDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadSiteRegister(pool,site,from,to,indiaDay()),today:indiaDay,siteKey:attendanceSiteKey});
+ const manualBiometricDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadSiteRegister(pool,site,from,to,indiaDay(),{manual:true}),today:indiaDay,manual:true,siteKey:attendanceSiteKey});
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
  const permit=profile=>{if(!grantedMenus(profile).has('Attendance Management'))fail('Attendance Management is not assigned to your account',403);};

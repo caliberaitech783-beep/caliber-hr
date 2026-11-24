@@ -14,13 +14,17 @@ const fail = (message, status = 400) => { throw Object.assign(new Error(message)
 const validDay = value => typeof value === 'string' && DAY.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 
 /** load(site,from,to): the site register for those days (loadSiteRegister); sites: the login's site ids (null = all). today: India date. */
-export function createBiometricDayStore(pool, {load, today, manual=false}) {
+export function createBiometricDayStore(pool, {load, today, manual=false, siteKey=value=>String(value||'').trim().toLowerCase()}) {
   const table=manual?'hr_manual_biometric_days':'hr_biometric_days',label=manual?'manual biometric':'biometric';
   const conflict=manual?'DO UPDATE SET site=EXCLUDED.site':`DO UPDATE SET register=EXCLUDED.register,punches=EXCLUDED.punches,people=EXCLUDED.people,
           saved_by=EXCLUDED.saved_by,saved_at=now()`;
   async function findSite(name, sites, profile) {
     if (typeof name !== 'string' || !name.trim() || name.length > 200) fail('Choose a site.');
-    const site = (await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1", [name, sites])).rows[0];
+    let site = (await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1", [name, sites])).rows[0];
+    if (!site) {
+      const allowed=(await pool.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND ($1::uuid[] IS NULL OR id=ANY($1::uuid[]))",[sites])).rows;
+      site=allowed.find(row=>siteKey(row.name)===siteKey(name));
+    }
     if (!site) fail(siteAccessMessage(profile), 403);
     return {id: site.id, name: site.name, siteType: site.site_type || ''};
   }
