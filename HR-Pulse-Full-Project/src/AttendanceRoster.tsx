@@ -416,6 +416,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   })).finally(()=>setBio(b=>b.key===runKey&&b.save?{...b,save:{...b.save,running:false}}:b));
  }
  function saveManual(){
+  // Freeze only dates that contain imported punches; empty dates remain available for a later upload.
   const saved=manualSaved.key===manualSaveKey?manualSaved.days:{};
   const list=datesBetween(from,to).filter(day=>day<today&&!saved[day]&&manual.data?.rows.some(row=>row.days.some(entry=>entry.date===day&&Boolean(entry.punches?.length))));
   if(!list.length)return;
