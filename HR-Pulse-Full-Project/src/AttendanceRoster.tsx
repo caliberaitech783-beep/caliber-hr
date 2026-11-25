@@ -23,6 +23,10 @@ export const DIFF_HEADING='Diff. of Trip Card and Bio-matric';
 export const VIEW_TABS:[RosterView,string][]=[['trip','Trip card (VLB · ELB · LMV)'],['bio','Biometric'],['compare','Trip card vs Biometric'],['manual','Manual Biometric'],['manualMismatch','M.B-Trip card Mismatch']];
 const WEEKDAY=['Su','Mo','Tu','We','Th','Fr','Sa'];
 export const weekday=(date:string)=>WEEKDAY[new Date(date+'T00:00:00Z').getUTCDay()];
+function MultiRosterFilter({label,allLabel,options,values,change}:{label:string;allLabel:string;options:string[];values:string[];change:(values:string[])=>void}){
+ const caption=!values.length?allLabel:values.length===1?values[0]:`${values.length} selected`;
+ return <div className="roster-multi-filter"><span>{label}</span><details><summary aria-label={label}>{caption}<ChevronDown/></summary><div className="roster-multi-menu"><button type="button" className={!values.length?'selected':''} onClick={()=>change([])}>{allLabel}</button>{options.map(option=><label key={option}><input type="checkbox" checked={values.includes(option)} onChange={event=>change(event.target.checked?[...values,option]:values.filter(value=>value!==option))}/>{option}</label>)}</div></details></div>;
+}
 const show=(date:string)=>date.split('-').reverse().join('-');
 const codeClass=(code:string)=>'code-'+(code==='?'?'Q':code||'none');
 const money=(n:number)=>n?'₹'+n.toLocaleString('en-IN',{maximumFractionDigits:2}):'—';
@@ -311,7 +315,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const today=india();
  const [sites,setSites]=useState<string[]|null>(null),[departments,setDepartments]=useState<string[]>([]),[lookupError,setLookupError]=useState('');
  const [site,setSite]=useState(''),[from,setFrom]=useState(today.slice(0,8)+'01'),[to,setTo]=useState(today);
- const [department,setDepartment]=useState(''),[designation,setDesignation]=useState(''),[employee,setEmployee]=useState('');
+ const [departmentsSelected,setDepartmentsSelected]=useState<string[]>([]),[designationsSelected,setDesignationsSelected]=useState<string[]>([]),[employee,setEmployee]=useState('');
  const [view,setView]=useState<RosterView|''>('');
  const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<BioStream>(noBio),[manual,setManual]=useState<Source<SiteRegister>>(idle);
  const [manualSaved,setManualSaved]=useState<{key:string;days:Record<string,SavedBioDay>}>({key:'',days:{}}),[manualSave,setManualSave]=useState<{running:boolean;done:number;total:number;failed:string[];error:string}|null>(null),[showSavedLogs,setShowSavedLogs]=useState(false);
@@ -464,8 +468,8 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const groups=useMemo(()=>buildRoster(bioData?.rows||[],view==='bio'||view==='manual'?null:tripRows,dates,today,policy,tripRead,manualView?manualRead:bioRead).map(g=>({...g,site:g.site||site})),[bioData,tripRows,dates,today,policy,view,site,tripRead,bioRead,manualRead,manualView]);
  const people=groups.filter(g=>view?viewGroups([g],view).length>0:false);
  const departmentOptions=[...new Set([...departments,...people.map(g=>g.department)].filter(Boolean))].sort();
- const designationOptions=[...new Set(people.filter(g=>!department||g.department===department).map(g=>g.designation).filter(Boolean))].sort();
- const shown=people.filter(g=>(!department||g.department===department)&&(!designation||g.designation===designation)&&(!employee||g.key===employee));
+ const designationOptions=[...new Set(people.filter(g=>!departmentsSelected.length||departmentsSelected.includes(g.department)).map(g=>g.designation).filter(Boolean))].sort();
+ const shown=people.filter(g=>(!departmentsSelected.length||departmentsSelected.includes(g.department))&&(!designationsSelected.length||designationsSelected.includes(g.designation))&&(!employee||g.key===employee));
  const dayList=trip.key===key?Object.entries(trip.days):[],total=dayList.length,finished=dayList.filter(([,st])=>st==='done'||st==='failed').length;
  const failedDays=dayList.filter(([,st])=>st==='failed').map(([d])=>d).sort(),retrying=dayList.filter(([,st])=>st==='retrying').length;
  const running=wantTrip&&(trip.key!==key||trip.runs>0);
@@ -521,12 +525,12 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   {showSavedLogs&&<div className="modal-backdrop" role="presentation"><section className="modal saved-log-modal" role="dialog" aria-modal="true" aria-label="Saved manual biometric logs"><div className="modal-heading"><h2>Saved Manual Biometric Logs</h2><button type="button" aria-label="Close saved logs" onClick={()=>setShowSavedLogs(false)}><X/></button></div><p>{site} · saved dates in the selected range</p><div className="table-scroll"><table><thead><tr><th>Site</th><th>Date</th><th>Saved by</th><th>Saved time</th><th>Employees</th><th>Punches</th><th>Action</th></tr></thead><tbody>{manualSavedDays.sort(([a],[b])=>b.localeCompare(a)).map(([day,info])=><tr key={day}><td>{site}</td><td>{show(day)}</td><td>{info.savedBy||'—'}</td><td>{when(info.savedAt)}</td><td>{info.people.toLocaleString('en-IN')}</td><td>{info.punches.toLocaleString('en-IN')}</td><td><button type="button" onClick={()=>{setFrom(day);setTo(day);setShowSavedLogs(false);}}>View</button></td></tr>)}</tbody></table></div></section></div>}
   <h2>Attendance roster</h2>
   <div className="attendance-filters roster-filters">
-   <label>Site<select value={site} required aria-invalid={!site} onChange={e=>{setSite(e.target.value);setDepartment('');setDesignation('');setEmployee('');}}><option value="">{sites===null?'Loading sites…':'Select a site'}</option>{(sites||[]).map(s=><option key={s} value={s}>{s}</option>)}</select></label>
+   <label>Site<select value={site} required aria-invalid={!site} onChange={e=>{setSite(e.target.value);setDepartmentsSelected([]);setDesignationsSelected([]);setEmployee('');}}><option value="">{sites===null?'Loading sites…':'Select a site'}</option>{(sites||[]).map(s=><option key={s} value={s}>{s}</option>)}</select></label>
    <label>From<input type="date" value={from} max={to||today} onChange={e=>setFrom(e.target.value)}/></label>
    <label>To<input type="date" value={to} min={from} max={today} onChange={e=>setTo(e.target.value)}/></label>
-   <label>Department<select value={department} onChange={e=>{setDepartment(e.target.value);setDesignation('');setEmployee('');}}><option value="">All departments</option>{departmentOptions.map(d=><option key={d}>{d}</option>)}</select></label>
-   <label>Designation<select value={designation} onChange={e=>{setDesignation(e.target.value);setEmployee('');}}><option value="">All designations</option>{designationOptions.map(d=><option key={d}>{d}</option>)}</select></label>
-   <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>(!department||g.department===department)&&(!designation||g.designation===designation)).map(g=><option key={g.key} value={g.key}>{g.linked||view==='manual'?g.code:'Not linked'} · {g.name}</option>)}</select></label>
+   <MultiRosterFilter label="Department" allLabel="All departments" options={departmentOptions} values={departmentsSelected} change={values=>{setDepartmentsSelected(values);setDesignationsSelected([]);setEmployee('');}}/>
+   <MultiRosterFilter label="Designation" allLabel="All designations" options={designationOptions} values={designationsSelected} change={values=>{setDesignationsSelected(values);setEmployee('');}}/>
+   <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>(!departmentsSelected.length||departmentsSelected.includes(g.department))&&(!designationsSelected.length||designationsSelected.includes(g.designation))).map(g=><option key={g.key} value={g.key}>{g.linked||view==='manual'?g.code:'Not linked'} · {g.name}</option>)}</select></label>
    <button type="button" disabled={!ready||!view||busy} onClick={()=>{if(view==='manual')setManualReload(n=>n+1);else if(view==='manualMismatch'){setManualReload(n=>n+1);forceMis.current=true;setReload(n=>n+1);}else{forceMis.current=view!=='bio';forceBio.current=true;setReload(n=>n+1);}}}><RefreshCw className={busy?'spin':''}/>Fetch again</button>
   </div>
   {lookupError&&<p className="error" role="alert">Sites could not be loaded: {lookupError}</p>}

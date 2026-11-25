@@ -121,8 +121,10 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  fireEvent.click(trip);
  const table=await screen.findByRole('table',{name:'Attendance roster'});
  await waitFor(()=>expect(within(table).getByText('Ramesh Kumar')).toBeTruthy());
- expect(within(screen.getByLabelText('Department')).getByRole('option',{name:'Operations'})).toBeTruthy();
- expect(within(screen.getByLabelText('Designation')).getByRole('option',{name:'Dumper operator'})).toBeTruthy();
+ fireEvent.click(screen.getByLabelText('Department'));
+ expect(screen.getByRole('checkbox',{name:'Operations'})).toBeTruthy();
+ fireEvent.click(screen.getByLabelText('Designation'));
+ expect(screen.getByRole('checkbox',{name:'Dumper operator'})).toBeTruthy();
  expect(within(table).queryByPlaceholderText('Search')).toBeNull();
  const employeeFilter=within(table).getByRole('button',{name:'Filter Employee ID'});
  vi.spyOn(employeeFilter,'getBoundingClientRect').mockReturnValue({left:120,bottom:200} as DOMRect);
