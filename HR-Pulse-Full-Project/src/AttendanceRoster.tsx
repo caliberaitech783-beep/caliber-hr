@@ -199,10 +199,10 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
    {compare&&<label className="roster-check"><input type="checkbox" checked={onlyDiff} onChange={e=>setOnlyDiff(e.target.checked)}/>Only employees with a difference</label>}
    <span role="status">{status}</span>
    {view!=='trip'&&<span className="roster-seg" role="group" aria-label="Day boxes"><button type="button" aria-pressed={!times} onClick={()=>setTimes(false)}>Codes only</button><button type="button" aria-pressed={times} onClick={()=>setTimes(true)}>Codes + In / Out</button></span>}
+   {view==='manual'&&bio?.onDeleteSaved&&<button type="button" className="roster-delete" disabled={bio.deletingSaved} onClick={bio.onDeleteSaved}><Trash2/>{bio.deletingSaved?'Deleting…':'Delete All'}</button>}
    {!biometricView&&trip.onSave&&<button type="button" className="roster-save" disabled={!trip.canSave} onClick={trip.onSave}><Save/>{trip.saveLabel||'Save trip cards'}</button>}
    {biometricView&&bio?.onSave&&<button type="button" className="roster-save" disabled={!bio.canSave} onClick={bio.onSave}>{bio.saveLabel==='Saved'?<Lock/>:<Save/>}{bio.saveLabel||'Save biometric'}</button>}
    {view==='manual'&&Boolean(bio?.savedCount)&&bio?.onViewSaved&&<button type="button" onClick={bio.onViewSaved}><Lock/>View Saved Logs</button>}
-   {view==='manual'&&Boolean(bio?.savedCount)&&bio?.onDeleteSaved&&<button type="button" className="roster-delete" disabled={bio.deletingSaved} onClick={bio.onDeleteSaved}><Trash2/>{bio.deletingSaved?'Deleting…':'Delete All'}</button>}
    {biometricView&&onImport&&<div className="roster-export roster-import">
     <button type="button" onClick={onImport}><Upload/>{view==='manual'?'Import attendance log':'Upload machine log'}</button>
    </div>}
@@ -446,13 +446,13 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  }
  async function deleteManualLogs(daysToDelete:string[],all=false){
   if(!daysToDelete.length||deletingSaved)return;
-  const message=all?`Delete all ${daysToDelete.length} saved manual biometric logs shown for ${site}? This also removes their imported punches and cannot be undone.`:`Delete the saved manual biometric log for ${show(daysToDelete[0])}? This also removes its imported punches and cannot be undone.`;
+  const message=all?`Delete all Manual Biometric attendance for ${site} across the ${daysToDelete.length} selected date${daysToDelete.length===1?'':'s'}? This removes saved logs and imported punches and cannot be undone.`:`Delete the saved manual biometric log for ${show(daysToDelete[0])}? This also removes its imported punches and cannot be undone.`;
   if(!window.confirm(message))return;
   setDeletingSaved(true);
   try{
    const result=await deleteManualBiometricDays(grant,site,daysToDelete);
    setManualSaved(current=>current.key===manualSaveKey?{...current,days:Object.fromEntries(Object.entries(current.days).filter(([day])=>!daysToDelete.includes(day)))}:current);
-   setImportNote(`${result.deleted} saved manual biometric log${result.deleted===1?'':'s'} deleted · ${result.punches.toLocaleString('en-IN')} punches removed.`);
+   setImportNote(`Manual Biometric attendance deleted · ${result.deleted} saved log${result.deleted===1?'':'s'} and ${result.punches.toLocaleString('en-IN')} punches removed.`);
    setManualReload(value=>value+1);
    if(all)setShowSavedLogs(false);
   }catch(error){setImportNote(`Unable to delete saved logs: ${(error as Error).message}`);}
@@ -544,7 +544,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   saveError:manualSave&&!manualSave.running&&manualSave.failed.length?`Could not save ${manualSave.failed.map(show).join(', ')}: ${manualSave.error}`:'',savedCount:manualSavedDays.length,onViewSaved:()=>setShowSavedLogs(true)};
  // HR administrator only (owner, 25 Nov 2026): correct a day, and delete saved logs. The server refuses everyone else too.
  if(canCorrect){
-  manualState.onDeleteSaved=()=>void deleteManualLogs(manualSavedDays.map(([day])=>day),true);
+  manualState.onDeleteSaved=manualLogDays.length?()=>void deleteManualLogs(manualLogDays,true):undefined;
   manualState.onEditDay=(group,date)=>setEditDay({site,employeeCode:group.code,name:group.name,date,day:group.bio?.days.find(d=>d.date===date)});
  }
  manualState.deletingSaved=deletingSaved;

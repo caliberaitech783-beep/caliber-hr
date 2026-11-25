@@ -15,6 +15,15 @@ describe('Manual Biometric attendance roster',()=>{
   expect(screen.queryByText('Only employees with a difference')).not.toBeInTheDocument();
   expect(screen.queryByRole('columnheader',{name:'Diff. of Trip Card and Bio-matric'})).not.toBeInTheDocument();
  });
+ it('places a working Delete All beside the day-box controls',()=>{
+  const remove=vi.fn(),trip:TripState={status:'idle',message:'',rows:null};
+  render(<RosterTable groups={[]} dates={['2026-11-24']} view="manual" trip={trip}
+   bio={{running:false,message:'Imported biometric attendance',days:{},counts:{},errors:{},failed:[],onDeleteSaved:remove}}
+   monthly={false} from="2026-11-24" to="2026-11-24"/>);
+  const controls=screen.getByRole('group',{name:'Day boxes'}),button=screen.getByRole('button',{name:'Delete All'});
+  expect(controls.compareDocumentPosition(button)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(button);expect(remove).toHaveBeenCalledOnce();
+ });
  it('shows all dates with MB / Trip Card values and can keep only mismatched employees',()=>{
   const trip:TripState={status:'ready',message:'',rows:[]};
   const groups=[{key:'1',code:'CMLL17416',name:'Balasani Srinivas',site:'Dhoptala OB 2nd',department:'Driver',designation:'Tipper Driver',shift:'',exempt:false,
