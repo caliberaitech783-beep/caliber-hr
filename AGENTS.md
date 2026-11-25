@@ -187,3 +187,13 @@ Set by the owner on 23 November 2026: every saved machine in Attendance Manageme
 - Delete (HR administrators without a site restriction) opens a window with the machine's details; Delete machine removes it at once. Cancel deletes nothing. No Telegram message, no OTP, no approver setting (MACHINE_DELETE_APPROVERS is no longer read).
 - Deleting removes the machine and cancels its open fetches. Punches already received, names on the machine and employee links stay. Every delete goes into the audit log (DELETE_ATTENDANCE_DEVICE).
 - `HR-Pulse-Full-Project/server/machine-delete.mjs` and `src/MachineDeleteDialog.tsx` hold it. `server/machine-delete.test.mjs` and `src/BiometricMachines.test.tsx` check it. Do not add an approval back unless the owner asks.
+
+# Only an HR administrator corrects Manual Biometric attendance
+
+Set by the owner on 25 November 2026: "I need the edit option only for admin in bio-matric punch daily attendance".
+
+- In Attendance roster › Manual Biometric an HR administrator (every site and Employee Master write, the same people who add and delete machines) presses a past day's box and corrects it: a new In / Out (rated again with the attendance policy; an Out before the In is the next morning) or a code (P, HD, A, WO, H, CO, L, OD), always with a reason. "Undo correction" puts the day back to the punches.
+- The imported punches are never changed: a correction is kept apart in `hr_manual_attendance_corrections` (one per site, employee and day) and laid over the register when it is read. A corrected day is outlined in purple with a ✎ mark; its hover says who changed it, why and what it was. A saved copy of that day is made again, so it shows the correction too. Every correction and undo writes an audit line.
+- Everyone else (Site HR) sees the roster as before, with no correction and no Delete of saved logs; the server refuses them both (403).
+- Pulse-II still gets the imported punches only.
+- `HR-Pulse-Full-Project/server/manual-attendance-corrections.mjs` holds the rule, `src/ManualDayEdit.tsx` the form; `server/manual-attendance-corrections.test.mjs` and `src/ManualDayEdit.test.tsx` check it.

@@ -158,6 +158,21 @@ CREATE TABLE IF NOT EXISTS hr_manual_biometric_days(
  PRIMARY KEY(site,day)
 );
 
+-- Admin corrections of a Manual Biometric day (owner, 25 Nov 2026; manual-attendance-corrections.mjs). The imported
+-- punches stay as imported; a correction gives the day a new In / Out and / or code, with the reason and who made it.
+CREATE TABLE IF NOT EXISTS hr_manual_attendance_corrections(
+ site text NOT NULL,
+ day date NOT NULL,
+ employee_code text NOT NULL,
+ status text NOT NULL DEFAULT '',
+ in_time text NOT NULL DEFAULT '',
+ out_time text NOT NULL DEFAULT '',
+ reason text NOT NULL,
+ corrected_by text NOT NULL,
+ corrected_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(site,day,employee_code)
+);
+
 -- Bridge PCs per site (owner, 22 Nov 2026): each site's bridge PC signs in with its own key (attendance-bridges.mjs).
 -- Only the key's SHA-256 fingerprint and last 4 letters are kept. The first bridge PC keeps ATTENDANCE_BRIDGE_KEY and
 -- is the "Main bridge PC" (bridge_id NULL on its machines and fetch requests).

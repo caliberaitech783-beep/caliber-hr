@@ -252,3 +252,17 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .biometric-machines .machine-checked{display:block;margin-top:4px;font-size:11px;color:#8a7f96;white-space:nowrap}
 .biometric-machines .machine-actions .spinning{animation:machine-refresh-spin .8s linear infinite}
 @keyframes machine-refresh-spin{to{transform:rotate(360deg)}}
+/* Manual Biometric: an HR administrator corrects a day (ManualDayEdit.tsx, owner 25 Nov 2026). */
+.roster-code.roster-editable{cursor:pointer}
+.roster-code.roster-editable:hover,.roster-code.roster-editable:focus-visible{outline:2px solid #7b3fe4;outline-offset:1px}
+.roster-code.roster-corrected{position:relative;box-shadow:inset 0 0 0 2px #7b3fe4}
+.roster-code.roster-corrected::after{content:'✎';position:absolute;top:-6px;right:-6px;font-size:10px;line-height:14px;width:14px;height:14px;border-radius:50%;background:#7b3fe4;color:#fff;text-align:center}
+.manual-day-edit{max-width:460px}
+.manual-day-edit .roster-seg{margin:8px 0 12px}
+.manual-day-fields{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.manual-day-fields label,label.manual-day-fields{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px}
+label.manual-day-fields{width:100%}
+.manual-day-fields small{width:100%;color:#6b5e75}
+.manual-day-fields textarea,.manual-day-fields select{width:100%}
+.manual-day-was{margin:0 0 6px}
+.manual-day-edit .modal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}

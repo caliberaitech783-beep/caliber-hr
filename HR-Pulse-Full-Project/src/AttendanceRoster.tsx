@@ -7,6 +7,7 @@ import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,type BioDayUpdate,fetc
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 import MachineLogUpload from './MachineLogUpload';
+import ManualDayEdit,{type DayEditTarget} from './ManualDayEdit';
 import {downloadExcel} from './excelFiles';
 import {assetPrintHtml} from './assetPrint';
 
@@ -79,7 +80,9 @@ const DAY_STATE:Record<DayState,string>={queued:'Waiting to be read from MIS',lo
 /** The Biometric tab's day-by-day reading (owner, 22 Nov 2026): each day's state, punches read and error. */
 export type BioState={running:boolean;message:string;days:Record<string,DayState>;counts:Record<string,number>;errors:Record<string,string>;failed:string[];onRetry?:(days:string[])=>void;
  /** Save biometric (owner, 23 Nov 2026): the button's text, whether it can be pressed, and the note on what is saved. */
- onSave?:()=>void;saveLabel?:string;canSave?:boolean;savedNote?:string;saveError?:string;saved?:Record<string,SavedInfo>;onViewSaved?:()=>void;savedCount?:number;onDeleteSaved?:()=>void;deletingSaved?:boolean};
+ onSave?:()=>void;saveLabel?:string;canSave?:boolean;savedNote?:string;saveError?:string;saved?:Record<string,SavedInfo>;onViewSaved?:()=>void;savedCount?:number;onDeleteSaved?:()=>void;deletingSaved?:boolean;
+ /** Manual Biometric, HR administrator only (owner, 25 Nov 2026): press a day to correct it. */
+ onEditDay?:(group:RosterGroup,date:string)=>void};
 const BIO_DAY_STATE:Record<DayState,string>={queued:'Waiting to be read',loading:'Reading punches…',retrying:'Busy · trying again…',done:'Read',failed:'Could not be read'};
 type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripState;bio?:BioState;monthly:boolean;from:string;to:string;loading?:boolean;error?:string;emptyText?:string;onImport?:()=>void};
 
@@ -153,15 +156,22 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
   </style></head><body><button onclick="window.print()">Print / Save as PDF</button><h1>${title}</h1><p>${shown.length} employee${shown.length===1?'':'s'} · generated ${new Date().toLocaleString('en-IN')}</p>${table.outerHTML}</body></html>`);
   popup.document.close();popup.focus();setExportOpen(false);
  }
+ const bioState=bio;
  const cells=(codes:Record<string,string>,group:RosterGroup,isTrip:boolean)=>dates.map(date=>{
   const code=codes[date]||'',bio=group.bio?.days.find(d=>d.date===date),tripDay=group.tripDays[date];
   const miss=compare&&group.mismatches.some(m=>m.date===date);
   const title=show(date)+' · '+(isTrip?(tripDay?tripDay.duties.map(d=>[d.cards.join('/'),d.shift,d.equipment,d.time,d.output].filter(Boolean).join(' · ')).join(' | '):codeLabel(code)):
    (bio?`${codeLabel(code)}${bio.in?` · ${bio.in}–${bio.out||'?'}`:''}${bio.note?' · '+bio.note:''}`:codeLabel(code)));
   const punches=!isTrip&&bio?.punches?.length?NEWLINE+bio.punches.join(NEWLINE):'';
-  if(!isTrip&&showTimes)return <td key={date} className={'roster-day'+(miss?' roster-miss':'')}><span className={'register-cell roster-code roster-times '+codeClass(code)} title={title+punches}><b>{code}</b>
+  // Manual Biometric: an HR administrator presses a past day to correct it; a corrected day carries a mark.
+  const fix=!isTrip&&bio?.corrected,editable=!isTrip&&view==='manual'&&Boolean(bioState?.onEditDay)&&date<india()&&Boolean(group.code);
+  const fixText=fix?`${NEWLINE}Corrected by ${fix.by||'HR administrator'}: ${fix.reason} (was ${fix.before.status||'—'} ${fix.before.in||'—'}–${fix.before.out||'—'})`:'';
+  const edit=editable?{role:'button',tabIndex:0,'aria-label':`Correct ${group.name} on ${show(date)}`,onClick:()=>bioState!.onEditDay!(group,date),
+   onKeyDown:(e:{key:string;preventDefault:()=>void})=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();bioState!.onEditDay!(group,date);}}}:{};
+  const extra=(fix?' roster-corrected':'')+(editable?' roster-editable':'');
+  if(!isTrip&&showTimes)return <td key={date} className={'roster-day'+(miss?' roster-miss':'')}><span className={'register-cell roster-code roster-times '+codeClass(code)+extra} title={title+punches+fixText+(editable?NEWLINE+'Press to correct this day':'')} {...edit}><b>{code}</b>
    <small className={bio?.late?'roster-late':undefined}>{bio?.in||'—'}</small><small className={bio?.early?'roster-early':undefined}>{outText(bio?.out)}</small></span></td>;
-  return <td key={date} className={'roster-day'+(miss?' roster-miss':'')}><span className={'register-cell roster-code '+codeClass(code)} title={title+punches}>{code}{!isTrip&&(bio?.late||bio?.early)&&<sup>{bio.late?'L':''}{bio.early?'E':''}</sup>}</span></td>;
+  return <td key={date} className={'roster-day'+(miss?' roster-miss':'')}><span className={'register-cell roster-code '+codeClass(code)+extra} title={title+punches+fixText+(editable?NEWLINE+'Press to correct this day':'')} {...edit}>{code}{!isTrip&&(bio?.late||bio?.early)&&<sup>{bio.late?'L':''}{bio.early?'E':''}</sup>}</span></td>;
  });
  const totals=(t:LineTotals)=>ROSTER_TOTALS.map(([key])=><td key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}>{key==='paidDays'||key==='totalDays'?<strong>{t[key]}</strong>:t[key]}</td>);
  const lineCells=(g:RosterGroup,line:'trip'|'bio')=>line==='trip'
@@ -323,6 +333,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const [manualSaved,setManualSaved]=useState<{key:string;days:Record<string,SavedBioDay>}>({key:'',days:{}}),[manualSave,setManualSave]=useState<{running:boolean;done:number;total:number;failed:string[];error:string}|null>(null),[showSavedLogs,setShowSavedLogs]=useState(false),[deletingSaved,setDeletingSaved]=useState(false);
  const bioRef=useRef('');
  const [pull,setPull]=useState<{running:boolean;message:string;error:string}|null>(null),[bioReload,setBioReload]=useState(0);
+ const [editDay,setEditDay]=useState<DayEditTarget|null>(null);
  const [uploading,setUploading]=useState<''|'bio'|'manual'>(''),[importNote,setImportNote]=useState(''),[manualReload,setManualReload]=useState(0);
  const keyRef=useRef(''),forceMis=useRef(false),forceBio=useRef(false);
  const [reload,setReload]=useState(0);
@@ -524,12 +535,19 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  bioState.saveError=bioSave&&!bioSave.running&&bioSave.failed.length?`Could not save ${bioSave.failed.map(show).join(', ')}: ${bioSave.error}`:'';
  const currentManualSaved=manualSaved.key===manualSaveKey?manualSaved.days:{},manualSavedDays=Object.entries(currentManualSaved),manualLogDays=dates.filter(day=>manual.data?.rows.some(row=>row.days.some(entry=>entry.date===day&&Boolean(entry.punches?.length)))),manualUnsaved=manualLogDays.filter(day=>day<today&&!currentManualSaved[day]);
  const manualLatest=manualSavedDays.map(([,info])=>info).sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)))[0];
+ const canCorrect=Boolean(manual.data?.canCorrect);
  const manualState:BioState={running:manual.status==='loading',message:manual.status==='ready'?'Imported biometric attendance':'Reading imported biometric attendance…',days:{},counts:{},errors:{},failed:[],onSave:saveManual,
   saved:currentManualSaved,canSave:manual.status==='ready'&&!manualSave?.running&&manualUnsaved.length>0,
   saveLabel:manualSave?.running?`Saving ${manualSave.done} of ${manualSave.total} days…`:manualUnsaved.length?`Save manual biometric (${manualUnsaved.length} day${manualUnsaved.length===1?'':'s'})`:manualSavedDays.length?'Saved':'Save manual biometric',
-  savedNote:manualSavedDays.length?`Saved and locked: ${manualSavedDays.length} day${manualSavedDays.length===1?'':'s'} for ${site} (last saved ${manualLatest?when(manualLatest.savedAt):''}${manualLatest?.savedBy?' by '+manualLatest.savedBy:''}). Saved logs cannot be edited or replaced.`:'',
+  savedNote:manualSavedDays.length?`Saved and locked: ${manualSavedDays.length} day${manualSavedDays.length===1?'':'s'} for ${site} (last saved ${manualLatest?when(manualLatest.savedAt):''}${manualLatest?.savedBy?' by '+manualLatest.savedBy:''}). `+
+   (canCorrect?'As HR administrator you can correct a past day: press its box.':'Saved logs cannot be replaced; only an HR administrator can correct a day.'):canCorrect&&manual.data?.rows.length?'As HR administrator you can correct a past day: press its box.':'',
   saveError:manualSave&&!manualSave.running&&manualSave.failed.length?`Could not save ${manualSave.failed.map(show).join(', ')}: ${manualSave.error}`:'',savedCount:manualSavedDays.length,onViewSaved:()=>setShowSavedLogs(true)};
- manualState.onDeleteSaved=()=>void deleteManualLogs(manualSavedDays.map(([day])=>day),true);manualState.deletingSaved=deletingSaved;
+ // HR administrator only (owner, 25 Nov 2026): correct a day, and delete saved logs. The server refuses everyone else too.
+ if(canCorrect){
+  manualState.onDeleteSaved=()=>void deleteManualLogs(manualSavedDays.map(([day])=>day),true);
+  manualState.onEditDay=(group,date)=>setEditDay({site,employeeCode:group.code,name:group.name,date,day:group.bio?.days.find(d=>d.date===date)});
+ }
+ manualState.deletingSaved=deletingSaved;
  const shownBioState=manualView?manualState:bioState;
  const bioLoading=manualView?manual.status==='loading':view!=='trip'&&bioRunning&&!bioData;
  const bioError=manualView&&manual.status==='error'?manual.message:!bioRunning&&bioTotal>0&&bioFailed.length===bioTotal?bio.errors[bioFailed[0]]||'HR did not answer':'';
@@ -539,7 +557,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const elapsedSeconds=loadTimer.elapsed===null?'':(loadTimer.elapsed/1000).toFixed(1);
 
  return <section className="data-card attendance-register attendance-roster" aria-label="Attendance roster">
-  {showSavedLogs&&<div className="modal-backdrop" role="presentation"><section className="modal saved-log-modal" role="dialog" aria-modal="true" aria-label="Saved manual biometric logs"><div className="modal-heading"><h2>Saved Manual Biometric Logs</h2><div className="saved-log-actions"><button type="button" className="danger" disabled={deletingSaved} onClick={()=>void deleteManualLogs(manualSavedDays.map(([day])=>day),true)}><Trash2/>{deletingSaved?'Deleting…':'Delete All'}</button><button type="button" aria-label="Close saved logs" onClick={()=>setShowSavedLogs(false)}><X/></button></div></div><p>{site} · saved dates in the selected range</p><div className="table-scroll"><table><thead><tr><th>Site</th><th>Date</th><th>Saved by</th><th>Saved time</th><th>Employees</th><th>Punches</th><th>Action</th></tr></thead><tbody>{manualSavedDays.sort(([a],[b])=>b.localeCompare(a)).map(([day,info])=><tr key={day}><td>{site}</td><td>{show(day)}</td><td>{info.savedBy||'—'}</td><td>{when(info.savedAt)}</td><td>{info.people.toLocaleString('en-IN')}</td><td>{info.punches.toLocaleString('en-IN')}</td><td><div className="saved-log-actions"><button type="button" onClick={()=>{setFrom(day);setTo(day);setShowSavedLogs(false);}}>Open Log</button><button type="button" className="danger" disabled={deletingSaved} onClick={()=>void deleteManualLogs([day])}><Trash2/>Delete</button></div></td></tr>)}</tbody></table></div></section></div>}
+  {showSavedLogs&&<div className="modal-backdrop" role="presentation"><section className="modal saved-log-modal" role="dialog" aria-modal="true" aria-label="Saved manual biometric logs"><div className="modal-heading"><h2>Saved Manual Biometric Logs</h2><div className="saved-log-actions">{canCorrect&&<button type="button" className="danger" disabled={deletingSaved} onClick={()=>void deleteManualLogs(manualSavedDays.map(([day])=>day),true)}><Trash2/>{deletingSaved?'Deleting…':'Delete All'}</button>}<button type="button" aria-label="Close saved logs" onClick={()=>setShowSavedLogs(false)}><X/></button></div></div><p>{site} · saved dates in the selected range</p><div className="table-scroll"><table><thead><tr><th>Site</th><th>Date</th><th>Saved by</th><th>Saved time</th><th>Employees</th><th>Punches</th><th>Action</th></tr></thead><tbody>{manualSavedDays.sort(([a],[b])=>b.localeCompare(a)).map(([day,info])=><tr key={day}><td>{site}</td><td>{show(day)}</td><td>{info.savedBy||'—'}</td><td>{when(info.savedAt)}</td><td>{info.people.toLocaleString('en-IN')}</td><td>{info.punches.toLocaleString('en-IN')}</td><td><div className="saved-log-actions"><button type="button" onClick={()=>{setFrom(day);setTo(day);setShowSavedLogs(false);}}>Open Log</button>{canCorrect?<button type="button" className="danger" disabled={deletingSaved} onClick={()=>void deleteManualLogs([day])}><Trash2/>Delete</button>:<span className="help-text">HR administrator only</span>}</div></td></tr>)}</tbody></table></div></section></div>}
   <h2>Attendance roster</h2>
   <div className="attendance-filters roster-filters">
    <label>Site<select value={site} required aria-invalid={!site} onChange={e=>{setSite(e.target.value);setDepartmentsSelected([]);setDesignationsSelected([]);setEmployee('');}}><option value="">{sites===null?'Loading sites…':'Select a site'}</option>{(sites||[]).map(s=><option key={s} value={s}>{s}</option>)}</select></label>
@@ -559,6 +577,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    ready&&<>{view!=='trip'&&bioError&&<p className="error" role="alert">Biometric punches unavailable: {bioError}</p>}
    {(view==='bio'||view==='compare')&&liveBioData&&<MachinesPanel site={site} machines={liveBioData.machines} pull={pull} onPull={()=>void pullMachines(liveBioData.machines)} onManage={onManageMachines}/>}
    {(view==='bio'||view==='manual')&&importNote&&<p className="roster-saved" role="status">{importNote}</p>}
+   {editDay&&<ManualDayEdit grant={grant} target={editDay} onClose={()=>setEditDay(null)} onSaved={message=>{setEditDay(null);setImportNote(message);setManualReload(value=>value+1);}}/>}
    {uploading&&<MachineLogUpload grant={grant} site={site} onClose={()=>setUploading('')} onImported={imported} onManageMachines={onManageMachines} importPath={uploading==='manual'?'attendance/manual-biometric/import':undefined} title={uploading==='manual'?'Import manual biometric attendance':undefined}/>}
    <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} bio={shownBioState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} loading={bioLoading||(view==='manualMismatch'&&tripState.status==='loading')} error={view!=='trip'?bioError:''}
     onImport={view==='bio'||(view==='manual'&&!dates.every(day=>Boolean(currentManualSaved[day])))?()=>{setImportNote('');setUploading(view as 'bio'|'manual');}:undefined}

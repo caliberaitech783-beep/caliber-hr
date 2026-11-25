@@ -14,6 +14,7 @@ import {createBridges,looksLikeSiteKey} from './attendance-bridges.mjs';
 import {createDirectMachines} from './attendance-direct.mjs';
 import {loadRegister,loadSiteRegister,readPolicy,savePolicy} from './attendance-register.mjs';
 import {removeMachine} from './machine-delete.mjs';
+import {applyCorrections,cleanCorrection,correctionCode,createCorrections} from './manual-attendance-corrections.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const uuid=value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value||'');
@@ -113,9 +114,15 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
  const bridges=createBridges(pool);
  const tripCards=createTripCardStore(pool);
  const biometricDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadSiteRegister(pool,site,from,to,indiaDay()),today:indiaDay,siteKey:attendanceSiteKey});
- const manualBiometricDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadSiteRegister(pool,site,from,to,indiaDay(),{manual:true}),today:indiaDay,manual:true,siteKey:attendanceSiteKey});
+ // Manual Biometric: the imported punches with an HR administrator's day corrections laid over them (manual-attendance-corrections.mjs);
+ // a saved copy is made from the same.
+ const loadManual=async(site,from,to)=>applyCorrections(await loadSiteRegister(pool,site,from,to,indiaDay(),{manual:true}),await corrections.read(site.name,from,to));
+ const manualBiometricDays=createBiometricDayStore(pool,{load:loadManual,today:indiaDay,manual:true,siteKey:attendanceSiteKey});
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
+ const corrections=createCorrections({pool,tx,audit});
+ /** An HR administrator: every site and Employee Master write (the people who add and delete machines). */
+ const attendanceAdmin=profile=>assignedSites(profile)===null&&canWrite(profile,'employees');
  const permit=profile=>{if(!grantedMenus(profile).has('Attendance Management'))fail('Attendance Management is not assigned to your account',403);};
  const view=row=>row&&{id:row.id,state:row.state,punchesReceived:row.punches_received,newPunches:row.new_punches,error:row.error||'',requestedBy:row.requested_by,requestedAt:row.requested_at,completedAt:row.completed_at};
  const expire=db=>db.query(`UPDATE hr_attendance_fetch_requests SET state='FAILED',error=$1,completed_at=now() WHERE state IN ('PENDING','RUNNING') AND requested_at<now()-${STALE}`,[NO_BRIDGE]);
@@ -216,6 +223,8 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   }
   const sites=await siteIds(pool,profile); // null = all sites
   if(route==='biometric-days')return biometricDays(profile,method,input,params,sites);
+  // Deleting saved Manual Biometric logs (and their imported punches) is for an HR administrator only (owner, 25 Nov 2026).
+  if(route==='manual-biometric-days'&&method==='DELETE'&&!attendanceAdmin(profile))fail('Only an HR administrator can delete saved manual biometric logs.',403);
   if(route==='manual-biometric-days')return manualBiometricDays(profile,method,input,params,sites);
   const findSite=async(db,siteName)=>{
    const exact=(await db.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[siteName,sites])).rows[0];
@@ -325,7 +334,31 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const {from,to}=validateRange(params);
    const site=await findSite(pool,String(params.get('site')||''));
    if(!site)fail(siteAccessMessage(profile),403);
-   return loadSiteRegister(pool,{id:site.id,name:site.name,siteType:site.site_type||''},from,to,indiaDay(),{manual:true});
+   return {...await loadManual({id:site.id,name:site.name,siteType:site.site_type||''},from,to),canCorrect:attendanceAdmin(profile)};
+  }
+  // An HR administrator corrects one person's day, or undoes the correction (owner, 25 Nov 2026). A saved copy of that
+  // day is made again, so it shows the day as corrected.
+  if(route==='manual-biometric/corrections'&&(method==='POST'||method==='DELETE')){
+   if(!attendanceAdmin(profile))fail('Only an HR administrator can correct attendance.',403);
+   const site=await findSite(pool,String(input?.site||''));
+   if(!site)fail(siteAccessMessage(profile),403);
+   const today=indiaDay();
+   let result;
+   if(method==='POST'){
+    const correction=cleanCorrection(input,today);
+    result=await corrections.save(profile,site.name,correction);
+   }else{
+    const day=String(input?.day||''),code=correctionCode(input?.employeeCode);
+    if(!validDay(day)||!code)fail('Choose the day and employee.');
+    result=await corrections.remove(profile,site.name,day,code);
+   }
+   const day=String(result.day);
+   const saved=(await pool.query('SELECT 1 FROM hr_manual_biometric_days WHERE site=$1 AND day=$2::date',[site.name,day])).rows.length>0;
+   if(saved){
+    const register=await loadManual({id:site.id,name:site.name,siteType:site.site_type||''},day,day);
+    await pool.query('UPDATE hr_manual_biometric_days SET register=$3 WHERE site=$1 AND day=$2::date',[site.name,day,JSON.stringify(register)]);
+   }
+   return {...result,savedCopyUpdated:saved};
   }
   if(route==='punctuality'&&method==='GET'){
    // Late come / early going come from the same day calculation as the register.

@@ -86,7 +86,7 @@ export async function fetchTripCards(grant: string, from: string, to: string, si
 }
 
 export type SiteMachine = {serial: string; name: string; location: string; ipAddress?: string; bridgeName?: string; online: boolean; lastContact: string | null; lastPunch: string; punches: number};
-export type SiteRegister = Register & {site?: string; machines: SiteMachine[]};
+export type SiteRegister = Register & {site?: string; machines: SiteMachine[]; canCorrect?: boolean};
 /**
  * Biometric for a site (owner, 22 Nov 2026): every punch on that site's machines (Biometric machines › site), whoever
  * punched, with In / Out and each punch's machine; machine IDs not linked to an employee are included (linked: false).
