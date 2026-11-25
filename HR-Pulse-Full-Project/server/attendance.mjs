@@ -223,8 +223,11 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   }
   const sites=await siteIds(pool,profile); // null = all sites
   if(route==='biometric-days')return biometricDays(profile,method,input,params,sites);
-  // Deleting saved Manual Biometric logs (and their imported punches) is for an HR administrator only (owner, 25 Nov 2026).
-  if(route==='manual-biometric-days'&&method==='DELETE'&&!attendanceAdmin(profile))fail('Only an HR administrator can delete saved manual biometric logs.',403);
+  // Deleting saved Manual Biometric logs (and their imported punches) is for an HR administrator only (owner, 25 Nov 2026),
+  // by either route (the browser sends it as a POST to …/delete).
+  const deletingManual=(route==='manual-biometric-days'&&method==='DELETE')||(route==='manual-biometric-days/delete'&&method==='POST');
+  if(deletingManual&&!attendanceAdmin(profile))fail('Only an HR administrator can delete saved manual biometric logs.',403);
+  if(route==='manual-biometric-days/delete'&&method==='POST')return manualBiometricDays(profile,'DELETE',input,params,sites);
   if(route==='manual-biometric-days')return manualBiometricDays(profile,method,input,params,sites);
   const findSite=async(db,siteName)=>{
    const exact=(await db.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[siteName,sites])).rows[0];
@@ -337,14 +340,15 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    return {...await loadManual({id:site.id,name:site.name,siteType:site.site_type||''},from,to),canCorrect:attendanceAdmin(profile)};
   }
   // An HR administrator corrects one person's day, or undoes the correction (owner, 25 Nov 2026). A saved copy of that
-  // day is made again, so it shows the day as corrected.
-  if(route==='manual-biometric/corrections'&&(method==='POST'||method==='DELETE')){
+  // day is made again, so it shows the day as corrected. Undo is a POST to …/undo (the browser cannot send DELETE here).
+  const undoing=(route==='manual-biometric/corrections/undo'&&method==='POST')||(route==='manual-biometric/corrections'&&method==='DELETE');
+  if(undoing||(route==='manual-biometric/corrections'&&method==='POST')){
    if(!attendanceAdmin(profile))fail('Only an HR administrator can correct attendance.',403);
    const site=await findSite(pool,String(input?.site||''));
    if(!site)fail(siteAccessMessage(profile),403);
    const today=indiaDay();
    let result;
-   if(method==='POST'){
+   if(!undoing){
     const correction=cleanCorrection(input,today);
     result=await corrections.save(profile,site.name,correction);
    }else{

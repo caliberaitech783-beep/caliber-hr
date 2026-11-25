@@ -79,7 +79,9 @@ test('only an HR administrator corrects a day or deletes saved manual logs', asy
   const body = {site: 'Dhoptala OB 2nd', day: '2026-11-01', employeeCode: 'CMLL20611', status: 'P', reason: 'Machine down'};
   await assert.rejects(service.attendanceApi(siteHr, 'manual-biometric/corrections', 'POST', body, new URLSearchParams()), e => e.status === 403 && /HR administrator/.test(e.message));
   await assert.rejects(service.attendanceApi(siteHr, 'manual-biometric/corrections', 'DELETE', body, new URLSearchParams()), e => e.status === 403);
+  await assert.rejects(service.attendanceApi(siteHr, 'manual-biometric/corrections/undo', 'POST', body, new URLSearchParams()), e => e.status === 403);
   await assert.rejects(service.attendanceApi(siteHr, 'manual-biometric-days', 'DELETE', {site: 'Dhoptala OB 2nd', days: ['2026-11-01']}, new URLSearchParams()), e => e.status === 403 && /delete saved manual biometric logs/.test(e.message));
+  await assert.rejects(service.attendanceApi(siteHr, 'manual-biometric-days/delete', 'POST', {site: 'Dhoptala OB 2nd', days: ['2026-11-01']}, new URLSearchParams()), e => e.status === 403 && /delete saved manual biometric logs/.test(e.message));
   assert.ok(!pool.calls.some(([sql]) => /hr_manual_attendance_corrections|DELETE FROM/.test(sql)), 'nothing was written');
 });
 
@@ -96,4 +98,17 @@ test('an HR administrator saves a correction with its audit line', async () => {
   const insert = pool.calls.find(([sql]) => sql.startsWith('INSERT INTO hr_manual_attendance_corrections'));
   assert.deepEqual(insert[1], ['Dhoptala OB 2nd', '2026-11-01', 'CMLL20611', 'P', '', '', 'Machine down', 'vinod']);
   assert.ok(pool.calls.some(([sql, params]) => sql.includes('INSERT INTO hr_audit') && params[1] === 'CORRECT_MANUAL_ATTENDANCE_DAY'));
+});
+
+test('an HR administrator undoes a correction with a POST to …/undo', async () => {
+  const pool = fakePool(sql => {
+    if (sql.includes("kind='sites'")) return {rows: [{id: '11111111-1111-4111-8111-111111111111', name: 'Dhoptala OB 2nd', site_type: 'Site'}]};
+    if (sql.startsWith('DELETE FROM hr_manual_attendance_corrections')) return {rows: [{status: 'P', in_time: '', out_time: '', reason: 'Machine down', corrected_by: 'vinod'}]};
+    return undefined;
+  });
+  const service = createAttendance(pool, {bridgeKey: 'k'.repeat(40)});
+  const result = await service.attendanceApi(admin, 'manual-biometric/corrections/undo', 'POST', {site: 'Dhoptala OB 2nd', day: '2026-11-01', employeeCode: 'CMLL20611'}, new URLSearchParams());
+  assert.deepEqual([result.day, result.employeeCode, result.removed], ['2026-11-01', 'CMLL20611', true]);
+  assert.ok(!pool.calls.some(([sql]) => sql.startsWith('INSERT INTO hr_manual_attendance_corrections')), 'an undo saves nothing');
+  assert.ok(pool.calls.some(([sql, params]) => sql.includes('INSERT INTO hr_audit') && params[1] === 'UNDO_MANUAL_ATTENDANCE_CORRECTION'));
 });

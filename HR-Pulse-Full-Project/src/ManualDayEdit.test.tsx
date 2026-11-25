@@ -77,5 +77,5 @@ it('a corrected day is marked, says who changed it, and can be undone',async()=>
  expect(within(dialog).getByLabelText('Code')).toHaveValue('OD');
  fireEvent.click(within(dialog).getByRole('button',{name:'Undo correction'}));
  await waitFor(()=>expect(sent.length).toBe(1));
- expect(sent[0]).toEqual({url:expect.stringContaining('attendance/manual-biometric/corrections'),method:'DELETE',body:{site:'Dhoptala OB 2nd',day:'2026-11-01',employeeCode:'CMLL20611'}});
+ expect(sent[0]).toEqual({url:expect.stringContaining('attendance/manual-biometric/corrections/undo'),method:'POST',body:{site:'Dhoptala OB 2nd',day:'2026-11-01',employeeCode:'CMLL20611'}});
 });

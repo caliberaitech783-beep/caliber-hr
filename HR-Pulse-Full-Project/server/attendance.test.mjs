@@ -75,7 +75,10 @@ test('API routes bridge calls by key and user calls by Pulse sign-in',async()=>{
   const response=await fetch(url+'fetch',{method:'POST',headers:{Authorization:'Bearer '+'a'.repeat(43),'Content-Type':'application/json'},body:'{}'});
   assert.equal(response.status,200);
   assert.deepEqual(calls.at(-1),['api','hr','fetch','POST']);
-  assert.equal(calls.filter(c=>c[0]==='api').length,1);
+  const remove=await fetch(url+'manual-biometric-days/delete',{method:'POST',headers:{Authorization:'Bearer '+'a'.repeat(43),'Content-Type':'application/json'},body:JSON.stringify({site:'Sasti OC',days:['2026-11-02']})});
+  assert.equal(remove.status,200);
+  assert.deepEqual(calls.at(-1),['api','hr','manual-biometric-days/delete','POST']);
+  assert.equal(calls.filter(c=>c[0]==='api').length,2);
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
 

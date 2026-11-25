@@ -15,7 +15,8 @@ export async function saveManualCorrection(grant:string,body:{site:string;day:st
  return api<{savedCopyUpdated?:boolean}>(grant,'attendance/manual-biometric/corrections','POST',body);
 }
 export async function undoManualCorrection(grant:string,body:{site:string;day:string;employeeCode:string}){
- return api<{savedCopyUpdated?:boolean}>(grant,'attendance/manual-biometric/corrections','DELETE',body);
+ // A POST: the browser is not allowed to send DELETE to this API.
+ return api<{savedCopyUpdated?:boolean}>(grant,'attendance/manual-biometric/corrections/undo','POST',body);
 }
 
 export default function ManualDayEdit({grant,target,onClose,onSaved}:{grant:string;target:DayEditTarget;onClose:()=>void;onSaved:(message:string)=>void}){
