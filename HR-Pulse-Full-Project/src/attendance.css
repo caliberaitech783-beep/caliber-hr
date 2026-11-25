@@ -203,11 +203,11 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .manual-key-card[aria-pressed="true"]{border-color:#7c3aed;box-shadow:0 0 0 2px #eadcf8;background:#fbf8ff}
 /* Keep the comparison report flush from its first column through its final date. */
 .manual-compare-grid{width:max-content!important;min-width:100%;table-layout:fixed}
-.manual-compare-grid .manual-col-id{width:110px}.manual-compare-grid .manual-col-name{width:160px}.manual-compare-grid .manual-col-department{width:150px}.manual-compare-grid .manual-col-designation{width:170px}.manual-compare-grid .manual-col-day{width:62px}
-.manual-compare-grid .roster-id.roster-first{left:0}
-.manual-compare-grid .roster-id{--w:110px}.roster-grid.manual-compare-grid .roster-name{--w:160px;left:110px}
+.manual-compare-grid .manual-col-sr{width:64px}.manual-compare-grid .manual-col-id{width:110px}.manual-compare-grid .manual-col-name{width:160px}.manual-compare-grid .manual-col-department{width:150px}.manual-compare-grid .manual-col-designation{width:170px}.manual-compare-grid .manual-col-day{width:62px}
+.manual-compare-grid .roster-sr.roster-first{left:0;width:64px;min-width:64px!important;max-width:64px}
+.manual-compare-grid .roster-id{--w:110px;left:64px}.roster-grid.manual-compare-grid .roster-name{--w:160px;left:174px}
 .manual-compare-grid .roster-name{box-shadow:2px 0 0 #e7dfef}
-.manual-compare-grid .roster-department{left:270px;z-index:2;width:150px;min-width:150px!important;max-width:150px;padding-left:12px;text-align:left;box-shadow:2px 0 0 #e7dfef}
+.manual-compare-grid .roster-department{left:334px;z-index:2;width:150px;min-width:150px!important;max-width:150px;padding-left:12px;text-align:left;box-shadow:2px 0 0 #e7dfef}
 .manual-compare-grid thead .roster-department{z-index:3;background:#fff}
 .manual-compare-grid th.roster-text,.manual-compare-grid td.roster-text{min-width:150px;padding-left:12px}
 .manual-summary-drill{margin:0 0 12px;padding:14px;border:1px solid #d8c9e8;border-radius:12px;background:#fbf8ff;box-shadow:0 4px 16px #3e20500d}
