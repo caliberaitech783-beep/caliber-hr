@@ -12,6 +12,10 @@ function fakePool({sites = ['Sasti OC'], manual = false} = {}) {
       if(!existing||!manual)saved.set(key, {day: params[1], register: JSON.parse(params[2]), punches: params[3], people: params[4], saved_by: params[5], saved_at: '2026-11-23T08:00:00Z'});
       const row=saved.get(key);return {rows: [{day: row.day, punches: row.punches, people: row.people, saved_by: row.saved_by, saved_at: row.saved_at}]};
     }
+    if (/WITH removed_days AS/.test(sql)) {
+      let logs=0,punches=0;for(const day of params[1]){const key=params[0]+'|'+day;if(saved.delete(key)){logs++;punches+=8;}}
+      return {rows:[{logs,punches}]};
+    }
     if (new RegExp(`FROM hr_${manual?'manual_':''}biometric_days`).test(sql)) return {rows: [...saved.entries()].filter(([k]) => k.startsWith(params[0] + '|')).map(([, v]) => v).filter(v => v.day >= params[1] && v.day <= params[2])};
     if (/INSERT INTO hr_audit/.test(sql)) { audit.push(params); return {rows: []}; }
     throw new Error('Unexpected SQL ' + sql);
@@ -40,6 +44,17 @@ test('manual biometric save is immutable for the same site and day', async () =>
   const second=await store(hr,'POST',{site:'Sasti OC',day:'2026-11-02'},null,null);
   assert.equal(first.punches,1);assert.equal(second.punches,1,'a saved manual day remains frozen');
   assert.equal(pool.audit[1][1],'SAVE_MANUAL_BIOMETRIC_DAY');
+});
+
+test('manual biometric saved logs can be deleted individually or together', async () => {
+  const pool=fakePool({manual:true});const store=createBiometricDayStore(pool,{manual:true,today:()=> '2026-11-23',load:async (_site,day)=>register(day)});
+  await store(hr,'POST',{site:'Sasti OC',day:'2026-11-02'},null,null);
+  await store(hr,'POST',{site:'Sasti OC',day:'2026-11-03'},null,null);
+  const one=await store(hr,'DELETE',{site:'Sasti OC',days:['2026-11-02']},null,null);
+  assert.deepEqual([one.deleted,one.punches],[1,8]);
+  const all=await store(hr,'DELETE',{site:'Sasti OC',days:['2026-11-03']},null,null);
+  assert.deepEqual([all.deleted,pool.saved.size],[1,0]);
+  assert.equal(pool.audit.at(-1)[1],'DELETE_MANUAL_BIOMETRIC_LOGS');
 });
 
 test('saved biometric lookup accepts the same site aliases as attendance', async () => {

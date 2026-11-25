@@ -1,9 +1,9 @@
 import {Fragment,useEffect,useMemo,useRef,useState,type Dispatch,type SetStateAction} from 'react';
-import {ArrowDown,ArrowUp,ChevronDown,Download,Filter,Lock,Printer,RefreshCw,Save,Search,X,Upload} from 'lucide-react';
+import {ArrowDown,ArrowUp,ChevronDown,Download,Filter,Lock,Printer,RefreshCw,Save,Search,Trash2,X,Upload} from 'lucide-react';
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo,type SavedBioDay} from './rosterData';
+import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,deleteManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo,type SavedBioDay} from './rosterData';
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 import MachineLogUpload from './MachineLogUpload';
@@ -79,7 +79,7 @@ const DAY_STATE:Record<DayState,string>={queued:'Waiting to be read from MIS',lo
 /** The Biometric tab's day-by-day reading (owner, 22 Nov 2026): each day's state, punches read and error. */
 export type BioState={running:boolean;message:string;days:Record<string,DayState>;counts:Record<string,number>;errors:Record<string,string>;failed:string[];onRetry?:(days:string[])=>void;
  /** Save biometric (owner, 23 Nov 2026): the button's text, whether it can be pressed, and the note on what is saved. */
- onSave?:()=>void;saveLabel?:string;canSave?:boolean;savedNote?:string;saveError?:string;saved?:Record<string,SavedInfo>;onViewSaved?:()=>void;savedCount?:number};
+ onSave?:()=>void;saveLabel?:string;canSave?:boolean;savedNote?:string;saveError?:string;saved?:Record<string,SavedInfo>;onViewSaved?:()=>void;savedCount?:number;onDeleteSaved?:()=>void;deletingSaved?:boolean};
 const BIO_DAY_STATE:Record<DayState,string>={queued:'Waiting to be read',loading:'Reading punches…',retrying:'Busy · trying again…',done:'Read',failed:'Could not be read'};
 type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripState;bio?:BioState;monthly:boolean;from:string;to:string;loading?:boolean;error?:string;emptyText?:string;onImport?:()=>void};
 
@@ -192,6 +192,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
    {!biometricView&&trip.onSave&&<button type="button" className="roster-save" disabled={!trip.canSave} onClick={trip.onSave}><Save/>{trip.saveLabel||'Save trip cards'}</button>}
    {biometricView&&bio?.onSave&&<button type="button" className="roster-save" disabled={!bio.canSave} onClick={bio.onSave}>{bio.saveLabel==='Saved'?<Lock/>:<Save/>}{bio.saveLabel||'Save biometric'}</button>}
    {view==='manual'&&Boolean(bio?.savedCount)&&bio?.onViewSaved&&<button type="button" onClick={bio.onViewSaved}><Lock/>View Saved Logs</button>}
+   {view==='manual'&&Boolean(bio?.savedCount)&&bio?.onDeleteSaved&&<button type="button" className="roster-delete" disabled={bio.deletingSaved} onClick={bio.onDeleteSaved}><Trash2/>{bio.deletingSaved?'Deleting…':'Delete All'}</button>}
    {biometricView&&onImport&&<div className="roster-export roster-import">
     <button type="button" onClick={onImport}><Upload/>{view==='manual'?'Import attendance log':'Upload machine log'}</button>
    </div>}
@@ -319,7 +320,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const [departmentsSelected,setDepartmentsSelected]=useState<string[]>([]),[designationsSelected,setDesignationsSelected]=useState<string[]>([]),[employee,setEmployee]=useState('');
  const [view,setView]=useState<RosterView|''>('');
  const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<BioStream>(noBio),[manual,setManual]=useState<Source<SiteRegister>>(idle);
- const [manualSaved,setManualSaved]=useState<{key:string;days:Record<string,SavedBioDay>}>({key:'',days:{}}),[manualSave,setManualSave]=useState<{running:boolean;done:number;total:number;failed:string[];error:string}|null>(null),[showSavedLogs,setShowSavedLogs]=useState(false);
+ const [manualSaved,setManualSaved]=useState<{key:string;days:Record<string,SavedBioDay>}>({key:'',days:{}}),[manualSave,setManualSave]=useState<{running:boolean;done:number;total:number;failed:string[];error:string}|null>(null),[showSavedLogs,setShowSavedLogs]=useState(false),[deletingSaved,setDeletingSaved]=useState(false);
  const bioRef=useRef('');
  const [pull,setPull]=useState<{running:boolean;message:string;error:string}|null>(null),[bioReload,setBioReload]=useState(0);
  const [uploading,setUploading]=useState<''|'bio'|'manual'>(''),[importNote,setImportNote]=useState(''),[manualReload,setManualReload]=useState(0);
@@ -432,6 +433,20 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    setManualSave(current=>current?{...current,done:current.done+1,failed:info?current.failed:[...current.failed,day],error:current.error||error||''}:current);
   }).finally(()=>setManualSave(current=>current?{...current,running:false}:current));
  }
+ async function deleteManualLogs(daysToDelete:string[],all=false){
+  if(!daysToDelete.length||deletingSaved)return;
+  const message=all?`Delete all ${daysToDelete.length} saved manual biometric logs shown for ${site}? This also removes their imported punches and cannot be undone.`:`Delete the saved manual biometric log for ${show(daysToDelete[0])}? This also removes its imported punches and cannot be undone.`;
+  if(!window.confirm(message))return;
+  setDeletingSaved(true);
+  try{
+   const result=await deleteManualBiometricDays(grant,site,daysToDelete);
+   setManualSaved(current=>current.key===manualSaveKey?{...current,days:Object.fromEntries(Object.entries(current.days).filter(([day])=>!daysToDelete.includes(day)))}:current);
+   setImportNote(`${result.deleted} saved manual biometric log${result.deleted===1?'':'s'} deleted · ${result.punches.toLocaleString('en-IN')} punches removed.`);
+   setManualReload(value=>value+1);
+   if(all)setShowSavedLogs(false);
+  }catch(error){setImportNote(`Unable to delete saved logs: ${(error as Error).message}`);}
+  finally{setDeletingSaved(false);}
+ }
  /** Fetch from these machines: the bridge PC reads each machine of the site in turn, then the roster is read again. */
  async function pullMachines(machines:SiteMachine[]){
   // Only machines that report to a bridge PC can be read; the others wait until the site's bridge PC is added and running.
@@ -514,6 +529,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   saveLabel:manualSave?.running?`Saving ${manualSave.done} of ${manualSave.total} days…`:manualUnsaved.length?`Save manual biometric (${manualUnsaved.length} day${manualUnsaved.length===1?'':'s'})`:manualSavedDays.length?'Saved':'Save manual biometric',
   savedNote:manualSavedDays.length?`Saved and locked: ${manualSavedDays.length} day${manualSavedDays.length===1?'':'s'} for ${site} (last saved ${manualLatest?when(manualLatest.savedAt):''}${manualLatest?.savedBy?' by '+manualLatest.savedBy:''}). Saved logs cannot be edited or replaced.`:'',
   saveError:manualSave&&!manualSave.running&&manualSave.failed.length?`Could not save ${manualSave.failed.map(show).join(', ')}: ${manualSave.error}`:'',savedCount:manualSavedDays.length,onViewSaved:()=>setShowSavedLogs(true)};
+ manualState.onDeleteSaved=()=>void deleteManualLogs(manualSavedDays.map(([day])=>day),true);manualState.deletingSaved=deletingSaved;
  const shownBioState=manualView?manualState:bioState;
  const bioLoading=manualView?manual.status==='loading':view!=='trip'&&bioRunning&&!bioData;
  const bioError=manualView&&manual.status==='error'?manual.message:!bioRunning&&bioTotal>0&&bioFailed.length===bioTotal?bio.errors[bioFailed[0]]||'HR did not answer':'';
@@ -523,7 +539,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const elapsedSeconds=loadTimer.elapsed===null?'':(loadTimer.elapsed/1000).toFixed(1);
 
  return <section className="data-card attendance-register attendance-roster" aria-label="Attendance roster">
-  {showSavedLogs&&<div className="modal-backdrop" role="presentation"><section className="modal saved-log-modal" role="dialog" aria-modal="true" aria-label="Saved manual biometric logs"><div className="modal-heading"><h2>Saved Manual Biometric Logs</h2><button type="button" aria-label="Close saved logs" onClick={()=>setShowSavedLogs(false)}><X/></button></div><p>{site} · saved dates in the selected range</p><div className="table-scroll"><table><thead><tr><th>Site</th><th>Date</th><th>Saved by</th><th>Saved time</th><th>Employees</th><th>Punches</th><th>Action</th></tr></thead><tbody>{manualSavedDays.sort(([a],[b])=>b.localeCompare(a)).map(([day,info])=><tr key={day}><td>{site}</td><td>{show(day)}</td><td>{info.savedBy||'—'}</td><td>{when(info.savedAt)}</td><td>{info.people.toLocaleString('en-IN')}</td><td>{info.punches.toLocaleString('en-IN')}</td><td><button type="button" onClick={()=>{setFrom(day);setTo(day);setShowSavedLogs(false);}}>View</button></td></tr>)}</tbody></table></div></section></div>}
+  {showSavedLogs&&<div className="modal-backdrop" role="presentation"><section className="modal saved-log-modal" role="dialog" aria-modal="true" aria-label="Saved manual biometric logs"><div className="modal-heading"><h2>Saved Manual Biometric Logs</h2><div className="saved-log-actions"><button type="button" className="danger" disabled={deletingSaved} onClick={()=>void deleteManualLogs(manualSavedDays.map(([day])=>day),true)}><Trash2/>{deletingSaved?'Deleting…':'Delete All'}</button><button type="button" aria-label="Close saved logs" onClick={()=>setShowSavedLogs(false)}><X/></button></div></div><p>{site} · saved dates in the selected range</p><div className="table-scroll"><table><thead><tr><th>Site</th><th>Date</th><th>Saved by</th><th>Saved time</th><th>Employees</th><th>Punches</th><th>Action</th></tr></thead><tbody>{manualSavedDays.sort(([a],[b])=>b.localeCompare(a)).map(([day,info])=><tr key={day}><td>{site}</td><td>{show(day)}</td><td>{info.savedBy||'—'}</td><td>{when(info.savedAt)}</td><td>{info.people.toLocaleString('en-IN')}</td><td>{info.punches.toLocaleString('en-IN')}</td><td><div className="saved-log-actions"><button type="button" onClick={()=>{setFrom(day);setTo(day);setShowSavedLogs(false);}}>Open Log</button><button type="button" className="danger" disabled={deletingSaved} onClick={()=>void deleteManualLogs([day])}><Trash2/>Delete</button></div></td></tr>)}</tbody></table></div></section></div>}
   <h2>Attendance roster</h2>
   <div className="attendance-filters roster-filters">
    <label>Site<select value={site} required aria-invalid={!site} onChange={e=>{setSite(e.target.value);setDepartmentsSelected([]);setDesignationsSelected([]);setEmployee('');}}><option value="">{sites===null?'Loading sites…':'Select a site'}</option>{(sites||[]).map(s=><option key={s} value={s}>{s}</option>)}</select></label>

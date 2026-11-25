@@ -94,6 +94,7 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .roster-diff-none{color:#7a698b;font-size:12px}
 .roster-nolink{text-align:left!important;color:#7a698b;font-style:italic}
 .roster-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin:0 0 10px;font-size:13px;color:#5c4d6e}
+.data-card button.roster-delete,.modal button.danger{border-color:#efbdc8;color:#b5294a;background:#fff5f7}.data-card button.roster-delete:hover,.modal button.danger:hover{background:#fde9ee}.saved-log-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.saved-log-actions svg{width:15px;height:15px}
 .roster-bar button{margin-left:auto}
 .roster-check{display:flex;align-items:center;gap:6px}
 .roster-drill{margin-top:14px;padding:12px;border:1px solid #e4dbef;border-radius:10px;background:#fcfbfe}

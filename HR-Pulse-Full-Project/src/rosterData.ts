@@ -182,6 +182,9 @@ export async function saveManualBiometricDays(grant: string, site: string, days:
   await Promise.all(Array.from({length: Math.min(2, days.length)}, worker));
   return failed.sort();
 }
+export async function deleteManualBiometricDays(grant: string, site: string, days: string[]) {
+  return api<{deleted:number;punches:number;days:string[]}>(grant, 'attendance/manual-biometric-days', 'DELETE', {site, days});
+}
 
 /* Biometric tab, day by day (owner, 22 Nov 2026: "the same way as the trip card"): the site's machines are read one day
    per request, three days at a time, each day tried three times, so the muster fills in as each day arrives. */

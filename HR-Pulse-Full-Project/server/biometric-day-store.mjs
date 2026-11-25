@@ -52,6 +52,20 @@ export function createBiometricDayStore(pool, {load, today, manual=false, siteKe
       await pool.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)", [profile.actor, manual?'SAVE_MANUAL_BIOMETRIC_DAY':'SAVE_BIOMETRIC_DAY', {site: site.name, day, punches, people}]);
       return {day: saved.day, punches: saved.punches, people: saved.people, savedBy: saved.saved_by, savedAt: saved.saved_at};
     }
+    if (method === 'DELETE' && manual) {
+      const requested = Array.isArray(input?.days) ? input.days : [input?.day];
+      const days = [...new Set(requested)];
+      if (!days.length || days.length > MAX_BIO_DAYS || days.some(day => !validDay(day))) fail('Choose valid saved log dates.');
+      const site = await findSite(input?.site, sites, profile);
+      const result = (await pool.query(`WITH removed_days AS (
+          DELETE FROM hr_manual_biometric_days WHERE site=$1 AND day=ANY($2::date[]) RETURNING day
+        ), removed_punches AS (
+          DELETE FROM hr_manual_biometric_punches p USING hr_attendance_devices d
+          WHERE p.device_serial=d.serial AND d.site_id=$3 AND p.punched_at::date=ANY($2::date[]) RETURNING p.device_serial
+        ) SELECT (SELECT count(*)::int FROM removed_days) AS logs,(SELECT count(*)::int FROM removed_punches) AS punches`, [site.name, days, site.id])).rows[0];
+      await pool.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)", [profile.actor, 'DELETE_MANUAL_BIOMETRIC_LOGS', {site: site.name, days, logs: Number(result?.logs)||0, punches: Number(result?.punches)||0}]);
+      return {deleted: Number(result?.logs)||0, punches: Number(result?.punches)||0, days};
+    }
     fail('Not found', 404);
   };
 }
