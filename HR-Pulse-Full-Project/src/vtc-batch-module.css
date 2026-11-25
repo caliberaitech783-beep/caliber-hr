@@ -1,3 +1,4 @@
-.vtc-batch-module{width:100%;min-height:calc(100vh - 190px);overflow:hidden;border:1px solid #e6dcef;border-radius:12px;background:#fff}
-.vtc-batch-module iframe{display:block;width:100%;min-height:calc(100vh - 190px);height:1100px;border:0;background:#fff}
-@media(max-width:760px){.vtc-batch-module{min-height:calc(100vh - 150px)}.vtc-batch-module iframe{min-height:calc(100vh - 150px);height:1200px}}
+.content.content-vtc{width:100%;max-width:none;margin:0;padding:0;background:#fbf7fb}
+.vtc-batch-module{width:100%;min-height:calc(100vh - 72px);overflow:hidden;background:#fbf7fb}
+.vtc-batch-module iframe{display:block;width:100%;min-height:calc(100vh - 72px);height:1100px;border:0;background:#fbf7fb}
+@media(max-width:760px){.content.content-vtc{padding:0}.vtc-batch-module,.vtc-batch-module iframe{min-height:calc(100vh - 72px)}.vtc-batch-module iframe{height:1200px}}
