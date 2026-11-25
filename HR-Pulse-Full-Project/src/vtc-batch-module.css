@@ -1,0 +1,3 @@
+.vtc-batch-module{width:100%;min-height:calc(100vh - 190px);overflow:hidden;border:1px solid #e6dcef;border-radius:12px;background:#fff}
+.vtc-batch-module iframe{display:block;width:100%;min-height:calc(100vh - 190px);height:1100px;border:0;background:#fff}
+@media(max-width:760px){.vtc-batch-module{min-height:calc(100vh - 150px)}.vtc-batch-module iframe{min-height:calc(100vh - 150px);height:1200px}}

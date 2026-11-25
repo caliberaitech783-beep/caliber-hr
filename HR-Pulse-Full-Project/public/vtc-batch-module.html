@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VTC Batch Module</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--ink:#1d2433;--mute:#6b7487;--line:#e4e8f0;--pri:#1f5eff;--pri2:#e8efff;--ok:#12805c;--okb:#e3f6ee;--warn:#b25e00;--warnb:#fff2df;--done:#5b6475;--doneb:#eef0f4;--red:#c62828}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+header{background:#0f1f44;color:#fff;padding:18px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+header h1{margin:0;font-size:20px;font-weight:700}header p{margin:2px 0 0;color:#aab6d3;font-size:13px}
+.wrap{max-width:1280px;margin:0 auto;padding:22px 28px 60px}
+.btn{border:1px solid var(--line);background:#fff;color:var(--ink);padding:8px 14px;border-radius:8px;font:inherit;font-weight:500;cursor:pointer}
+.btn:hover{background:#f0f3f9}.btn.pri{background:var(--pri);border-color:var(--pri);color:#fff}.btn.pri:hover{background:#174ad1}
+.btn.sm{padding:5px 10px;font-size:12.5px}.btn.danger{color:var(--red)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.kpi .l{color:var(--mute);font-size:12.5px;font-weight:500}.kpi .v{font-size:26px;font-weight:700;margin-top:4px}.kpi .s{color:var(--mute);font-size:12px;margin-top:2px}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:16px}
+.bar select,.bar input,.f input,.f select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.bar input[type=search]{min-width:220px;flex:1}
+.tabs{display:flex;gap:4px;background:#e9edf5;padding:4px;border-radius:10px;margin-left:auto}
+.tabs button{border:0;background:none;padding:7px 14px;border-radius:7px;font:inherit;font-weight:500;color:var(--mute);cursor:pointer}
+.tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#f8f9fc;font-size:12px;color:var(--mute);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+tr.row:hover td{background:#fafbff;cursor:pointer}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;margin:1px 3px 1px 0;background:var(--pri2);color:var(--pri)}
+.st{padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600}
+.st.Upcoming{background:var(--warnb);color:var(--warn)}.st.Ongoing{background:var(--okb);color:var(--ok)}.st.Completed{background:var(--doneb);color:var(--done)}
+.cap{height:6px;background:#eef1f6;border-radius:4px;overflow:hidden;margin-top:5px;width:110px}.cap i{display:block;height:100%;background:var(--pri)}
+.mute{color:var(--mute)}.b{font-weight:600}.empty{padding:40px;text-align:center;color:var(--mute)}
+/* calendar */
+.calhead{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+.calhead h3{margin:0;font-size:16px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr)}
+.cal .dn{padding:8px;font-size:12px;color:var(--mute);font-weight:600;border-bottom:1px solid var(--line);background:#f8f9fc}
+.cal .d{min-height:104px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px;font-size:12px}
+.cal .d:nth-child(7n){border-right:0}.cal .d.out{background:#fafbfd;color:#b4bac6}.cal .d.today .n{background:var(--pri);color:#fff;border-radius:50%}
+.cal .n{display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;font-weight:600}
+.ev{display:block;margin-top:3px;padding:3px 6px;border-radius:5px;font-size:11px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+/* site summary */
+.sites{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;padding:16px}
+.site{border:1px solid var(--line);border-radius:10px;padding:14px}
+.site h4{margin:0 0 4px;font-size:15px}.site ul{margin:8px 0 0;padding:0;list-style:none}.site li{display:flex;justify-content:space-between;padding:5px 0;border-top:1px dashed var(--line);font-size:13px}
+/* modal */
+.ov{position:fixed;inset:0;background:rgba(15,25,50,.45);display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:20}
+.ov.show{display:flex}.md{background:#fff;border-radius:14px;width:100%;max-width:900px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.md .mh{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.md .mh h2{margin:0;font-size:18px}.md .mb{padding:18px 22px}.md .mf{padding:14px 22px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+.x{border:0;background:none;font-size:22px;cursor:pointer;color:var(--mute);line-height:1}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.f label{display:block;font-size:12px;font-weight:600;color:var(--mute);margin-bottom:4px}.f input,.f select{width:100%}
+.info{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.info div{background:#f7f9fd;border-radius:8px;padding:10px 12px}.info span{display:block;font-size:11.5px;color:var(--mute)}.info b{font-size:14px}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#0f1f44;color:#fff;padding:10px 18px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none;z-index:30}
+.toast.show{opacity:1}
+h3.sec{font-size:14px;margin:18px 0 8px}
+@media(max-width:700px){.wrap{padding:16px}.tabs{margin-left:0}.cal .d{min-height:70px}.hide-sm{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>VTC Batch Module</h1><p>Vocational Training Centre — batch schedule, sites &amp; employee strength</p></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn" id="csvBtn">Copy as CSV</button>
+    <button class="btn" id="resetBtn">Reset demo data</button>
+    <button class="btn pri" id="newBtn">+ New Batch</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="kpis" id="kpis"></div>
+
+  <div class="bar">
+    <input type="search" id="q" placeholder="Search batch, employee name or code…">
+    <select id="fSite"></select>
+    <select id="fMonth"></select>
+    <select id="fStatus"><option value="">All status</option><option>Upcoming</option><option>Ongoing</option><option>Completed</option></select>
+    <div class="tabs" id="tabs">
+      <button data-v="list" class="on">Batch List</button>
+      <button data-v="cal">Calendar</button>
+      <button data-v="site">Site-wise</button>
+    </div>
+  </div>
+
+  <div id="view"></div>
+</div>
+
+<!-- batch detail modal -->
+<div class="ov" id="detOv"><div class="md">
+  <div class="mh"><div><h2 id="detTitle"></h2><div class="mute" id="detSub"></div></div><button class="x" data-close>&times;</button></div>
+  <div class="mb" id="detBody"></div>
+  <div class="mf"><button class="btn danger" id="delBatch">Delete batch</button><span style="flex:1"></span><button class="btn" id="copyList">Copy employee list</button><button class="btn pri" id="editBatch">Edit batch</button></div>
+</div></div>
+
+<!-- add/edit modal -->
+<div class="ov" id="frmOv"><div class="md">
+  <div class="mh"><h2 id="frmTitle">New VTC Batch</h2><button class="x" data-close>&times;</button></div>
+  <form id="frm"><div class="mb">
+    <div class="grid">
+      <div class="f"><label>Batch No.</label><input name="code" required></div>
+      <div class="f"><label>VTC Centre</label><select name="centre"></select></div>
+      <div class="f"><label>Trade / Course</label><select name="trade"></select></div>
+      <div class="f"><label>Trainer</label><input name="trainer" required></div>
+      <div class="f"><label>Start date</label><input type="date" name="start" required></div>
+      <div class="f"><label>End date</label><input type="date" name="end" required></div>
+      <div class="f"><label>Batch capacity</label><input type="number" name="capacity" min="1" value="30" required></div>
+    </div>
+    <h3 class="sec">Employees in this batch <span class="mute" id="empCount"></span></h3>
+    <div class="grid" style="grid-template-columns:1.4fr 1fr 1.3fr 1fr auto;align-items:end">
+      <div class="f"><label>Name</label><input id="eName"></div>
+      <div class="f"><label>Emp. code</label><input id="eCode"></div>
+      <div class="f"><label>Site</label><select id="eSite"></select></div>
+      <div class="f"><label>Designation</label><select id="eDesg"></select></div>
+      <button type="button" class="btn" id="eAdd">Add</button>
+    </div>
+    <div class="panel" style="margin-top:12px;max-height:260px;overflow:auto"><table><thead><tr><th>#</th><th>Name</th><th>Code</th><th>Site</th><th>Designation</th><th></th></tr></thead><tbody id="eList"></tbody></table></div>
+    <div id="frmErr" style="color:var(--red);margin-top:8px"></div>
+  </div>
+  <div class="mf"><button type="button" class="btn" data-close>Cancel</button><button class="btn pri" type="submit">Save batch</button></div></form>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const SITES=["Mumbai – Andheri","Pune – Hinjewadi","Thane – Ghodbunder","Navi Mumbai – Kharghar","Nashik – Satpur"];
+const SITE_COL=["#1f5eff","#12805c","#b25e00","#8e3bd1","#c62828"];
+const CENTRES=["VTC Pune (Main)","VTC Mumbai","VTC Nashik"];
+const TRADES=["Safety Induction","Masonry","Bar Bending","Shuttering Carpentry","Electrical","Scaffolding","Plumbing"];
+const DESG=["Mason","Bar Bender","Carpenter","Electrician","Scaffolder","Plumber","Helper","Supervisor"];
+const FN=["Ramesh","Suresh","Amit","Rahul","Sanjay","Vijay","Ganesh","Mahesh","Rajesh","Anil","Sunil","Deepak","Prakash","Santosh","Manoj","Arjun","Ravi","Kiran","Nitin","Sachin","Ajay","Vinod","Dinesh","Mukesh","Pankaj","Rohit","Imran","Salim","Abdul","Harish"];
+const LN=["Patil","Jadhav","Pawar","Shinde","Yadav","Kumar","Singh","More","Gaikwad","Chavan","Kale","Shaikh","Deshmukh","Verma","Mishra","Pandey","Sawant","Bhosale","Rathod","Khan"];
+let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return(seed-1)/2147483646};const pick=a=>a[Math.floor(rnd()*a.length)];
+const pad=n=>String(n).padStart(2,"0");const iso=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const addDays=(s,n)=>{const d=new Date(s+"T00:00");d.setDate(d.getDate()+n);return iso(d)};
+const TODAY=iso(new Date());
+
+function demo(){
+  seed=7;let code=1001;const out=[];
+  const plan=[["2026-10-26",5],["2026-11-09",6],["2026-11-16",3],["2026-11-23",6],["2026-11-30",5],["2026-12-07",6],["2026-12-14",3],["2026-12-21",5],["2027-01-04",6],["2027-01-11",4]];
+  plan.forEach(([st,len],i)=>{
+    const nSites=1+Math.floor(rnd()*3);const sites=[...SITES].sort(()=>rnd()-.5).slice(0,nSites);
+    const cap=[20,25,30][i%3];const n=Math.max(8,Math.round(cap*(0.55+rnd()*0.45)));
+    const emps=[];for(let k=0;k<n;k++){emps.push({name:pick(FN)+" "+pick(LN),code:"EMP"+(4000+Math.floor(rnd()*5999)),site:sites[k%nSites],desg:pick(DESG)})}
+    out.push({id:"b"+i,code:"VTC/"+(st.slice(0,4))+"/"+(code++),centre:CENTRES[i%3],trade:TRADES[i%TRADES.length],trainer:"Mr. "+pick(FN)+" "+pick(LN),start:st,end:addDays(st,len-1),capacity:cap,emps});
+  });return out;
+}
+const KEY="vtc-batch-demo-v1";let batches;
+try{batches=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!Array.isArray(batches))batches=demo();
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(batches))}catch(e){}};
+
+const $=s=>document.querySelector(s);
+const fmt=s=>new Date(s+"T00:00").toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"});
+const status=b=>TODAY<b.start?"Upcoming":TODAY>b.end?"Completed":"Ongoing";
+const sitesOf=b=>{const m={};b.emps.forEach(e=>m[e.site]=(m[e.site]||0)+1);return m};
+const days=b=>Math.round((new Date(b.end)-new Date(b.start))/864e5)+1;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function toast(t){const el=$("#toast");el.textContent=t;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),1800)}
+async function copy(t,msg){try{await navigator.clipboard.writeText(t);toast(msg)}catch(e){toast("Copy blocked by browser")}}
+
+let view="list",calMonth=new Date(TODAY.slice(0,7)+"-01T00:00");
+function fillFilters(){
+  $("#fSite").innerHTML='<option value="">All sites</option>'+SITES.map(s=>`<option>${s}</option>`).join("");
+  const ms=[...new Set(batches.flatMap(b=>[b.start.slice(0,7),b.end.slice(0,7)]))].sort();
+  const cur=$("#fMonth").value;
+  $("#fMonth").innerHTML='<option value="">All months</option>'+ms.map(m=>`<option value="${m}">${new Date(m+"-01T00:00").toLocaleDateString("en-IN",{month:"long",year:"numeric"})}</option>`).join("");
+  $("#fMonth").value=cur;
+}
+function filtered(){
+  const q=$("#q").value.trim().toLowerCase(),s=$("#fSite").value,m=$("#fMonth").value,st=$("#fStatus").value;
+  return batches.filter(b=>(!s||b.emps.some(e=>e.site===s))&&(!m||b.start.slice(0,7)<=m&&b.end.slice(0,7)>=m)&&(!st||status(b)===st)&&
+    (!q||(b.code+" "+b.trade+" "+b.centre+" "+b.trainer).toLowerCase().includes(q)||b.emps.some(e=>(e.name+" "+e.code).toLowerCase().includes(q))))
+    .sort((a,b)=>a.start.localeCompare(b.start));
+}
+function kpis(list){
+  const s=$("#fSite").value;const cnt=b=>s?b.emps.filter(e=>e.site===s).length:b.emps.length;
+  const total=list.reduce((a,b)=>a+cnt(b),0);
+  const next=batches.filter(b=>status(b)==="Upcoming").sort((a,b)=>a.start.localeCompare(b.start))[0];
+  const on=batches.filter(b=>status(b)==="Ongoing");
+  const siteSet=new Set(list.flatMap(b=>b.emps.map(e=>e.site)));
+  $("#kpis").innerHTML=`
+  <div class="kpi"><div class="l">Batches (filtered)</div><div class="v">${list.length}</div><div class="s">${batches.length} batches in total</div></div>
+  <div class="kpi"><div class="l">Employees ${s?"from "+esc(s):"enrolled"}</div><div class="v">${total}</div><div class="s">across ${siteSet.size} site(s)</div></div>
+  <div class="kpi"><div class="l">Ongoing now</div><div class="v">${on.length}</div><div class="s">${on.reduce((a,b)=>a+b.emps.length,0)} employees at VTC today</div></div>
+  <div class="kpi"><div class="l">Next batch</div><div class="v" style="font-size:18px;margin-top:8px">${next?fmt(next.start):"—"}</div><div class="s">${next?esc(next.code)+" · "+next.emps.length+" employees":""}</div></div>`;
+}
+function render(){
+  const list=filtered();kpis(list);
+  if(view==="list")renderList(list);else if(view==="cal")renderCal(list);else renderSite(list);
+}
+function renderList(list){
+  if(!list.length){$("#view").innerHTML='<div class="panel empty">No batches match these filters.</div>';return}
+  $("#view").innerHTML=`<div class="panel" style="overflow-x:auto"><table><thead><tr><th>Batch</th><th>VTC dates</th><th class="hide-sm">Centre / Trade</th><th>Sites in batch</th><th>Employees</th><th>Status</th></tr></thead><tbody>${
+  list.map(b=>{const sm=sitesOf(b),n=b.emps.length,st=status(b);return`<tr class="row" data-id="${b.id}">
+   <td><div class="b">${esc(b.code)}</div><div class="mute">${esc(b.trainer)}</div></td>
+   <td><div class="b">${fmt(b.start)}</div><div class="mute">to ${fmt(b.end)} · ${days(b)} day(s)</div></td>
+   <td class="hide-sm">${esc(b.centre)}<div class="mute">${esc(b.trade)}</div></td>
+   <td>${Object.entries(sm).map(([s,c])=>`<span class="chip">${esc(s)} · ${c}</span>`).join("")}</td>
+   <td><span class="b">${n}</span> <span class="mute">/ ${b.capacity}</span><div class="cap"><i style="width:${Math.min(100,n/b.capacity*100)}%"></i></div></td>
+   <td><span class="st ${st}">${st}</span></td></tr>`}).join("")}</tbody></table></div>`;
+}
+function renderCal(list){
+  const y=calMonth.getFullYear(),m=calMonth.getMonth();const first=new Date(y,m,1);const startOff=(first.getDay()+6)%7;
+  const g=new Date(y,m,1-startOff);let cells="";
+  for(let i=0;i<42;i++){const d=new Date(g);d.setDate(g.getDate()+i);const ds=iso(d);
+    const evs=list.filter(b=>b.start<=ds&&b.end>=ds);
+    cells+=`<div class="d ${d.getMonth()!==m?"out":""} ${ds===TODAY?"today":""}"><span class="n">${d.getDate()}</span>${evs.map(b=>{const c=SITE_COL[SITES.indexOf(b.emps[0]?.site)]||"#1f5eff";return`<span class="ev" style="background:${c}" data-id="${b.id}" title="${esc(b.code)} – ${b.emps.length} emp">${esc(b.code.split("/").pop())} · ${b.emps.length} emp</span>`}).join("")}</div>`}
+  $("#view").innerHTML=`<div class="panel"><div class="calhead"><button class="btn sm" id="pm">‹ Prev</button><h3>${calMonth.toLocaleDateString("en-IN",{month:"long",year:"numeric"})}</h3><button class="btn sm" id="nm">Next ›</button></div>
+  <div class="cal">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<div class="dn">${d}</div>`).join("")}${cells}</div>
+  <div style="padding:10px 16px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px" class="mute">Colour = first site in batch: ${SITES.map((s,i)=>`<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${SITE_COL[i]};margin-right:4px"></i>${s}</span>`).join("")}</div></div>`;
+  $("#pm").onclick=()=>{calMonth.setMonth(calMonth.getMonth()-1);render()};$("#nm").onclick=()=>{calMonth.setMonth(calMonth.getMonth()+1);render()};
+}
+function renderSite(list){
+  const fs=$("#fSite").value;const ss=fs?[fs]:SITES;
+  $("#view").innerHTML=`<div class="panel"><div class="sites">${ss.map((s,i)=>{const rows=list.map(b=>({b,c:b.emps.filter(e=>e.site===s).length})).filter(r=>r.c);const tot=rows.reduce((a,r)=>a+r.c,0);
+   return`<div class="site" style="border-top:4px solid ${SITE_COL[SITES.indexOf(s)]}"><h4>${esc(s)}</h4><div class="mute">${tot} employees · ${rows.length} batch(es)</div>
+   <ul>${rows.length?rows.map(r=>`<li data-id="${r.b.id}" style="cursor:pointer"><span>${fmt(r.b.start)} – ${fmt(r.b.end)}<br><span class="mute">${esc(r.b.code)}</span></span><b>${r.c}</b></li>`).join(""):'<li class="mute">No batches</li>'}</ul></div>`}).join("")}</div></div>`;
+}
+
+/* detail */
+let curId=null;
+function openDet(id){
+  const b=batches.find(x=>x.id===id);if(!b)return;curId=id;const st=status(b),sm=sitesOf(b);
+  $("#detTitle").innerHTML=`${esc(b.code)} <span class="st ${st}" style="vertical-align:middle;margin-left:6px">${st}</span>`;
+  $("#detSub").textContent=b.trade+" · "+b.centre;
+  $("#detBody").innerHTML=`<div class="info">
+   <div><span>Start date</span><b>${fmt(b.start)}</b></div><div><span>End date</span><b>${fmt(b.end)}</b></div>
+   <div><span>Duration</span><b>${days(b)} day(s)</b></div><div><span>Employees</span><b>${b.emps.length} / ${b.capacity}</b></div><div><span>Trainer</span><b>${esc(b.trainer)}</b></div></div>
+   <div style="margin-bottom:12px">${Object.entries(sm).map(([s,c])=>`<span class="chip">${esc(s)} · ${c}</span>`).join("")}</div>
+   <div class="panel" style="max-height:360px;overflow:auto"><table><thead><tr><th>#</th><th>Employee</th><th>Code</th><th>Site</th><th>Designation</th></tr></thead><tbody>
+   ${[...b.emps].sort((a,c)=>a.site.localeCompare(c.site)).map((e,i)=>`<tr><td>${i+1}</td><td>${esc(e.name)}</td><td>${esc(e.code)}</td><td>${esc(e.site)}</td><td>${esc(e.desg)}</td></tr>`).join("")}</tbody></table></div>`;
+  $("#detOv").classList.add("show");
+}
+$("#copyList").onclick=()=>{const b=batches.find(x=>x.id===curId);copy("Sr\tName\tCode\tSite\tDesignation\n"+b.emps.map((e,i)=>[i+1,e.name,e.code,e.site,e.desg].join("\t")).join("\n"),"Employee list copied — paste into Excel")};
+let pendingDel=false;
+$("#delBatch").onclick=function(){if(!pendingDel){pendingDel=true;this.textContent="Click again to confirm";setTimeout(()=>{pendingDel=false;this.textContent="Delete batch"},2500);return}
+  batches=batches.filter(x=>x.id!==curId);save();pendingDel=false;this.textContent="Delete batch";close();fillFilters();render();toast("Batch deleted")};
+$("#editBatch").onclick=()=>{close();openFrm(curId)};
+
+/* form */
+let editId=null,tmp=[];
+const opt=(a)=>a.map(x=>`<option>${x}</option>`).join("");
+document.querySelector('[name=centre]').innerHTML=opt(CENTRES);document.querySelector('[name=trade]').innerHTML=opt(TRADES);$("#eSite").innerHTML=opt(SITES);$("#eDesg").innerHTML=opt(DESG);
+function openFrm(id){
+  editId=id||null;const f=$("#frm");f.reset();$("#frmErr").textContent="";
+  const b=id?batches.find(x=>x.id===id):null;
+  $("#frmTitle").textContent=b?"Edit batch "+b.code:"New VTC Batch";
+  if(b){["code","centre","trade","trainer","start","end","capacity"].forEach(k=>f[k].value=b[k]);tmp=b.emps.map(e=>({...e}))}
+  else{const last=batches.map(b=>b.end).sort().pop()||TODAY;f.code.value="VTC/"+new Date().getFullYear()+"/"+(1001+batches.length);f.start.value=addDays(last,1);f.end.value=addDays(last,5);f.trainer.value="";tmp=[]}
+  drawEmps();$("#frmOv").classList.add("show");
+}
+function drawEmps(){
+  $("#empCount").textContent="("+tmp.length+")";
+  $("#eList").innerHTML=tmp.length?tmp.map((e,i)=>`<tr><td>${i+1}</td><td>${esc(e.name)}</td><td>${esc(e.code)}</td><td>${esc(e.site)}</td><td>${esc(e.desg)}</td><td><button type="button" class="btn sm danger" data-rm="${i}">Remove</button></td></tr>`).join(""):'<tr><td colspan="6" class="empty" style="padding:20px">No employees added yet</td></tr>';
+}
+$("#eAdd").onclick=()=>{const n=$("#eName").value.trim(),c=$("#eCode").value.trim();if(!n||!c){$("#frmErr").textContent="Enter employee name and code.";return}
+  if(tmp.some(e=>e.code.toLowerCase()===c.toLowerCase())){$("#frmErr").textContent="This employee code is already in the batch.";return}
+  tmp.push({name:n,code:c,site:$("#eSite").value,desg:$("#eDesg").value});$("#eName").value="";$("#eCode").value="";$("#frmErr").textContent="";drawEmps();$("#eName").focus()};
+$("#eList").onclick=e=>{const i=e.target.dataset.rm;if(i!==undefined){tmp.splice(+i,1);drawEmps()}};
+$("#frm").onsubmit=e=>{e.preventDefault();const f=e.target;
+  if(f.end.value<f.start.value){$("#frmErr").textContent="End date cannot be before start date.";return}
+  if(!tmp.length){$("#frmErr").textContent="Add at least one employee to the batch.";return}
+  if(tmp.length>+f.capacity.value){$("#frmErr").textContent=`Batch has ${tmp.length} employees but capacity is ${f.capacity.value}.`;return}
+  const rec={id:editId||"b"+Date.now(),code:f.code.value.trim(),centre:f.centre.value,trade:f.trade.value,trainer:f.trainer.value.trim(),start:f.start.value,end:f.end.value,capacity:+f.capacity.value,emps:tmp};
+  if(editId)batches=batches.map(b=>b.id===editId?rec:b);else batches.push(rec);
+  save();close();fillFilters();render();toast(editId?"Batch updated":"Batch created");
+};
+
+/* misc */
+function close(){document.querySelectorAll(".ov").forEach(o=>o.classList.remove("show"))}
+document.querySelectorAll("[data-close]").forEach(b=>b.onclick=close);
+document.querySelectorAll(".ov").forEach(o=>o.addEventListener("mousedown",e=>{if(e.target===o)close()}));
+document.addEventListener("keydown",e=>{if(e.key==="Escape")close()});
+$("#view").addEventListener("click",e=>{const el=e.target.closest("[data-id]");if(el)openDet(el.dataset.id)});
+$("#tabs").onclick=e=>{const v=e.target.dataset.v;if(!v)return;view=v;document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));
+  const m=$("#fMonth").value;if(v==="cal"&&m)calMonth=new Date(m+"-01T00:00");render()};
+["#q","#fSite","#fMonth","#fStatus"].forEach(s=>$(s).addEventListener("input",()=>{if(s==="#fMonth"&&$(s).value)calMonth=new Date($(s).value+"-01T00:00");render()}));
+$("#newBtn").onclick=()=>openFrm();
+$("#resetBtn").onclick=()=>{batches=demo();save();fillFilters();render();toast("Demo data restored")};
+$("#csvBtn").onclick=()=>{const rows=[["Batch No","Start Date","End Date","Days","VTC Centre","Trade","Trainer","Site","Employee","Emp Code","Designation","Status"]];
+  filtered().forEach(b=>b.emps.forEach(e=>rows.push([b.code,b.start,b.end,days(b),b.centre,b.trade,b.trainer,e.site,e.name,e.code,e.desg,status(b)])));
+  copy(rows.map(r=>r.map(v=>/[",]/.test(v)?'"'+String(v).replace(/"/g,'""')+'"':v).join(",")).join("\n"),(rows.length-1)+" rows copied as CSV")};
+
+fillFilters();render();
+</script>
+</body>
+</html>

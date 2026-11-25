@@ -13,18 +13,19 @@ import LeaveMaster,{LeaveRequests} from './LeaveMaster';
 import ShiftMaster from './ShiftMaster';
 import AttendanceManagement,{attendanceGroup,attendanceViews} from './AttendanceManagement';
 import {Fragment,useEffect,useRef,useState} from 'react';
-import {ArrowLeft,Banknote,Bell,Boxes,CalendarDays,ChevronDown,Clock,FileBarChart,Folder,LayoutDashboard,LogOut,Menu,Moon,PanelLeftClose,Search,Settings,ShieldCheck,Sun,UserPlus,Users,X} from 'lucide-react';
+import {ArrowLeft,Banknote,Bell,Boxes,CalendarDays,ChevronDown,Clock,FileBarChart,Folder,GraduationCap,LayoutDashboard,LogOut,Menu,Moon,PanelLeftClose,Search,Settings,ShieldCheck,Sun,UserPlus,Users,X} from 'lucide-react';
 import {api,savedSession,type Session,type HRConfig} from './api';
 import Logo from './Logo';
 import {Records,Approvals,Overview,Audit,AccessAdministration} from './Modules';
 import EmployeeLocation from './EmployeeLocation';
 import AdditionApprovalPopup from './AdditionApprovalPopup';
 import EmployeeMasterRegister from './EmployeeMasterRegister';
+import VtcBatchModule from './VtcBatchModule';
 import {PM_APPROVALS_PAGE,pmApprovalMenus,isProjectManager,type PmApprovalMenu} from './pmAccess';
 import type {JoiningDraft} from './joiningDrafts';
 import './modules.css';
 import './pulse-leave-workspace.css';
-const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['Attendance Management',Clock],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Approval Master',ShieldCheck],...managementSections,['Telegram Hierarchy',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Compliance & Statutory',ShieldCheck],['Reports & MIS',FileBarChart],['Audit Logs',FileBarChart],['Administration & Settings',Settings],['Others',Folder]] as const;
+const navItems=[['Dashboard',LayoutDashboard],['Employee Master',Users],['VTC Batch Module',GraduationCap],['Attendance Management',Clock],['Payroll Management',Banknote],['Asset Management',Boxes],['Calendar',CalendarDays],['Master Configuration',Settings],['Approval Master',ShieldCheck],...managementSections,['Telegram Hierarchy',Settings],['Employee Onboarding',UserPlus],['Employee Directory',Users],['Compliance & Statutory',ShieldCheck],['Reports & MIS',FileBarChart],['Audit Logs',FileBarChart],['Administration & Settings',Settings],['Others',Folder]] as const;
 const masterGroups=[{name:'B1 · Company & sites',kinds:['companies','clients','regions','sites']},{name:'B2 · Organization',kinds:['departments','grades','designations']},{name:'B3 · Approval workflows',kinds:['workflows']},{name:'B4 · New employee',kinds:['employees']},{name:'B5 · Staff import',kinds:['employees']},{name:'B6 · Shifts',kinds:['shifts']},{name:'B7 · Holiday & leave',kinds:['holidays','leavePolicies','leaveRequests']},{name:'B8 · Approval matrix',kinds:['approvalRules']}];
 function HeaderClock(){
   const[now,setNow]=useState(()=>new Date());
@@ -68,7 +69,7 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
     setTrialDraft(draft);
     setEmployeeMenu('Employee Management');
   }
-  const pmOnly=isProjectManager(profile);const access=new Set(profile.permissions.hrDesktopAccess||[]);const permitted=(pmOnly?[[PM_APPROVALS_PAGE,ShieldCheck] as const]:navItems.filter(([name])=>access.has(name))) as readonly (readonly [string,typeof ShieldCheck])[];
+  const pmOnly=isProjectManager(profile);const access=new Set(profile.permissions.hrDesktopAccess||[]);const permitted=(pmOnly?[[PM_APPROVALS_PAGE,ShieldCheck] as const]:navItems.filter(([name])=>access.has(name)||(name==='VTC Batch Module'&&access.has('Employee Master')))) as readonly (readonly [string,typeof ShieldCheck])[];
   async function refreshConfig(){const started=performance.now();try{const value=await api<HRConfig>(session.grant,'config');setConfig(value.modules);setProfile(value.profile);setError('');setNotice(`Data loaded. Time taken: ${((performance.now()-started)/1000).toFixed(1)} sec.`);}catch(err){setError((err as Error).message);}}
   useEffect(()=>{const timer=setInterval(()=>void refreshConfig(),60000);return()=>clearInterval(timer);},[session.grant]);
   useEffect(()=>{if(!notice)return;const timer=setTimeout(()=>setNotice(''),5000);return()=>clearTimeout(timer);},[notice]);
@@ -151,6 +152,7 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
     {isManagementSection(page)&&permitted.some(([name])=>name===page)&&<ManagementModules key={page} section={page} config={config} grant={session.grant} notice={setNotice}/>}
     {page==='Telegram Hierarchy'&&<TelegramHierarchy grant={session.grant}/>}
     {page==='Dashboard'&&<Dashboard tab={dashboardTab} select={setDashboardTab} grant={session.grant} actor={profile.actor||''} notice={setNotice} canSeeEmployees={Boolean(config.employees)} canSeeAttendance={access.has('Employee Master')} canApprove={access.has('Approval Management')} onEmployees={()=>navigate('Employee Directory')} showEmployees={access.has('Employee Directory')}/>}
+    {page==='VTC Batch Module'&&<VtcBatchModule/>}
     {page==='Reports & MIS'&&<Overview grant={session.grant} report onEmployees={()=>navigate('Employee Directory')} showEmployees={access.has('Employee Directory')}/>}
     {page==='Master Configuration'&&<><div className="module-tabs master-groups">{masterGroups.map((g,i)=>g.kinds.some(k=>config[k])&&<button key={g.name} className={group===i?'selected':''} onClick={()=>{setGroup(i);setKind(g.kinds.find(k=>config[k])||'');}}>{g.name}</button>)}</div><div className="module-tabs">{groups.map(k=><button key={k} className={kind===k?'selected':''} onClick={()=>setKind(k)}>{config[k].title}</button>)}</div></>}
     {page==='Payroll Management'&&<>{payrollMenu==='Salary Scheme'?<SalarySchemeMaster actor={profile.actor||''} canApprove={access.has('Approval Management')}/>:payrollMenu==='Payroll Processing'?<PayrollProcessing grant={session.grant}/>:<ModuleLanding title={payrollMenu}/>}</>}

@@ -113,6 +113,7 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  await screen.findByRole('button',{name:'Attendance Management'});
  const sidebar=screen.getByRole('complementary');
  const smartSearch=within(sidebar).getByLabelText('Smart search navigation');
+ expect(within(sidebar).getByRole('button',{name:'VTC Batch Module'})).toBeTruthy();
  fireEvent.keyDown(window,{key:'k',ctrlKey:true});
  await waitFor(()=>expect(document.activeElement).toBe(smartSearch));
  fireEvent.change(smartSearch,{target:{value:'Payroll'}});
