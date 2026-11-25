@@ -544,7 +544,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   saveError:manualSave&&!manualSave.running&&manualSave.failed.length?`Could not save ${manualSave.failed.map(show).join(', ')}: ${manualSave.error}`:'',savedCount:manualSavedDays.length,onViewSaved:()=>setShowSavedLogs(true)};
  // HR administrator only (owner, 25 Nov 2026): correct a day, and delete saved logs. The server refuses everyone else too.
  if(canCorrect){
-  manualState.onDeleteSaved=manualLogDays.length?()=>void deleteManualLogs(manualLogDays,true):undefined;
+  manualState.onDeleteSaved=manual.data?.rows.length?()=>void deleteManualLogs(dates,true):undefined;
   manualState.onEditDay=(group,date)=>setEditDay({site,employeeCode:group.code,name:group.name,date,day:group.bio?.days.find(d=>d.date===date)});
  }
  manualState.deletingSaved=deletingSaved;
