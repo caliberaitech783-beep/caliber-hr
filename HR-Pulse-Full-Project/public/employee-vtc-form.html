@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VTC / IME Form – Attendance</title>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#2b2d3a; --muted:#6b6f80; --line:#d8dae3; --card:#ffffff; --page:#eceef3; --cell:#f6f7fa;
+  --band1:#cfd2e2; --band2:#eceef6; --bar:#3c3f6b; --g1:#4b3f9e; --g2:#c8323c; --req:#c8323c;
+  --ok:#1e7a4b; --okbg:#e4f3ea; --warn:#8a5a00; --warnbg:#fff3d9;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --ink:#e6e8f0; --muted:#9ea3b5; --line:#3a3e4f; --card:#1d1f29; --page:#14151c; --cell:#242733;
+    --band1:#33365a; --band2:#24263a; --bar:#9aa0e8; --okbg:#173326; --ok:#6fd6a0; --warnbg:#3a2f12; --warn:#f0c060; color-scheme:dark; }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 "Lexend","Noto Sans Devanagari",Arial,sans-serif}
+.card{max-width:1100px;margin:20px auto;background:var(--card);border:1px solid var(--line);padding:22px 22px 26px;position:relative}
+.card::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,var(--g1),var(--g2))}
+h1{text-align:center;margin:4px 0 2px;font-size:20px;font-weight:600;letter-spacing:.06em}
+.sub{text-align:center;color:var(--muted);margin-bottom:16px}
+.band.purpose{align-items:center}
+.band.purpose select{width:auto;min-width:240px;background:var(--card);border:1px solid var(--line);border-radius:3px;padding:6px 10px;font-weight:500;letter-spacing:0}
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--line);margin:0 0 16px}
+.tabs button{border:0;background:none;color:var(--muted);font:inherit;font-weight:500;padding:9px 16px;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--g2)}
+.badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:9px;background:var(--g2);color:#fff;font-size:11px;line-height:18px;text-align:center}
+.find{border:1px solid var(--line);border-left:3px solid var(--g2);padding:14px 16px;margin-bottom:16px}
+.find .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.find b{font-weight:600}
+.find input{max-width:260px}
+.tip{color:var(--muted);font-size:13px;margin-top:8px}
+.btn{border:0;color:#fff;background:linear-gradient(90deg,var(--g1),var(--g2));padding:10px 20px;font:inherit;font-weight:500;cursor:pointer;border-radius:3px}
+.btn.ghost{background:var(--cell);color:var(--ink);border:1px solid var(--line)}
+.btn:focus-visible,input:focus,select:focus,textarea:focus{outline:2px solid var(--g1);outline-offset:1px}
+.band{display:flex;justify-content:space-between;align-items:flex-end;background:linear-gradient(90deg,var(--band1),var(--band2));
+  border-left:3px solid var(--bar);padding:8px 14px;margin:14px 0 0;font-weight:600;letter-spacing:.05em}
+.band small{font-family:Consolas,"Courier New",monospace;font-weight:400;letter-spacing:0;color:var(--muted)}
+.grid{display:grid;grid-template-columns:150px 1fr 150px 1fr;border:1px solid var(--line);border-top:0}
+.grid.photo{grid-template-columns:150px 1fr 150px 1fr 150px}
+.grid > div{border-top:1px solid var(--line);border-right:1px solid var(--line);padding:7px 12px;min-height:42px}
+.grid > .lbl{background:var(--cell);color:var(--ink)}
+.lbl .r{color:var(--req)}
+.span3{grid-column:span 3}
+.ph{grid-column:5;grid-row:1 / span 6;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--bar);font-weight:500;font-size:13px}
+input,select,textarea{width:100%;border:0;border-bottom:1px dashed var(--line);background:transparent;color:var(--ink);font:inherit;padding:5px 2px}
+textarea{resize:vertical;min-height:34px}
+.dob{display:flex;gap:10px;align-items:center}
+.dob span{font-size:12px;color:var(--muted);white-space:nowrap}
+.dob b{color:var(--ink);font-weight:500}
+.check{display:flex;align-items:center;gap:8px}
+.check input{width:auto}
+.msg{display:none;margin-top:10px;padding:8px 12px;font-size:13px}
+.msg.show{display:block}
+.msg.ok{background:var(--okbg);color:var(--ok)} .msg.warn{background:var(--warnbg);color:var(--warn)}
+.att{border:1px solid var(--line);border-top:0;padding:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--cell);padding:4px 9px;font-size:12px;border-radius:12px}
+.chip.v{border-color:var(--g1)} .chip.m{border-color:var(--g2)}
+.empty{color:var(--muted)}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+.tbox{overflow-x:auto;border:1px solid var(--line);border-top:0}
+table{width:100%;border-collapse:collapse;min-width:700px;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:7px 10px;text-align:left}
+th{background:var(--cell);font-weight:600}
+.regbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 12px;border:1px solid var(--line);border-top:0}
+.regbar input{width:auto}
+.del{border:0;background:none;color:var(--req);cursor:pointer;font:inherit;font-size:12px}
+.ph{cursor:pointer;flex-direction:column;gap:6px;padding:8px!important}
+.ph img{max-width:100%;max-height:170px;object-fit:cover;border:1px solid var(--line)}
+.ph small{color:var(--muted);font-weight:400}
+.up{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.up .file{font-size:13px}
+.lnk{border:0;background:none;color:var(--g1);cursor:pointer;font:inherit;font-size:13px;text-decoration:underline;padding:0}
+.lnk.rm{color:var(--req)}
+.btn.sm{padding:6px 12px;font-size:13px}
+.warns{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+.warns div{background:var(--warnbg);color:var(--warn);padding:6px 10px;font-size:13px}
+.mode{display:inline-block;margin-left:8px;padding:2px 8px;font-size:12px;border-radius:10px;background:var(--okbg);color:var(--ok);font-weight:500;letter-spacing:0}
+.age-warn{color:var(--req)!important}
+@media (max-width:820px){
+  .grid,.grid.photo{grid-template-columns:120px 1fr}
+  .span3{grid-column:span 1}
+  .ph{grid-column:1 / -1;grid-row:auto;min-height:60px}
+}
+.sumbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 12px;border:1px solid var(--line);border-top:0}
+.sumbar input{width:auto;min-width:200px}
+.pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;font-weight:500}
+.pill.ok{background:var(--okbg);color:var(--ok)} .pill.wait{background:var(--warnbg);color:var(--warn)} .pill.bad{background:#fbe3e3;color:var(--req)}
+td .lnk{font-size:12px;margin-right:8px}
+.counts{margin-left:auto;font-size:13px;color:var(--muted)}
+#printArea{display:none}
+@media print{
+  body{background:#fff} .card{margin:0;border:0} .find,.actions,.no-print{display:none!important}
+  #tabForm{display:block!important}
+  body.printing .card{display:none!important}
+  body.printing #printArea{display:block;color:#000;font:11px/1.35 Arial,sans-serif}
+  #printArea h2{text-align:center;margin:0;font-size:16px}
+  #printArea .ps{text-align:center;margin:2px 0 10px;font-size:12px}
+  #printArea table{min-width:0;font-size:10.5px;border:1px solid #000}
+  #printArea th,#printArea td{border:1px solid #000;padding:4px 5px;background:#fff;color:#000}
+  #printArea .sign{display:flex;justify-content:space-between;margin-top:50px;font-size:11px}
+  #printArea .sign div{border-top:1px solid #000;padding-top:4px;min-width:160px;text-align:center}
+  @page{size:A4 landscape;margin:12mm}
+}
+/* Caliber HR workspace theme: the supplied form fills the module from edge to edge. */
+:root{--page:#fbf7fb;--g1:#6d2f91;--g2:#c4376f;--bar:#6d2f91;--band1:#eadcf0;--band2:#f8edf3}
+html,body{width:100%;min-height:100%;overflow-x:hidden}
+body{background:linear-gradient(180deg,#fbf7fb 0,#fff 360px);padding:0 18px 28px}
+.card{width:100%;max-width:none;margin:0 auto;padding:22px 24px 28px;border-color:#eaddec;border-radius:0 0 16px 16px;box-shadow:0 10px 30px rgba(68,25,84,.06)}
+.card::before{height:4px;background:linear-gradient(90deg,#5e2b91,#b22b82,#ee4d5c)}
+.btn{border-radius:8px;background:linear-gradient(135deg,#6d2f91,#a52f83)}
+.btn.ghost{background:#fff;color:#64298a;border-color:#d8c5df}
+.tabs button[aria-selected="true"]{border-bottom-color:#a52f83;color:#64298a}
+.band{border-left-color:#6d2f91;border-radius:6px 6px 0 0;background:linear-gradient(90deg,#eadcf0,#f8edf3)}
+.find{border-left-color:#a52f83;border-radius:8px;background:#fffafd}
+.grid,.att,.tbox,.regbar,.sumbar{border-color:#eaddec}
+@media(max-width:820px){body{padding:0 8px 18px}.card{padding:18px 12px 22px}}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>VTC / IME FORM – ON DUTY</h1>
+  <div class="sub">Date: <span id="today"></span></div>
+  <nav class="tabs no-print" role="tablist">
+    <button type="button" role="tab" data-tab="tabForm" aria-selected="true">Form</button>
+    <button type="button" role="tab" data-tab="tabReg" aria-selected="false">Attendance register</button>
+    <button type="button" role="tab" data-tab="tabSum" aria-selected="false">Certificates <span class="badge" id="pendBadge" hidden></span></button>
+  </nav>
+  <div id="tabForm">
+
+  <div class="find no-print">
+    <div class="row">
+      <b>Find employee</b>
+      <input id="findId" placeholder="Employee code, e.g. CMPL12262" autocomplete="off">
+      <button class="btn" id="fetchBtn" type="button">Fetch details</button>
+    </div>
+    <div class="tip">Tip: details saved once fill in automatically. After VTC / IME, fetch the employee again to upload certificates and update the result.</div>
+    <div class="msg" id="findMsg"></div>
+  </div>
+
+  <div class="band"><span>1. EMPLOYEE DETAILS<span class="mode" id="modeTag" hidden>Saved – editing</span></span> <small id="formNo"></small></div>
+  <div class="grid photo" id="emp">
+    <div class="lbl">Employee name <span class="r">*</span></div><div><input data-k="name" placeholder="Full name as per Aadhaar"></div>
+    <div class="lbl">Father’s name</div><div><input data-k="father"></div>
+    <div class="ph" id="photoBox" role="button" tabindex="0" aria-label="Upload photo"></div>
+    <div class="lbl">Emp. code <span class="r">*</span></div><div><input data-k="code" id="code"></div>
+    <div class="lbl">Date of birth</div><div class="dob"><input type="date" data-k="dob" id="dob"><span>Age<br><b id="age">–</b></span></div>
+    <div class="lbl">Designation</div><div><input data-k="designation" placeholder="e.g. Dumper Operator"></div>
+    <div class="lbl">Department</div><div><input data-k="department"></div>
+    <div class="lbl">Grade / category</div><div><input data-k="grade"></div>
+    <div class="lbl">Mobile no.</div><div><input data-k="mobile" inputmode="numeric" maxlength="10" placeholder="10-digit mobile"></div>
+    <div class="lbl">Identification mark</div><div><input data-k="idMark"></div>
+    <div class="lbl">Qualification</div><div><input data-k="qualification"></div>
+    <div class="lbl">Address</div><div class="span3"><textarea data-k="address" rows="1" placeholder="Village / post / thana / district / state / PIN"></textarea></div>
+  </div>
+
+  <div class="band purpose"><span>2. PURPOSE</span>
+    <select id="purpose" aria-label="Purpose">
+      <option value="VTC">VTC – Vocational training</option>
+      <option value="IME">IME – Medical examination</option>
+      <option value="BOTH">Both VTC and IME</option>
+    </select>
+  </div>
+
+  <div id="secVtc">
+  <div class="band">VTC – VOCATIONAL TRAINING</div>
+  <div class="grid">
+    <div class="lbl">Subsidiary</div><div><select id="vSub"><option>NCL</option><option>WCL</option></select></div>
+    <div class="lbl">Training centre</div><div><input id="vCentre" placeholder="e.g. VTC, Jayant"></div>
+    <div class="lbl">VTC from</div><div><input type="date" id="vFrom"></div>
+    <div class="lbl">VTC to</div><div><input type="date" id="vTo"></div>
+    <div class="lbl">Sundays</div><div><label class="check"><input type="checkbox" id="vSun" checked> Not included</label></div>
+    <div class="lbl">Result</div><div><select id="vResult"><option>In progress</option><option>Passed</option><option>Failed</option></select></div>
+    <div class="lbl">VTC certificate</div><div class="span3"><div class="up" id="vtcUp"></div></div>
+  </div>
+  </div>
+
+  <div id="secIme" hidden>
+  <div class="band">IME – MEDICAL EXAMINATION (FORM IX)</div>
+  <div class="grid">
+    <div class="lbl">Exam type</div><div><select id="mType"><option>Initial (IME)</option><option>Periodical (PME)</option><option>Re-examination</option></select></div>
+    <div class="lbl">IME date</div><div><input type="date" id="mDate"></div>
+    <div class="lbl">Hospital / centre</div><div><input id="mCentre" placeholder="e.g. Area Hospital"></div>
+    <div class="lbl">Mine name</div><div><input id="mMine"></div>
+    <div class="lbl">Work location</div><div><select id="mWork"><option>Surface / opencast</option><option>Below ground</option></select></div>
+    <div class="lbl">Result</div><div><select id="mResult"><option>Pending</option><option>Fit</option><option>Unfit</option><option>Re-examination required</option></select></div>
+    <div class="lbl">Certificate no.</div><div><input id="mCert" placeholder="Form IX certificate no."></div>
+    <div class="lbl">IME certificate</div><div><div class="up" id="imeUp"></div></div>
+  </div>
+  </div>
+
+  <div class="band">3. ATTENDANCE – AUTO PRESENT</div>
+  <div class="att">
+    <div id="preview" class="chips"></div>
+    <div class="warns" id="warns"></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn" id="saveBtn" type="button">Save &amp; mark present</button>
+    <button class="btn ghost" id="printBtn" type="button">Print</button>
+    <button class="btn ghost" id="clearBtn" type="button">New form</button>
+    <span style="flex:1"></span>
+    <button class="btn ghost" id="backupBtn" type="button">Backup</button>
+    <button class="btn ghost" id="restoreBtn" type="button">Restore</button>
+  </div>
+  <input type="file" id="photoIn" accept="image/*" hidden>
+  <input type="file" id="certIn" accept="image/*,application/pdf" hidden>
+  <input type="file" id="restoreIn" accept=".json,application/json" hidden>
+  <div class="msg" id="saveMsg"></div>
+  </div>
+
+  <div id="tabReg" class="no-print" hidden>
+    <div class="band" style="margin-top:0">ATTENDANCE REGISTER – VTC / IME</div>
+    <div class="regbar">
+      <label>Month <input type="month" id="regMonth"></label>
+      <select id="regType" style="width:auto"><option value="">All</option><option>VTC</option><option>IME</option></select>
+      <button class="btn ghost" id="csvBtn" type="button">Download CSV</button>
+      <button class="btn ghost" id="printRegBtn" type="button">Print monthly register</button>
+    </div>
+    <div class="tbox">
+      <table>
+        <thead><tr><th>Date</th><th>Day</th><th>Emp. code</th><th>Name</th><th>Designation</th><th>Purpose</th><th>Centre</th><th>Status</th><th>Certificate</th><th></th></tr></thead>
+        <tbody id="regBody"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="regEmpty"></p>
+
+  </div>
+
+  <div id="tabSum" class="no-print" hidden>
+    <div class="band" style="margin-top:0">EMPLOYEE SUMMARY – VTC / IME CERTIFICATES</div>
+    <div class="msg" id="sumMsg"></div>
+    <div class="sumbar">
+      <input id="sumSearch" placeholder="Search name or emp. code" aria-label="Search employees">
+      <select id="sumFilter" style="width:auto" aria-label="Filter">
+        <option value="">All employees</option><option value="pending">Certificate pending</option><option value="done">Both certificates uploaded</option>
+      </select>
+      <button class="btn ghost" id="printSumBtn" type="button">Print summary</button>
+      <span class="counts" id="sumCounts"></span>
+    </div>
+    <div class="tbox">
+      <table>
+        <thead><tr><th>Emp. code</th><th>Name</th><th>Designation</th><th>VTC period</th><th>VTC result</th><th>VTC certificate</th><th>IME date</th><th>IME result</th><th>IME certificate</th><th></th></tr></thead>
+        <tbody id="sumBody"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="sumEmpty"></p>
+    <input type="file" id="sumCertIn" accept="image/*,application/pdf" hidden>
+  </div>
+</div>
+<div id="printArea"></div>
+
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const pad=n=>String(n).padStart(2,'0');
+  const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  const show=s=>{ if(!s) return ''; const [y,m,d]=s.split('-'); return d+'-'+m+'-'+y; };
+  const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const clean=s=>String(s||'').trim().toUpperCase().replace(/[^A-Z0-9_-]/g,'');
+  const LS={get(k,d){ try{ return JSON.parse(localStorage.getItem(k))||d; }catch(e){ return d; } },
+            set(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); return true; }catch(e){ return false; } }};
+  const msg=(el,t,x)=>{ $(el).className='msg show '+t; $(el).textContent=x; };
+
+  // ---------- file store (IndexedDB: photos and certificates) ----------
+  let idb=null;
+  const idbReady=new Promise(res=>{
+    try{ const r=indexedDB.open('vi_files',1);
+      r.onupgradeneeded=()=>r.result.createObjectStore('f');
+      r.onsuccess=()=>{ idb=r.result; res(); }; r.onerror=()=>res();
+    }catch(e){ res(); }
+  });
+  function fx(mode,fn){ return idbReady.then(()=>new Promise((res,rej)=>{
+    if(!idb) return rej(new Error('nostore'));
+    const t=idb.transaction('f',mode); const st=t.objectStore('f'); const r=fn(st);
+    t.oncomplete=()=>res(r&&r.result); t.onerror=()=>rej(t.error); })); }
+  const fGet=k=>fx('readonly',st=>st.get(k));
+  const fPut=(k,v)=>fx('readwrite',st=>st.put(v,k));
+  const fDel=k=>fx('readwrite',st=>st.delete(k));
+  const fAll=()=>fx('readonly',st=>st.getAll());
+  const fKeys=()=>fx('readonly',st=>st.getAllKeys());
+
+  function readFile(file){
+    return new Promise((res,rej)=>{
+      if(file.type==='application/pdf'){
+        if(file.size>8*1024*1024) return rej(new Error('PDF is larger than 8 MB.'));
+        const r=new FileReader(); r.onload=()=>res({name:file.name,type:file.type,data:r.result}); r.onerror=()=>rej(r.error); r.readAsDataURL(file); return;
+      }
+      if(!file.type.startsWith('image/')) return rej(new Error('Choose a photo or PDF file.'));
+      const img=new Image(); const u=URL.createObjectURL(file);
+      img.onload=()=>{ const m=1600, k=Math.min(1,m/Math.max(img.width,img.height));
+        const c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+        c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(u);
+        res({name:file.name.replace(/\.\w+$/,'')+'.jpg',type:'image/jpeg',data:c.toDataURL('image/jpeg',0.82)}); };
+      img.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error('Could not read this image.')); };
+      img.src=u;
+    });
+  }
+  function openFile(f){
+    if(!f) return;
+    const bin=atob(f.data.split(',')[1]); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+    const url=URL.createObjectURL(new Blob([arr],{type:f.type}));
+    const w=window.open(url,'_blank'); if(!w){ const a=document.createElement('a'); a.href=url; a.download=f.name; a.click(); }
+  }
+
+  // ---------- state ----------
+  const now=new Date();
+  const fy=now.getMonth()>=3 ? now.getFullYear() : now.getFullYear()-1;
+  let current=null;              // form no. being edited, null = new form
+  let files={photo:null,vtc:null,ime:null};
+  let changed={photo:false,vtc:false,ime:false};
+
+  $('today').textContent=show(iso(now));
+  $('regMonth').value=now.getFullYear()+'-'+pad(now.getMonth()+1);
+  const nextNo=()=>'VI/'+fy+'-'+String(fy+1).slice(2)+'/'+String(LS.get('vi_formSeq',0)+1).padStart(4,'0');
+  function setMode(){ $('formNo').textContent='Form No. '+(current||nextNo()); $('modeTag').hidden=!current;
+    $('saveBtn').textContent=current?'Update form':'Save & mark present'; }
+
+  const fields=[...document.querySelectorAll('#emp [data-k]')];
+  const read=()=>{ const o={}; fields.forEach(f=>o[f.dataset.k]=f.value.trim()); return o; };
+  const fill=d=>{ fields.forEach(f=>f.value=d&&d[f.dataset.k]?d[f.dataset.k]:''); calcAge(); };
+  const vtcIds={sub:'vSub',centre:'vCentre',from:'vFrom',to:'vTo',result:'vResult'};
+  const imeIds={type:'mType',date:'mDate',centre:'mCentre',mine:'mMine',work:'mWork',result:'mResult',certNo:'mCert'};
+  const readSet=ids=>{ const o={}; for(const k in ids) o[k]=$(ids[k]).value.trim(); return o; };
+  const fillSet=(ids,d)=>{ for(const k in ids){ const el=$(ids[k]); if(el.tagName==='SELECT'){ el.value=d&&d[k]?d[k]:el.options[0].value; } else el.value=d&&d[k]?d[k]:''; } };
+
+  function ageNum(){ const v=$('dob').value; if(!v) return null; const b=new Date(v); let a=now.getFullYear()-b.getFullYear();
+    if(now.getMonth()<b.getMonth()||(now.getMonth()===b.getMonth()&&now.getDate()<b.getDate())) a--; return a; }
+  function calcAge(){ const a=ageNum(); $('age').textContent=a>0?a:'–'; $('age').classList.toggle('age-warn',a!==null&&a<18); refresh(); }
+  $('dob').addEventListener('change',calcAge);
+
+  // ---------- photo + certificate widgets ----------
+  function drawPhoto(){
+    const box=$('photoBox'); box.textContent='';
+    if(files.photo){ const im=document.createElement('img'); im.src=files.photo.data; im.alt='Employee photo'; box.appendChild(im);
+      const s=document.createElement('small'); s.textContent='Click to change'; box.appendChild(s); }
+    else { const s=document.createElement('span'); s.textContent='Upload photo'; const sm=document.createElement('small'); sm.textContent='camera or gallery';
+      box.appendChild(s); box.appendChild(document.createElement('br')); box.appendChild(sm); }
+  }
+  $('photoBox').addEventListener('click',()=>$('photoIn').click());
+  $('photoBox').addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('photoIn').click(); } });
+  $('photoIn').addEventListener('change',async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return;
+    try{ files.photo=await readFile(f); changed.photo=true; drawPhoto(); }catch(err){ msg('saveMsg','warn',err.message); } });
+
+  let certTarget=null;
+  function drawCert(kind){
+    const box=$(kind==='vtc'?'vtcUp':'imeUp'); box.textContent=''; const f=files[kind];
+    if(f){
+      const n=document.createElement('span'); n.className='file'; n.textContent='📎 '+f.name; box.appendChild(n);
+      const v=document.createElement('button'); v.type='button'; v.className='lnk'; v.textContent='View'; v.onclick=()=>openFile(f); box.appendChild(v);
+      const r=document.createElement('button'); r.type='button'; r.className='lnk'; r.textContent='Replace'; r.onclick=()=>{ certTarget=kind; $('certIn').click(); }; box.appendChild(r);
+      const d=document.createElement('button'); d.type='button'; d.className='lnk rm'; d.textContent='Remove';
+      d.onclick=()=>{ if(confirm('Remove this certificate?')){ files[kind]=null; changed[kind]=true; drawCert(kind); } }; box.appendChild(d);
+    } else {
+      const b=document.createElement('button'); b.type='button'; b.className='btn ghost sm'; b.textContent='Upload certificate';
+      b.onclick=()=>{ certTarget=kind; $('certIn').click(); }; box.appendChild(b);
+      const t=document.createElement('span'); t.className='file'; t.style.color='var(--muted)'; t.textContent='Photo or PDF, after '+(kind==='vtc'?'training':'the medical')+' is complete';
+      box.appendChild(t);
+    }
+  }
+  $('certIn').addEventListener('change',async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f||!certTarget) return;
+    try{ files[certTarget]=await readFile(f); changed[certTarget]=true; drawCert(certTarget);
+      if(certTarget==='vtc'&&$('vResult').value==='In progress') $('vResult').value='Passed';
+      if(certTarget==='ime'&&$('mResult').value==='Pending') $('mResult').value='Fit';
+      msg('saveMsg','ok','Certificate attached. Check the result, then press '+$('saveBtn').textContent+'.');
+    }catch(err){ msg('saveMsg','warn',err.message); } });
+
+  // ---------- fetch ----------
+  async function fetchEmp(){
+    const id=clean($('findId').value); if(!id){ msg('findMsg','warn','Enter an employee code.'); return; }
+    $('findId').value=id; resetForm(false);
+    const d=LS.get('vi_emp',{})[id];
+    if(!d){ $('code').value=id; msg('findMsg','warn','No saved record for '+id+'. Fill the details once; they will be saved.'); return; }
+    fill(d);
+    try{ files.photo=await fGet('photo_'+id)||null; }catch(e){}
+    drawPhoto();
+    const forms=LS.get('vi_forms',[]).filter(f=>f.emp&&f.emp.code===id);
+    const last=forms[forms.length-1];
+    if(last){
+      current=last.formNo; fillSet(vtcIds,last.vtc); $('vSun').checked=last.vtc?last.vtc.noSunday!==false:true; fillSet(imeIds,last.ime);
+      $('purpose').value=purposeOf(last); applyPurpose();
+      try{ files.vtc=await fGet(current+'_vtc')||null; files.ime=await fGet(current+'_ime')||null; }catch(e){}
+      drawCert('vtc'); drawCert('ime'); setMode(); refresh();
+      msg('findMsg','ok','Loaded '+current+' for '+d.name+'. Upload certificates or change the result, then press Update form. For a fresh VTC / IME, press New form.');
+    } else { setMode(); msg('findMsg','ok','Details filled for '+id+'. Enter VTC / IME dates.'); }
+  }
+  $('fetchBtn').addEventListener('click',fetchEmp);
+  $('findId').addEventListener('keydown',e=>{ if(e.key==='Enter') fetchEmp(); });
+
+  // ---------- attendance days + warnings ----------
+  const useV=()=>$('purpose').value!=='IME', useM=()=>$('purpose').value!=='VTC';
+  function applyPurpose(){ $('secVtc').hidden=!useV(); $('secIme').hidden=!useM(); refresh(); }
+  $('purpose').addEventListener('change',applyPurpose);
+  function purposeOf(f){ const v=f&&f.vtc&&f.vtc.from, m=f&&f.ime&&f.ime.date; return v&&m?'BOTH':m?'IME':'VTC'; }
+  function plannedDays(){
+    const out=[]; const f=useV()?$('vFrom').value:'', t=useV()?$('vTo').value:'';
+    if(f && t && t>=f){
+      const d=new Date(f+'T00:00'), end=new Date(t+'T00:00'); let guard=0;
+      while(d<=end && guard++<120){ if(!($('vSun').checked && d.getDay()===0)) out.push({date:iso(d),purpose:'VTC'}); d.setDate(d.getDate()+1); }
+    }
+    if(useM()&&$('mDate').value) out.push({date:$('mDate').value,purpose:'IME'});
+    return out;
+  }
+  function warnings(){
+    const w=[]; const a=ageNum(); const days=plannedDays(); const v=days.filter(x=>x.purpose==='VTC').length;
+    if(a!==null && a<18) w.push('Age is '+a+'. A person must be 18 or older to work in a mine.');
+    if(useV()&&$('vFrom').value&&$('vTo').value&&$('vTo').value<$('vFrom').value) w.push('VTC “to” date is before the “from” date.');
+    if(v>18) w.push('VTC has '+v+' days. Form-5 records 18 sessions; check the dates.');
+    if(useV()&&useM()&&$('mDate').value&&$('vFrom').value&&$('mDate').value>$('vFrom').value) w.push('IME date is after VTC starts. The medical is normally done before training.');
+    const reg=LS.get('vi_reg',{}); const code=clean($('code').value);
+    const dup=days.filter(x=>{ const r=reg[x.date+'_'+code+'_'+x.purpose]; return r&&r.formNo!==current; });
+    if(code&&dup.length) w.push(dup.length+' day'+(dup.length>1?'s are':' is')+' already marked for '+code+' on another form ('+dup.slice(0,3).map(x=>show(x.date).slice(0,5)).join(', ')+(dup.length>3?'…':'')+').');
+    return w;
+  }
+  function refresh(){
+    const box=$('preview'); box.textContent=''; const days=plannedDays();
+    if(!days.length){ const s=document.createElement('span'); s.className='empty'; s.textContent='Choose the purpose and enter the '+(useV()&&useM()?'VTC / IME dates':useV()?'VTC dates':'IME date')+'; the days to be marked present appear here.'; box.appendChild(s); }
+    else {
+      const v=days.filter(x=>x.purpose==='VTC').length, m=days.length-v;
+      const head=document.createElement('div'); head.style.width='100%'; head.style.marginBottom='4px';
+      head.textContent='Will be marked P – On Duty: '+[v?v+' VTC day'+(v>1?'s':''):'',m?'1 IME day':''].filter(Boolean).join(' + ');
+      box.appendChild(head);
+      days.forEach(x=>{ const c=document.createElement('span'); c.className='chip '+(x.purpose==='VTC'?'v':'m');
+        c.textContent=show(x.date).slice(0,5)+' '+DAYS[new Date(x.date+'T00:00').getDay()]+' · '+x.purpose; box.appendChild(c); });
+    }
+    const wb=$('warns'); wb.textContent=''; warnings().forEach(t=>{ const d=document.createElement('div'); d.textContent='⚠ '+t; wb.appendChild(d); });
+  }
+  ['vFrom','vTo','vSun','mDate','code'].forEach(i=>$(i).addEventListener('change',refresh));
+
+  // ---------- save / update ----------
+  $('saveBtn').addEventListener('click',async()=>{
+    const e=read(); e.code=clean(e.code);
+    if(!e.name||!e.code){ msg('saveMsg','warn','Employee name and emp. code are required.'); return; }
+    if(e.mobile&&!/^\d{10}$/.test(e.mobile)){ msg('saveMsg','warn','Mobile no. must be 10 digits.'); return; }
+    const days=plannedDays();
+    if(!days.length){ msg('saveMsg','warn',useV()&&useM()?'Enter VTC dates or the IME date to mark attendance.':useV()?'Enter VTC from and to dates.':'Enter the IME date.'); return; }
+    const w=warnings(); if(w.length&&!confirm('Please check:\n\n• '+w.join('\n• ')+'\n\nSave anyway?')) return;
+
+    const isNew=!current; const no=current||nextNo();
+    const emps=LS.get('vi_emp',{}); emps[e.code]=e;
+    const reg=LS.get('vi_reg',{});
+    for(const k in reg) if(reg[k].formNo===no) delete reg[k];          // replace this form's old days
+    days.forEach(x=>{
+      reg[x.date+'_'+e.code+'_'+x.purpose]={date:x.date,code:e.code,name:e.name,designation:e.designation,purpose:x.purpose,
+        centre:x.purpose==='VTC'?[$('vSub').value,$('vCentre').value.trim()].filter(Boolean).join(' – '):$('mCentre').value.trim(),
+        status:'P – On Duty',formNo:no};
+    });
+    const vtc=useV()?readSet(vtcIds):{}; if(useV()) vtc.noSunday=$('vSun').checked; const ime=useM()?readSet(imeIds):{};
+    let forms=LS.get('vi_forms',[]); const rec={formNo:no,emp:e,vtc,ime,hasVtcCert:useV()&&!!files.vtc,hasImeCert:useM()&&!!files.ime,saved:Date.now()};
+    const i=forms.findIndex(f=>f.formNo===no); if(i>=0) forms[i]=rec; else forms.push(rec);
+    try{
+      if(changed.photo){ files.photo?await fPut('photo_'+e.code,files.photo):await fDel('photo_'+e.code); }
+      if(changed.vtc){ files.vtc?await fPut(no+'_vtc',files.vtc):await fDel(no+'_vtc'); }
+      if(changed.ime){ files.ime?await fPut(no+'_ime',files.ime):await fDel(no+'_ime'); }
+    }catch(err){ msg('saveMsg','warn','Could not store the photo / certificate in this browser. The rest of the form was not saved.'); return; }
+    if(!(LS.set('vi_emp',emps)&&LS.set('vi_reg',reg)&&LS.set('vi_forms',forms))){ msg('saveMsg','warn','Could not save – browser storage is blocked or full.'); return; }
+    if(isNew) LS.set('vi_formSeq',LS.get('vi_formSeq',0)+1);
+    current=no; changed={photo:false,vtc:false,ime:false}; setMode(); refresh();
+    msg('saveMsg','ok',(isNew?'Saved ':'Updated ')+no+': '+e.name+' ('+e.code+') present for '+days.length+' day'+(days.length>1?'s':'')+
+      '. Certificate: '+[useV()?'VTC '+(files.vtc?'✓':'pending'):'',useM()?'IME '+(files.ime?'✓':'pending'):''].filter(Boolean).join(', ')+'.');
+    $('regMonth').value=days[0].date.slice(0,7); renderReg(); renderSum();
+  });
+
+  function resetForm(clearId){
+    fill(null); if(clearId) $('findId').value='';
+    fillSet(vtcIds,null); fillSet(imeIds,null); $('vSun').checked=true; $('purpose').value='VTC'; $('secVtc').hidden=false; $('secIme').hidden=true;
+    current=null; files={photo:null,vtc:null,ime:null}; changed={photo:false,vtc:false,ime:false};
+    drawPhoto(); drawCert('vtc'); drawCert('ime'); setMode(); $('findMsg').className='msg'; $('saveMsg').className='msg'; refresh();
+  }
+  $('printBtn').addEventListener('click',()=>window.print());
+  $('clearBtn').addEventListener('click',async()=>{
+    const code=clean($('code').value), keep=current&&code?read():null, photo=files.photo;
+    resetForm(!keep);
+    if(keep){ fill(keep); files.photo=photo; drawPhoto(); msg('findMsg','ok','New form for '+keep.name+' ('+code+'). Enter the new VTC / IME dates.'); }
+    else $('findId').focus();
+  });
+
+  // ---------- register ----------
+  function rows(){ const m=$('regMonth').value, t=$('regType').value;
+    return Object.entries(LS.get('vi_reg',{})).filter(([k,r])=>(!m||r.date.startsWith(m))&&(!t||r.purpose===t))
+      .sort((a,b)=>a[1].date.localeCompare(b[1].date)||a[1].code.localeCompare(b[1].code)); }
+  function renderReg(){
+    const body=$('regBody'); body.textContent=''; const list=rows();
+    const forms={}; LS.get('vi_forms',[]).forEach(f=>forms[f.formNo]=f);
+    list.forEach(([key,r])=>{
+      const tr=document.createElement('tr'); const d=new Date(r.date+'T00:00');
+      [show(r.date),DAYS[d.getDay()],r.code,r.name,r.designation||'–',r.purpose,r.centre||'–',r.status].forEach(v=>{ const td=document.createElement('td'); td.textContent=v; tr.appendChild(td); });
+      const ct=document.createElement('td'); const f=forms[r.formNo];
+      const has=f&&(r.purpose==='VTC'?f.hasVtcCert:f.hasImeCert);
+      if(has){ const b=document.createElement('button'); b.className='lnk'; b.style.cssText='border:0;background:none;color:var(--g1);cursor:pointer;text-decoration:underline;font:inherit;font-size:12px;padding:0';
+        b.textContent='View'; b.onclick=async()=>{ try{ openFile(await fGet(r.formNo+'_'+r.purpose.toLowerCase())); }catch(e){ alert('Certificate not found in this browser.'); } }; ct.appendChild(b); }
+      else ct.textContent='Pending';
+      tr.appendChild(ct);
+      const td=document.createElement('td'); const b=document.createElement('button'); b.className='del'; b.textContent='Remove';
+      b.addEventListener('click',()=>{ if(!confirm('Remove '+r.purpose+' attendance of '+r.name+' on '+show(r.date)+'?')) return;
+        const reg=LS.get('vi_reg',{}); delete reg[key]; LS.set('vi_reg',reg); renderReg(); });
+      td.appendChild(b); tr.appendChild(td); body.appendChild(tr);
+    });
+    $('regEmpty').textContent=list.length?'':'No VTC / IME attendance for this month yet.';
+  }
+  $('regMonth').addEventListener('change',renderReg); $('regType').addEventListener('change',renderReg);
+  $('csvBtn').addEventListener('click',()=>{
+    const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"'; const forms={}; LS.get('vi_forms',[]).forEach(f=>forms[f.formNo]=f);
+    const lines=[['Date','Day','Emp Code','Name','Designation','Purpose','Centre','Status','Certificate','Form No'].map(q).join(',')];
+    rows().forEach(([k,r])=>{ const f=forms[r.formNo]; const has=f&&(r.purpose==='VTC'?f.hasVtcCert:f.hasImeCert);
+      lines.push([show(r.date),DAYS[new Date(r.date+'T00:00').getDay()],r.code,r.name,r.designation,r.purpose,r.centre,r.status,has?'Uploaded':'Pending',r.formNo].map(q).join(',')); });
+    download(new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'}),'VTC_IME_Attendance_'+($('regMonth').value||'all')+'.csv');
+  });
+  function download(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); }
+
+  // ---------- backup / restore ----------
+  $('backupBtn').addEventListener('click',async()=>{
+    const data={app:'vtc-ime-form',version:1,saved:new Date().toISOString(),
+      ls:{vi_emp:LS.get('vi_emp',{}),vi_reg:LS.get('vi_reg',{}),vi_forms:LS.get('vi_forms',[]),vi_formSeq:LS.get('vi_formSeq',0)},files:{}};
+    try{ const ks=await fKeys(), vs=await fAll(); ks.forEach((k,i)=>data.files[k]=vs[i]); }catch(e){}
+    download(new Blob([JSON.stringify(data)],{type:'application/json'}),'VTC_IME_Backup_'+iso(new Date())+'.json');
+    msg('saveMsg','ok','Backup downloaded with '+Object.keys(data.ls.vi_forms).length+' forms and '+Object.keys(data.files).length+' photos / certificates.');
+  });
+  $('restoreBtn').addEventListener('click',()=>$('restoreIn').click());
+  $('restoreIn').addEventListener('change',e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return;
+    const r=new FileReader(); r.onload=async()=>{
+      let d; try{ d=JSON.parse(r.result); }catch(err){ msg('saveMsg','warn','This is not a valid backup file.'); return; }
+      if(!d||d.app!=='vtc-ime-form'||!d.ls){ msg('saveMsg','warn','This is not a VTC / IME backup file.'); return; }
+      if(!confirm('Restore will replace all data in this browser with the backup from '+(d.saved||'').slice(0,10)+'. Continue?')) return;
+      for(const k in d.ls) LS.set(k,d.ls[k]);
+      try{ for(const k in (d.files||{})) await fPut(k,d.files[k]); }catch(err){}
+      resetForm(true); renderReg(); renderSum(); msg('saveMsg','ok','Backup restored: '+(d.ls.vi_forms||[]).length+' forms.');
+    }; r.readAsText(f);
+  });
+
+  // ---------- employee summary + certificate upload ----------
+  function empSummary(){
+    const forms=LS.get('vi_forms',[]); const map={};
+    forms.forEach(f=>{ if(!f.emp||!f.emp.code) return; const m=map[f.emp.code]||(map[f.emp.code]={emp:f.emp,vtc:null,ime:null});
+      m.emp=f.emp; if(f.vtc&&f.vtc.from) m.vtc=f; if(f.ime&&f.ime.date) m.ime=f; });
+    return Object.values(map).sort((a,b)=>a.emp.name.localeCompare(b.emp.name));
+  }
+  function pill(text){ const s=document.createElement('span');
+    s.className='pill '+(/Passed|Fit$/.test(text)?'ok':/Failed|Unfit/.test(text)?'bad':'wait'); s.textContent=text; return s; }
+  let sumTarget=null;
+  function certCell(f,kind){
+    const td=document.createElement('td'); if(!f){ td.textContent='–'; return td; }
+    const has=kind==='vtc'?f.hasVtcCert:f.hasImeCert;
+    if(has){ const v=document.createElement('button'); v.className='lnk'; v.textContent='View';
+      v.onclick=async()=>{ try{ openFile(await fGet(f.formNo+'_'+kind)); }catch(e){ alert('Certificate not found in this browser.'); } }; td.appendChild(v); }
+    const u=document.createElement('button'); u.className='lnk'; u.textContent=has?'Replace':'Upload';
+    u.onclick=()=>{ sumTarget={formNo:f.formNo,kind}; $('sumCertIn').click(); }; td.appendChild(u);
+    if(!has){ td.appendChild(pill('Pending')); }
+    return td;
+  }
+  function sumRows(){
+    const q=$('sumSearch').value.trim().toLowerCase(), flt=$('sumFilter').value;
+    return empSummary().filter(m=>{
+      if(q&&!(m.emp.name.toLowerCase().includes(q)||m.emp.code.toLowerCase().includes(q))) return false;
+      const pend=(m.vtc&&!m.vtc.hasVtcCert)||(m.ime&&!m.ime.hasImeCert);
+      if(flt==='pending') return pend; if(flt==='done') return !pend; return true; });
+  }
+  function renderSum(){
+    const body=$('sumBody'); body.textContent=''; const all=empSummary(), list=sumRows();
+    list.forEach(m=>{
+      const tr=document.createElement('tr'); const c=t=>{ const td=document.createElement('td'); td.textContent=t||'–'; tr.appendChild(td); return td; };
+      c(m.emp.code); c(m.emp.name); c(m.emp.designation);
+      c(m.vtc?show(m.vtc.vtc.from).slice(0,5)+' to '+show(m.vtc.vtc.to):'');
+      const vr=c(''); if(m.vtc){ vr.textContent=''; vr.appendChild(pill(m.vtc.vtc.result||'In progress')); }
+      tr.appendChild(certCell(m.vtc,'vtc'));
+      c(m.ime?show(m.ime.ime.date):'');
+      const mr=c(''); if(m.ime){ mr.textContent=''; mr.appendChild(pill(m.ime.ime.result||'Pending')); }
+      tr.appendChild(certCell(m.ime,'ime'));
+      const o=document.createElement('td'); const b=document.createElement('button'); b.className='lnk'; b.textContent='Open form';
+      b.onclick=()=>{ showTab('tabForm'); $('findId').value=m.emp.code; fetchEmp(); window.scrollTo({top:0,behavior:'smooth'}); }; o.appendChild(b); tr.appendChild(o);
+      body.appendChild(tr);
+    });
+    const pend=all.filter(m=>(m.vtc&&!m.vtc.hasVtcCert)||(m.ime&&!m.ime.hasImeCert)).length;
+    $('pendBadge').hidden=!pend; $('pendBadge').textContent=pend;
+    $('sumCounts').textContent=all.length+' employee'+(all.length!==1?'s':'')+' · '+pend+' with certificate pending';
+    $('sumEmpty').textContent=list.length?'':(all.length?'No employee matches this search.':'No forms saved yet.');
+  }
+  $('sumSearch').addEventListener('input',renderSum); $('sumFilter').addEventListener('change',renderSum);
+  $('sumCertIn').addEventListener('change',async e=>{ const file=e.target.files[0]; e.target.value=''; if(!file||!sumTarget) return;
+    const {formNo,kind}=sumTarget;
+    try{
+      const data=await readFile(file); await fPut(formNo+'_'+kind,data);
+      const forms=LS.get('vi_forms',[]); const f=forms.find(x=>x.formNo===formNo); if(!f) return;
+      if(kind==='vtc'){ f.hasVtcCert=true; if(!f.vtc.result||f.vtc.result==='In progress') f.vtc.result='Passed'; }
+      else { f.hasImeCert=true; if(!f.ime.result||f.ime.result==='Pending') f.ime.result='Fit'; }
+      LS.set('vi_forms',forms);
+      if(current===formNo){ files[kind]=data; drawCert(kind); fillSet(kind==='vtc'?vtcIds:imeIds,kind==='vtc'?f.vtc:f.ime); }
+      renderSum(); renderReg();
+      msg('sumMsg','ok',kind.toUpperCase()+' certificate uploaded for '+f.emp.name+' ('+formNo+'). Result set to '+(kind==='vtc'?f.vtc.result:f.ime.result)+'.');
+    }catch(err){ msg('sumMsg','warn',err.message||'Could not save the certificate.'); }
+  });
+
+  // ---------- printing ----------
+  function printTable(title,sub,head,rowsArr){
+    const pa=$('printArea'); pa.textContent='';
+    const h=document.createElement('h2'); h.textContent='Caliber Mining & Logistics Limited'; pa.appendChild(h);
+    const s1=document.createElement('div'); s1.className='ps'; s1.textContent=title+' — '+sub; pa.appendChild(s1);
+    const t=document.createElement('table'); const th=document.createElement('tr');
+    head.forEach(x=>{ const c=document.createElement('th'); c.textContent=x; th.appendChild(c); }); t.appendChild(th);
+    if(!rowsArr.length){ const tr=document.createElement('tr'); const td=document.createElement('td'); td.colSpan=head.length; td.textContent='No entries.'; tr.appendChild(td); t.appendChild(tr); }
+    rowsArr.forEach(r=>{ const tr=document.createElement('tr'); r.forEach(x=>{ const td=document.createElement('td'); td.textContent=x==null||x===''?'–':x; tr.appendChild(td); }); t.appendChild(tr); });
+    pa.appendChild(t);
+    const sg=document.createElement('div'); sg.className='sign';
+    ['Prepared by','HR In-charge','Authorised Signatory'].forEach(x=>{ const d=document.createElement('div'); d.textContent=x; sg.appendChild(d); }); pa.appendChild(sg);
+    document.body.classList.add('printing'); window.print();
+    setTimeout(()=>document.body.classList.remove('printing'),500);
+  }
+  window.addEventListener('afterprint',()=>document.body.classList.remove('printing'));
+  $('printRegBtn').addEventListener('click',()=>{
+    const m=$('regMonth').value; const forms={}; LS.get('vi_forms',[]).forEach(f=>forms[f.formNo]=f);
+    const label=m?new Date(m+'-01T00:00').toLocaleString('en-IN',{month:'long',year:'numeric'}):'All months';
+    const list=rows(); let i=0;
+    printTable('VTC / IME Attendance Register',label+($('regType').value?' ('+$('regType').value+' only)':'')+' · '+list.length+' entries',
+      ['S.No.','Date','Day','Emp. code','Name','Designation','Purpose','Centre','Status','Certificate','Form No.'],
+      list.map(([k,r])=>{ const f=forms[r.formNo]; const has=f&&(r.purpose==='VTC'?f.hasVtcCert:f.hasImeCert);
+        return [++i,show(r.date),DAYS[new Date(r.date+'T00:00').getDay()],r.code,r.name,r.designation,r.purpose,r.centre,r.status,has?'Uploaded':'Pending',r.formNo]; }));
+  });
+  $('printSumBtn').addEventListener('click',()=>{
+    const list=sumRows(); let i=0;
+    printTable('Employee Summary – VTC / IME','As on '+show(iso(new Date()))+' · '+list.length+' employees',
+      ['S.No.','Emp. code','Name','Designation','VTC period','VTC result','VTC cert.','IME date','IME result','IME cert.'],
+      list.map(m=>[++i,m.emp.code,m.emp.name,m.emp.designation,
+        m.vtc?show(m.vtc.vtc.from)+' to '+show(m.vtc.vtc.to):'',m.vtc?m.vtc.vtc.result:'',m.vtc?(m.vtc.hasVtcCert?'Uploaded':'Pending'):'',
+        m.ime?show(m.ime.ime.date):'',m.ime?m.ime.ime.result:'',m.ime?(m.ime.hasImeCert?'Uploaded':'Pending'):'']));
+  });
+
+  // ---------- tabs ----------
+  function showTab(id){
+    document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===id?'true':'false'));
+    ['tabForm','tabReg','tabSum'].forEach(t=>$(t).hidden=t!==id);
+  }
+  document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
+  window.showTab=showTab;
+
+  drawPhoto(); drawCert('vtc'); drawCert('ime'); setMode(); refresh(); renderReg(); renderSum();
+})();
+</script>
+
+</body>
+</html>
