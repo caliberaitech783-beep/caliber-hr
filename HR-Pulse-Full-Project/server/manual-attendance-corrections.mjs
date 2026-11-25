@@ -6,7 +6,8 @@
      day): the punches and the log file stay as imported. It gives a new In / Out (rated again with the attendance policy)
      and / or a code (P, HD, A, WO, H, CO, L, OD), always with a reason. Undo removes it and the punches rule again.
    - The roster, the M.B-Trip card mismatch and a saved copy of that day show the corrected day, marked with who changed
-     it, when, why and what it was. Pulse-II still gets the imported punches only.
+     it, when, why and what it was. Pulse-II gets the imported punches and, since 25 Nov 2026, the corrections beside them
+     (mis-biometric-punches.mjs), so its Biometric vs trip card mismatch shows the corrected day.
    GET    attendance/manual-biometric                 → the register with corrections applied (attendance.mjs)
    POST   attendance/manual-biometric/corrections {site,day,employeeCode,status?,in?,out?,reason}
    DELETE attendance/manual-biometric/corrections {site,day,employeeCode} */

@@ -8,6 +8,10 @@
 //   {from,to,sites:[name…],punches:[[employee code or '', machine user ID, 'YYYY-MM-DD HH:MM', site index, punch type]…]}
 // The employee code is the one the machine ID is linked to in Attendance (hr_attendance_links); '' when not linked, and
 // Pulse-II then reads the machine user ID as the employee number. The site is the site the machine stands at.
+// Owner, 25 Nov 2026: the days an HR administrator corrected on Attendance roster › Manual Biometric
+// (hr_manual_attendance_corrections) go along, so Pulse-II's Biometric vs trip card mismatch shows the corrected day:
+//   corrections:[[site index, 'YYYY-MM-DD', employee code or machine ID, code ('' or P, HD, A, WO, H, CO, L, OD), In 'HH:MM', Out 'HH:MM', reason, by]…]
+// An Out not after the In is the next morning. The punches themselves are still sent as imported.
 import {keyMatches} from './attendance.mjs';
 
 export const MIS_PUNCH_MAX_DAYS=31;
@@ -43,18 +47,24 @@ export const MIS_PUNCHES_SQL=`SELECT code,biometric_id,at,site,punch_type FROM (
  ORDER BY punched_at
  LIMIT ${MIS_PUNCH_MAX_ROWS+1}`;
 
+export const MIS_CORRECTIONS_SQL=`SELECT site,to_char(day,'YYYY-MM-DD') AS day,employee_code,status,in_time,out_time,reason,corrected_by
+ FROM hr_manual_attendance_corrections WHERE day BETWEEN $1::date AND $2::date ORDER BY day,employee_code`;
+
 export function readPunchRange({from,to}={}){
  if(!validDay(from)||!validDay(to)||to<from)fail('Give a valid from and to date (YYYY-MM-DD).');
  if((Date.parse(to)-Date.parse(from))/DAY>=MIS_PUNCH_MAX_DAYS)fail(`Ask for up to ${MIS_PUNCH_MAX_DAYS} days.`);
  return {from,to};
 }
 
-export function packPunches(rows){
+export function packPunches(rows,corrected=[]){
  const sites=[],at=new Map();
  const siteIndex=name=>{if(!at.has(name)){at.set(name,sites.length);sites.push(name);}return at.get(name);};
  const punches=rows.map(row=>[text(row.code),text(row.biometric_id),text(row.at),siteIndex(text(row.site)),text(row.punch_type)]);
- return {sites,punches};
+ const corrections=corrected.map(row=>[siteIndex(text(row.site)),text(row.day),text(row.employee_code),text(row.status),text(row.in_time),text(row.out_time),text(row.reason),text(row.corrected_by)]);
+ return {sites,punches,corrections};
 }
+// A database with no corrections table yet sends none.
+const readCorrections=(pool,from,to)=>pool.query(MIS_CORRECTIONS_SQL,[from,to]).then(r=>r.rows,error=>{if(error?.code==='42P01')return [];throw error;});
 
 export function createMisBiometricPunches(pool,{syncKey=process.env.MIS_SYNC_KEY}={}){
  return {
@@ -62,9 +72,9 @@ export function createMisBiometricPunches(pool,{syncKey=process.env.MIS_SYNC_KEY
    if(typeof syncKey!=='string'||syncKey.length<32)fail('The Pulse-II sync is not configured in HR',503);
    if(!keyMatches(syncKey,key))fail('Invalid Pulse-II sync key',401);
    const {from,to}=readPunchRange(query);
-   const {rows}=await pool.query(MIS_PUNCHES_SQL,[from,to]);
+   const [{rows},corrected]=await Promise.all([pool.query(MIS_PUNCHES_SQL,[from,to]),readCorrections(pool,from,to)]);
    if(rows.length>MIS_PUNCH_MAX_ROWS)fail('Too many punches in these dates. Ask for fewer days.',413);
-   return {generatedAt:new Date().toISOString(),from,to,...packPunches(rows)};
+   return {generatedAt:new Date().toISOString(),from,to,...packPunches(rows,corrected)};
   }
  };
 }
