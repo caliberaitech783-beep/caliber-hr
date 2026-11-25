@@ -93,7 +93,7 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
   if(url.includes('attendance/punches'))return Response.json({rows:[]});
   if(url.includes('attendance/unlinked'))return Response.json([]);
   if(url.includes('attendance/policy'))return Response.json({policy:DEFAULT_POLICY,version:1,canEdit:false});
-  if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'GV',name:'Gevra'},{id:'s2',kind:'sites',code:'DP',name:'Dipka'},{id:'d1',kind:'departments',code:'OP',name:'Operations'}]);
+  if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'GV',name:'Gevra'},{id:'s2',kind:'sites',code:'DP',name:'Dipka'}]);
   if(url.includes('attendance/mis'))return Response.json(misReport());
   if(url.includes('attendance/manual-biometric'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,site:q.get('site'),machines:[],rows:[{...bio,linked:true,machinesUsed:['Main gate · 101']}]});
   if(url.includes('attendance/site-register'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,site:q.get('site'),
@@ -121,6 +121,8 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  fireEvent.click(trip);
  const table=await screen.findByRole('table',{name:'Attendance roster'});
  await waitFor(()=>expect(within(table).getByText('Ramesh Kumar')).toBeTruthy());
+ expect(within(screen.getByLabelText('Department')).getByRole('option',{name:'Operations'})).toBeTruthy();
+ expect(within(screen.getByLabelText('Designation')).getByRole('option',{name:'Dumper operator'})).toBeTruthy();
  expect(within(table).queryByPlaceholderText('Search')).toBeNull();
  const employeeFilter=within(table).getByRole('button',{name:'Filter Employee ID'});
  vi.spyOn(employeeFilter,'getBoundingClientRect').mockReturnValue({left:120,bottom:200} as DOMRect);
