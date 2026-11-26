@@ -229,13 +229,14 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   if(deletingManual&&!attendanceAdmin(profile))fail('Only an HR administrator can delete saved manual biometric logs.',403);
   if(route==='manual-biometric-days/delete'&&method==='POST')return manualBiometricDays(profile,'DELETE',input,params,sites);
   if(route==='manual-biometric-days')return manualBiometricDays(profile,method,input,params,sites);
-  const findSite=async(db,siteName)=>{
-   const exact=(await db.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[])) LIMIT 1",[siteName,sites])).rows[0];
-   if(exact)return exact;
+  const findSites=async(db,siteName)=>{
+   const exact=(await db.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[]))",[siteName,sites])).rows;
+   if(exact.length)return exact;
    const allowed=(await db.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND ($1::uuid[] IS NULL OR id=ANY($1::uuid[]))",[sites])).rows;
-   const site=allowed.find(row=>attendanceSiteKey(row.name)===attendanceSiteKey(siteName));
-   return site||fail(siteAccessMessage(profile),403);
+   const matches=allowed.filter(row=>attendanceSiteKey(row.name)===attendanceSiteKey(siteName));
+   return matches.length?matches:fail(siteAccessMessage(profile),403);
   };
+  const findSite=async(db,siteName)=>(await findSites(db,siteName))[0];
   // Before a machine log (.dat) is imported: the site's machines and, for the machine user IDs in the file,
   // which ones each machine already knows (linked to an employee, named on the machine, or punched there before).
   // The upload screen picks the machine whose IDs match best, and shows who each ID is.
@@ -244,15 +245,15 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    if(!siteName)fail('Choose a site before importing biometric punches.');
    if(!Array.isArray(ids)||ids.length>MAX_IMPORT_IDS)fail(`Check up to ${MAX_IMPORT_IDS} machine user IDs at a time.`);
    const clean=[...new Set(ids.map(id=>String(id??'').trim()))].filter(id=>BIOMETRIC.test(id));
-   const site=await findSite(pool,siteName);
-   const machines=(await pool.query('SELECT serial,name,location,machine_no FROM hr_attendance_devices WHERE site_id=$1 ORDER BY location,name,serial',[site.id])).rows;
+   const matchingSites=await findSites(pool,siteName),matchingSiteIds=matchingSites.map(site=>site.id);
+   const machines=(await pool.query('SELECT serial,name,location,machine_no FROM hr_attendance_devices WHERE site_id=ANY($1::uuid[]) ORDER BY location,name,serial',[matchingSiteIds])).rows;
    const known=clean.length&&machines.length?(await pool.query(`SELECT d.serial,x.b AS biometric_id,e.code AS employee_code,e.name AS employee_name,u.name AS machine_name
     FROM hr_attendance_devices d CROSS JOIN unnest($2::text[]) AS x(b)
     LEFT JOIN hr_attendance_links l ON l.device_serial=d.serial AND l.biometric_id=x.b
     LEFT JOIN hr_records e ON e.id=l.employee_id AND e.kind='employees'
     LEFT JOIN hr_attendance_device_users u ON u.device_serial=d.serial AND u.biometric_id=x.b
-    WHERE d.site_id=$1 AND (l.employee_id IS NOT NULL OR u.biometric_id IS NOT NULL
-     OR EXISTS(SELECT 1 FROM hr_attendance_punches p WHERE p.device_serial=d.serial AND p.biometric_id=x.b))`,[site.id,clean])).rows:[];
+    WHERE d.site_id=ANY($1::uuid[]) AND (l.employee_id IS NOT NULL OR u.biometric_id IS NOT NULL
+     OR EXISTS(SELECT 1 FROM hr_attendance_punches p WHERE p.device_serial=d.serial AND p.biometric_id=x.b))`,[matchingSiteIds,clean])).rows:[];
    return {machines:machines.map(m=>({serial:m.serial,name:m.name||'',location:m.location||'',machineNo:m.machine_no||'',
     ids:known.filter(k=>k.serial===m.serial).map(k=>({biometricId:k.biometric_id,employeeCode:k.employee_code||'',employeeName:k.employee_name||'',machineName:k.machine_name||''}))}))};
   }
@@ -260,14 +261,14 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const siteName=String(input?.site||'').trim(),rows=input?.rows;
    if(!siteName)fail('Choose a site before importing biometric punches.');
    if(!Array.isArray(rows)||!rows.length||rows.length>MAX_PUNCHES_PER_UPLOAD)fail(`Import 1–${MAX_PUNCHES_PER_UPLOAD} biometric punches at a time.`);
-   const site=await findSite(db,siteName);
+   const matchingSites=await findSites(db,siteName),matchingSiteIds=matchingSites.map(site=>site.id);
    const clean=rows.map(row=>{
     const serial=String(row?.serial||'').trim();
     const upload=validateUpload({device:{serial},punches:[{biometricId:row?.biometricId,punchedAt:row?.punchedAt,verify:row?.verify,punchType:row?.punchType}],users:row?.name?[{biometricId:row.biometricId,name:row.name}]:[]});
     return {serial,punch:upload.punches[0],name:upload.users[0]?.name||''};
    });
    const serials=[...new Set(clean.map(row=>row.serial))];
-   const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=$1 AND serial=ANY($2::text[])',[site.id,serials])).rows.map(row=>row.serial);
+   const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=ANY($1::uuid[]) AND serial=ANY($2::text[])',[matchingSiteIds,serials])).rows.map(row=>row.serial);
    const missing=serials.filter(serial=>!devices.includes(serial));
    if(missing.length)fail(`Machine Serial is not registered at ${siteName}: ${missing.join(', ')}`);
    const added=(await db.query('INSERT INTO hr_attendance_punches(device_serial,biometric_id,punched_at,verify,punch_type) SELECT x.s,x.b,x.t::timestamp,x.v,x.p FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[]) AS x(s,b,t,v,p) ON CONFLICT DO NOTHING',[clean.map(row=>row.serial),clean.map(row=>row.punch.biometricId),clean.map(row=>row.punch.punchedAt),clean.map(row=>row.punch.verify),clean.map(row=>row.punch.punchType)])).rowCount;
@@ -280,13 +281,13 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const siteName=String(input?.site||'').trim(),rows=input?.rows;
    if(!siteName)fail('Choose a site before importing biometric punches.');
    if(!Array.isArray(rows)||!rows.length||rows.length>MAX_PUNCHES_PER_UPLOAD)fail(`Import 1–${MAX_PUNCHES_PER_UPLOAD} biometric punches at a time.`);
-   const site=await findSite(db,siteName);
+   const matchingSites=await findSites(db,siteName),matchingSiteIds=matchingSites.map(site=>site.id),site=matchingSites[0];
    const clean=rows.map(row=>{const serial=String(row?.serial||'').trim();const upload=validateUpload({device:{serial},punches:[{biometricId:row?.biometricId,punchedAt:row?.punchedAt,verify:row?.verify,punchType:row?.punchType}],users:[]});return {serial,punch:upload.punches[0]};});
    const days=[...new Set(clean.map(row=>row.punch.punchedAt.slice(0,10)))];
    const locked=(await db.query('SELECT to_char(day,\'YYYY-MM-DD\') AS day FROM hr_manual_biometric_days WHERE site=$1 AND day=ANY($2::date[])',[site.name,days])).rows.map(row=>row.day);
    if(locked.length)fail(`Manual biometric logs are saved and locked for ${locked.join(', ')}. Upload only unsaved dates.`,409);
    const serials=[...new Set(clean.map(row=>row.serial))];
-   const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=$1 AND serial=ANY($2::text[])',[site.id,serials])).rows.map(row=>row.serial);
+   const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=ANY($1::uuid[]) AND serial=ANY($2::text[])',[matchingSiteIds,serials])).rows.map(row=>row.serial);
    const missing=serials.filter(serial=>!devices.includes(serial));
    if(missing.length)fail(`Machine Serial is not registered at ${siteName}: ${missing.join(', ')}`);
    const added=(await db.query('INSERT INTO hr_manual_biometric_punches(device_serial,biometric_id,punched_at,verify,punch_type,imported_by) SELECT x.s,x.b,x.t::timestamp,x.v,x.p,$6 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[]) AS x(s,b,t,v,p) ON CONFLICT DO NOTHING',[clean.map(row=>row.serial),clean.map(row=>row.punch.biometricId),clean.map(row=>row.punch.punchedAt),clean.map(row=>row.punch.verify),clean.map(row=>row.punch.punchType),profile.actor])).rowCount;

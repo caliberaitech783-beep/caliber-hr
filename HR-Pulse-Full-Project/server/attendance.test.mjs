@@ -176,8 +176,28 @@ test('a machine log check lists the site machines and which file IDs each alread
   {serial:'JNP1',name:'STAFF 1',location:'Gate',machineNo:'2',ids:[{biometricId:'12',employeeCode:'E12',employeeName:'Ravi',machineName:'RAVI'},{biometricId:'13',employeeCode:'',employeeName:'',machineName:''}]},
   {serial:'JNP2',name:'',location:'',machineNo:'',ids:[]}]);
  const lookup=pool.calls.find(([sql])=>sql.includes('CROSS JOIN unnest'));
- assert.deepEqual(lookup[1],[SITE,['12','13','99']]);
+ assert.deepEqual(lookup[1],[[SITE],['12','13','99']]);
  await assert.rejects(createAttendance(pool,{bridgeKey:KEY}).attendanceApi(admin,'punches/import/check','POST',{site:'',ids:[]},new URLSearchParams()),/Choose a site/);
+});
+
+test('machine log import includes machines from duplicate active site records with the selected name',async()=>{
+ const duplicate='33333333-3333-4333-8333-333333333333';
+ const pool=fakePool((sql,params)=>{
+  if(sql.includes("kind='sites'")&&sql.includes('regexp_replace'))return {rows:[{id:SITE,name:'Gauri Pauni OB 2nd'},{id:duplicate,name:'Gauri Pauni OB 2nd'}],rowCount:2};
+  if(sql.startsWith('SELECT serial,name,location,machine_no FROM hr_attendance_devices'))return {rows:[{serial:'JNP2260500433',name:'DRIVERS',location:'OFFICE',machine_no:''},{serial:'JNP2260500434',name:'GOURI',location:'GOURI',machine_no:''}]};
+  if(sql.startsWith('SELECT serial FROM hr_attendance_devices'))return {rows:[{serial:'JNP2260500434'}]};
+  if(sql.startsWith('INSERT INTO hr_attendance_punches'))return {rows:[],rowCount:1};
+  return {rows:[],rowCount:0};
+ });
+ const service=createAttendance(pool,{bridgeKey:KEY});
+ const checked=await service.attendanceApi(admin,'punches/import/check','POST',{site:'Gauri Pauni OB 2nd',ids:[]},new URLSearchParams());
+ assert.deepEqual(checked.machines.map(machine=>machine.serial),['JNP2260500433','JNP2260500434']);
+ const listed=pool.calls.find(([sql])=>sql.startsWith('SELECT serial,name,location,machine_no FROM hr_attendance_devices'));
+ assert.deepEqual(listed[1],[[SITE,duplicate]]);
+ const imported=await service.attendanceApi(admin,'punches/import','POST',{site:'Gauri Pauni OB 2nd',rows:[{serial:'JNP2260500434',biometricId:'12',punchedAt:'2026-11-23 09:01:05',verify:'1',punchType:'0'}]},new URLSearchParams());
+ assert.deepEqual(imported,{received:1,added:1});
+ const validated=pool.calls.find(([sql])=>sql.startsWith('SELECT serial FROM hr_attendance_devices'));
+ assert.deepEqual(validated[1],[[SITE,duplicate],['JNP2260500434']]);
 });
 
 test('each site bridge PC signs in with its own key and picks up only its own fetch requests',async()=>{
