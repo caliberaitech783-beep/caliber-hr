@@ -147,18 +147,20 @@ export async function savePolicy(db, actor, input) {
   return {policy, version: row.version, updatedBy: row.updated_by, updatedAt: row.updated_at};
 }
 
-// Current employee entries keep A-Form No. directly on data. Older NCL workbook imports retain it in
-// sources[].fields as [label,value], so Manual Biometric must search both without changing WCL matching.
-const nclAFormMatch = `regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')<>'' AND (
- regexp_replace(upper(coalesce(e.data->>'aFormNo','')),'[^A-Z0-9]','','g')=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')
- OR EXISTS (
-  SELECT 1
-  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data->'sources')='array' THEN e.data->'sources' ELSE '[]'::jsonb END) source
-  CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(source->'fields')='array' THEN source->'fields' ELSE '[]'::jsonb END) field
-  WHERE jsonb_typeof(field)='array'
-   AND regexp_replace(upper(coalesce(field->>0,'')),'[^A-Z0-9]','','g') IN ('AFORMNO','AFORMNUMBER','FORMANO','FORMANUMBER')
-   AND regexp_replace(upper(coalesce(field->>1,'')),'[^A-Z0-9]','','g')=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')
- ))`;
+// Build the NCL A-Form map once per query. Current entries keep it directly on data; older workbook imports
+// retain it in sources[].fields as [label,value]. Expanding those sources once avoids a scan for every punch ID.
+const nclAFormRows = employeeFilter => `
+ SELECT e.id AS employee_id,regexp_replace(upper(coalesce(e.data->>'aFormNo','')),'[^A-Z0-9]','','g') AS a_form
+ FROM hr_employee_master_register e
+ WHERE regexp_replace(upper(coalesce(e.data->>'aFormNo','')),'[^A-Z0-9]','','g')<>'' ${employeeFilter}
+ UNION
+ SELECT e.id AS employee_id,regexp_replace(upper(coalesce(field->>1,'')),'[^A-Z0-9]','','g') AS a_form
+ FROM hr_employee_master_register e
+ CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(e.data->'sources')='array' THEN e.data->'sources' ELSE '[]'::jsonb END) source
+ CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(source->'fields')='array' THEN source->'fields' ELSE '[]'::jsonb END) field
+ WHERE jsonb_typeof(field)='array'
+  AND regexp_replace(upper(coalesce(field->>0,'')),'[^A-Z0-9]','','g') IN ('AFORMNO','AFORMNUMBER','FORMANO','FORMANUMBER')
+  AND regexp_replace(upper(coalesce(field->>1,'')),'[^A-Z0-9]','','g')<>'' ${employeeFilter}`;
 
 /**
  * sites: the employees' HR sites (null = all). options.devices: read only punches from these machines (the site roster),
@@ -193,14 +195,18 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   const ids = employees.map(e => e.id);
   if (!ids.length) return buildRegister({from, to, today, policy});
   const [punches, holidays, leaves, ods, passes, pay] = await Promise.all([
-    db.query(manual?`SELECT e.id AS employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+    db.query(manual?(matchAForm?`WITH employee_aforms AS (${nclAFormRows('AND e.id=ANY($1::uuid[])')})
+     SELECT a.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
-     JOIN hr_employee_master_register e ON ${matchAForm
-       ? nclAFormMatch
-       : "hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id) AND hr_employee_number(p.biometric_id)<>''"}
+     JOIN employee_aforms a ON a.a_form=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')
+     LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
+     WHERE p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
+      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`:`SELECT e.id AS employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+      coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
+     JOIN hr_employee_master_register e ON hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id) AND hr_employee_number(p.biometric_id)<>''
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
      WHERE e.id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
-      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`:`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`):`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
      JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
@@ -261,10 +267,17 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   if (!machines.length) return {from, to, policy, site: site.name, machines: machineList, rows: []};
   const serials = machines.map(m => m.serial);
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
-  const manualMatch=matchAForm
-   ? nclAFormMatch
-   : "hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id) AND hr_employee_number(p.biometric_id)<>''";
-  const idQuery=manual?`WITH punch_ids AS (
+  const idQuery=manual?(matchAForm?`WITH employee_aforms AS (${nclAFormRows('')}), punch_ids AS (
+    SELECT p.device_serial,p.biometric_id FROM ${punchTable} p
+    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date AND p.punched_at<$3::date+1
+    GROUP BY 1,2
+   )
+   SELECT p.device_serial,p.biometric_id,e.employee_id,coalesce(u.name,'') AS machine_name,
+    count(e.employee_id) OVER (PARTITION BY p.device_serial,p.biometric_id) AS match_count
+   FROM punch_ids p
+   LEFT JOIN employee_aforms e ON e.a_form=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')
+   LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id
+   GROUP BY 1,2,3,4`:`WITH punch_ids AS (
     SELECT p.device_serial,p.biometric_id FROM ${punchTable} p
     WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date AND p.punched_at<$3::date+1
     GROUP BY 1,2
@@ -272,9 +285,9 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
    SELECT p.device_serial,p.biometric_id,e.id AS employee_id,coalesce(u.name,'') AS machine_name,
     count(e.id) OVER (PARTITION BY p.device_serial,p.biometric_id) AS match_count
    FROM punch_ids p
-   LEFT JOIN hr_employee_master_register e ON ${manualMatch}
+   LEFT JOIN hr_employee_master_register e ON hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id) AND hr_employee_number(p.biometric_id)<>''
    LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id
-   GROUP BY 1,2,3,4`:`SELECT p.device_serial,p.biometric_id,l.employee_id,coalesce(u.name,'') AS machine_name
+   GROUP BY 1,2,3,4`):`SELECT p.device_serial,p.biometric_id,l.employee_id,coalesce(u.name,'') AS machine_name
    FROM ${punchTable} p
    LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
    LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id

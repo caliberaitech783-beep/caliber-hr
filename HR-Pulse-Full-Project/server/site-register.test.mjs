@@ -24,7 +24,7 @@ function fakeDb({machines = [], punches = [], employeeCodes = {}} = {}) {
       return {rows: params[1].map(id=>id==='emp-1'?{id: 'emp-1', code: 'CMLL1021', name: 'Ramesh Kumar', site_id: 'other-site', site: 'Gevra', site_type: 'Site', shift: 'A', starts: '06:00', ends: '14:00', designation: 'Dumper operator', department: 'Operations', daily_wage: '800'}:
        {...Object.values(employeeCodes).find(e=>e.id===id),site_id:'site-sasti',site:'Sasti OC',site_type:'Site',shift:'A',starts:'06:00',ends:'14:00',daily_wage:'800'})};
     }
-    if (/SELECT (?:l.employee_id|e.id AS employee_id),to_char/.test(sql)) {
+    if (/SELECT (?:l.employee_id|e.id AS employee_id|a.employee_id),to_char/.test(sql)) {
       assert.deepEqual(params[3], machines.map(machine=>machine.serial));
       return {rows: punches.filter(p => links[p.serial + '|' + p.id]||employeeCodes[p.id]).map(p => ({employee_id: links[p.serial + '|' + p.id]||employeeCodes[p.id].id, at: p.at, place: place[p.serial]}))};
     }
@@ -80,7 +80,7 @@ test('NCL manual biometric matches A-Form No. while WCL continues to match Emplo
  assert.equal(result.rows[0].name,'NCL Employee');
  const reads=db.calls.filter(sql=>/hr_manual_biometric_punches/.test(sql));
  assert.ok(reads.some(sql=>/data->>'aFormNo'/.test(sql)&&/\[\^A-Z0-9\]/.test(sql)),'NCL uses normalized A-Form No.');
- assert.ok(reads.some(sql=>/data->'sources'/.test(sql)&&/source->'fields'/.test(sql)&&/AFORMNUMBER/.test(sql)),'NCL also reads legacy imported A-Form fields');
+ assert.ok(reads.some(sql=>/WITH employee_aforms AS/.test(sql)&&/data->'sources'/.test(sql)&&/source->'fields'/.test(sql)&&/AFORMNUMBER/.test(sql)),'NCL builds one map from legacy imported A-Form fields');
  assert.ok(reads.every(sql=>!/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)),'NCL never falls back to Employee ID');
 
  const wcl=fakeDb({machines:[importedMachine],employeeCodes:{'17416':{...employee,id:'emp-wcl'}},punches:[{serial:'JNP-NCL',id:'17416',at:'2026-11-02 06:00'}]});
@@ -94,7 +94,7 @@ test('manual biometric excludes people whose only punches are outside the select
   {serial:'JNP2254200050',id:'1160',at:'2026-10-31 20:00'}
  ]});
  await loadSiteRegister(db,{id:'site-dudhichua',name:'Dudhichua OB East',siteType:'Site'},'2026-11-01','2026-11-20','2026-11-26',{manual:true});
- const idRead=db.calls.find(sql=>/WITH punch_ids AS/.test(sql));
+ const idRead=db.calls.find(sql=>/punch_ids AS/.test(sql));
  assert.match(idRead,/p\.punched_at>=\$2::date AND p\.punched_at<\$3::date\+1/);
  assert.doesNotMatch(idRead,/\$2::date-1|\$3::date\+2/);
 });
