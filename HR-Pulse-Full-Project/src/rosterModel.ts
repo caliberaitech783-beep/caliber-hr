@@ -36,7 +36,7 @@ export function weekPieces(from: string, to: string) {
 export type TripDay = {date: string; code: string; duties: TripDuty[]};
 export type Mismatch = {date: string; trip: string; bio: string; reason: string; tripDetail: string; bioDetail: string};
 export type RosterGroup = {
-  key: string; code: string; name: string; site: string; department: string; designation: string; shift: string; exempt: boolean;
+  key: string; code: string; aFormNo?: string; name: string; site: string; department: string; designation: string; shift: string; exempt: boolean;
   /** Biometric register line; undefined when the employee has no linked biometric ID. */
   bio?: RegisterRow;
   bioCodes: Record<string, string>;
@@ -117,7 +117,7 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
   bioRead?: Set<string>): RosterGroup[] {
   const tripPeople = trips ? tripCardDays(trips) : new Map();
   const groups: RosterGroup[] = register.map(row => ({
-    key: row.id, code: row.code, name: row.name, site: row.site, department: row.department || '', designation: row.designation, shift: row.shift, exempt: row.exempt,
+    key: row.id, code: row.code, aFormNo: row.aFormNo || '', name: row.name, site: row.site, department: row.department || '', designation: row.designation, shift: row.shift, exempt: row.exempt,
     bio: row, bioCodes: {}, tripCodes: {}, tripDays: {}, hasTripCards: false, mismatches: [], pending: 0,
     machines: row.machinesUsed || [], linked: row.linked !== false
   }));
@@ -125,7 +125,7 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
   for (const [code, person] of tripPeople) {
     let group = byCode.get(code);
     if (!group) {
-      group = {key: 'mis:' + code, code, name: person.name, site: person.site, department: '', designation: person.designation, shift: '', exempt: false,
+      group = {key: 'mis:' + code, code, aFormNo: '', name: person.name, site: person.site, department: '', designation: person.designation, shift: '', exempt: false,
         bioCodes: {}, tripCodes: {}, tripDays: {}, hasTripCards: false, mismatches: [], pending: 0, machines: [], linked: true};
       groups.push(group);
       byCode.set(code, group);

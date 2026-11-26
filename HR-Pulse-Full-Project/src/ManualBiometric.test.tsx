@@ -14,6 +14,7 @@ describe('Manual Biometric attendance roster',()=>{
   expect(screen.getByText('No manual biometric attendance imported.')).toBeInTheDocument();
   expect(screen.queryByText('Only employees with a difference')).not.toBeInTheDocument();
   expect(screen.queryByRole('columnheader',{name:'Diff. of Trip Card and Bio-matric'})).not.toBeInTheDocument();
+  expect(screen.getByRole('columnheader',{name:'A-Form No.'})).toBeInTheDocument();
  });
  it('places a working Delete All beside the day-box controls',()=>{
   const remove=vi.fn(),trip:TripState={status:'idle',message:'',rows:null};

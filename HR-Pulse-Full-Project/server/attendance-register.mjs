@@ -118,7 +118,7 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
     }, {});
     for (const status of ['H', 'L', 'CO', 'OD', 'WO', 'IN']) total[status] = days.filter(day => day.status === status).length;
     return {
-      id: employee.id, code: employee.code, name: employee.name, siteId: employee.siteId || '', site: employee.site || '',
+      id: employee.id, code: employee.code, aFormNo: employee.aFormNo || '', name: employee.name, siteId: employee.siteId || '', site: employee.site || '',
       siteType: employee.siteType || '', department: employee.department || '', shift: employee.shift || '', designation: employee.designation || '', exempt,
       shiftStart: clock(starts), shiftEnd: clock(ends), days, months, summary: total
     };
@@ -173,6 +173,11 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   const {policy} = await readPolicy(db);
   const employeeQuery=manual?`
    SELECT e.id,e.data->>'employeeId' AS code,e.name,e.site_id,e.site_code,e.site_name AS site,'' AS site_type,
+    coalesce(nullif(e.data->>'aFormNo',''),(SELECT field->>1
+     FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data->'sources')='array' THEN e.data->'sources' ELSE '[]'::jsonb END) source
+     CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(source->'fields')='array' THEN source->'fields' ELSE '[]'::jsonb END) field
+     WHERE jsonb_typeof(field)='array' AND regexp_replace(upper(coalesce(field->>0,'')),'[^A-Z0-9]','','g') IN ('AFORMNO','AFORMNUMBER','FORMANO','FORMANUMBER')
+      AND nullif(trim(field->>1),'') IS NOT NULL LIMIT 1),'') AS a_form_no,
     '' AS shift,NULL AS starts,NULL AS ends,coalesce(e.data->>'designation','') AS designation,
     coalesce(e.data->>'department','') AS department,'0' AS daily_wage
    FROM hr_employee_master_register e
@@ -230,7 +235,7 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
     ['basic', 'hra', 'fixedAllowance'].reduce((sum, key) => sum + (Number(row.amounts?.[key]) || 0), 0)]));
   return buildRegister({
     from, to, today, policy,
-    employees: employees.map(e => ({id: String(e.id), code: e.code, name: e.name, siteId: e.site_id || '', siteCode: e.site_code || '',
+    employees: employees.map(e => ({id: String(e.id), code: e.code, aFormNo: e.a_form_no || '', name: e.name, siteId: e.site_id || '', siteCode: e.site_code || '',
       site: e.site || '', siteType: e.site_type || '', department: e.department || '', shift: e.shift || '', starts: e.starts, ends: e.ends, designation: e.designation || '',
       dailyWage: Number(e.daily_wage) || 0, monthlyPay: monthly.get(String(e.id)) || 0})),
     punches: punches.rows.map(p => ({employeeId: String(p.employee_id), at: p.at, where: devices ? p.place : ''})),
@@ -315,7 +320,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
        WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to])
     ]);
     others = buildRegister({from, to, today, policy,
-      employees: unlinked.map(r => ({id: `u:${r.device_serial}|${r.biometric_id}`, code: manual?r.biometric_id:'', name: manual?(Number(r.match_count)>1?`Duplicate ${matchAForm?'A-Form Number':'Employee ID'}`:'Employee not found'):r.machine_name || `Machine ID ${r.biometric_id}`,
+      employees: unlinked.map(r => ({id: `u:${r.device_serial}|${r.biometric_id}`, code: manual?r.biometric_id:'', aFormNo: manual&&matchAForm?r.biometric_id:'', name: manual?(Number(r.match_count)>1?`Duplicate ${matchAForm?'A-Form Number':'Employee ID'}`:'Employee not found'):r.machine_name || `Machine ID ${r.biometric_id}`,
         siteId: String(site.id), site: site.name, siteType: site.siteType || '', designation: ''})),
       punches: punches.filter(p=>!manual||unlinkedKeys.has(`${p.device_serial}|${p.biometric_id}`)).map(p => ({employeeId: `u:${p.device_serial}|${p.biometric_id}`, at: p.at, where: manual?p.device_serial:place.get(p.device_serial)})),
       holidays: holidays.map(h => ({date: h.date, siteId: h.site_id, name: h.name}))}).rows;

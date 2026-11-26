@@ -11,7 +11,7 @@ export type RegisterDay={date:string;status:string;calendar?:string;note:string;
  /** An HR administrator's correction of the day (Manual Biometric, server/manual-attendance-corrections.mjs). */
  corrected?:{by:string;at:string;reason:string;before:{status:string;in:string;out:string};status:string;in:string;out:string}};
 export type RegisterSummary={full:number;half:number;absent:number;missPunch:number;late:number;early:number;lateEarly:number;halfDutyCuts:number;duties:number;gatePassDeduction:number;H:number;L:number;CO?:number;OD:number;WO:number;IN:number};
-export type RegisterRow={id:string;code:string;name:string;siteId:string;site:string;siteType:string;department?:string;shift:string;designation:string;exempt:boolean;shiftStart:string;shiftEnd:string;days:RegisterDay[];summary:RegisterSummary;
+export type RegisterRow={id:string;code:string;aFormNo?:string;name:string;siteId:string;site:string;siteType:string;department?:string;shift:string;designation:string;exempt:boolean;shiftStart:string;shiftEnd:string;days:RegisterDay[];summary:RegisterSummary;
  /** Site roster only: false for a machine ID not linked to an employee; the machines and IDs the person punched on. */
  linked?:boolean;machinesUsed?:string[]};
 export type Register={from:string;to:string;policy:AttendancePolicy;rows:RegisterRow[]};

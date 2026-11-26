@@ -16,9 +16,9 @@ function fakeDb({machines = [], punches = [], employeeCodes = {}} = {}) {
       for (const p of punches) seen.set(p.serial + '|' + p.id, {device_serial: p.serial, biometric_id: p.id, employee_id: links[p.serial + '|' + p.id] || employeeCodes[p.id]?.id || null, machine_name: names[p.serial + '|' + p.id] || '',match_count:links[p.serial + '|' + p.id]||employeeCodes[p.id]?1:0});
       return {rows: [...seen.values()]};
     }
-    if (/FROM hr_employee_master_register e\s+WHERE e.id=ANY/.test(sql)) {
+    if (/^\s*SELECT e\.id,[\s\S]*FROM hr_employee_master_register e[\s\S]*WHERE e\.id=ANY/.test(sql)) {
       assert.ok(!sql.includes('$2::uuid[]'));
-      return {rows: params[0].map(id=>({...Object.values(employeeCodes).find(e=>e.id===id),site_id:'site-sasti',site_code:'WCL-SASTI',site:'Sasti OC',site_type:'',shift:'',starts:null,ends:null,daily_wage:'0'}))};
+      return {rows: params[0].map(id=>{const employee=Object.values(employeeCodes).find(e=>e.id===id);return {...employee,a_form_no:employee?.aFormNo||'',site_id:'site-sasti',site_code:'WCL-SASTI',site:'Sasti OC',site_type:'',shift:'',starts:null,ends:null,daily_wage:'0'};})};
     }
     if (/FROM hr_attendance_links l\s+JOIN hr_records e/.test(sql)) {
       return {rows: params[1].map(id=>id==='emp-1'?{id: 'emp-1', code: 'CMLL1021', name: 'Ramesh Kumar', site_id: 'other-site', site: 'Gevra', site_type: 'Site', shift: 'A', starts: '06:00', ends: '14:00', designation: 'Dumper operator', department: 'Operations', daily_wage: '800'}:
@@ -74,10 +74,11 @@ test('manual biometric treats the imported value as employee code and shows the 
 
 test('NCL manual biometric matches A-Form No. while WCL continues to match Employee ID',async()=>{
  const importedMachine={...machines[0],serial:'JNP-NCL'};
- const employee={id:'emp-aform',code:'CMLL9999',name:'NCL Employee',department:'Production',designation:'Operator'};
+ const employee={id:'emp-aform',code:'CMLL9999',aFormNo:'AF009',name:'NCL Employee',department:'Production',designation:'Operator'};
  const db=fakeDb({machines:[importedMachine],employeeCodes:{'AF009':employee},punches:[{serial:'JNP-NCL',id:'AF009',at:'2026-11-02 06:00'}]});
  const result=await loadSiteRegister(db,{id:'site-ncl',name:'Dudhichua OB East',siteType:'Site'},'2026-11-02','2026-11-02','2026-11-26',{manual:true});
  assert.equal(result.rows[0].name,'NCL Employee');
+ assert.equal(result.rows[0].aFormNo,'AF009');
  const reads=db.calls.filter(sql=>/hr_manual_biometric_punches/.test(sql));
  assert.ok(reads.some(sql=>/data->>'aFormNo'/.test(sql)&&/\[\^A-Z0-9\]/.test(sql)),'NCL uses normalized A-Form No.');
  assert.ok(reads.some(sql=>/WITH employee_aforms AS/.test(sql)&&/data->'sources'/.test(sql)&&/source->'fields'/.test(sql)&&/AFORMNUMBER/.test(sql)),'NCL builds one map from legacy imported A-Form fields');
