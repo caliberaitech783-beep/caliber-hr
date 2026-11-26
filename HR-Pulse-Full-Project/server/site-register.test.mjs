@@ -67,7 +67,18 @@ test('manual biometric treats the imported value as employee code and shows the 
  ]});
  const result=await loadSiteRegister(db,site,'2026-11-02','2026-11-02','2026-11-22',{manual:true});
  const employee=result.rows[0];
- assert.deepEqual([employee.code,employee.name,employee.department,employee.designation,employee.linked],['CMLL17416','Anil Kumar','Operations','Driver',true]);
+ assert.deepEqual([employee.code,employee.name,employee.department,employee.designation,employee.site,employee.linked],['CMLL17416','Anil Kumar','Operations','Driver','Sasti OC',true]);
  assert.deepEqual(employee.machinesUsed,['JNP2242101100']);
- assert.ok(db.calls.some(sql=>/WITH punch_ids AS/.test(sql)&&/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)));
+ assert.ok(db.calls.some(sql=>/WITH punch_ids AS/.test(sql)&&/p\.punched_at>=\$2::date AND p\.punched_at<\$3::date\+1/.test(sql)&&/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)));
+});
+
+test('manual biometric excludes people whose only punches are outside the selected dates',async()=>{
+ const importedMachine={...machines[0],serial:'JNP2254200050'};
+ const db=fakeDb({machines:[importedMachine],employeeCodes:{'1160':{id:'emp-1160',code:'CMLL1160',name:'Abbas Alam',department:'Maintenance',designation:'Dozer mechanic'}},punches:[
+  {serial:'JNP2254200050',id:'1160',at:'2026-10-31 20:00'}
+ ]});
+ await loadSiteRegister(db,{id:'site-dudhichua',name:'Dudhichua OB East',siteType:'Site'},'2026-11-01','2026-11-20','2026-11-26',{manual:true});
+ const idRead=db.calls.find(sql=>/WITH punch_ids AS/.test(sql));
+ assert.match(idRead,/p\.punched_at>=\$2::date AND p\.punched_at<\$3::date\+1/);
+ assert.doesNotMatch(idRead,/\$2::date-1|\$3::date\+2/);
 });

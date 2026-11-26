@@ -246,7 +246,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
   const idQuery=manual?`WITH punch_ids AS (
     SELECT p.device_serial,p.biometric_id FROM ${punchTable} p
-    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
+    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date AND p.punched_at<$3::date+1
     GROUP BY 1,2
    )
    SELECT p.device_serial,p.biometric_id,e.id AS employee_id,coalesce(u.name,'') AS machine_name
@@ -284,7 +284,10 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
       punches: punches.filter(p=>!manual||unlinkedKeys.has(`${p.device_serial}|${p.biometric_id}`)).map(p => ({employeeId: `u:${p.device_serial}|${p.biometric_id}`, at: p.at, where: manual?p.device_serial:place.get(p.device_serial)})),
       holidays: holidays.map(h => ({date: h.date, siteId: h.site_id, name: h.name}))}).rows;
   }
-  const rows = [...linked.map(r => ({...r, linked: true})), ...others.map(r => ({...r, linked: false}))]
+  // Manual Biometric is a site attendance report: the selected site's machines determine the rows. Keep an
+  // employee's HR/home site out of this column, otherwise a Dudhichua report appears to contain Sasti or Majri
+  // logs even though the punches came from Dudhichua's machine.
+  const rows = [...linked.map(r => ({...r, ...(manual?{siteId:String(site.id),site:site.name}:{}), linked: true})), ...others.map(r => ({...r, linked: false}))]
     .map(r => ({...r, machinesUsed: [...new Set(used.get(r.id) || [])]}));
   return {from, to, policy, site: site.name, machines: machineList, rows};
 }
