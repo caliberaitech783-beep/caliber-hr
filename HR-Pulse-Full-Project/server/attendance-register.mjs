@@ -153,7 +153,7 @@ export async function savePolicy(db, actor, input) {
  * machine it came from (day.punches).
  */
 export async function loadRegister(db, sites, from, to, today, options = {}) {
-  const {devices = null, employeeIds = null, manual = false} = options;
+  const {devices = null, employeeIds = null, manual = false, matchAForm = false} = options;
   const punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
   const {policy} = await readPolicy(db);
   const employeeQuery=manual?`
@@ -182,7 +182,9 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   const [punches, holidays, leaves, ods, passes, pay] = await Promise.all([
     db.query(manual?`SELECT e.id AS employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
-     JOIN hr_employee_master_register e ON hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id)
+     JOIN hr_employee_master_register e ON ${matchAForm
+       ? "regexp_replace(upper(coalesce(e.data->>'aFormNo','')),'[^A-Z0-9]','','g')=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g') AND regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')<>''"
+       : "hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id) AND hr_employee_number(p.biometric_id)<>''"}
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
      WHERE e.id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
       AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`:`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
@@ -229,6 +231,8 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
  */
 export async function loadSiteRegister(db, site, from, to, today, options = {}) {
   const manual=options.manual===true,punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
+  // NCL's exported log identifies a person by A-Form No.; WCL exports the Employee ID.
+  const matchAForm=manual&&/^(?:jayant|dudhichua)\b/i.test(String(site.name||'').trim());
   const {rows: machines} = await db.query(`SELECT d.serial,d.name,d.location,d.ip_address,d.last_contact,coalesce(d.last_contact>now()-interval '2 minutes',false) AS online,
     coalesce(max(b.name),CASE WHEN d.bridge_id IS NULL AND (d.last_contact IS NOT NULL OR d.last_seen IS NOT NULL) THEN 'Main bridge PC' ELSE '' END) AS bridge_name,
     (SELECT to_char(max(p.punched_at),'YYYY-MM-DD HH24:MI') FROM ${punchTable} p WHERE p.device_serial=d.serial AND p.punched_at<$3::date+2) AS last_punch,
@@ -244,14 +248,18 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   if (!machines.length) return {from, to, policy, site: site.name, machines: machineList, rows: []};
   const serials = machines.map(m => m.serial);
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
+  const manualMatch=matchAForm
+   ? "regexp_replace(upper(coalesce(e.data->>'aFormNo','')),'[^A-Z0-9]','','g')=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g') AND regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')<>''"
+   : "hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id) AND hr_employee_number(p.biometric_id)<>''";
   const idQuery=manual?`WITH punch_ids AS (
     SELECT p.device_serial,p.biometric_id FROM ${punchTable} p
     WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date AND p.punched_at<$3::date+1
     GROUP BY 1,2
    )
-   SELECT p.device_serial,p.biometric_id,e.id AS employee_id,coalesce(u.name,'') AS machine_name
+   SELECT p.device_serial,p.biometric_id,e.id AS employee_id,coalesce(u.name,'') AS machine_name,
+    count(e.id) OVER (PARTITION BY p.device_serial,p.biometric_id) AS match_count
    FROM punch_ids p
-   LEFT JOIN hr_employee_master_register e ON hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id)
+   LEFT JOIN hr_employee_master_register e ON ${manualMatch}
    LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id
    GROUP BY 1,2,3,4`:`SELECT p.device_serial,p.biometric_id,l.employee_id,coalesce(u.name,'') AS machine_name
    FROM ${punchTable} p
@@ -260,14 +268,16 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
    GROUP BY 1,2,3,4`;
   const {rows: ids} = await db.query(idQuery, [serials, from, to]);
+  const isUniqueMatch = r => Boolean(r.employee_id) && (!manual || Number(r.match_count) === 1);
   const used = new Map();
   for (const r of ids) {
-    const key = r.employee_id ? String(r.employee_id) : `u:${r.device_serial}|${r.biometric_id}`;
+    const key = isUniqueMatch(r) ? String(r.employee_id) : `u:${r.device_serial}|${r.biometric_id}`;
     used.set(key, [...(used.get(key) || []), manual?r.device_serial:`${place.get(r.device_serial)} · ${r.biometric_id}`]);
   }
-  const linkedIds = [...new Set(ids.filter(r => r.employee_id).map(r => String(r.employee_id)))];
-  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual})).rows : [];
-  const unlinked = ids.filter(r => !r.employee_id);
+  const linkedIds = [...new Set(ids.filter(isUniqueMatch).map(r => String(r.employee_id)))];
+  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm})).rows : [];
+  const unlinked = [...new Map(ids.filter(r => !isUniqueMatch(r))
+    .map(r => [`${r.device_serial}|${r.biometric_id}`, r])).values()];
   const unlinkedKeys=new Set(unlinked.map(r=>`${r.device_serial}|${r.biometric_id}`));
   let others = [];
   if (unlinked.length) {
@@ -279,7 +289,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
        WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to])
     ]);
     others = buildRegister({from, to, today, policy,
-      employees: unlinked.map(r => ({id: `u:${r.device_serial}|${r.biometric_id}`, code: manual?r.biometric_id:'', name: manual?'Employee not found':r.machine_name || `Machine ID ${r.biometric_id}`,
+      employees: unlinked.map(r => ({id: `u:${r.device_serial}|${r.biometric_id}`, code: manual?r.biometric_id:'', name: manual?(Number(r.match_count)>1?`Duplicate ${matchAForm?'A-Form Number':'Employee ID'}`:'Employee not found'):r.machine_name || `Machine ID ${r.biometric_id}`,
         siteId: String(site.id), site: site.name, siteType: site.siteType || '', designation: ''})),
       punches: punches.filter(p=>!manual||unlinkedKeys.has(`${p.device_serial}|${p.biometric_id}`)).map(p => ({employeeId: `u:${p.device_serial}|${p.biometric_id}`, at: p.at, where: manual?p.device_serial:place.get(p.device_serial)})),
       holidays: holidays.map(h => ({date: h.date, siteId: h.site_id, name: h.name}))}).rows;

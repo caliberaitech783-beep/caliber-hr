@@ -13,7 +13,7 @@ function fakeDb({machines = [], punches = [], employeeCodes = {}} = {}) {
     if (/FROM hr_attendance_devices d LEFT JOIN hr_attendance_bridges/.test(sql)) return {rows: machines};
     if (/GROUP BY 1,2,3,4/.test(sql)) {
       const seen = new Map();
-      for (const p of punches) seen.set(p.serial + '|' + p.id, {device_serial: p.serial, biometric_id: p.id, employee_id: links[p.serial + '|' + p.id] || employeeCodes[p.id]?.id || null, machine_name: names[p.serial + '|' + p.id] || ''});
+      for (const p of punches) seen.set(p.serial + '|' + p.id, {device_serial: p.serial, biometric_id: p.id, employee_id: links[p.serial + '|' + p.id] || employeeCodes[p.id]?.id || null, machine_name: names[p.serial + '|' + p.id] || '',match_count:links[p.serial + '|' + p.id]||employeeCodes[p.id]?1:0});
       return {rows: [...seen.values()]};
     }
     if (/FROM hr_employee_master_register e\s+WHERE e.id=ANY/.test(sql)) {
@@ -70,6 +70,21 @@ test('manual biometric treats the imported value as employee code and shows the 
  assert.deepEqual([employee.code,employee.name,employee.department,employee.designation,employee.site,employee.linked],['CMLL17416','Anil Kumar','Operations','Driver','Sasti OC',true]);
  assert.deepEqual(employee.machinesUsed,['JNP2242101100']);
  assert.ok(db.calls.some(sql=>/WITH punch_ids AS/.test(sql)&&/p\.punched_at>=\$2::date AND p\.punched_at<\$3::date\+1/.test(sql)&&/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)));
+});
+
+test('NCL manual biometric matches A-Form No. while WCL continues to match Employee ID',async()=>{
+ const importedMachine={...machines[0],serial:'JNP-NCL'};
+ const employee={id:'emp-aform',code:'CMLL9999',name:'NCL Employee',department:'Production',designation:'Operator'};
+ const db=fakeDb({machines:[importedMachine],employeeCodes:{'AF009':employee},punches:[{serial:'JNP-NCL',id:'AF009',at:'2026-11-02 06:00'}]});
+ const result=await loadSiteRegister(db,{id:'site-ncl',name:'Dudhichua OB East',siteType:'Site'},'2026-11-02','2026-11-02','2026-11-26',{manual:true});
+ assert.equal(result.rows[0].name,'NCL Employee');
+ const reads=db.calls.filter(sql=>/hr_manual_biometric_punches/.test(sql));
+ assert.ok(reads.some(sql=>/data->>'aFormNo'/.test(sql)&&/\[\^A-Z0-9\]/.test(sql)),'NCL uses normalized A-Form No.');
+ assert.ok(reads.every(sql=>!/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)),'NCL never falls back to Employee ID');
+
+ const wcl=fakeDb({machines:[importedMachine],employeeCodes:{'17416':{...employee,id:'emp-wcl'}},punches:[{serial:'JNP-NCL',id:'17416',at:'2026-11-02 06:00'}]});
+ await loadSiteRegister(wcl,site,'2026-11-02','2026-11-02','2026-11-26',{manual:true});
+ assert.ok(wcl.calls.some(sql=>/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)),'WCL keeps Employee ID matching');
 });
 
 test('manual biometric excludes people whose only punches are outside the selected dates',async()=>{
