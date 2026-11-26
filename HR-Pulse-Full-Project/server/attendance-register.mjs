@@ -267,7 +267,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   if (!machines.length) return {from, to, policy, site: site.name, machines: machineList, rows: []};
   const serials = machines.map(m => m.serial);
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
-  const idQuery=manual?(matchAForm?`WITH employee_aforms AS (${nclAFormRows('')}), punch_ids AS (
+  const idQuery=manual?(matchAForm?`WITH employee_aforms AS (${nclAFormRows('AND e.site_id=$4')}), punch_ids AS (
     SELECT p.device_serial,p.biometric_id FROM ${punchTable} p
     WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date AND p.punched_at<$3::date+1
     GROUP BY 1,2
@@ -293,7 +293,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
    LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id
    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
    GROUP BY 1,2,3,4`;
-  const {rows: ids} = await db.query(idQuery, [serials, from, to]);
+  const {rows: ids} = await db.query(idQuery, manual&&matchAForm?[serials, from, to, site.id]:[serials, from, to]);
   const isUniqueMatch = r => Boolean(r.employee_id) && (!manual || Number(r.match_count) === 1);
   const used = new Map();
   for (const r of ids) {

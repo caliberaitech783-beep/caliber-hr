@@ -81,6 +81,7 @@ test('NCL manual biometric matches A-Form No. while WCL continues to match Emplo
  const reads=db.calls.filter(sql=>/hr_manual_biometric_punches/.test(sql));
  assert.ok(reads.some(sql=>/data->>'aFormNo'/.test(sql)&&/\[\^A-Z0-9\]/.test(sql)),'NCL uses normalized A-Form No.');
  assert.ok(reads.some(sql=>/WITH employee_aforms AS/.test(sql)&&/data->'sources'/.test(sql)&&/source->'fields'/.test(sql)&&/AFORMNUMBER/.test(sql)),'NCL builds one map from legacy imported A-Form fields');
+ assert.ok(reads.some(sql=>/e\.site_id=\$4/.test(sql)),'NCL A-Form matching is limited to the selected site');
  assert.ok(reads.every(sql=>!/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)),'NCL never falls back to Employee ID');
 
  const wcl=fakeDb({machines:[importedMachine],employeeCodes:{'17416':{...employee,id:'emp-wcl'}},punches:[{serial:'JNP-NCL',id:'17416',at:'2026-11-02 06:00'}]});
