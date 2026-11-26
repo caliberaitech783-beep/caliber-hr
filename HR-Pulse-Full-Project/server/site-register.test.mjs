@@ -80,6 +80,7 @@ test('NCL manual biometric matches A-Form No. while WCL continues to match Emplo
  assert.equal(result.rows[0].name,'NCL Employee');
  const reads=db.calls.filter(sql=>/hr_manual_biometric_punches/.test(sql));
  assert.ok(reads.some(sql=>/data->>'aFormNo'/.test(sql)&&/\[\^A-Z0-9\]/.test(sql)),'NCL uses normalized A-Form No.');
+ assert.ok(reads.some(sql=>/data->'sources'/.test(sql)&&/source->'fields'/.test(sql)&&/AFORMNUMBER/.test(sql)),'NCL also reads legacy imported A-Form fields');
  assert.ok(reads.every(sql=>!/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)),'NCL never falls back to Employee ID');
 
  const wcl=fakeDb({machines:[importedMachine],employeeCodes:{'17416':{...employee,id:'emp-wcl'}},punches:[{serial:'JNP-NCL',id:'17416',at:'2026-11-02 06:00'}]});

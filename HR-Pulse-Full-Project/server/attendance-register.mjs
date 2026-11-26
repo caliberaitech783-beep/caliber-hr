@@ -147,6 +147,19 @@ export async function savePolicy(db, actor, input) {
   return {policy, version: row.version, updatedBy: row.updated_by, updatedAt: row.updated_at};
 }
 
+// Current employee entries keep A-Form No. directly on data. Older NCL workbook imports retain it in
+// sources[].fields as [label,value], so Manual Biometric must search both without changing WCL matching.
+const nclAFormMatch = `regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')<>'' AND (
+ regexp_replace(upper(coalesce(e.data->>'aFormNo','')),'[^A-Z0-9]','','g')=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')
+ OR EXISTS (
+  SELECT 1
+  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data->'sources')='array' THEN e.data->'sources' ELSE '[]'::jsonb END) source
+  CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(source->'fields')='array' THEN source->'fields' ELSE '[]'::jsonb END) field
+  WHERE jsonb_typeof(field)='array'
+   AND regexp_replace(upper(coalesce(field->>0,'')),'[^A-Z0-9]','','g') IN ('AFORMNO','AFORMNUMBER','FORMANO','FORMANUMBER')
+   AND regexp_replace(upper(coalesce(field->>1,'')),'[^A-Z0-9]','','g')=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')
+ ))`;
+
 /**
  * sites: the employees' HR sites (null = all). options.devices: read only punches from these machines (the site roster),
  * options.employeeIds: these linked employees instead of the employees of `sites`. With devices, every punch carries the
@@ -183,7 +196,7 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
     db.query(manual?`SELECT e.id AS employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
      JOIN hr_employee_master_register e ON ${matchAForm
-       ? "regexp_replace(upper(coalesce(e.data->>'aFormNo','')),'[^A-Z0-9]','','g')=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g') AND regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')<>''"
+       ? nclAFormMatch
        : "hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id) AND hr_employee_number(p.biometric_id)<>''"}
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
      WHERE e.id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
@@ -249,7 +262,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   const serials = machines.map(m => m.serial);
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
   const manualMatch=matchAForm
-   ? "regexp_replace(upper(coalesce(e.data->>'aFormNo','')),'[^A-Z0-9]','','g')=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g') AND regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')<>''"
+   ? nclAFormMatch
    : "hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id) AND hr_employee_number(p.biometric_id)<>''";
   const idQuery=manual?`WITH punch_ids AS (
     SELECT p.device_serial,p.biometric_id FROM ${punchTable} p
