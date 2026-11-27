@@ -14,7 +14,19 @@ const addDay = (date: string) => new Date(Date.parse(date + 'T00:00:00Z') + 86_4
 export const daysBetween = (from: string, to: string) => {const out: string[] = []; for (let d = from; d <= to; d = addDay(d)) out.push(d); return out;};
 export const tripDays = (from: string, to: string) => {const start = from < FIRST_TRIP_DATE ? FIRST_TRIP_DATE : from; return start > to ? [] : daysBetween(start, to);};
 export type DayState = 'queued' | 'loading' | 'retrying' | 'done' | 'failed';
-export type DayUpdate = {day: string; state: DayState; rows?: AttendanceRow[]; sites?: string[]; error?: string; attempt?: number};
+export type DayUpdate = {day: string; state: DayState; rows?: AttendanceRow[]; sites?: string[]; error?: string; attempt?: number;
+  /** What Pulse-II signed for this site and day ('' while Pulse-II does not sign yet). */
+  signature?: string};
+/* Pulse-II is the master of trip card attendance (owner, 27 Nov 2026). It signs every site-day it sends; HR Pulse shows a
+   saved day only while that signature is still the one Pulse-II gives. */
+export type MisDay = {siteKey: string; date: string; signature: string; lines?: number};
+/** The signature of the site's day: every MIS site that is this site, in a fixed order. 'none': Pulse-II holds no
+    closed day for it. '': Pulse-II did not sign (an older Pulse-II). */
+export function misDaySignature(days: MisDay[] | undefined, site: string, day: string) {
+  if (!Array.isArray(days)) return '';
+  const mine = days.filter(d => d && d.date === day && typeof d.siteKey === 'string' && typeof d.signature === 'string' && (!site || sameSite(site, d.siteKey)));
+  return mine.map(d => d.siteKey + ':' + d.signature).sort().join(',').slice(0, 400) || 'none';
+}
 export type TripFetch = {rows: AttendanceRow[]; failed: string[]; error: string; misSites: string[]};
 const NO_ACCESS = /outside your assigned access|permission|not allowed|sign in|session/i;
 let pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -28,7 +40,9 @@ async function readDay(grant: string, day: string, site: string, attempts: numbe
       const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day, ...(site ? {site} : {}), ...(refresh ? {refresh: '1'} : {})}));
       // The feed also carries the day before (for night shifts); keep only this day so no duty is counted twice.
       const all = mapMisAttendance(data).filter(r => r.date === day);
-      return {rows: all.filter(r => !site || sameSite(site, r.site)), sites: [...new Set(all.map(r => r.site).filter(Boolean))]};
+      const signed = data as {days?: MisDay[]; signed?: boolean};
+      return {rows: all.filter(r => !site || sameSite(site, r.site)), sites: [...new Set(all.map(r => r.site).filter(Boolean))],
+        signature: signed?.signed === false ? '' : misDaySignature(signed?.days, site, day)};
     } catch (e) {
       const message = (e as Error).message || 'MIS did not answer';
       if (attempt >= attempts || NO_ACCESS.test(message)) throw new Error(message);
@@ -53,7 +67,7 @@ export async function streamTripCards(grant: string, days: string[], site: strin
     try {
       const result = await readDay(grant, day, site, attempts, (attempt, error) => {if (live()) onDay({day, state: 'retrying', attempt, error});}, refresh);
       failed.delete(day);
-      if (live()) onDay({day, state: 'done', rows: result.rows, sites: result.sites});
+      if (live()) onDay({day, state: 'done', rows: result.rows, sites: result.sites, signature: result.signature});
     } catch (e) {
       failed.add(day);
       if (live()) onDay({day, state: 'failed', error: (e as Error).message});
@@ -128,19 +142,36 @@ export async function fetchFromMachines(grant: string, serials: string[], onStep
 /* Saved trip cards (owner, 22 Nov 2026): "Save trip cards" stores each day of the site's trip cards in HR
    (server/trip-card-store.mjs), and the Trip card tab opens the saved days at once, reading MIS only for the rest. */
 export type SavedInfo = {savedBy: string; savedAt: string};
-export type SavedDay = SavedInfo & {day: string; rows: AttendanceRow[]; duties: number};
+export type SavedDay = SavedInfo & {day: string; rows: AttendanceRow[]; duties: number; signature?: string};
 export async function readSavedTripCards(grant: string, site: string, from: string, to: string) {
   const result = await api<{days?: SavedDay[]}>(grant, 'attendance/trip-cards?' + new URLSearchParams({site, from, to}));
   return Array.isArray(result?.days) ? result.days : [];
 }
+/**
+ * Which saved days are still what Pulse-II holds. One small question to Pulse-II (signatures only, no cards): a saved
+ * day whose signature differs, or that was saved before days were signed, is stale and is read from MIS again.
+ * checked false: Pulse-II could not be asked (or does not sign yet); the saved days are then shown as before.
+ */
+export async function checkSavedTripCards(grant: string, site: string, saved: SavedDay[]): Promise<{fresh: SavedDay[]; stale: string[]; checked: boolean}> {
+  if (!saved.length) return {fresh: saved, stale: [], checked: true};
+  const days = saved.map(d => d.day).sort();
+  try {
+    const answer = await api<{supported?: boolean; days?: MisDay[]}>(grant, 'attendance/mis/days?' + new URLSearchParams({from: days[0], to: days[days.length - 1]}));
+    if (!answer?.supported || !Array.isArray(answer.days)) return {fresh: saved, stale: [], checked: false};
+    const fresh = saved.filter(d => Boolean(d.signature) && d.signature === misDaySignature(answer.days, site, d.day));
+    return {fresh, stale: saved.filter(d => !fresh.includes(d)).map(d => d.day).sort(), checked: true};
+  } catch {
+    return {fresh: saved, stale: [], checked: false};
+  }
+}
 /** Saves the given days, one day per request (each under the 2 MB request limit), three at a time. */
-export async function saveTripCards(grant: string, site: string, days: {day: string; rows: AttendanceRow[]}[], onDay: (day: string, info: SavedInfo | null, error?: string) => void) {
+export async function saveTripCards(grant: string, site: string, days: {day: string; rows: AttendanceRow[]; signature?: string}[], onDay: (day: string, info: SavedInfo | null, error?: string) => void) {
   let next = 0;
   const failed: string[] = [];
   async function worker() {
     while (next < days.length) {
-      const {day, rows} = days[next++];
-      try { onDay(day, await api<SavedInfo & {day: string}>(grant, 'attendance/trip-cards', 'POST', {site, day, rows})); }
+      const {day, rows, signature} = days[next++];
+      try { onDay(day, await api<SavedInfo & {day: string}>(grant, 'attendance/trip-cards', 'POST', {site, day, rows, ...(signature ? {signature} : {})})); }
       catch (e) { failed.push(day); onDay(day, null, (e as Error).message); }
     }
   }

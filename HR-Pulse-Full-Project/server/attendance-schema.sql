@@ -133,6 +133,9 @@ CREATE TABLE IF NOT EXISTS hr_trip_card_days(
  saved_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(site,day)
 );
+-- Owner, 27 Nov 2026: Pulse-II is the master of trip card attendance. What Pulse-II signed for the site's day when the
+-- rows were read; the roster shows a saved day only while Pulse-II still gives this signature (NULL: saved before).
+ALTER TABLE hr_trip_card_days ADD COLUMN IF NOT EXISTS mis_signature text;
 
 -- Attendance roster › Biometric (owner, 23 Nov 2026): one site's biometric roster for one day (every punch on the site's
 -- machines, rated with the attendance policy), saved by "Save biometric" (biometric-day-store.mjs). register: the site

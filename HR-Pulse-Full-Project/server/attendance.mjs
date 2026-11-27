@@ -181,7 +181,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
 
  async function api(profile,route,method,input,params,grant){
   permit(profile);
-  if(route==='mis'||route==='mis/correction')return misAttendance(profile,grant,route,method,input,params);
+  if(route==='mis'||route.startsWith('mis/'))return misAttendance(profile,grant,route,method,input,params);
   if(route==='trip-cards')return tripCards(profile,method,input,params);
   const fetchId=route.match(/^fetch\/([0-9a-fA-F-]{36})$/)?.[1];
   if(route==='fetch'&&method==='POST')return tx(async db=>{

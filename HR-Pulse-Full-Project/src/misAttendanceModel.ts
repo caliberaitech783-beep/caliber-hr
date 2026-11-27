@@ -36,12 +36,20 @@ type MisReport = {
   details: (DutyIdentity & {batchStatus: string})[];
   exceptions: (DutyIdentity & {reason: string})[];
   corrections?: AttendanceCorrection[];
+  hrChanges?: HrChange[];
 };
+/** A change HR Pulse made in Pulse-II with an OTP (owner, 27 Nov 2026: Pulse-II is the master of trip card attendance).
+    absent: the trip card is kept, only its attendance is not counted; present: a Present entry made in Pulse-II. */
+export type HrChange = DutyIdentity & {id: string; mark: 'absent' | 'present'; employeeKey?: string; by: string; reason: string; at: string};
 export type CorrectionStatus = 'mis' | 'present' | 'absent' | 'pending';
 export type AttendanceCorrection = {
   id: string; status: CorrectionStatus; start: string; end: string; reason: string;
   version: number; updatedBy: string; updatedAt: string;
+  /** An absent / pending kept only in HR Pulse before 27 Nov 2026: shown, never applied. */
+  retired?: boolean;
 };
+/** Present / absent is decided in Pulse-II; a correction kept only in HR Pulse that said otherwise no longer counts. */
+export const retiredCorrection = (c?: AttendanceCorrection) => Boolean(c && (c.retired || c.status === 'absent' || c.status === 'pending'));
 type Window = {start: string; end: string; startMs: number; endMs: number};
 export type AttendanceRow = DutyIdentity & {
   id: string;
@@ -56,6 +64,8 @@ export type AttendanceRow = DutyIdentity & {
   window?: Window;
   status: 'Present' | 'Present · 0 trips' | 'Absent' | 'Pending';
   correction?: AttendanceCorrection;
+  /** What HR Pulse changed for this duty in Pulse-II (with an OTP). */
+  hrChange?: HrChange;
   verification: string;
   verified: boolean;
   otHours: number | null;
@@ -166,6 +176,24 @@ export function mapMisAttendance(value: unknown): AttendanceRow[] {
     };
   });
 
+  // What HR Pulse changed in Pulse-II: a duty marked absent is no longer sent as a duty, so it is listed here as an
+  // Absent line (the card is kept in Pulse-II); a Present entry HR made is one of the lines above and carries the change.
+  const byId = new Map(rows.map(row => [row.id, row]));
+  for (const change of Array.isArray(report.hrChanges) ? report.hrChanges : []) {
+    if (!change || typeof change.employeeId !== 'string' || typeof change.date !== 'string') continue;
+    const id = dutyKey(change), held = byId.get(id);
+    if (held) { held.hrChange = change; continue; }
+    if (change.mark !== 'absent') continue;
+    const row: AttendanceRow = {
+      id, date: change.date, site: change.site, siteKey: change.siteKey, shift: change.shift, employeeId: change.employeeId,
+      employeeKey: change.employeeKey || change.employeeId, employeeName: change.employeeName, caliberCode: change.employeeKey || '',
+      designation: '', sources: ['HR change'], equipment: [], references: '', note: existingValues(change.reason, change.by).join(' · '), output: '',
+      status: 'Absent', verification: 'Marked absent in HR Pulse (OTP) · trip card kept in MIS', verified: true, otHours: null, otNote: '', hrChange: change
+    };
+    rows.push(row);
+    byId.set(id, row);
+  }
+
   const slots = new Map<string, AttendanceRow[]>();
   const timelines = new Map<string, AttendanceRow[]>();
   for (const row of rows) {
@@ -178,7 +206,7 @@ export function mapMisAttendance(value: unknown): AttendanceRow[] {
     const correction = corrections.get(row.id);
     if (!correction) continue;
     row.correction = correction;
-    if (correction.status === 'mis') continue;
+    if (correction.status === 'mis' || retiredCorrection(correction)) continue;
     row.verified = correction.status !== 'pending';
     row.status = correction.status === 'present' ? presentStatus(row.sources.includes('Zero trip')) :
       correction.status === 'absent' ? 'Absent' : 'Pending';

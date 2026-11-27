@@ -72,6 +72,7 @@ export function tripDutyCode(row: AttendanceRow): string {
   return 'P';
 }
 
+const dayCode = (duties: TripDuty[]) => {const verified = duties.filter(d => d.code !== '?'); return verified.length ? verified.map(d => d.code).sort((a, b) => (RANK[b] || 0) - (RANK[a] || 0))[0] : '?';};
 /** One code per employee and date from that day's trip card duties (best duty wins; any unverified duty with no verified one is "?"). */
 export function tripCardDays(rows: AttendanceRow[]) {
   const byEmployee = new Map<string, {name: string; site: string; designation: string; days: Record<string, TripDay>}>();
@@ -83,8 +84,7 @@ export function tripCardDays(rows: AttendanceRow[]) {
     const code = tripDutyCode(row);
     day.duties.push({shift: row.shift, site: row.site, equipment: row.equipment.join(', '), output: row.output, status: row.status, verification: row.verification, code, cards: cardTypes(row.sources),
       time: row.window ? `${hm(row.window.startMs)}–${hm(row.window.endMs)}` : ''});
-    const verified = day.duties.filter(d => d.code !== '?');
-    day.code = verified.length ? verified.map(d => d.code).sort((a, b) => (RANK[b] || 0) - (RANK[a] || 0))[0] : '?';
+    day.code = dayCode(day.duties);
     person.days[row.date] = day;
     byEmployee.set(key, person);
   }
@@ -143,8 +143,15 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
       groups.push(group);
       byCode.set(code, group);
     }
-    group.tripDays = person.days;
-    group.hasTripCards = Object.keys(person.days).some(date => dates.includes(date));
+    // Two written forms of one person's code (CMPL8812 and CMLL8812) land on the same line: their days are added
+    // together, never the second in place of the first (a whole day was lost that way).
+    for (const [date, day] of Object.entries(person.days) as [string, TripDay][]) {
+      const held = group.tripDays[date];
+      if (!held) { group.tripDays[date] = day; continue; }
+      const duties = [...held.duties, ...day.duties];
+      group.tripDays[date] = {date, duties, code: dayCode(duties)};
+    }
+    group.hasTripCards = group.hasTripCards || Object.keys(person.days).some(date => dates.includes(date));
   }
   for (const group of groups) {
     const days = new Map((group.bio?.days || []).map(d => [d.date, d]));
