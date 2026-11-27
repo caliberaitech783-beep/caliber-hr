@@ -78,7 +78,7 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       const outMinute = times.length && times[times.length - 1] - times[0] > DOUBLE_PRESS ? times[times.length - 1] : null;
       const gate = passMinutes.get(employee.id + '|' + date) || 0;
       const wage = employee.dailyWage > 0 ? employee.dailyWage : employee.monthlyPay > 0 ? employee.monthlyPay / daysInMonth(date) : 0;
-      const result = evaluateDay({inMinute, outMinute, shiftStart: starts, shiftEnd: ends, designation: employee.designation,
+      const result = evaluateDay({inMinute, outMinute, shiftStart: starts, shiftEnd: ends, designation: employee.designation, site: employee.site,
         gatePassMinutes: gate, dailyWage: wage}, policy);
       const holiday = holidayFor(date);
       const leave = leaves.find(l => l.employeeId === employee.id && between(date, l.from, l.to));

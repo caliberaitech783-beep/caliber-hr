@@ -52,7 +52,7 @@ export function correctedDay(day, correction, row, policy = DEFAULT_POLICY) {
     if (outMinute != null && outMinute <= inMinute) outMinute += 1440;
     const starts = minutesOf(row?.shiftStart), rawEnd = minutesOf(row?.shiftEnd);
     const ends = starts != null && rawEnd != null ? (rawEnd <= starts ? rawEnd + 1440 : rawEnd) : null;
-    const result = evaluateDay({inMinute, outMinute, shiftStart: starts, shiftEnd: ends, designation: row?.designation || '',
+    const result = evaluateDay({inMinute, outMinute, shiftStart: starts, shiftEnd: ends, designation: row?.designation || '', site: row?.site || '',
       gatePassMinutes: day.gatePassMinutes || 0}, policy);
     const counts = ['P', 'HD', 'A', 'MP'].includes(result.status);
     next = {...next, status: result.status, in: clock(inMinute), out: clock(outMinute), workedMinutes: counts ? result.workedMinutes : null,

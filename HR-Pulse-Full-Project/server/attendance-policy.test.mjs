@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DEFAULT_POLICY, validatePolicy, clockMinutes, durationMinutes, workedMinutes, dutyStatus, isLate, isEarly,
-  halfDutyCuts, gatePassDeduction, isExempt, evaluateDay, summarizeMonth, policyRules} from './attendance-policy.mjs';
+  halfDutyCuts, gatePassDeduction, isExempt, noBiometricHalfDay, evaluateDay, summarizeMonth, policyRules} from './attendance-policy.mjs';
 
 const at = clock => clockMinutes(clock);
 const span = (hours, minutes) => hours * 60 + minutes;   // worked time after lunch
@@ -32,6 +32,22 @@ test('hours boundaries: 3:59 absent, 4:00 half, 6:59 half, 7:00 full', () => {
   assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('13:00')}).status, 'HD');
   assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('15:59')}).status, 'HD');
   assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('16:00')}).status, 'P');
+});
+
+test('OB site drivers and operators have no biometric half day (owner, 27 Nov 2026)', () => {
+  const six = {inMinute: at('06:10'), outMinute: at('13:10')};   // 6 h worked: half duty elsewhere
+  assert.equal(noBiometricHalfDay('Dhoptala OB 2nd', 'DOZER OPERATOR'), true);
+  assert.equal(noBiometricHalfDay('Jayant OB', 'Tipper Driver'), true);
+  assert.equal(noBiometricHalfDay('Sasti OC', 'Tipper Driver'), false);
+  assert.equal(noBiometricHalfDay('Dhoptala OB 2nd', 'Helper'), false);
+  assert.equal(noBiometricHalfDay('Dhoptala OB 2nd', 'Operations Manager'), false);
+  assert.equal(evaluateDay({...six, designation: 'DOZER OPERATOR', site: 'Dhoptala OB 2nd'}).status, 'P');
+  assert.equal(evaluateDay({...six, designation: 'TIPPER DRIVER', site: 'Dhoptala OB 2nd'}).status, 'P');
+  assert.equal(evaluateDay({...six, designation: 'Helper', site: 'Dhoptala OB 2nd'}).status, 'HD');
+  assert.equal(evaluateDay({...six, designation: 'Tipper Driver', site: 'Sasti OC'}).status, 'HD');
+  // under the absent limit and a single punch are unchanged
+  assert.equal(evaluateDay({inMinute: at('08:00'), outMinute: at('12:59'), designation: 'Driver', site: 'Jayant OB'}).status, 'A');
+  assert.equal(evaluateDay({inMinute: at('08:00'), designation: 'Driver', site: 'Jayant OB'}).status, 'MP');
 });
 
 test('biometric punches of an operator follow the hours rule (trip cards do not: a punched card is Present)', () => {

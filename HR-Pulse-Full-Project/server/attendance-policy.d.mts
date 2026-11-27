@@ -19,8 +19,9 @@ export function isEarly(outMinute: number | null, shiftEnd: number | null): bool
 export function halfDutyCuts(lateEarlyCount: number, policy?: AttendancePolicy): number;
 export function gatePassDeduction(totalMinutes: number, dailyWage: number, policy?: AttendancePolicy): number;
 export function isExempt(designation: string, policy?: AttendancePolicy): boolean;
+export function noBiometricHalfDay(site: string, designation: string): boolean;
 export function evaluateDay(day?: {inMinute?: number | null; outMinute?: number | null; shiftStart?: number | null; shiftEnd?: number | null;
-  designation?: string; gatePassMinutes?: number; dailyWage?: number}, policy?: AttendancePolicy): DayResult;
+  designation?: string; site?: string; gatePassMinutes?: number; dailyWage?: number}, policy?: AttendancePolicy): DayResult;
 export function summarizeMonth(days: Partial<DayResult>[], policy?: AttendancePolicy): {
   full: number; half: number; absent: number; missPunch: number; late: number; early: number; lateEarly: number;
   halfDutyCuts: number; duties: number; gatePassDeduction: number;
