@@ -312,10 +312,13 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   const unlinkedKeys=new Set(unlinked.map(r=>`${r.device_serial}|${r.biometric_id}`));
   let others = [];
   if (unlinked.length) {
+    const unlinkedBiometricIds=[...new Set(unlinked.map(r=>String(r.biometric_id)))];
     const [{rows: punches}, {rows: holidays}] = await Promise.all([
-      db.query(`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM ${punchTable} p
+      db.query(manual?`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM ${punchTable} p
+       WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
+        AND p.biometric_id=ANY($4::text[])`:`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM ${punchTable} p
        LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
-       WHERE ${manual?'true':'l.employee_id IS NULL'} AND p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, [serials, from, to]),
+       WHERE l.employee_id IS NULL AND p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, manual?[serials, from, to, unlinkedBiometricIds]:[serials, from, to]),
       db.query(`SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
        WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to])
     ]);

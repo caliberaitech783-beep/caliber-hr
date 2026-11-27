@@ -6,9 +6,10 @@ import {loadSiteRegister} from './attendance-register.mjs';
 function fakeDb({machines = [], punches = [], employeeCodes = {}} = {}) {
   const links = {'SST01|1021': 'emp-1', 'SST02|1021': 'emp-1'}, names = {'SST01|1021': 'RAMESH', 'SST02|77': 'RAMU'};
   const place = {SST01: 'Main gate', SST02: 'Workshop'};
-  const calls = [];
-  return {calls, async query(sql, params = []) {
+  const calls = [],parameters=[];
+  return {calls,parameters, async query(sql, params = []) {
     calls.push(sql);
+    parameters.push(params);
     if (/FROM hr_attendance_policy/.test(sql)) return {rows: []};
     if (/FROM hr_attendance_devices d LEFT JOIN hr_attendance_bridges/.test(sql)) return {rows: machines};
     if (/GROUP BY 1,2,3,4/.test(sql)) {
@@ -70,6 +71,19 @@ test('manual biometric treats the imported value as employee code and shows the 
  assert.deepEqual([employee.code,employee.name,employee.department,employee.designation,employee.site,employee.linked],['CMLL17416','Anil Kumar','Operations','Driver','Sasti OC',true]);
  assert.deepEqual(employee.machinesUsed,['JNP2242101100']);
  assert.ok(db.calls.some(sql=>/WITH punch_ids AS/.test(sql)&&/p\.punched_at>=\$2::date AND p\.punched_at<\$3::date\+1/.test(sql)&&/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)));
+});
+
+test('WCL manual biometric reads only unmatched IDs when loading a large imported log',async()=>{
+ const importedMachine={...machines[0],serial:'MAJRI-01'};
+ const db=fakeDb({machines:[importedMachine],punches:[
+  {serial:'MAJRI-01',id:'17416',at:'2026-11-02 04:42'},
+  {serial:'MAJRI-01',id:'UNKNOWN-7',at:'2026-11-02 20:37'}
+ ],employeeCodes:{'17416':{id:'emp-17416',code:'CMLL17416',name:'Anil Kumar',department:'Operations',designation:'Driver'}}});
+ await loadSiteRegister(db,{id:'site-majri',name:'Majri OB',siteType:'Site'},'2026-11-01','2026-11-27','2026-11-27',{manual:true});
+ const index=db.calls.findIndex(sql=>/p\.biometric_id=ANY\(\$4::text\[\]\)/.test(sql));
+ assert.notEqual(index,-1,'manual unmatched-punch query is restricted in SQL');
+ assert.doesNotMatch(db.calls[index],/hr_attendance_links/);
+ assert.deepEqual(db.parameters[index][3],['UNKNOWN-7']);
 });
 
 test('NCL manual biometric matches A-Form No. while WCL continues to match Employee ID',async()=>{
