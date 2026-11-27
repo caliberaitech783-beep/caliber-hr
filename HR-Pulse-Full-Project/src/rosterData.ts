@@ -98,7 +98,7 @@ export async function fetchBiometric(grant: string, from: string, to: string, si
   return {...register, rows: Array.isArray(register?.rows) ? register.rows : [], machines: Array.isArray(register?.machines) ? register.machines : []};
 }
 export async function fetchManualBiometric(grant:string,from:string,to:string,site:string):Promise<SiteRegister>{
- const register=await api<SiteRegister>(grant,'attendance/manual-biometric?'+new URLSearchParams({site,from,to}));
+ const register=await api<SiteRegister>(grant,'attendance/manual-biometric?'+new URLSearchParams({site,from,to}),'GET',undefined,BIO_DAY_TIMEOUT_MS);
  return {...register,rows:Array.isArray(register?.rows)?register.rows:[],machines:Array.isArray(register?.machines)?register.machines:[]};
 }
 export type FetchRequest = {id: string; state: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'; punchesReceived: number; newPunches: number; error: string};

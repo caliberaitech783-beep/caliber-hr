@@ -241,6 +241,16 @@ it('reports each day as it arrives so the muster fills in day by day',async()=>{
  expect(stream.rows['2026-11-02'].every(r=>r.date==='2026-11-02'&&r.site==='Gevra')).toBe(true);
 });
 
+it('gives Manual Biometric the extended biometric report timeout',async()=>{
+ const timeout=vi.spyOn(AbortSignal,'timeout');
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json({rows:[],machines:[]})));
+ try{
+  const {BIO_DAY_TIMEOUT_MS,fetchManualBiometric}=await import('./rosterData');
+  await fetchManualBiometric('a'.repeat(43),'2026-11-01','2026-11-20','Dhoptala OB 2nd');
+  expect(timeout).toHaveBeenLastCalledWith(BIO_DAY_TIMEOUT_MS);
+ }finally{timeout.mockRestore();}
+});
+
 it('opens saved trip cards at once, reads MIS only for the other days, and saves them',async()=>{
  const {AttendanceRosterPage}=await import('./AttendanceRoster');
  const calls:{url:string;method:string;body?:{day:string;rows:unknown[]}}[]=[];
