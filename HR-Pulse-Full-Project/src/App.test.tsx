@@ -241,7 +241,7 @@ it('restores a saved session with one authenticated configuration request',async
  expect(request).toHaveBeenCalledWith(expect.stringMatching(/\/api\/config$/),expect.anything());
 });
 
-it('keeps the saved session during an API outage and retries configuration',async()=>{
+it('keeps the saved session and automatically retries configuration during a temporary API outage',async()=>{
  const profile={name:'Saved user',actor:'test',permissions:{application:'HR',hrDesktopAccess:[]}};
  sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
  /* Answer by address: timers left by earlier tests in this file may also call fetch on a slow CI machine,
@@ -252,10 +252,9 @@ it('keeps the saved session during an API outage and retries configuration',asyn
   :Response.json({}));
  vi.stubGlobal('fetch',request);
  render(<App/>);
- expect(await screen.findByRole('alert')).toHaveTextContent('Unable to complete the request');
- expect(sessionStorage.getItem('hrPulseSession')).not.toBeNull();
- fireEvent.click(screen.getByRole('button',{name:'Retry connection'}));
  await screen.findByText('No HR menus are assigned. Contact your Pulse administrator.');
+ expect(sessionStorage.getItem('hrPulseSession')).not.toBeNull();
+ expect(screen.queryByRole('alert')).toBeNull();
  expect(configCalls()).toBe(2);
 });
 
