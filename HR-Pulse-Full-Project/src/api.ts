@@ -14,16 +14,27 @@ export async function pulse(action:string,data:object){
 }
 export function clearSession(){localStorage.removeItem('hrPulseSession');sessionStorage.removeItem('hrPulseSession');}
 export function savedSession():Session|null{try{return JSON.parse(sessionStorage.getItem('hrPulseSession')||localStorage.getItem('hrPulseSession')||'null');}catch{return null;}}
+const READ_RETRY_STATUSES=new Set([429,500,502,503,504]);
+let apiRetryPause=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
+/** Tests remove the retry delay; production keeps the short backoff. */
+export const setApiRetryPause=(pause:typeof apiRetryPause)=>{apiRetryPause=pause;};
 /** timeoutMs: how long the browser waits; a heavier read (a site's biometric day) may ask for longer. */
 export async function api<T>(grant:string,path:string,method='GET',body?:unknown,timeoutMs=30000):Promise<T>{
-  const response=await fetch(API+'/api/'+path,{method,headers:{Authorization:'Bearer '+grant,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(timeoutMs)});
-  if(!response.ok){
-    if(response.status===401){clearSession();window.dispatchEvent(new Event('hr-session-expired'));}
-    const result=await response.json().catch(()=>null);
-    throw new Error(result?.error||'Unable to complete the request');
+  const read=method==='GET',streamedAttendance=/^attendance\/(?:mis|site-register|manual-biometric)(?:\?|$)/.test(path),retryHere=read&&!streamedAttendance,attempts=retryHere?3:1;
+  for(let attempt=1;attempt<=attempts;attempt++){
+    let response:Response;
+    try{response=await fetch(API+'/api/'+path,{method,headers:{Authorization:'Bearer '+grant,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(timeoutMs)});}
+    catch(error){if(retryHere&&attempt<attempts){await apiRetryPause(350*attempt);continue;}throw new Error(error instanceof DOMException&&error.name==='TimeoutError'?'HR Pulse took too long to answer. Try again.':'HR Pulse could not be reached. Check the connection and try again.');}
+    if(!response.ok){
+      if(response.status===401){clearSession();window.dispatchEvent(new Event('hr-session-expired'));}
+      const result=await response.json().catch(()=>null);
+      if(retryHere&&attempt<attempts&&READ_RETRY_STATUSES.has(response.status)){await apiRetryPause(350*attempt);continue;}
+      throw new Error(result?.error||`Unable to complete the request (HTTP ${response.status}).`);
+    }
+    const result=await response.json();
+    return displaySiteRecords(result,path.split('?')[0]==='hierarchies'||/^records\/(sites|joiningHierarchies)(\/|$)/.test(path.split('?')[0]));
   }
-  const result=await response.json();
-  return displaySiteRecords(result,path.split('?')[0]==='hierarchies'||/^records\/(sites|joiningHierarchies)(\/|$)/.test(path.split('?')[0]));
+  throw new Error('Unable to complete the request. Try again.');
 }
 export function csv(columns:string[],rows:Record<string,unknown>[]){
   const cell=(value:unknown)=>{let s=String(value??'');if(/^[=+@\-\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};
