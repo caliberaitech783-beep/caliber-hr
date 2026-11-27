@@ -3,6 +3,7 @@ import {siteIds} from './scope.mjs';
 const ORIGIN = 'https://pulse-ll.cmll.in';
 const FIRST_DATE = '2026-11-01';
 const DAY = 86_400_000;
+export const MIS_ATTENDANCE_CACHE_MS = 30_000;
 const sections = ['attendanceEquipment', 'attendanceShifts', 'otDuties', 'ot', 'performance', 'details', 'exceptions'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), {status}); };
 const dayString = stamp => new Date(stamp).toISOString().slice(0, 10);
@@ -79,9 +80,13 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     try {
       await db.query('SELECT pg_advisory_lock(hashtext($1))', [key]);
       const cached = (await db.query('SELECT report,fetched_at FROM hr_mis_attendance_cache WHERE cache_key=$1', [key])).rows[0];
+      const fetchedAt = cached ? Date.parse(cached.fetched_at) : NaN;
+      const fresh = Number.isFinite(fetchedAt) && requestedAt.getTime() - fetchedAt <= MIS_ATTENDANCE_CACHE_MS;
       // A refresh that waited behind another PC uses the snapshot that PC just refreshed.
-      if (cached && (!refresh || new Date(cached.fetched_at) >= requestedAt)) return cached.report;
-      const report = await read(grant, from, to, selectedSite, refresh);
+      if (cached && (refresh ? fetchedAt >= requestedAt.getTime() : fresh)) return cached.report;
+      // A stale HR snapshot may also be hiding behind Pulse-II's cache. Refresh both layers so newly saved old VLB,
+      // ELB and LMV records appear without a special correction for that employee or date.
+      const report = await read(grant, from, to, selectedSite, refresh || Boolean(cached));
       await db.query(`INSERT INTO hr_mis_attendance_cache(cache_key,report,fetched_by,fetched_at) VALUES($1,$2,$3,now())
         ON CONFLICT(cache_key) DO UPDATE SET report=EXCLUDED.report,fetched_by=EXCLUDED.fetched_by,fetched_at=now()`, [key, report, profile.actor]);
       return report;

@@ -1,6 +1,6 @@
 import {strict as assert} from 'node:assert';
 import {test} from 'node:test';
-import {createMisAttendance} from './mis-attendance.mjs';
+import {createMisAttendance,MIS_ATTENDANCE_CACHE_MS} from './mis-attendance.mjs';
 
 const duty = {date: '2026-11-16', site: 'Jayant OB', shift: 'S1', employeeId: 'DEMO-1'};
 const grant = 'a'.repeat(43);
@@ -83,6 +83,40 @@ test('two PCs receive the same centrally cached site and day report', async () =
   assert.equal(fetches, 1);
   assert.equal(requestedUrl.searchParams.get('site'), 'Gevra');
   assert.deepEqual(second.otDuties, first.otDuties);
+});
+
+test('a stale historical snapshot refreshes Pulse-II and returns newly saved trip cards', async () => {
+  const oldReport = {...report, otDuties: []};
+  const refreshedDuty = {...duty, date: '2026-11-17', site: 'Dhoptala OB (2nd)', shift: 'S3', employeeId: 'CMPL21449'};
+  const refreshedReport = {...report, otDuties: [refreshedDuty]};
+  let cached = {report: oldReport, fetched_at: new Date(Date.now() - MIS_ATTENDANCE_CACHE_MS - 1)};
+  let requestedUrl, fetches = 0;
+  const db = {
+    async query(sql, args) {
+      if (sql.startsWith('SELECT report')) return {rows: [cached]};
+      if (sql.startsWith('INSERT INTO hr_mis_attendance_cache')) cached = {report: args[1], fetched_at: new Date()};
+      return {rows: []};
+    },
+    release() {}
+  };
+  const pool = {
+    connect: async () => db,
+    async query(sql) {
+      if (sql.includes('hr_mis_attendance_corrections')) return {rows: []};
+      if (sql.includes("kind='sites'")) return {rows: [{name: 'Dhoptala OB 2nd'}]};
+      return {rows: []};
+    }
+  };
+  const api = createMisAttendance(pool, {fetchMis: async url => {
+    fetches++;
+    requestedUrl = url;
+    return Response.json(refreshedReport);
+  }});
+  const result = await api({actor: 'site-hr', permissions: {}}, grant, 'mis', 'GET', {},
+    new URLSearchParams({from: '2026-11-17', to: '2026-11-17', site: 'Dhoptala OB 2nd'}));
+  assert.equal(fetches, 1);
+  assert.equal(requestedUrl.searchParams.get('refresh'), '1');
+  assert.deepEqual(result.otDuties, [refreshedDuty]);
 });
 
 test('an explicit refresh forwards the exact selected site and bypass flag to Pulse-II', async () => {

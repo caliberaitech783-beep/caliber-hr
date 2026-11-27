@@ -26,6 +26,18 @@ it('marks a punched trip card Present whatever its hours (no 4-hour half day)',(
  expect(tripDutyCode(trips[3])).toBe('?');
 });
 
+it('marks the employee Present for the date when Shift 3 is present and Shift 1 and 2 are absent',()=>{
+ const date='2026-11-17';
+ const shiftDuties=[
+  duty(date,{id:'s1',shift:'S1',status:'Absent'}),
+  duty(date,{id:'s2',shift:'S2',status:'Absent'}),
+  duty(date,{id:'s3',shift:'S3',status:'Present'})
+ ];
+ const [group]=buildRoster([{...bio,days:[day(date,'P')]}],shiftDuties,[date],'2026-11-18',DEFAULT_POLICY);
+ expect(group.tripCodes[date]).toBe('P');
+ expect(group.tripDays[date].duties).toHaveLength(3);
+});
+
 it('joins trip card and biometric on the Caliber code and lists the days that differ',()=>{
  const [g]=buildRoster([bio],trips,dates,'2026-11-06',DEFAULT_POLICY);
  expect(dates.map(d=>g.tripCodes[d])).toEqual(['WO','P','P','P','?']);
