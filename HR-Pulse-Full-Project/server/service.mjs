@@ -11,7 +11,7 @@ import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval,isDriverO
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
 import {createEmployeeMasterRegister,isEmployeeEntry} from './employee-master-register.mjs';
-import {employeeNumber,heldNumbers,nextEmployeeNumber,otherPersonWithNumber,holderLine,NUMBER_FLOOR,OUR_PREFIXES} from './employee-number.mjs';
+import {employeeNumber,heldNumbers,nextEmployeeNumber,otherPersonWithNumber,holderLine,OUR_PREFIXES,inSeries} from './employee-number.mjs';
 import {createMisEmployeeSync} from './mis-employee-sync.mjs';
 import {createMisSiteMove} from './mis-site-move.mjs';
 import {createMisBiometricPunches} from './mis-biometric-punches.mjs';
@@ -621,8 +621,9 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         await db.query('SELECT pg_advisory_xact_lock(hashtext($1))',['employee-code:'+(ours?'CMLL':prefix)]);
         if(aadhaar.length===12){const held=(await db.query("SELECT code FROM hr_records WHERE kind='employeeCodes' AND data->>'aadhaar'=$1 AND code LIKE $2",[aadhaar,prefix+'%'])).rows[0];
           if(held){
-            /* A number reserved under the old counting and not yet used by a form may be a working employee's: it is given up. */
-            const stale=ours&&Number(employeeNumber(held.code))<=NUMBER_FLOOR&&!(await db.query("SELECT 1 FROM hr_records WHERE kind='employees' AND code=$1",[held.code])).rowCount;
+            /* A number reserved under the old counting (may be a working employee's) or outside the five-digit series,
+               and not yet used by a form, is given up. */
+            const stale=ours&&!inSeries(employeeNumber(held.code))&&!(await db.query("SELECT 1 FROM hr_records WHERE kind='employees' AND code=$1",[held.code])).rowCount;
             if(!stale)return {code:held.code,prefix,reused:true};
             await db.query("DELETE FROM hr_records WHERE kind='employeeCodes' AND code=$1",[held.code]);
           }

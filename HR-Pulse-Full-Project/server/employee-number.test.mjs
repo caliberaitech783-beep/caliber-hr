@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {employeeNumber,typedIdProblem,nextEmployeeNumber,samePerson,heldNumbers,numberHolders,otherPersonWithNumber,holderLine,NUMBER_FLOOR} from './employee-number.mjs';
+import {employeeNumber,typedIdProblem,nextEmployeeNumber,samePerson,heldNumbers,numberHolders,otherPersonWithNumber,holderLine,NUMBER_FLOOR,NUMBER_CEILING,inSeries} from './employee-number.mjs';
 import {createEmployeeMasterRegister,isEmployeeEntry} from './employee-master-register.mjs';
 import {employeeNumber as feedNumber} from './mis-employee-sync.mjs';
 
@@ -34,6 +34,14 @@ test('a new number is above the old numbering and never one somebody holds',()=>
  assert.equal(nextEmployeeNumber([22501,22502,22504],[22501,22502]),22503);
  assert.equal(nextEmployeeNumber([69999,70000,70001],[69999]),70002);
  assert.equal(nextEmployeeNumber([],[]),22501);
+});
+
+test('a number longer than five digits never moves the series (CMLL123456816 typed by mistake)',()=>{
+ assert.equal(NUMBER_CEILING,99999);
+ assert.equal(nextEmployeeNumber([21955,123456816],[123456816]),22501);
+ assert.equal(nextEmployeeNumber([22501,22502,123456816,123456817],[22501,22502,123456816,123456817]),22503);
+ assert.equal(inSeries(22501),true);assert.equal(inSeries(99999),true);
+ assert.equal(inSeries(22500),false);assert.equal(inSeries(123456817),false);
 });
 
 test('two names of one person, and two people',()=>{
