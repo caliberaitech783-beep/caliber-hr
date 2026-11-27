@@ -194,6 +194,8 @@ it('Attendance roster tab: site first, Trip card reads MIS week by week, Biometr
  const comparison=await screen.findByRole('tablist',{name:'Employee comparison status'});
  expect(within(comparison).getByRole('tab',{name:/Affected Employees/})).toHaveAttribute('aria-selected','true');
  expect(within(comparison).getByRole('tab',{name:/All OK/})).toBeTruthy();
+ expect(screen.queryByRole('region',{name:'Affected employee details'})).toBeNull();
+ fireEvent.click(within(comparison).getByRole('tab',{name:/Affected Employees/}));
  const breakdown=await screen.findByRole('region',{name:'Affected employee details'});
  const viewDates=within(breakdown).getAllByRole('button',{name:'View dates'})[0];
  const employeeRow=viewDates.closest('tr')!;

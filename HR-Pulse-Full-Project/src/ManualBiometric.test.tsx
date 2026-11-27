@@ -42,6 +42,8 @@ describe('Manual Biometric attendance roster',()=>{
    mismatches:[{date:'2026-11-02',bio:'A',trip:'P',reason:'Attendance status differs',bioDetail:'',tripDetail:''},{date:'2026-11-03',bio:'',trip:'P',reason:'Trip Card present, biometric missing',bioDetail:'',tripDetail:''},{date:'2026-11-04',bio:'P',trip:'',reason:'Biometric present, Trip Card missing',bioDetail:'',tripDetail:''}]},
    {key:'2',code:'CMLL17417',name:'Matching Employee',site:'Dhoptala OB 2nd',department:'Driver',designation:'Driver',shift:'',exempt:false,bioCodes:{'2026-11-01':'P'},tripCodes:{'2026-11-01':'P'},tripDays:{},hasTripCards:true,pending:0,machines:[],linked:true,mismatches:[]}];
   render(<RosterTable groups={groups as never} dates={['2026-11-01','2026-11-02','2026-11-03','2026-11-04']} view="manualMismatch" trip={trip} monthly={false} from="2026-11-01" to="2026-11-04"/>);
+  expect(screen.queryByRole('region',{name:/employee details/})).not.toBeInTheDocument();
+  expect(screen.getByRole('table',{name:'Manual Biometric and Trip Card comparison'})).toBeInTheDocument();
   expect(screen.getAllByText('P / P').length).toBeGreaterThan(0);
   expect(screen.getAllByText('A / P').length).toBeGreaterThan(0);
   expect(screen.getByRole('button',{name:/P \/ PBoth present/})).toBeInTheDocument();
