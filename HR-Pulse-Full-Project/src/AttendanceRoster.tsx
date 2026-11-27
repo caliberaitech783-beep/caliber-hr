@@ -307,7 +307,23 @@ type TripStream={key:string;days:Record<string,DayState>;rows:Record<string,Atte
  /** saved: days opened from (or written to) the saved copy; fresh: days read from MIS and not saved yet. */
  saved:Record<string,SavedInfo>;fresh:string[];save:{running:boolean;done:number;total:number;failed:string[];error:string}|null};
 const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null};
+/** What decides a day's attendance in a duty; the saved copy and MIS are the same day when these agree. */
+const dutySignature=(rows:AttendanceRow[])=>rows.map(r=>[r.id,r.shift,r.employeeId,r.caliberCode||'',r.status,r.verified,r.output,r.sources.join('/'),r.equipment.join('/')].join('|')).sort().join('\n');
+export const sameDuties=(a:AttendanceRow[]=[],b:AttendanceRow[]=[])=>a.length===b.length&&dutySignature(a)===dutySignature(b);
+/** Only a day MIS has locked is saved: it has trip cards and every one is verified (a closed batch). An empty day or one
+    with a pending duty is read from MIS every time, so it can never be kept as a wrong absence (27 Nov 2026). */
+export const savableDay=(rows:AttendanceRow[]=[])=>rows.length>0&&rows.every(r=>r.verified);
 export function applyDay(stream:TripStream,u:DayUpdate):TripStream{
+ // A saved day that MIS sends back unchanged stays "saved"; one that changed takes MIS's duties and can be saved again.
+ if(u.state==='done'&&stream.saved[u.day]&&sameDuties(stream.rows[u.day],u.rows)){
+  const errors={...stream.errors};delete errors[u.day];
+  return {...stream,days:{...stream.days,[u.day]:'done'},errors,sites:u.sites?[...new Set([...stream.sites,...u.sites])].sort():stream.sites};
+ }
+ // While a saved day is read again its saved duties stay on screen; a failed read keeps them too.
+ if(stream.saved[u.day]&&u.state!=='done'){
+  const errors={...stream.errors};if(u.state==='failed')errors[u.day]=u.error||'MIS did not answer';
+  return {...stream,days:{...stream.days,[u.day]:u.state==='failed'?'failed':'done'},errors};
+ }
  const days={...stream.days,[u.day]:u.state},errors={...stream.errors},rows=u.state==='done'?{...stream.rows,[u.day]:u.rows||[]}:stream.rows;
  if(u.state==='failed')errors[u.day]=u.error||'MIS did not answer';else if(u.state==='done')delete errors[u.day];
  const done=u.state==='done',saved=done?Object.fromEntries(Object.entries(stream.saved).filter(([d])=>d!==u.day)):stream.saved;
@@ -371,8 +387,10 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    const have=saved.filter(d=>all.includes(d.day));
    setTrip(t=>t.key!==runKey?t:{...t,days:{...t.days,...Object.fromEntries(have.map(d=>[d.day,'done' as DayState]))},rows:{...t.rows,...Object.fromEntries(have.map(d=>[d.day,d.rows]))},
     saved:{...t.saved,...Object.fromEntries(have.map(d=>[d.day,{savedBy:d.savedBy,savedAt:d.savedAt}]))}});
+   // A saved day is shown at once and still read from MIS (owner, 27 Nov 2026): cards added or corrected in MIS after
+   // the save (Majri OC 8 Nov lost 36 duties that way) replace the saved copy on screen and are offered to Save again.
    const missing=all.filter(d=>!have.some(x=>x.day===d));
-   if(missing.length)readTrip(missing);
+   readTrip([...missing,...have.map(d=>d.day).filter(d=>all.includes(d))]);
   }).catch(()=>{if(keyRef.current===runKey)readTrip(all);})
    .finally(()=>setTrip(t=>t.key===runKey?{...t,runs:t.runs-1}:t));
  },[wantTrip,key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -388,7 +406,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  }
  /** Save trip cards: every day read from MIS and not saved yet, one day per request. */
  function saveTrip(){
-  const runKey=key,list=trip.fresh.filter(d=>trip.days[d]==='done').sort().map(day=>({day,rows:trip.rows[day]||[]}));
+  const runKey=key,list=trip.fresh.filter(d=>trip.days[d]==='done'&&savableDay(trip.rows[d])).sort().map(day=>({day,rows:trip.rows[day]||[]}));
   if(!list.length)return;
   setTrip(t=>({...t,save:{running:true,done:0,total:list.length,failed:[],error:''}}));
   void saveTripCards(grant,site,list,(day,info,error)=>setTrip(t=>{
@@ -512,7 +530,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   message:`Reading trip cards from MIS · ${finished} of ${total||'…'} days${retrying?` · ${retrying} retrying`:''}${failedDays.length?` · ${failedDays.length} not read`:''}`,
   rows:tripRows,failed:failedDays,misSites:trip.key===key?trip.sites:[],days:trip.key===key?trip.days:undefined,errors:trip.key===key?trip.errors:undefined,
   onRetry:list=>readTrip(list,true)};
- const savedDays=trip.key===key?Object.entries(trip.saved):[],freshDone=trip.key===key?trip.fresh.filter(d=>trip.days[d]==='done'):[],save=trip.key===key?trip.save:null;
+ const savedDays=trip.key===key?Object.entries(trip.saved):[],freshDone=trip.key===key?trip.fresh.filter(d=>trip.days[d]==='done'&&savableDay(trip.rows[d])):[],save=trip.key===key?trip.save:null;
  const latest=savedDays.map(([,info])=>info).sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)))[0];
  const when=(at:string)=>{const t=Date.parse(at);return Number.isFinite(t)?new Date(t).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):at;};
  tripState.onSave=saveTrip;

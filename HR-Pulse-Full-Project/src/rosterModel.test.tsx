@@ -64,6 +64,16 @@ it('safely reconciles an old CMPL trip-card prefix with the unique CMLL employee
  expect(groups[0].mismatches[0].reason).toBe('Trip card on duty, biometric miss punch');
 });
 
+it('shows a day with no trip card at the site as not verified yet (?), not absent: MIS has not locked it',()=>{
+ const two=['2026-11-21','2026-11-22'],person={...bio,days:[day('2026-11-21','P'),day('2026-11-22','P')]};
+ const [g]=buildRoster([person],[duty('2026-11-21')],two,'2026-11-27',DEFAULT_POLICY);
+ expect(two.map(d=>g.tripCodes[d])).toEqual(['P','?']);
+ expect(g.mismatches).toHaveLength(0);
+ // Once MIS sends the day with other people's cards, a punched person without a card of that day is absent on it.
+ const [h]=buildRoster([person],[duty('2026-11-21'),duty('2026-11-22',{caliberCode:'CMPL999',employeeName:'Someone else'})],two,'2026-11-27',DEFAULT_POLICY);
+ expect(two.map(d=>h.tripCodes[d])).toEqual(['P','A']);
+});
+
 it('does not guess when a legacy trip-card code could identify more than one employee',()=>{
  const date='2026-11-08',same={...bio,name:'Same Name',site:'Majri OC',days:[day(date,'P')]};
  const groups=buildRoster([{...same,id:'one',code:'CMLL0099'},{...same,id:'two',code:'OTHER99'}],[duty(date,{caliberCode:'CMPL99',employeeName:'Same Name',site:'Majri OC'})],[date],'2026-11-09');
@@ -283,7 +293,7 @@ it('gives Manual Biometric the extended biometric report timeout',async()=>{
  }finally{timeout.mockRestore();}
 });
 
-it('opens saved trip cards at once, reads MIS only for the other days, and saves them',async()=>{
+it('opens saved trip cards at once, checks every day against MIS, and saves the days not saved yet',async()=>{
  const {AttendanceRosterPage}=await import('./AttendanceRoster');
  const calls:{url:string;method:string;body?:{day:string;rows:unknown[]}}[]=[];
  const savedDay=misReport();
@@ -306,7 +316,7 @@ it('opens saved trip cards at once, reads MIS only for the other days, and saves
  fireEvent.click(screen.getByRole('button',{name:'Trip card (VLB · ELB · LMV)'}));
  const save=await screen.findByRole('button',{name:'Save trip cards (2 days)'});
  expect(screen.getByText(/Saved copy: 1 of 3 days .*by vinod\)\. 2 days read from MIS are not saved yet\./)).toBeTruthy();
- expect(calls.filter(c=>c.url.includes('attendance/mis')).map(c=>new URL(c.url,'https://x').searchParams.get('from')).sort()).toEqual(['2026-11-03','2026-11-04']);
+ expect(calls.filter(c=>c.url.includes('attendance/mis')).map(c=>new URL(c.url,'https://x').searchParams.get('from')).sort()).toEqual(['2026-11-02','2026-11-03','2026-11-04']);
  fireEvent.click(save);
  await screen.findByRole('button',{name:'Saved'});
  const posts=calls.filter(c=>c.method==='POST');
@@ -314,7 +324,25 @@ it('opens saved trip cards at once, reads MIS only for the other days, and saves
  expect(posts.every(c=>c.body!.rows.length>0)).toBe(true);
  expect(screen.getByText(/Saved copy: 3 of 3 days/)).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:/Fetch again/}));
- await waitFor(()=>expect(calls.filter(c=>c.url.includes('attendance/mis')).length).toBe(5));
+ await waitFor(()=>expect(calls.filter(c=>c.url.includes('attendance/mis')).length).toBe(6));
+});
+
+it('replaces a saved day that MIS has changed since (cards added after the save) and offers it to save again',async()=>{
+ const {applyDay,savableDay}=await import('./AttendanceRoster');
+ const {mapMisAttendance}=await import('./misAttendanceModel');
+ const live=mapMisAttendance(misReport()).filter(r=>r.date==='2026-11-02'&&r.site==='Gevra');
+ const old=live.map(r=>({...r,output:'9 trips'}));
+ const base={key:'k',days:{'2026-11-02':'done' as const},rows:{'2026-11-02':old},errors:{},sites:[],runs:0,saved:{'2026-11-02':{savedBy:'sanket',savedAt:'2026-11-22T11:44:00Z'}},fresh:[],save:null};
+ // While MIS is read again, and if that read fails, the saved duties stay on screen.
+ expect(applyDay(base,{day:'2026-11-02',state:'loading'}).rows['2026-11-02']).toBe(old);
+ expect(applyDay(base,{day:'2026-11-02',state:'failed',error:'MIS busy'}).rows['2026-11-02']).toBe(old);
+ const same=applyDay({...base,rows:{'2026-11-02':live}},{day:'2026-11-02',state:'done',rows:live});
+ expect([Object.keys(same.saved),same.fresh]).toEqual([['2026-11-02'],[]]);
+ const changed=applyDay(base,{day:'2026-11-02',state:'done',rows:live});
+ expect(changed.rows['2026-11-02']).toBe(live);
+ expect([Object.keys(changed.saved),changed.fresh]).toEqual([[],['2026-11-02']]);
+ // An empty day (not locked in MIS) or one with a pending duty is never offered to save.
+ expect([savableDay(live),savableDay([]),savableDay([{...live[0],verified:false}])]).toEqual([true,false,false]);
 });
 
 it('opens saved biometric logs at once, reads the punches only for the other days, and saves them',async()=>{
