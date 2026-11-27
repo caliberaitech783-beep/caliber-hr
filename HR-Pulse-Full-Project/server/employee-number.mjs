@@ -33,10 +33,15 @@ export const OUR_PREFIXES=Object.freeze(['CMLL','CMPL']);
 
 // The next number for a new joiner. `held`: every number anyone holds (register, joining forms, reservations).
 // `issued`: the numbers HR Pulse itself gave (joining forms and reservations).
+// Numbers stay five digits (owner, 27 Nov 2026: the series runs 22501, 22502 …). A joining form or reservation saved
+// with a longer number (CMLL123456816 was typed by mistake and every new code became CMLL123456817) never moves the
+// count: an issued number above NUMBER_CEILING is ignored.
+export const NUMBER_CEILING=99999;
+export const inSeries=value=>{const n=Number(value);return Number.isSafeInteger(n)&&n>NUMBER_FLOOR&&n<=NUMBER_CEILING;};
 export function nextEmployeeNumber(held,issued=[],floor=NUMBER_FLOOR){
  const taken=new Set([...held].map(Number).filter(n=>Number.isSafeInteger(n)&&n>0));
  let next=floor;
- for(const value of issued){const n=Number(value);if(Number.isSafeInteger(n)&&n>next)next=n;}
+ for(const value of issued){const n=Number(value);if(Number.isSafeInteger(n)&&n>next&&n<=NUMBER_CEILING)next=n;}
  do next++;while(taken.has(next));
  return next;
 }
