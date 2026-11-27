@@ -189,9 +189,27 @@ export async function saveTripCards(grant: string, site: string, days: {day: str
    (server/biometric-day-store.mjs builds it from the punches itself), and the Biometric tab opens the saved days at once,
    reading the punches only for the rest. Today is never saved: its punches are still coming in. */
 export type SavedBioDay = SavedInfo & {day: string; register: SiteRegister; punches: number; people: number};
+/* A saved day carries the whole day's sheet, so the range is asked for a few days at a time (28 Nov 2026): one answer
+   with twenty sheets could not arrive within the time limit (the same fault as "Biometric punches unavailable: signal
+   timed out" on Manual Biometric). A piece that still fails is left out: those days are read from the punches instead. */
+export const SAVED_BIO_DAYS_PER_READ = 3;
 export async function readSavedBiometric(grant: string, site: string, from: string, to: string) {
-  const result = await api<{days?: SavedBioDay[]}>(grant, 'attendance/biometric-days?' + new URLSearchParams({site, from, to}));
-  return (Array.isArray(result?.days) ? result.days : []).filter(d => d?.register && typeof d.register === 'object')
+  const days = daysBetween(from, to), pieces: [string, string][] = [];
+  for (let i = 0; i < days.length; i += SAVED_BIO_DAYS_PER_READ) pieces.push([days[i], days[Math.min(i + SAVED_BIO_DAYS_PER_READ, days.length) - 1]]);
+  const saved: SavedBioDay[] = [];let next = 0;
+  async function worker() {
+    while (next < pieces.length) {
+      const [pieceFrom, pieceTo] = pieces[next++];
+      try {
+        const result = await api<{days?: SavedBioDay[]}>(grant, 'attendance/biometric-days?' + new URLSearchParams({site, from: pieceFrom, to: pieceTo}), 'GET', undefined, BIO_DAY_TIMEOUT_MS);
+        saved.push(...(Array.isArray(result?.days) ? result.days : []).filter(d => d?.register && typeof d.register === 'object' && d.day >= pieceFrom && d.day <= pieceTo));
+      } catch (error) {
+        if (NO_ACCESS.test((error as Error).message)) throw error;
+      }
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(2, pieces.length)}, worker));
+  return saved.sort((a, b) => a.day.localeCompare(b.day))
     .map(d => ({...d, register: {...d.register, rows: Array.isArray(d.register.rows) ? d.register.rows : [], machines: Array.isArray(d.register.machines) ? d.register.machines : []}}));
 }
 /** Saves the given days, one day per request, two at a time (the server reads each day's punches again to save it). */

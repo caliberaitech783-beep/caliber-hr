@@ -522,3 +522,21 @@ it('Biometric tab shows which days it is reading and how many punches arrived; m
  expect(await screen.findByText(/GENERAL STAFF 1: no bridge PC yet/)).toBeTruthy();
  expect(posts).toEqual([]);
 });
+
+it('saved biometric days are asked for three days at a time; a piece that fails is read from the punches instead (28 Nov 2026)',async()=>{
+ const {readSavedBiometric}=await import('./rosterData');const {setApiRetryPause}=await import('./api');setApiRetryPause(async()=>{});
+ const asked:string[]=[];
+ const savedDay=(d:string)=>({day:d,register:{from:d,to:d,policy:DEFAULT_POLICY,rows:[],machines:[]},punches:2,people:1,savedBy:'vinod',savedAt:'2026-11-22T10:00:00Z'});
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams,from=q.get('from')!,to=q.get('to')!;asked.push(from+'..'+to);
+  // The middle piece starts to answer but never finishes in time, as the whole range did before.
+  if(from==='2026-11-04')return {ok:true,status:200,json:async()=>{throw new DOMException('signal timed out','TimeoutError');}} as unknown as Response;
+  // A day outside the asked piece is ignored.
+  return Response.json({site:'Sasti OC',days:[savedDay(from),savedDay(to),savedDay('2026-11-05')]});}));
+ const saved=await readSavedBiometric('a'.repeat(43),'Sasti OC','2026-11-01','2026-11-08');
+ expect([...new Set(asked)].sort()).toEqual(['2026-11-01..2026-11-03','2026-11-04..2026-11-06','2026-11-07..2026-11-08']);
+ expect(asked.filter(a=>a.startsWith('2026-11-04')).length,'the late piece is tried three times').toBe(3);
+ expect(saved.map(d=>d.day)).toEqual(['2026-11-01','2026-11-03','2026-11-07','2026-11-08']);
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json({error:'This site is outside your assigned access.'},{status:403})));
+ await expect(readSavedBiometric('a'.repeat(43),'Sasti OC','2026-11-01','2026-11-08')).rejects.toThrow('outside your assigned access');
+ setApiRetryPause(ms=>new Promise(resolve=>setTimeout(resolve,ms)));
+});
