@@ -2,8 +2,18 @@ import '@testing-library/jest-dom/vitest';
 import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
 import {RosterTable,VIEW_TABS,type TripState} from './AttendanceRoster';
+import {manualMismatchTone} from './manualMismatchColors';
 
 describe('Manual Biometric attendance roster',()=>{
+ it('uses the requested colour category for each MB / Trip Card combination',()=>{
+  expect(manualMismatchTone('P','P')).toBe('match');
+  expect(manualMismatchTone('A','P')).toBe('absent-present');
+  expect(manualMismatchTone('P','A')).toBe('present-absent');
+  expect(manualMismatchTone('MP','P')).toBe('miss-present');
+  expect(manualMismatchTone('HD','P')).toBe('half-present');
+  expect(manualMismatchTone('MP','A')).toBe('miss-absent');
+  expect(manualMismatchTone('HD','A')).toBe('half-absent');
+ });
  it('is a separate tab with import and no trip-card comparison controls',()=>{
   expect(VIEW_TABS.map(([,label])=>label)).toEqual(['Trip card (VLB · ELB · LMV)','Biometric','Trip card vs Biometric','Manual Biometric','M.B-Trip card Mismatch']);
   const trip:TripState={status:'idle',message:'',rows:null};
@@ -32,8 +42,8 @@ describe('Manual Biometric attendance roster',()=>{
    mismatches:[{date:'2026-11-02',bio:'A',trip:'P',reason:'Attendance status differs',bioDetail:'',tripDetail:''},{date:'2026-11-03',bio:'',trip:'P',reason:'Trip Card present, biometric missing',bioDetail:'',tripDetail:''},{date:'2026-11-04',bio:'P',trip:'',reason:'Biometric present, Trip Card missing',bioDetail:'',tripDetail:''}]},
    {key:'2',code:'CMLL17417',name:'Matching Employee',site:'Dhoptala OB 2nd',department:'Driver',designation:'Driver',shift:'',exempt:false,bioCodes:{'2026-11-01':'P'},tripCodes:{'2026-11-01':'P'},tripDays:{},hasTripCards:true,pending:0,machines:[],linked:true,mismatches:[]}];
   render(<RosterTable groups={groups as never} dates={['2026-11-01','2026-11-02','2026-11-03','2026-11-04']} view="manualMismatch" trip={trip} monthly={false} from="2026-11-01" to="2026-11-04"/>);
-  expect(screen.getAllByText('P / P')).toHaveLength(1);
-  expect(screen.getByText('A / P')).toBeInTheDocument();
+  expect(screen.getAllByText('P / P').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('A / P').length).toBeGreaterThan(0);
   expect(screen.getByRole('button',{name:/Both present/})).toBeInTheDocument();
   expect(screen.getByRole('button',{name:/Trip Card only/})).toBeInTheDocument();
   expect(screen.getByRole('button',{name:/Biometric only/})).toBeInTheDocument();

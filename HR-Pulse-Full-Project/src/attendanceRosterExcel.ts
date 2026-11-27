@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import {downloadBlob} from './api';
 import {cardSummary,codeLabel,type RosterGroup} from './rosterModel';
 import {DIFF_HEADING,ROSTER_TOTALS,bioTotals,diffText,tripTotals,weekday,type RosterView} from './AttendanceRoster';
+import {MANUAL_MISMATCH_COLOURS,manualMismatchTone} from './manualMismatchColors';
 
 /* Roster Excel (owner, 22 Nov 2026): the layout of the owner's sample sheet. Title, legend, weekday row, headings, then
    per employee the lines of the tab that was open: Trip card (with the VLB / ELB / LMV days), Biometric, or both with
@@ -115,11 +116,11 @@ function manualMismatchWorkbook(groups:RosterGroup[],dates:string[],from:string,
  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('MB - Trip Card',{views:[{state:'frozen',xSplit:5,ySplit:4}]});
  const fixed=['Sr. No.','Employee ID','Name','Department','Designation'],heads=[...fixed,...dates.map(d=>Number(d.slice(8)))],first=fixed.length+1;
  ws.mergeCells(1,1,1,heads.length);ws.getCell(1,1).value=`M.B-Trip card Mismatch · ${show(from)} to ${show(to)}`;ws.getCell(1,1).font={bold:true,size:13,color:{argb:'FF3C2A55'}};
- ws.mergeCells(2,1,2,heads.length);ws.getCell(2,1).value='Each date is Manual Biometric / Trip Card. Green = both present · Orange = Trip Card only · Red = Manual Biometric only · Grey = no record.';ws.getCell(2,1).font={size:10,color:{argb:'FF5C4D6E'}};
+ ws.mergeCells(2,1,2,heads.length);ws.getCell(2,1).value='Manual Biometric / Trip Card: P/P green · A/P red · P/A orange · MP/P purple · HD/P yellow · MP/A pink · HD/A blue · blank/blank grey.';ws.getCell(2,1).font={size:10,color:{argb:'FF5C4D6E'}};
  dates.forEach((d,i)=>{const c=ws.getRow(3).getCell(first+i);c.value=weekday(d);c.alignment={horizontal:'center'};});
  heads.forEach((h,i)=>{const c=ws.getRow(4).getCell(i+1);c.value=h;c.font={bold:true,color:{argb:'FF5C4D6E'}};c.fill=fill('F3F0F7');c.alignment={horizontal:i<5?'left':'center'};});
  groups.forEach((g,n)=>{const row=ws.getRow(5+n);[n+1,g.code,g.name,g.department||'—',g.designation||'—'].forEach((v,i)=>row.getCell(i+1).value=v);const mismatches=new Map(g.mismatches.map(m=>[m.date,m]));
-  dates.forEach((d,i)=>{const bio=g.bioCodes[d]||'',trip=g.tripCodes[d]||'',m=mismatches.get(d),c=row.getCell(first+i);c.value=`${bio||'—'} / ${trip||'—'}`;c.alignment={horizontal:'center'};c.fill=fill(bio&&trip?'EAF3DE':!bio&&trip?'FAEEDA':bio&&!trip?'FCEBEB':'F3F0F7');c.note=bio&&trip?`Both present · Manual Biometric ${bio} · Trip Card ${trip}${m?' · '+m.reason:''}`:trip?`Trip Card ${trip} present · Manual Biometric missing`:bio?`Manual Biometric ${bio} present · Trip Card missing`:'No record in either source';});});
+  dates.forEach((d,i)=>{const bio=g.bioCodes[d]||'',trip=g.tripCodes[d]||'',m=mismatches.get(d),tone=manualMismatchTone(bio,trip),colour=MANUAL_MISMATCH_COLOURS[tone],c=row.getCell(first+i);c.value=`${bio||'—'} / ${trip||'—'}`;c.alignment={horizontal:'center'};c.fill=fill(colour.fill);c.font={bold:true,color:{argb:'FF'+colour.text}};c.note=bio&&trip?`Manual Biometric ${bio} · Trip Card ${trip}${m?' · '+m.reason:''}`:trip?`Trip Card ${trip} present · Manual Biometric missing`:bio?`Manual Biometric ${bio} present · Trip Card missing`:'No record in either source';});});
  [9,14,24,16,19].forEach((w,i)=>ws.getColumn(i+1).width=w);dates.forEach((_,i)=>ws.getColumn(first+i).width=9);ws.pageSetup={orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0};
  const ds=wb.addWorksheet('Mismatches');ds.addRow(['Sr. No.','Employee ID','Name','Department','Designation','Date','Manual Biometric','Trip Card','Reason']).eachCell(c=>{c.font={bold:true};c.fill=fill('F3F0F7');});
  let mismatchSerial=0;for(const g of groups)for(const m of g.mismatches)ds.addRow([++mismatchSerial,g.code,g.name,g.department,g.designation,show(m.date),m.bio||'—',m.trip||'—',m.reason]);[9,14,24,16,19,13,18,12,42].forEach((w,i)=>ds.getColumn(i+1).width=w);
