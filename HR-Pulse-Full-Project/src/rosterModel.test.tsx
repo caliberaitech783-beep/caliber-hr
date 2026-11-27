@@ -391,6 +391,18 @@ it('Biometric reads one day per request and joins the days: each person once, pu
  expect(joined.rows[0].summary.halfDutyCuts).toBe(1);
 });
 
+it('Manual Biometric reads every site in daily batches and retries only a failed day',async()=>{
+ const {fetchManualBiometric,setRetryPause}=await import('./rosterData');setRetryPause(async()=>{});
+ const asked:string[]=[];let failedOnce=true;
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams,day=q.get('from')!;asked.push(day);expect(q.get('to')).toBe(day);
+  if(day==='2026-11-03'&&failedOnce){failedOnce=false;return Response.json({error:'Database busy'},{status:503});}
+  return Response.json({from:day,to:day,policy:DEFAULT_POLICY,site:'Majri OB',canCorrect:true,machines:[],rows:[{...bio,site:'Majri OB',days:bio.days.filter(d=>d.date===day),linked:true,machinesUsed:['MAJRI-01']}]});}));
+ const result=await fetchManualBiometric('a'.repeat(43),'2026-11-02','2026-11-04','Majri OB');
+ expect(result.rows[0].days.map(day=>day.date)).toEqual(['2026-11-02','2026-11-03','2026-11-04']);
+ expect(result.failedDays).toEqual([]);expect(result.canCorrect).toBe(true);
+ expect(asked.filter(day=>day==='2026-11-03')).toHaveLength(2);
+});
+
 it('Biometric tab shows which days it is reading and how many punches arrived; machines without a bridge PC are not waited for',async()=>{
  const {AttendanceRosterPage}=await import('./AttendanceRoster');
  const posts:string[]=[];

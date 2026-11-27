@@ -499,7 +499,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const bioData=manualView&&manual.key===manualKey?manual.data:liveBioData;
  const tripRows=trip.key===key&&tripRead.size?tripList:null;
  const policy=bioData?.policy||DEFAULT_POLICY;
- const manualRead=useMemo(()=>new Set(manualView&&manual.data?dates:[]),[manualView,manual.data,dates]);
+ const manualRead=useMemo(()=>new Set(manualView&&manual.data?dates.filter(day=>!manual.data?.failedDays?.includes(day)):[]),[manualView,manual.data,dates]);
  const groups=useMemo(()=>buildRoster(bioData?.rows||[],view==='bio'||view==='manual'?null:tripRows,dates,today,policy,tripRead,manualView?manualRead:bioRead).map(g=>({...g,site:g.site||site})),[bioData,tripRows,dates,today,policy,view,site,tripRead,bioRead,manualRead,manualView]);
  const people=groups.filter(g=>view?viewGroups([g],view).length>0:false);
  const departmentOptions=[...new Set([...departments,...people.map(g=>g.department)].filter(Boolean))].sort();
@@ -544,7 +544,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const currentManualSaved=manualSaved.key===manualSaveKey?manualSaved.days:{},manualSavedDays=Object.entries(currentManualSaved),manualLogDays=dates.filter(day=>manual.data?.rows.some(row=>row.days.some(entry=>entry.date===day&&Boolean(entry.punches?.length)))),manualUnsaved=manualLogDays.filter(day=>day<today&&!currentManualSaved[day]);
  const manualLatest=manualSavedDays.map(([,info])=>info).sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)))[0];
  const canCorrect=Boolean(manual.data?.canCorrect);
- const manualState:BioState={running:manual.status==='loading',message:manual.status==='ready'?'Imported biometric attendance':'Reading imported biometric attendance…',days:{},counts:{},errors:{},failed:[],onSave:saveManual,
+ const manualState:BioState={running:manual.status==='loading',message:manual.status==='ready'?'Imported biometric attendance':'Reading imported biometric attendance…',days:{},counts:{},errors:manual.data?.dayErrors||{},failed:manual.data?.failedDays||[],onSave:saveManual,
   saved:currentManualSaved,canSave:manual.status==='ready'&&!manualSave?.running&&manualUnsaved.length>0,
   saveLabel:manualSave?.running?`Saving ${manualSave.done} of ${manualSave.total} days…`:manualUnsaved.length?`Save manual biometric (${manualUnsaved.length} day${manualUnsaved.length===1?'':'s'})`:manualSavedDays.length?'Saved':'Save manual biometric',
   savedNote:manualSavedDays.length?`Saved and locked: ${manualSavedDays.length} day${manualSavedDays.length===1?'':'s'} for ${site} (last saved ${manualLatest?when(manualLatest.savedAt):''}${manualLatest?.savedBy?' by '+manualLatest.savedBy:''}). `+

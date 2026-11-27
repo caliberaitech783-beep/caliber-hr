@@ -86,7 +86,7 @@ export async function fetchTripCards(grant: string, from: string, to: string, si
 }
 
 export type SiteMachine = {serial: string; name: string; location: string; ipAddress?: string; bridgeName?: string; online: boolean; lastContact: string | null; lastPunch: string; punches: number};
-export type SiteRegister = Register & {site?: string; machines: SiteMachine[]; canCorrect?: boolean};
+export type SiteRegister = Register & {site?: string; machines: SiteMachine[]; canCorrect?: boolean; failedDays?: string[]; dayErrors?: Record<string,string>};
 /**
  * Biometric for a site (owner, 22 Nov 2026): every punch on that site's machines (Biometric machines › site), whoever
  * punched, with In / Out and each punch's machine; machine IDs not linked to an employee are included (linked: false).
@@ -98,8 +98,16 @@ export async function fetchBiometric(grant: string, from: string, to: string, si
   return {...register, rows: Array.isArray(register?.rows) ? register.rows : [], machines: Array.isArray(register?.machines) ? register.machines : []};
 }
 export async function fetchManualBiometric(grant:string,from:string,to:string,site:string):Promise<SiteRegister>{
- const register=await api<SiteRegister>(grant,'attendance/manual-biometric?'+new URLSearchParams({site,from,to}),'GET',undefined,BIO_DAY_TIMEOUT_MS);
- return {...register,rows:Array.isArray(register?.rows)?register.rows:[],machines:Array.isArray(register?.machines)?register.machines:[]};
+ const days=daysBetween(from,to),results:SiteRegister[]=[],dayErrors:Record<string,string>={};let next=0;
+ async function worker(){while(next<days.length){const day=days[next++];for(let attempt=1;attempt<=TRIP_ATTEMPTS;attempt++)try{
+   const register=await api<SiteRegister>(grant,'attendance/manual-biometric?'+new URLSearchParams({site,from:day,to:day}),'GET',undefined,BIO_DAY_TIMEOUT_MS);
+   results.push({...register,rows:Array.isArray(register?.rows)?register.rows:[],machines:Array.isArray(register?.machines)?register.machines:[]});delete dayErrors[day];break;
+  }catch(error){dayErrors[day]=(error as Error).message||'HR did not answer';if(attempt>=TRIP_ATTEMPTS||NO_ACCESS.test(dayErrors[day]))break;await pause(1500*attempt);}}
+ }
+ await Promise.all(Array.from({length:Math.min(2,days.length)},worker));
+ const joined=joinBiometricDays(results);
+ if(!joined)throw new Error(Object.values(dayErrors)[0]||'Manual biometric attendance could not be read.');
+ return {...joined,from,to,failedDays:Object.keys(dayErrors).sort(),dayErrors};
 }
 export type FetchRequest = {id: string; state: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'; punchesReceived: number; newPunches: number; error: string};
 /** Fetch from these machines: asks the bridge PC to read each machine in turn and waits for it (2 s polls, 2 minutes a machine). */
