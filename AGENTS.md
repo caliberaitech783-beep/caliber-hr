@@ -198,3 +198,12 @@ Set by the owner on 25 November 2026: "I need the edit option only for admin in 
 - Everyone else (Site HR) sees the roster as before, with no correction and no Delete of saved logs; the server refuses them both (403).
 - Pulse-II still gets the imported punches only.
 - `HR-Pulse-Full-Project/server/manual-attendance-corrections.mjs` holds the rule, `src/ManualDayEdit.tsx` the form; `server/manual-attendance-corrections.test.mjs` and `src/ManualDayEdit.test.tsx` check it.
+
+# Saved trip cards are always checked against MIS
+
+Set by the owner on 27 November 2026, after Majri OC 8 Nov showed AJAY KUMAR YADAV (CMLL8812) "Trip card absent": the copy saved on 22 Nov missed 36 duties added in Pulse-II later, and 21-24 Nov had been saved empty at Sasti OC, Dudhichua OB East and Jayant OB before Pulse-II locked those days.
+
+- Attendance roster › Trip card opens a saved day at once and still reads it from MIS. A day MIS sends unchanged stays "saved"; a changed one takes MIS's duties on screen and is offered to Save again. A failed MIS read keeps the saved duties.
+- Only a locked day is saved: it has trip cards and every one is verified. An empty day or one with a pending duty is not offered to Save, and the server refuses it (`server/trip-card-store.mjs`).
+- A day on which MIS sends no trip card for the site (not locked in Pulse-II yet: a batch open, a shift without a batch) shows "?" on the Trip Card line, not A (`buildRoster` in `src/rosterModel.ts`).
+- `src/rosterModel.test.tsx` and `server/trip-card-store.test.mjs` check this.

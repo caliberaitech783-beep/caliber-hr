@@ -121,6 +121,9 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
   /** While the Biometric tab is still being read: only these days have punches; the others stay blank and are not compared. */
   bioRead?: Set<string>): RosterGroup[] {
   const tripPeople = trips ? tripCardDays(trips) : new Map();
+  // Pulse-II sends a site's trip cards only for a day it has locked (every batch closed, every shift made). A day with no
+  // trip card at all is not locked there yet: nobody is absent on it, it shows "?" until MIS sends it (27 Nov 2026).
+  const tripDates = new Set((trips || []).map(row => row.date));
   const groups: RosterGroup[] = register.map(row => ({
     key: row.id, code: row.code, aFormNo: row.aFormNo || '', name: row.name, site: row.site, department: row.department || '', designation: row.designation, shift: row.shift, exempt: row.exempt,
     bio: row, bioCodes: {}, tripCodes: {}, tripDays: {}, hasTripCards: false, mismatches: [], pending: 0,
@@ -159,7 +162,7 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
       const calendar = day?.calendar || (CALENDAR.has(bio) ? bio : '');
       const tripDay = group.tripDays[date];
       // Without a biometric line there is no HR calendar to tell a weekly off from an absence: leave such days blank.
-      const trip = tripDay?.code || calendar || (group.bio && date < today ? 'A' : '');
+      const trip = tripDay?.code || calendar || (group.bio && date < today ? (tripDates.has(date) ? 'A' : '?') : '');
       group.tripCodes[date] = trip;
       if (trip === '?') group.pending++;
       if (!trip && !bio) continue;

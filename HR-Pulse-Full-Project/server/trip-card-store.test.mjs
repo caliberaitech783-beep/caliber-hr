@@ -42,3 +42,10 @@ test('refuses another site, a duty of another day, too many days and a bad day',
   await assert.rejects(store(hr, 'GET', {}, new URLSearchParams({site: 'Sasti OC', from: '2026-11-01', to: '2026-12-15'})), /up to 31 days/);
   assert.equal(tripDuty(duty('2026-11-02', {status: 'Hacked'}), '2026-11-02').status, 'Pending');
 });
+
+test('does not keep a day MIS has not locked: no trip card, or a duty still pending', async () => {
+  const pool = fakePool(), store = createTripCardStore(pool);
+  await assert.rejects(store(hr, 'POST', {site: 'Sasti OC', day: '2026-11-21', rows: []}), /not locked in Pulse-II/);
+  await assert.rejects(store(hr, 'POST', {site: 'Sasti OC', day: '2026-11-21', rows: [duty('2026-11-21'), duty('2026-11-21', {verified: false, status: 'Pending'})]}), /batch is not closed/);
+  assert.equal(pool.saved.size, 0);
+});

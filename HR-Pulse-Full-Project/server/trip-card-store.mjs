@@ -53,6 +53,10 @@ export function createTripCardStore(pool) {
       if (!Array.isArray(input.rows) || input.rows.length > MAX_TRIP_ROWS) fail(`Send up to ${MAX_TRIP_ROWS} trip cards for a day.`);
       await checkSite(pool, profile, site);
       const rows = input.rows.map(row => tripDuty(row, day));
+      // Only a day Pulse-II has locked is kept (27 Nov 2026): an empty day (MIS sends a site's cards only once its day is
+      // locked) or one with a pending duty would stay a wrong absence after MIS sends the day.
+      if (!rows.length) fail('MIS has no trip card for this site on this day yet (the day is not locked in Pulse-II). It is not saved.');
+      if (rows.some(row => !row.verified)) fail('This day still has trip cards waiting in MIS (a batch is not closed). It is not saved.');
       const saved = (await pool.query(`INSERT INTO hr_trip_card_days(site,day,rows,duties,saved_by) VALUES($1,$2,$3,$4,$5)
         ON CONFLICT(site,day) DO UPDATE SET rows=EXCLUDED.rows,duties=EXCLUDED.duties,saved_by=EXCLUDED.saved_by,saved_at=now()
         RETURNING to_char(day,'YYYY-MM-DD') AS day,duties,saved_by,saved_at`, [site, day, JSON.stringify(rows), rows.length, profile.actor])).rows[0];
