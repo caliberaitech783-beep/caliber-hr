@@ -118,18 +118,30 @@ export function isExempt(designation, policy = DEFAULT_POLICY) {
 }
 
 /**
+ * No biometric half day for drivers and operators of an OB site (owner, 27 Nov 2026: "remove the biometric half
+ * day rule for OB site, drivers and operators"). Their hours band that would be Half duty is Full duty (P); under
+ * the absent limit is still Absent and a single punch is still a miss punch. An OB site has the word "OB" in its
+ * name ("Dhoptala OB 2nd", "Jayant OB").
+ */
+export function noBiometricHalfDay(site, designation) {
+  const place = words(site), role = words(designation);
+  return place.includes('OB') && role.some(word => /^(DRIVERS?|OPERATORS?)$/.test(word));
+}
+
+/**
  * One duty day. For trip card / logbook staff pass their first trip / logbook
  * start as inMinute and the last end as outMinute. Night shifts: pass shiftEnd
  * (and outMinute) past 1440 when they fall on the next day.
  */
-export function evaluateDay({inMinute = null, outMinute = null, shiftStart = null, shiftEnd = null, designation = '',
+export function evaluateDay({inMinute = null, outMinute = null, shiftStart = null, shiftEnd = null, designation = '', site = '',
   gatePassMinutes = 0, dailyWage = 0} = {}, policy = DEFAULT_POLICY) {
   if (isExempt(designation, policy)) {
     return {status: 'P', exempt: true, missPunch: false, workedMinutes: null, late: false, early: false, gatePassMinutes: 0, gatePassDeduction: 0};
   }
   const missPunch = (inMinute == null) !== (outMinute == null) || (inMinute != null && outMinute <= inMinute);
   const worked = missPunch ? 0 : workedMinutes(inMinute, outMinute, policy);
-  const status = missPunch ? 'MP' : inMinute == null ? 'A' : dutyStatus(worked, policy);
+  let status = missPunch ? 'MP' : inMinute == null ? 'A' : dutyStatus(worked, policy);
+  if (status === 'HD' && noBiometricHalfDay(site, designation)) status = 'P';
   const present = status === 'P' || status === 'HD';
   return {
     status, exempt: false, missPunch, workedMinutes: inMinute == null || missPunch ? null : worked,
@@ -159,6 +171,7 @@ export function policyRules(policy = DEFAULT_POLICY) {
   return [
     ['Working hours', `Hours between In and Out, less a ${policy.lunchMinutes} min lunch break.`],
     ['Day status', `Under ${hours(policy.absentBelowHours)} = Absent · ${hours(policy.absentBelowHours)} to under ${hours(policy.fullDutyHours)} = Half duty · ${hours(policy.fullDutyHours)} or more = Full duty.`],
+    ['OB site drivers / operators', `At an OB site a driver or operator has no biometric half day: ${hours(policy.absentBelowHours)} or more between In and Out = Full duty.`],
     ['Trip card / logbook', 'A driver or operator with a punched trip card or logbook (VLB, ELB, LMV) is Present for the day, whatever the hours. The hours rule above is for biometric punches only.'],
     ['Late come', `In punch up to ${policy.graceMinutes} min after shift start is on time (for an 08:00 shift, ${clock(policy.graceMinutes)} is on time and ${clock(policy.graceMinutes + 1)} is late).`],
     ['Early going', 'Out punch before shift end is early going. There is no grace.'],
