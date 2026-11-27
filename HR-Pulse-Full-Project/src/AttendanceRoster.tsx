@@ -52,6 +52,8 @@ export const tripTotals=(group:RosterGroup,dates:string[])=>lineTotals(group.tri
 export const diffText=(group:RosterGroup,tripsLoaded:boolean)=>!tripsLoaded?'—':!group.hasTripCards?'No trip card':String(group.mismatches.length);
 /** The groups a view lists: trip card people, biometric people, or everyone. */
 export const viewGroups=(groups:RosterGroup[],view:RosterView)=>groups.filter(g=>view==='trip'?g.hasTripCards:view==='bio'||view==='manual'?Boolean(g.bio):true);
+/** M.B–Trip Card Mismatch covers all trip-card staff plus biometric-only drivers/operators. */
+export const isManualMismatchEmployee=(group:RosterGroup)=>group.hasTripCards||Boolean(group.bio||Object.keys(group.bioCodes).length)&&/\b(driver|operator)\b/i.test(group.designation||'');
 type ColumnFilters=Record<string,string>;
 type ColumnSort={key:string;direction:'asc'|'desc'}|null;
 const filterNeedle=(filters:ColumnFilters,key:string)=>filters[key]?.trim().toLowerCase()||'';
@@ -96,7 +98,7 @@ export function RosterTable(props:TableProps){
 function ManualMismatchTable({groups,dates,trip,from,to,loading=false,error=''}:TableProps){
  const [employeeTab,setEmployeeTab]=useState<'affected'|'ok'>('affected'),[employeeTabDrill,setEmployeeTabDrill]=useState(false),[category,setCategory]=useState<'both'|'tripOnly'|'bioOnly'|'empty'|''>(''),[pair,setPair]=useState(''),[exporting,setExporting]=useState(false),[exportOpen,setExportOpen]=useState(false),[drillExportOpen,setDrillExportOpen]=useState(false),[filters,setFilters]=useState<ColumnFilters>({}),[sort,setSort]=useState<ColumnSort>(null),[employeeDrill,setEmployeeDrill]=useState('');
  const table=useRef<HTMLTableElement>(null),tripsLoaded=trip.rows!==null;
- const all=viewGroups(groups,'manualMismatch'),affectedGroups=all.filter(g=>g.mismatches.length>0),okayGroups=all.filter(g=>g.mismatches.length===0);
+ const all=viewGroups(groups,'manualMismatch').filter(isManualMismatchEmployee),affectedGroups=all.filter(g=>g.mismatches.length>0),okayGroups=all.filter(g=>g.mismatches.length===0);
  const selectedGroups=category||pair?all:employeeTab==='affected'?affectedGroups:okayGroups,shown=sortGroups(selectedGroups.filter((g,i)=>groupMatches(g,filters,dates,'manualMismatch',i)),sort,dates,'manualMismatch');
  const filterInput=(_filters:ColumnFilters,_setter:Dispatch<SetStateAction<ColumnFilters>>,key:string,label:string)=><ColumnFilter filters={filters} setFilters={setFilters} sort={sort} setSort={setSort} keyName={key} label={label} values={columnValues(all,key,dates,'manualMismatch')}/>;
  const miss=(g:RosterGroup,date:string)=>g.mismatches.find(m=>m.date===date);

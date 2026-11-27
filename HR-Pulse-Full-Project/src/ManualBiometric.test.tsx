@@ -1,10 +1,20 @@
 import '@testing-library/jest-dom/vitest';
 import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
-import {RosterTable,VIEW_TABS,type TripState} from './AttendanceRoster';
+import {isManualMismatchEmployee,RosterTable,VIEW_TABS,type TripState} from './AttendanceRoster';
 import {MANUAL_MISMATCH_COLOURS,manualMismatchTone} from './manualMismatchColors';
 
 describe('Manual Biometric attendance roster',()=>{
+ it('limits mismatch employees to trip-card staff and biometric drivers or operators',()=>{
+  const group=(designation:string,hasTripCards=false,bioCodes:Record<string,string>={'2026-11-01':'P'})=>({designation,hasTripCards,bioCodes} as never);
+  expect(isManualMismatchEmployee(group('HR Executive',true))).toBe(true);
+  expect(isManualMismatchEmployee(group('Tipper Driver'))).toBe(true);
+  expect(isManualMismatchEmployee(group('Dozer Operator'))).toBe(true);
+  expect(isManualMismatchEmployee(group('PC OPERATOR'))).toBe(true);
+  expect(isManualMismatchEmployee(group('Office Executive'))).toBe(false);
+  expect(isManualMismatchEmployee(group('Maintenance Helper'))).toBe(false);
+  expect(isManualMismatchEmployee(group('Driver',false,{}))).toBe(false);
+ });
  it('uses the requested colour category for each MB / Trip Card combination',()=>{
   expect(manualMismatchTone('P','P')).toBe('match');
   expect(manualMismatchTone('A','P')).toBe('absent-present');
