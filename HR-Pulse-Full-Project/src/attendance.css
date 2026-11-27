@@ -219,7 +219,8 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .manual-compare-grid td.manual-compare-day{padding:4px 2px;min-width:52px}
 .manual-compare-day>span{display:flex;min-height:38px;flex-direction:column;align-items:center;justify-content:center;border-radius:6px;padding:3px 4px}
 .manual-compare-day b{font-size:11px}.manual-compare-day small{display:block;font-size:9px;color:inherit}
-.manual-compare-match>span{background:#eaf3de;color:#27500a}.manual-compare-diff>span{background:#fcebeb;color:#791f1f}.manual-compare-missing>span{background:#faeeda;color:#633806}.manual-compare-empty>span{background:#f3f0f7;color:#6b5a80}
+.manual-compare-match>span{background:#eaf3de;color:#27500a}.manual-compare-trip-only>span{background:#faeeda;color:#633806}.manual-compare-bio-only>span{background:#fcebeb;color:#791f1f}.manual-compare-empty>span{background:#f3f0f7;color:#6b5a80}
+.manual-key-card.trip-only i{background:#faeeda}.manual-key-card.bio-only i{background:#fcebeb}
 
 /* Delete a machine after one confirmation (MachineDeleteDialog, owner 23 Nov 2026). */
 .biometric-machines .machine-actions .machine-delete{color:#b42318;border-color:#f3c4bf}

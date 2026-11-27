@@ -28,18 +28,25 @@ describe('Manual Biometric attendance roster',()=>{
  it('shows all dates with MB / Trip Card values and can keep only mismatched employees',()=>{
   const trip:TripState={status:'ready',message:'',rows:[]};
   const groups=[{key:'1',code:'CMLL17416',name:'Balasani Srinivas',site:'Dhoptala OB 2nd',department:'Driver',designation:'Tipper Driver',shift:'',exempt:false,
-   bioCodes:{'2026-11-01':'P','2026-11-02':'A'},tripCodes:{'2026-11-01':'P','2026-11-02':'P'},tripDays:{},hasTripCards:true,pending:0,machines:[],linked:true,
-   mismatches:[{date:'2026-11-02',bio:'A',trip:'P',reason:'Attendance status differs',bioDetail:'',tripDetail:''}]},
+   bioCodes:{'2026-11-01':'P','2026-11-02':'A','2026-11-04':'P'},tripCodes:{'2026-11-01':'P','2026-11-02':'P','2026-11-03':'P'},tripDays:{},hasTripCards:true,pending:0,machines:[],linked:true,
+   mismatches:[{date:'2026-11-02',bio:'A',trip:'P',reason:'Attendance status differs',bioDetail:'',tripDetail:''},{date:'2026-11-03',bio:'',trip:'P',reason:'Trip Card present, biometric missing',bioDetail:'',tripDetail:''},{date:'2026-11-04',bio:'P',trip:'',reason:'Biometric present, Trip Card missing',bioDetail:'',tripDetail:''}]},
    {key:'2',code:'CMLL17417',name:'Matching Employee',site:'Dhoptala OB 2nd',department:'Driver',designation:'Driver',shift:'',exempt:false,bioCodes:{'2026-11-01':'P'},tripCodes:{'2026-11-01':'P'},tripDays:{},hasTripCards:true,pending:0,machines:[],linked:true,mismatches:[]}];
-  render(<RosterTable groups={groups as never} dates={['2026-11-01','2026-11-02']} view="manualMismatch" trip={trip} monthly={false} from="2026-11-01" to="2026-11-02"/>);
+  render(<RosterTable groups={groups as never} dates={['2026-11-01','2026-11-02','2026-11-03','2026-11-04']} view="manualMismatch" trip={trip} monthly={false} from="2026-11-01" to="2026-11-04"/>);
   expect(screen.getAllByText('P / P')).toHaveLength(1);
   expect(screen.getByText('A / P')).toBeInTheDocument();
-  expect(screen.queryByText('Matching Employee')).not.toBeInTheDocument();
+  expect(screen.getByRole('button',{name:/Both present/})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:/Trip Card only/})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:/Biometric only/})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:/Trip Card only/}));
+  fireEvent.click(screen.getByRole('button',{name:'View dates'}));
+  expect(screen.getByText(/Trip Card present: P \(Present\) · Manual Biometric record missing/)).toBeInTheDocument();
   expect(screen.getByRole('tab',{name:/Affected Employees 1/})).toBeInTheDocument();
   expect(screen.getByRole('tab',{name:/All OK 1/})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab',{name:/Affected Employees 1/}));
+  expect(screen.queryByText('Matching Employee')).not.toBeInTheDocument();
   expect(screen.getByRole('region',{name:'Affected employee details'})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'View dates'}));
-  expect(screen.getByText('Attendance status differs')).toBeInTheDocument();
+    expect(screen.getByText(/Attendance status differs/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('tab',{name:/All OK 1/}));
   expect(screen.getAllByText('Matching Employee').length).toBeGreaterThan(0);
   expect(screen.queryByText('Balasani Srinivas')).not.toBeInTheDocument();
