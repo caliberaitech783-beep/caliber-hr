@@ -17,6 +17,7 @@ import {MANUAL_MISMATCH_LEGEND,manualMismatchTone} from './manualMismatchColors'
    - Biometric: one line per employee from the biometric punches;
    - Trip card vs Biometric: both lines and "Diff. of Trip Card and Bio-matric", the days the two disagree,
      which opens those days below the table.
+   Manual mismatch breakdowns stay closed until the user selects a drill option.
    The user chooses the site and dates first; each tab fetches only its own source for that site. */
 export type RosterView='trip'|'bio'|'compare'|'manual'|'manualMismatch';
 export const ROSTER_CODES:[string,string][]=[['P','Present'],['HD','Half day'],['A','Absent'],['WO','Weekly off'],['H','Holiday'],['CO','Comp off'],['L','Leave'],['OD','On duty'],['MP','Miss punch'],['IN','In, no Out yet'],['?','Trip card not verified yet']];
