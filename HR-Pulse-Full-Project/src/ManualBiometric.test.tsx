@@ -47,7 +47,9 @@ describe('Manual Biometric attendance roster',()=>{
   expect(screen.getByRole('button',{name:/P \/ PBoth present/})).toBeInTheDocument();
   expect(screen.getByRole('button',{name:/A \/ ABoth absent/})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:/P \/ PBoth present/}));
-  expect(screen.getByRole('region',{name:'P / P records employee details'})).toBeInTheDocument();
+  const pairDrill=screen.getByRole('region',{name:'P / P records employee details'}),comparisonGrid=screen.getByRole('table',{name:'Manual Biometric and Trip Card comparison'});
+  expect(pairDrill).toBeInTheDocument();
+  expect(pairDrill.compareDocumentPosition(comparisonGrid)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.getAllByText('Matching Employee').length).toBeGreaterThan(0);
   expect(screen.getAllByRole('button',{name:'View dates'}).length).toBeGreaterThan(0);
   expect(screen.getAllByRole('button',{name:/Print\/Export/}).length).toBeGreaterThan(0);
