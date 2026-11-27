@@ -168,7 +168,7 @@ const nclAFormRows = employeeFilter => `
  * machine it came from (day.punches).
  */
 export async function loadRegister(db, sites, from, to, today, options = {}) {
-  const {devices = null, employeeIds = null, manual = false, matchAForm = false} = options;
+  const {devices = null, employeeIds = null, manual = false, matchAForm = false, manualMatches = []} = options;
   const punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
   const {policy} = await readPolicy(db);
   const employeeQuery=manual?`
@@ -200,23 +200,19 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   const ids = employees.map(e => e.id);
   if (!ids.length) return buildRegister({from, to, today, policy});
   const [punches, holidays, leaves, ods, passes, pay] = await Promise.all([
-    db.query(manual?(matchAForm?`WITH employee_aforms AS (${nclAFormRows('AND e.id=ANY($1::uuid[])')})
-     SELECT a.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
-      coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
-     JOIN employee_aforms a ON a.a_form=regexp_replace(upper(coalesce(p.biometric_id,'')),'[^A-Z0-9]','','g')
-     LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
-     WHERE p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
-      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`:`SELECT e.id AS employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
-      coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
-     JOIN hr_employee_master_register e ON hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id) AND hr_employee_number(p.biometric_id)<>''
-     LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
-     WHERE e.id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
-      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`):`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+    db.query(manual?`WITH identity_map AS (
+      SELECT * FROM unnest($5::text[],$6::text[],$7::uuid[]) AS m(device_serial,biometric_id,employee_id)
+     )
+     SELECT m.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+      coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM identity_map m
+     JOIN ${punchTable} p ON p.device_serial=m.device_serial AND p.biometric_id=m.biometric_id
+      AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
+     LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial`:`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
      JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
      WHERE l.employee_id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
-      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`, [ids, from, to, devices]),
+      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`, manual?[ids,from,to,devices,manualMatches.map(m=>m.device_serial),manualMatches.map(m=>m.biometric_id),manualMatches.map(m=>m.employee_id)]:[ids, from, to, devices]),
     db.query(`SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
      WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to]),
     db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'fromDate' AS from_date,coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate') AS to_date,
@@ -306,7 +302,8 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
     used.set(key, [...(used.get(key) || []), manual?r.device_serial:`${place.get(r.device_serial)} · ${r.biometric_id}`]);
   }
   const linkedIds = [...new Set(ids.filter(isUniqueMatch).map(r => String(r.employee_id)))];
-  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm})).rows : [];
+  const manualMatches=manual?ids.filter(isUniqueMatch).map(r=>({device_serial:String(r.device_serial),biometric_id:String(r.biometric_id),employee_id:String(r.employee_id)})):[];
+  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm, manualMatches})).rows : [];
   const unlinked = [...new Map(ids.filter(r => !isUniqueMatch(r))
     .map(r => [`${r.device_serial}|${r.biometric_id}`, r])).values()];
   const unlinkedKeys=new Set(unlinked.map(r=>`${r.device_serial}|${r.biometric_id}`));

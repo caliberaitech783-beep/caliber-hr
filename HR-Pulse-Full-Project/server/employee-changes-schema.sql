@@ -21,6 +21,11 @@ CREATE OR REPLACE FUNCTION hr_employee_number(value text) RETURNS text LANGUAGE 
   ELSE '' END
 $fn$;
 
+-- WCL manual-biometric matching uses the numeric part of Employee ID. Keep that lookup indexed for every site/user.
+CREATE INDEX IF NOT EXISTS hr_employee_master_register_employee_number
+ ON hr_employee_master_register(hr_employee_number(data->>'employeeId'))
+ WHERE hr_employee_number(data->>'employeeId')<>'';
+
 CREATE OR REPLACE FUNCTION hr_note_register_change() RETURNS trigger LANGUAGE plpgsql AS $fn$
 DECLARE old_n text := ''; new_n text := '';
 BEGIN

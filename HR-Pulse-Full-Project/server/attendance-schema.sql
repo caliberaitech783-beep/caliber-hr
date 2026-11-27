@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS hr_manual_biometric_punches(
 );
 CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_time ON hr_manual_biometric_punches(punched_at);
 CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_device_time ON hr_manual_biometric_punches(device_serial,punched_at);
+-- Manual roster first narrows by machine and day, then reads the biometric ID without returning to the table.
+CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_device_time_id ON hr_manual_biometric_punches(device_serial,punched_at,biometric_id);
 
 -- Names stored on the machine for each user ID. Shown only as a hint to help
 -- HR link a machine ID to the right employee.

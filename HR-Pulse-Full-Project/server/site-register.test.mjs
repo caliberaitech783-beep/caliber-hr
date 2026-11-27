@@ -71,6 +71,10 @@ test('manual biometric treats the imported value as employee code and shows the 
  assert.deepEqual([employee.code,employee.name,employee.department,employee.designation,employee.site,employee.linked],['CMLL17416','Anil Kumar','Operations','Driver','Sasti OC',true]);
  assert.deepEqual(employee.machinesUsed,['JNP2242101100']);
  assert.ok(db.calls.some(sql=>/WITH punch_ids AS/.test(sql)&&/p\.punched_at>=\$2::date AND p\.punched_at<\$3::date\+1/.test(sql)&&/hr_employee_number\(e\.data->>'employeeId'\)=hr_employee_number\(p\.biometric_id\)/.test(sql)));
+ const mappedRead=db.calls.findIndex(sql=>/WITH identity_map AS/.test(sql));
+ assert.notEqual(mappedRead,-1,'linked manual punches use the already-resolved identity map');
+ assert.doesNotMatch(db.calls[mappedRead],/JOIN hr_employee_master_register/);
+ assert.deepEqual(db.parameters[mappedRead].slice(4),[['JNP2242101100'],['17416'],['emp-17416']]);
 });
 
 test('WCL manual biometric reads only unmatched IDs when loading a large imported log',async()=>{
