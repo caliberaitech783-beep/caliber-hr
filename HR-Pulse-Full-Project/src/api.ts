@@ -31,8 +31,16 @@ export async function api<T>(grant:string,path:string,method='GET',body?:unknown
       if(retryHere&&attempt<attempts&&READ_RETRY_STATUSES.has(response.status)){await apiRetryPause(350*attempt);continue;}
       throw new Error(result?.error||`Unable to complete the request (HTTP ${response.status}).`);
     }
-    const result=await response.json();
-    return displaySiteRecords(result,path.split('?')[0]==='hierarchies'||/^records\/(sites|joiningHierarchies)(\/|$)/.test(path.split('?')[0]));
+    // The time limit also covers the answer arriving: if it runs out after the first bytes, the browser's own words
+    // ("signal timed out") used to reach the page (27 Nov 2026). A read is tried again; a change may already be done.
+    let result:unknown;
+    try{result=await response.json();}
+    catch(error){
+     if(retryHere&&attempt<attempts){await apiRetryPause(350*attempt);continue;}
+     const late=error instanceof DOMException&&(error.name==='TimeoutError'||error.name==='AbortError');
+     throw new Error(late?(read?'HR Pulse took too long to answer. Try again.':'HR Pulse took too long to answer. Reload the page to see whether it was saved.'):(read?'HR Pulse sent an answer that could not be read. Try again.':'HR Pulse sent an answer that could not be read. Reload the page to see whether it was saved.'));
+    }
+    return displaySiteRecords(result as T,path.split('?')[0]==='hierarchies'||/^records\/(sites|joiningHierarchies)(\/|$)/.test(path.split('?')[0]));
   }
   throw new Error('Unable to complete the request. Try again.');
 }

@@ -5,6 +5,7 @@
    The server builds the saved copy itself from the punches in HR (loadSiteRegister); the browser only names the day,
    so a saved day cannot be edited from the browser.
    GET  attendance/biometric-days?site=&from=&to=  → {days:[{day,register,punches,people,savedBy,savedAt}]}
+        (…&brief=1 leaves out register: the saved day list only)
    POST attendance/biometric-days {site,day}       → {day,punches,people,savedBy,savedAt}  (one day per request) */
 import {siteAccessMessage} from './scope.mjs';
 
@@ -34,9 +35,12 @@ export function createBiometricDayStore(pool, {load, today, manual=false, siteKe
       if (!validDay(from) || !validDay(to) || to < from) fail('Choose a valid date range.');
       if ((Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 > MAX_BIO_DAYS) fail(`Choose up to ${MAX_BIO_DAYS} days.`);
       const site = await findSite(params.get('site'), sites, profile);
-      const {rows} = await pool.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,register,punches,people,saved_by,saved_at FROM ${table}
+      // brief=1 (Manual Biometric, 27 Nov 2026): only which days are saved, by whom and when. A full saved sheet per day
+      // made a 20-day answer too large to arrive in time ("Biometric punches unavailable: signal timed out").
+      const brief = params.get('brief') === '1';
+      const {rows} = await pool.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,${brief ? '' : 'register,'}punches,people,saved_by,saved_at FROM ${table}
         WHERE site=$1 AND day BETWEEN $2::date AND $3::date ORDER BY day`, [site.name, from, to]);
-      return {site: site.name, days: rows.map(r => ({day: r.day, register: r.register, punches: r.punches, people: r.people, savedBy: r.saved_by, savedAt: r.saved_at}))};
+      return {site: site.name, days: rows.map(r => ({day: r.day, ...(brief ? {} : {register: r.register}), punches: r.punches, people: r.people, savedBy: r.saved_by, savedAt: r.saved_at}))};
     }
     if (method === 'POST') {
       const day = input?.day;

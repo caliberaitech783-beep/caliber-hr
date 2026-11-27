@@ -3,7 +3,7 @@ import {ArrowDown,ArrowUp,ChevronDown,Download,Filter,Lock,Printer,RefreshCw,Sav
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,checkSavedTripCards,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,deleteManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo,type SavedBioDay} from './rosterData';
+import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,checkSavedTripCards,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,deleteManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo,type SavedManualDay} from './rosterData';
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 import MachineLogUpload from './MachineLogUpload';
@@ -342,7 +342,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const [departmentsSelected,setDepartmentsSelected]=useState<string[]>([]),[designationsSelected,setDesignationsSelected]=useState<string[]>([]),[employee,setEmployee]=useState('');
  const [view,setView]=useState<RosterView|''>('');
  const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<BioStream>(noBio),[manual,setManual]=useState<Source<SiteRegister>>(idle);
- const [manualSaved,setManualSaved]=useState<{key:string;days:Record<string,SavedBioDay>}>({key:'',days:{}}),[manualSave,setManualSave]=useState<{running:boolean;done:number;total:number;failed:string[];error:string}|null>(null),[showSavedLogs,setShowSavedLogs]=useState(false),[deletingSaved,setDeletingSaved]=useState(false);
+ const [manualSaved,setManualSaved]=useState<{key:string;days:Record<string,SavedManualDay>}>({key:'',days:{}}),[manualSavedError,setManualSavedError]=useState({key:'',message:''}),[manualSave,setManualSave]=useState<{running:boolean;done:number;total:number;failed:string[];error:string}|null>(null),[showSavedLogs,setShowSavedLogs]=useState(false),[deletingSaved,setDeletingSaved]=useState(false);
  const bioRef=useRef('');
  const [pull,setPull]=useState<{running:boolean;message:string;error:string}|null>(null),[bioReload,setBioReload]=useState(0);
  const [editDay,setEditDay]=useState<DayEditTarget|null>(null);
@@ -428,7 +428,11 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  useEffect(()=>{if(bioRef.current&&bioRef.current!==bioKey)bioRef.current='';},[bioKey]);
  const manualSaveKey=[site,from,to].join('|'),manualKey=[manualSaveKey,manualReload].join('|');
  useEffect(()=>{if(!ready||(view!=='manual'&&view!=='manualMismatch')||manual.key===manualKey)return;let live=true;setManual({key:manualKey,status:'loading',message:'Reading imported biometric attendance…',data:null});
-  Promise.all([fetchManualBiometric(grant,from,to,site),readSavedManualBiometric(grant,site,from,to)]).then(([data,saved])=>{if(live){setManual({key:manualKey,status:'ready',message:'Manual biometric attendance',data});setManualSaved({key:manualSaveKey,days:Object.fromEntries(saved.map(day=>[day.day,day]))});setManualSave(null);}}).catch(e=>{if(live)setManual({key:manualKey,status:'error',message:(e as Error).message,data:null});});
+  // The punches and the list of saved days are read side by side but apart (27 Nov 2026): a slow or failed saved-day
+  // list used to throw the punches away too ("Biometric punches unavailable: signal timed out", every count 0).
+  fetchManualBiometric(grant,from,to,site).then(data=>{if(live){setManual({key:manualKey,status:'ready',message:'Manual biometric attendance',data});setManualSave(null);}}).catch(e=>{if(live)setManual({key:manualKey,status:'error',message:(e as Error).message,data:null});});
+  setManualSavedError({key:'',message:''});
+  readSavedManualBiometric(grant,site,from,to).then(saved=>{if(live)setManualSaved({key:manualSaveKey,days:Object.fromEntries(saved.map(day=>[day.day,day]))});}).catch(e=>{if(live)setManualSavedError({key:manualSaveKey,message:(e as Error).message});});
   return()=>{live=false;};
  },[ready,view,manualKey,grant,from,to,site]); // manual.key is intentionally excluded: setting the loading state must not cancel this request.
  function readBio(list:string[]){
@@ -455,7 +459,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   if(!list.length)return;
   const runKey=manualSaveKey;setManualSave({running:true,done:0,total:list.length,failed:[],error:''});
   void saveManualBiometricDays(grant,site,list,(day,info,error)=>{
-   if(info)setManualSaved(current=>current.key===runKey?{...current,days:{...current.days,[day]:{day,savedBy:info.savedBy,savedAt:info.savedAt,punches:info.punches,people:info.people,register:manual.data!}}}:current);
+   if(info)setManualSaved(current=>current.key===runKey?{...current,days:{...current.days,[day]:{day,savedBy:info.savedBy,savedAt:info.savedAt,punches:info.punches,people:info.people}}}:current);
    setManualSave(current=>current?{...current,done:current.done+1,failed:info?current.failed:[...current.failed,day],error:current.error||error||''}:current);
   }).finally(()=>setManualSave(current=>current?{...current,running:false}:current));
  }
@@ -557,12 +561,14 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const currentManualSaved=manualSaved.key===manualSaveKey?manualSaved.days:{},manualSavedDays=Object.entries(currentManualSaved),manualLogDays=dates.filter(day=>manual.data?.rows.some(row=>row.days.some(entry=>entry.date===day&&Boolean(entry.punches?.length)))),manualUnsaved=manualLogDays.filter(day=>day<today&&!currentManualSaved[day]);
  const manualLatest=manualSavedDays.map(([,info])=>info).sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)))[0];
  const canCorrect=Boolean(manual.data?.canCorrect);
+ // Until the saved-day list has arrived nobody can tell which days are still unsaved, so Save waits for it.
+ const manualSavedKnown=manualSaved.key===manualSaveKey,manualSavedListError=!manualSavedKnown&&manualSavedError.key===manualSaveKey?manualSavedError.message:'';
  const manualState:BioState={running:manual.status==='loading',message:manual.status==='ready'?'Imported biometric attendance':'Reading imported biometric attendance…',days:{},counts:{},errors:manual.data?.dayErrors||{},failed:manual.data?.failedDays||[],onSave:saveManual,
-  saved:currentManualSaved,canSave:manual.status==='ready'&&!manualSave?.running&&manualUnsaved.length>0,
-  saveLabel:manualSave?.running?`Saving ${manualSave.done} of ${manualSave.total} days…`:manualUnsaved.length?`Save manual biometric (${manualUnsaved.length} day${manualUnsaved.length===1?'':'s'})`:manualSavedDays.length?'Saved':'Save manual biometric',
+  saved:currentManualSaved,canSave:manual.status==='ready'&&manualSavedKnown&&!manualSave?.running&&manualUnsaved.length>0,
+  saveLabel:manualSave?.running?`Saving ${manualSave.done} of ${manualSave.total} days…`:!manualSavedKnown?(manualSavedListError?'Save manual biometric':'Checking saved days…'):manualUnsaved.length?`Save manual biometric (${manualUnsaved.length} day${manualUnsaved.length===1?'':'s'})`:manualSavedDays.length?'Saved':'Save manual biometric',
   savedNote:manualSavedDays.length?`Saved and locked: ${manualSavedDays.length} day${manualSavedDays.length===1?'':'s'} for ${site} (last saved ${manualLatest?when(manualLatest.savedAt):''}${manualLatest?.savedBy?' by '+manualLatest.savedBy:''}). `+
    (canCorrect?'As HR administrator you can correct a past day: press its box.':'Saved logs cannot be replaced; only an HR administrator can correct a day.'):canCorrect&&manual.data?.rows.length?'As HR administrator you can correct a past day: press its box.':'',
-  saveError:manualSave&&!manualSave.running&&manualSave.failed.length?`Could not save ${manualSave.failed.map(show).join(', ')}: ${manualSave.error}`:'',savedCount:manualSavedDays.length,onViewSaved:()=>setShowSavedLogs(true)};
+  saveError:manualSavedListError?`Could not read which days are already saved (${manualSavedListError}). The attendance below is complete; Save stays off until Fetch again reads the saved days.`:manualSave&&!manualSave.running&&manualSave.failed.length?`Could not save ${manualSave.failed.map(show).join(', ')}: ${manualSave.error}`:'',savedCount:manualSavedDays.length,onViewSaved:()=>setShowSavedLogs(true)};
  // HR administrator only (owner, 25 Nov 2026): correct a day, and delete saved logs. The server refuses everyone else too.
  if(canCorrect){
   manualState.onDeleteSaved=manual.data?.rows.length?()=>void deleteManualLogs(dates,true):undefined;

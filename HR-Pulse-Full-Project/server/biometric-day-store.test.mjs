@@ -37,6 +37,17 @@ test('saves a day of biometric logs built by the server and reads saved days bac
   assert.equal(pool.audit.length, 1);
 });
 
+test('brief read lists saved manual days without the saved sheet', async () => {
+  const pool=fakePool({manual:true}),queries=[];const query=pool.query.bind(pool);pool.query=async (sql,params)=>{queries.push(sql);return query(sql,params);};
+  const store=createBiometricDayStore(pool,{manual:true,today:()=> '2026-11-23',load:async (_site,day)=>register(day)});
+  await store(hr,'POST',{site:'Sasti OC',day:'2026-11-02'},null,null);
+  const read=await store(hr,'GET',{},new URLSearchParams({site:'Sasti OC',from:'2026-11-01',to:'2026-11-20',brief:'1'}),null);
+  assert.deepEqual(read.days,[{day:'2026-11-02',punches:8,people:2,savedBy:'vinod',savedAt:'2026-11-23T08:00:00Z'}]);
+  assert.doesNotMatch(queries.at(-1),/register/,'the saved sheet is not read from the database either');
+  const full=await store(hr,'GET',{},new URLSearchParams({site:'Sasti OC',from:'2026-11-01',to:'2026-11-20'}),null);
+  assert.equal(full.days[0].register.rows[0].name,'Ram','without brief the saved sheet still comes back');
+});
+
 test('manual biometric save is immutable for the same site and day', async () => {
   const pool=fakePool({manual:true});let version=0;
   const store=createBiometricDayStore(pool,{manual:true,today:()=> '2026-11-23',load:async (_site,day)=>({...register(day),machines:[{serial:'JNP1',punches:++version}]})});
