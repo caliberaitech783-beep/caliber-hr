@@ -44,7 +44,15 @@ describe('Manual Biometric attendance roster',()=>{
   render(<RosterTable groups={groups as never} dates={['2026-11-01','2026-11-02','2026-11-03','2026-11-04']} view="manualMismatch" trip={trip} monthly={false} from="2026-11-01" to="2026-11-04"/>);
   expect(screen.getAllByText('P / P').length).toBeGreaterThan(0);
   expect(screen.getAllByText('A / P').length).toBeGreaterThan(0);
-  expect(screen.getByRole('button',{name:/Both present/})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:/P \/ PBoth present/})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:/A \/ ABoth absent/})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:/P \/ PBoth present/}));
+  expect(screen.getByRole('region',{name:'P / P records employee details'})).toBeInTheDocument();
+  expect(screen.getAllByText('Matching Employee').length).toBeGreaterThan(0);
+  expect(screen.getAllByRole('button',{name:'View dates'}).length).toBeGreaterThan(0);
+  expect(screen.getAllByRole('button',{name:/Print\/Export/}).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button',{name:/P \/ PBoth present/}));
+  expect(screen.getByRole('button',{name:/^Both present/})).toBeInTheDocument();
   expect(screen.getByRole('button',{name:/Trip Card only/})).toBeInTheDocument();
   expect(screen.getByRole('button',{name:/Biometric only/})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:/Trip Card only/}));

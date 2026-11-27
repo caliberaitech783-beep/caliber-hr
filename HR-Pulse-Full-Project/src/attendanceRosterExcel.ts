@@ -116,7 +116,7 @@ function manualMismatchWorkbook(groups:RosterGroup[],dates:string[],from:string,
  const wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('MB - Trip Card',{views:[{state:'frozen',xSplit:5,ySplit:4}]});
  const fixed=['Sr. No.','Employee ID','Name','Department','Designation'],heads=[...fixed,...dates.map(d=>Number(d.slice(8)))],first=fixed.length+1;
  ws.mergeCells(1,1,1,heads.length);ws.getCell(1,1).value=`M.B-Trip card Mismatch · ${show(from)} to ${show(to)}`;ws.getCell(1,1).font={bold:true,size:13,color:{argb:'FF3C2A55'}};
- ws.mergeCells(2,1,2,heads.length);ws.getCell(2,1).value='Manual Biometric / Trip Card: P/P green · A/P red · P/A orange · MP/P purple · HD/P yellow · MP/A pink · HD/A blue · blank/blank grey.';ws.getCell(2,1).font={size:10,color:{argb:'FF5C4D6E'}};
+ ws.mergeCells(2,1,2,heads.length);ws.getCell(2,1).value='Manual Biometric / Trip Card: P/P and A/A green · A/P red · P/A orange · MP/P purple · HD/P yellow · MP/A magenta · HD/A blue · blank/blank grey.';ws.getCell(2,1).font={size:10,color:{argb:'FF5C4D6E'}};
  dates.forEach((d,i)=>{const c=ws.getRow(3).getCell(first+i);c.value=weekday(d);c.alignment={horizontal:'center'};});
  heads.forEach((h,i)=>{const c=ws.getRow(4).getCell(i+1);c.value=h;c.font={bold:true,color:{argb:'FF5C4D6E'}};c.fill=fill('F3F0F7');c.alignment={horizontal:i<5?'left':'center'};});
  groups.forEach((g,n)=>{const row=ws.getRow(5+n);[n+1,g.code,g.name,g.department||'—',g.designation||'—'].forEach((v,i)=>row.getCell(i+1).value=v);const mismatches=new Map(g.mismatches.map(m=>[m.date,m]));

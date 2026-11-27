@@ -2,6 +2,7 @@ export type ManualMismatchTone='match'|'absent-present'|'present-absent'|'miss-p
 
 export const MANUAL_MISMATCH_LEGEND=[
  ['P / P','Both present','match'],
+ ['A / A','Both absent','match'],
  ['A / P','Biometric absent · Trip present','absent-present'],
  ['P / A','Biometric present · Trip absent','present-absent'],
  ['MP / P','Biometric miss punch · Trip present','miss-present'],
@@ -16,7 +17,7 @@ export const MANUAL_MISMATCH_COLOURS:Record<ManualMismatchTone,{fill:string;text
  'present-absent':{fill:'FAEEDA',text:'633806'},
  'miss-present':{fill:'EEEDFE',text:'3C3489'},
  'half-present':{fill:'FFF3CD',text:'664D03'},
- 'miss-absent':{fill:'FBEAF0',text:'72243E'},
+ 'miss-absent':{fill:'FFD6F1',text:'8A075E'},
  'half-absent':{fill:'E6F1FB',text:'0C447C'},
  'other-difference':{fill:'F3E8FF',text:'5B216B'},
  'trip-only':{fill:'FAEEDA',text:'633806'},
