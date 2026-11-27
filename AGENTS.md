@@ -198,3 +198,18 @@ Set by the owner on 25 November 2026: "I need the edit option only for admin in 
 - Everyone else (Site HR) sees the roster as before, with no correction and no Delete of saved logs; the server refuses them both (403).
 - Pulse-II still gets the imported punches only.
 - `HR-Pulse-Full-Project/server/manual-attendance-corrections.mjs` holds the rule, `src/ManualDayEdit.tsx` the form; `server/manual-attendance-corrections.test.mjs` and `src/ManualDayEdit.test.tsx` check it.
+
+# Trip card attendance has one master: Pulse-II
+
+Set by the owner on 27 November 2026: "MIS will be the primary master for HR to fetch in the roster. And if MIS gives the data to HR, and if HR makes any changes, it has to be through OTP. If HR makes absent as present or present as absent, then the same has to be re-updated in MIS also." For present to absent on a card that is right: "Yes, keep the card".
+
+Why: driver CMPL8812 (Majri OC, 8 Nov 2026) stood on a trip card in Pulse-II and was missing in the Attendance roster here. Pulse-II was sending his duties; HR Pulse was showing a copy it had saved earlier.
+
+- Who was present on a trip card (person, site, date, shift) is decided only in Pulse-II. HR Pulse shows what Pulse-II sends and keeps no present / absent of its own. Biometric punches and their corrections stay HR Pulse's.
+- A saved day (Save trip cards, `hr_trip_card_days`) is only a faster way to open the roster. Pulse-II signs every site-day it sends (`days` in the feed); the signature is kept with the saved day (`mis_signature`), and the roster shows a saved day only while Pulse-II still gives the same signature (`checkSavedTripCards` in `src/rosterData.ts`, one small question, `attendance/mis/days`). A day that changed in Pulse-II after it was saved, or was saved before days were signed, is read from Pulse-II again by itself and the page says which days. Never show a saved trip card day without this check, and never add another stored copy of trip card attendance.
+- A present / absent change is made in Pulse-II, with the OTP of the RHR of the site's region: Trip cards & driver logbooks has **Mark absent (OTP)** on a duty, **Take back (OTP)** on a change, and **Mark present (OTP)** for a person with no card (`src/MisAttendanceChange.tsx`; server `mis/change`, `mis/change/verify`, `mis/changes` in `server/mis-attendance.mjs`). HR Pulse only passes it on with the user's own grant and writes an audit line; what Pulse-II refuses is shown in its own words. Absent keeps the trip card in Pulse-II; present makes a Present entry there.
+- `hr_mis_attendance_corrections` holds only the corrected duty times of a present duty now. The server refuses a new absent or pending there, and an old one is shown on the duty ("Earlier HR-only … is not applied") and no longer changes anything.
+- A trip card code that differs from the register only in its prefix (CMPL8812 / CMLL8812) is the same person when the number, the name and the site agree, and two written forms of one code add their days together instead of the second replacing the first (`buildRoster` in `src/rosterModel.ts`).
+- Works with a Pulse-II that does not sign yet: the saved days are then shown as before and the change buttons say Pulse-II is not ready.
+- Not built yet: a list of the cards Pulse-II could not give to one person (the feed's `exceptions`) and of duties whose person has no line in HR Pulse.
+- `server/mis-attendance-master.test.mjs` (run by the deploy), `src/MisAttendance.test.tsx` and `src/rosterModel.test.tsx` check this.

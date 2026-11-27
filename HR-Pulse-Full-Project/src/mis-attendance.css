@@ -54,6 +54,8 @@
 .trip-attendance-editor label { display: grid; gap: 4px; }
 .trip-attendance-editor .trip-attendance-reason { flex: 1 1 180px; }
 .trip-attendance-editor [role="alert"] { flex: 1 0 100%; color: #922e27; }
+.trip-attendance-editor .trip-attendance-change-note { flex: 1 0 100%; margin: 0; color: #4a3b57; font-size: 0.9em; }
+.trip-attendance-edit + .trip-attendance-edit { margin-left: 6px; }
 .trip-attendance-pages {
   display: flex;
   align-items: center;

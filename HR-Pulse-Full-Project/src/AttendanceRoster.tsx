@@ -3,7 +3,7 @@ import {ArrowDown,ArrowUp,ChevronDown,Download,Filter,Lock,Printer,RefreshCw,Sav
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,deleteManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo,type SavedBioDay} from './rosterData';
+import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,checkSavedTripCards,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,deleteManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo,type SavedBioDay} from './rosterData';
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 import MachineLogUpload from './MachineLogUpload';
@@ -305,13 +305,16 @@ type Source<T>={key:string;status:'idle'|'loading'|'ready'|'error';message:strin
 /** The Trip card tab's reading, day by day: each day's state, rows and MIS error, and the site names MIS returned. */
 type TripStream={key:string;days:Record<string,DayState>;rows:Record<string,AttendanceRow[]>;errors:Record<string,string>;sites:string[];runs:number;
  /** saved: days opened from (or written to) the saved copy; fresh: days read from MIS and not saved yet. */
- saved:Record<string,SavedInfo>;fresh:string[];save:{running:boolean;done:number;total:number;failed:string[];error:string}|null};
-const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null};
+ saved:Record<string,SavedInfo>;fresh:string[];save:{running:boolean;done:number;total:number;failed:string[];error:string}|null;
+ /** signatures: what Pulse-II signed for each day read from it; stale: saved days that were no longer what Pulse-II holds
+     (read again from MIS); unchecked: Pulse-II could not be asked, so the saved days are shown as they were saved. */
+ signatures:Record<string,string>;stale:string[];unchecked:boolean};
+const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null,signatures:{},stale:[],unchecked:false};
 export function applyDay(stream:TripStream,u:DayUpdate):TripStream{
  const days={...stream.days,[u.day]:u.state},errors={...stream.errors},rows=u.state==='done'?{...stream.rows,[u.day]:u.rows||[]}:stream.rows;
  if(u.state==='failed')errors[u.day]=u.error||'MIS did not answer';else if(u.state==='done')delete errors[u.day];
  const done=u.state==='done',saved=done?Object.fromEntries(Object.entries(stream.saved).filter(([d])=>d!==u.day)):stream.saved;
- return {...stream,days,rows,errors,saved,fresh:done&&!stream.fresh.includes(u.day)?[...stream.fresh,u.day]:stream.fresh,
+ return {...stream,days,rows,errors,saved,signatures:done&&u.signature!==undefined?{...stream.signatures,[u.day]:u.signature}:stream.signatures,fresh:done&&!stream.fresh.includes(u.day)?[...stream.fresh,u.day]:stream.fresh,
   sites:u.sites?[...new Set([...stream.sites,...u.sites])].sort():stream.sites};
 }
 const idle={key:'',status:'idle' as const,message:'',data:null};
@@ -366,11 +369,14 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   // "Fetch again" reads every day from MIS; otherwise the saved days open at once and MIS is read for the rest.
   if(forceMis.current){forceMis.current=false;readTrip(all,true);return;}
   setTrip(t=>t.key===runKey?{...t,runs:t.runs+1}:t);
-  readSavedTripCards(grant,site,from,to).then(saved=>{
+  // Pulse-II is the master (owner, 27 Nov 2026): a saved day is shown only while Pulse-II still signs it the same way.
+  readSavedTripCards(grant,site,from,to).then(async saved=>{
    if(keyRef.current!==runKey)return;
-   const have=saved.filter(d=>all.includes(d.day));
+   const check=await checkSavedTripCards(grant,site,saved.filter(d=>all.includes(d.day)));
+   if(keyRef.current!==runKey)return;
+   const have=check.fresh;
    setTrip(t=>t.key!==runKey?t:{...t,days:{...t.days,...Object.fromEntries(have.map(d=>[d.day,'done' as DayState]))},rows:{...t.rows,...Object.fromEntries(have.map(d=>[d.day,d.rows]))},
-    saved:{...t.saved,...Object.fromEntries(have.map(d=>[d.day,{savedBy:d.savedBy,savedAt:d.savedAt}]))}});
+    saved:{...t.saved,...Object.fromEntries(have.map(d=>[d.day,{savedBy:d.savedBy,savedAt:d.savedAt}]))},stale:check.stale,unchecked:!check.checked});
    const missing=all.filter(d=>!have.some(x=>x.day===d));
    if(missing.length)readTrip(missing);
   }).catch(()=>{if(keyRef.current===runKey)readTrip(all);})
@@ -388,7 +394,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  }
  /** Save trip cards: every day read from MIS and not saved yet, one day per request. */
  function saveTrip(){
-  const runKey=key,list=trip.fresh.filter(d=>trip.days[d]==='done').sort().map(day=>({day,rows:trip.rows[day]||[]}));
+  const runKey=key,list=trip.fresh.filter(d=>trip.days[d]==='done').sort().map(day=>({day,rows:trip.rows[day]||[],signature:trip.signatures[day]||''}));
   if(!list.length)return;
   setTrip(t=>({...t,save:{running:true,done:0,total:list.length,failed:[],error:''}}));
   void saveTripCards(grant,site,list,(day,info,error)=>setTrip(t=>{
@@ -520,7 +526,9 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  tripState.canSave=!running&&!save?.running&&freshDone.length>0;
  tripState.saveLabel=save?.running?`Saving ${save.done} of ${save.total} days…`:freshDone.length?`Save trip cards (${freshDone.length} day${freshDone.length===1?'':'s'})`:savedDays.length?'Saved':'Save trip cards';
  tripState.savedNote=savedDays.length?`Saved copy: ${savedDays.length} of ${total} days (last saved ${latest?when(latest.savedAt):''}${latest?.savedBy?' by '+latest.savedBy:''}).`+
-  (freshDone.length?` ${freshDone.length} day${freshDone.length===1?'':'s'} read from MIS ${freshDone.length===1?'is':'are'} not saved yet.`:' Press Fetch again for the latest from MIS.'):'';
+  (freshDone.length?` ${freshDone.length} day${freshDone.length===1?'':'s'} read from MIS ${freshDone.length===1?'is':'are'} not saved yet.`:trip.unchecked?' Pulse-II could not be asked whether these days changed; press Fetch again for the latest from MIS.':' Every saved day was checked with MIS and is current.'):'';
+ const staleNote=trip.key===key&&trip.stale.length?`${trip.stale.length} saved day${trip.stale.length===1?' was':'s were'} no longer what MIS holds (a card was added, corrected or changed after saving) and ${trip.stale.length===1?'was':'were'} read from MIS again: ${trip.stale.map(d=>d.slice(8,10)+'-'+d.slice(5,7)).join(', ')}. Press Save trip cards to keep the new copy.`:'';
+ if(staleNote)tripState.savedNote=[tripState.savedNote,staleNote].filter(Boolean).join(' ');
  tripState.saveError=save&&!save.running&&save.failed.length?`Could not save ${save.failed.map(show).join(', ')}: ${save.error}`:'';
  if(tripState.status==='error')tripState.message=trip.errors[failedDays[0]]||'The MIS attendance feed is temporarily unavailable.';
  const bioDays=bio.key===bioKey?Object.entries(bio.days):[],bioTotal=bioDays.length,bioDone=bioDays.filter(([,st])=>st==='done'||st==='failed').length;

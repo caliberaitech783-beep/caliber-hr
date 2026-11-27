@@ -1,8 +1,10 @@
 /* Saved trip cards for the attendance roster (owner, 22 Nov 2026).
    "Save trip cards" on Attendance roster › Trip card stores the MIS trip cards (VLB, ELB, LMV) of a site, one row per
    day (hr_trip_card_days), so the roster opens them at once next time and reads MIS only for days not saved.
-   GET  attendance/trip-cards?site=&from=&to=  → {days:[{day,rows,duties,savedBy,savedAt}]}
-   POST attendance/trip-cards {site,day,rows}  → {day,duties,savedBy,savedAt}  (one day per request, under 2 MB) */
+   GET  attendance/trip-cards?site=&from=&to=  → {days:[{day,rows,duties,savedBy,savedAt,signature}]}
+   POST attendance/trip-cards {site,day,rows,signature}  → {day,duties,savedBy,savedAt}  (one day per request, under 2 MB)
+   signature (owner, 27 Nov 2026: Pulse-II is the master): what Pulse-II signed for that site and day when the rows were
+   read. The roster shows a saved day only while Pulse-II still gives the same signature; a day saved before this has none. */
 import {siteAccessMessage,siteIds} from './scope.mjs';
 
 export const MAX_TRIP_ROWS = 5000, MAX_TRIP_DAYS = 31;
@@ -13,6 +15,7 @@ const text = (value, max = 200) => typeof value === 'string' ? value.slice(0, ma
 const texts = (value, max = 20) => Array.isArray(value) ? value.filter(v => typeof v === 'string').slice(0, max).map(v => v.slice(0, 120)) : [];
 const number = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const STATUS = new Set(['Present', 'Present · 0 trips', 'Absent', 'Pending']);
+export const daySignature = value => typeof value === 'string' && value.length <= 400 && /^[a-z0-9 :,()-]+$/.test(value) ? value : '';
 
 /** One duty as the roster uses it (misAttendanceModel AttendanceRow); anything else in the input is dropped. */
 export function tripDuty(row, day) {
@@ -43,9 +46,9 @@ export function createTripCardStore(pool) {
       if (!validDay(from) || !validDay(to) || to < from) fail('Choose a valid date range.');
       if ((Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 > MAX_TRIP_DAYS) fail(`Choose up to ${MAX_TRIP_DAYS} days.`);
       await checkSite(pool, profile, site);
-      const {rows} = await pool.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,rows,duties,saved_by,saved_at FROM hr_trip_card_days
+      const {rows} = await pool.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,rows,duties,saved_by,saved_at,mis_signature FROM hr_trip_card_days
         WHERE site=$1 AND day BETWEEN $2::date AND $3::date ORDER BY day`, [site, from, to]);
-      return {site, days: rows.map(r => ({day: r.day, rows: r.rows, duties: r.duties, savedBy: r.saved_by, savedAt: r.saved_at}))};
+      return {site, days: rows.map(r => ({day: r.day, rows: r.rows, duties: r.duties, savedBy: r.saved_by, savedAt: r.saved_at, signature: r.mis_signature || ''}))};
     }
     if (method === 'POST') {
       const {site, day} = input || {};
@@ -53,9 +56,9 @@ export function createTripCardStore(pool) {
       if (!Array.isArray(input.rows) || input.rows.length > MAX_TRIP_ROWS) fail(`Send up to ${MAX_TRIP_ROWS} trip cards for a day.`);
       await checkSite(pool, profile, site);
       const rows = input.rows.map(row => tripDuty(row, day));
-      const saved = (await pool.query(`INSERT INTO hr_trip_card_days(site,day,rows,duties,saved_by) VALUES($1,$2,$3,$4,$5)
-        ON CONFLICT(site,day) DO UPDATE SET rows=EXCLUDED.rows,duties=EXCLUDED.duties,saved_by=EXCLUDED.saved_by,saved_at=now()
-        RETURNING to_char(day,'YYYY-MM-DD') AS day,duties,saved_by,saved_at`, [site, day, JSON.stringify(rows), rows.length, profile.actor])).rows[0];
+      const saved = (await pool.query(`INSERT INTO hr_trip_card_days(site,day,rows,duties,saved_by,mis_signature) VALUES($1,$2,$3,$4,$5,$6)
+        ON CONFLICT(site,day) DO UPDATE SET rows=EXCLUDED.rows,duties=EXCLUDED.duties,saved_by=EXCLUDED.saved_by,saved_at=now(),mis_signature=EXCLUDED.mis_signature
+        RETURNING to_char(day,'YYYY-MM-DD') AS day,duties,saved_by,saved_at`, [site, day, JSON.stringify(rows), rows.length, profile.actor, daySignature(input.signature)])).rows[0];
       await pool.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_TRIP_CARDS','attendance',NULL,$2)", [profile.actor, {site, day, duties: rows.length}]);
       return {day: saved.day, duties: saved.duties, savedBy: saved.saved_by, savedAt: saved.saved_at};
     }
