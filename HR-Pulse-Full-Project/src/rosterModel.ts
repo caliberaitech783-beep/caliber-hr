@@ -54,6 +54,11 @@ const CALENDAR = new Set(['WO', 'H', 'L', 'CO', 'OD']);
 const WORKED = new Set(['P', 'HD', 'IN', 'MP']);
 const RANK: Record<string, number> = {P: 3, HD: 2, A: 1};
 const normal = (value?: string) => String(value || '').trim().toUpperCase();
+const identityNumber = (value?: string) => {
+  const digits=normal(value).match(/\d+$/)?.[0]||'';
+  return digits.replace(/^0+(?=\d)/,'');
+};
+const identityName = (value?: string) => normal(value).replace(/[^A-Z0-9]+/g,'');
 const hm = (ms: number) => new Date(ms + 330 * 60_000).toISOString().slice(11, 16);
 const hoursText = (minutes: number | null) => minutes == null ? '' : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')} h`;
 const LABEL: Record<string, string> = {P: 'Present', HD: 'Half day', A: 'Absent', WO: 'Weekly off', H: 'Holiday', CO: 'Comp off', L: 'Leave', OD: 'On duty', MP: 'Miss punch', IN: 'In, no Out yet', '?': 'Trip card not verified yet', '': 'No record'};
@@ -124,6 +129,14 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
   const byCode = new Map(groups.filter(g => g.code).map(g => [normal(g.code), g]));
   for (const [code, person] of tripPeople) {
     let group = byCode.get(code);
+    // Pulse-II may retain an older Caliber prefix (for example CMPL8812) while Employee Master uses
+    // CMLL8812. Resolve that alias only when number, employee name and site identify one unique person;
+    // ambiguous values remain separate instead of attaching somebody else's trip card.
+    if (!group) {
+      const number=identityNumber(code),name=identityName(person.name);
+      const aliases=number&&name?groups.filter(candidate=>identityNumber(candidate.code)===number&&identityName(candidate.name)===name&&sameSite(candidate.site,person.site)):[];
+      if(aliases.length===1)group=aliases[0];
+    }
     if (!group) {
       group = {key: 'mis:' + code, code, aFormNo: '', name: person.name, site: person.site, department: '', designation: person.designation, shift: '', exempt: false,
         bioCodes: {}, tripCodes: {}, tripDays: {}, hasTripCards: false, mismatches: [], pending: 0, machines: [], linked: true};

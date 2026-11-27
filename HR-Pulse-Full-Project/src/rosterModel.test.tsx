@@ -53,6 +53,24 @@ it('joins trip card and biometric on the Caliber code and lists the days that di
  expect([office.hasTripCards,office.mismatches.length]).toEqual([false,0]);
 });
 
+it('safely reconciles an old CMPL trip-card prefix with the unique CMLL employee identity',()=>{
+ const date='2026-11-08',employee={...bio,id:'majri-8812',code:'CMLL8812',name:'Ajay Kumar Yadav',site:'Majri OC',department:'Driver',designation:'Tipper Driver',days:[day(date,'MP')]};
+ const card=duty(date,{caliberCode:'CMPL8812',employeeName:'AJAY KUMAR YADAV',site:'Majri OC',designation:'Tipper Driver'});
+ const groups=buildRoster([employee],[card],[date],'2026-11-09',DEFAULT_POLICY);
+ expect(groups).toHaveLength(1);
+ expect(groups[0].code).toBe('CMLL8812');
+ expect(groups[0].tripCodes[date]).toBe('P');
+ expect(groups[0].bioCodes[date]).toBe('MP');
+ expect(groups[0].mismatches[0].reason).toBe('Trip card on duty, biometric miss punch');
+});
+
+it('does not guess when a legacy trip-card code could identify more than one employee',()=>{
+ const date='2026-11-08',same={...bio,name:'Same Name',site:'Majri OC',days:[day(date,'P')]};
+ const groups=buildRoster([{...same,id:'one',code:'CMLL0099'},{...same,id:'two',code:'OTHER99'}],[duty(date,{caliberCode:'CMPL99',employeeName:'Same Name',site:'Majri OC'})],[date],'2026-11-09');
+ expect(groups.filter(group=>group.hasTripCards)).toHaveLength(1);
+ expect(groups.find(group=>group.hasTripCards)?.code).toBe('CMPL99');
+});
+
 it('shows Trip Card and Bio Matric lines, the difference count and its days',async()=>{
  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams;
   if(url.includes('attendance/mis'))return Response.json({attendanceEquipment:[],attendanceShifts:trips.map(t=>({siteKey:'Gevra',date:t.date,shift:'S1',state:t.verified?'closed':'open',batch:'B1'})),
