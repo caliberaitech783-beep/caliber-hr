@@ -111,12 +111,30 @@ export async function fetchBiometric(grant: string, from: string, to: string, si
   const register = await api<SiteRegister>(grant, 'attendance/site-register?' + new URLSearchParams({site, from, to}), 'GET', undefined, BIO_DAY_TIMEOUT_MS);
   return {...register, rows: Array.isArray(register?.rows) ? register.rows : [], machines: Array.isArray(register?.machines) ? register.machines : []};
 }
-export async function fetchManualBiometric(grant:string,from:string,to:string,site:string):Promise<SiteRegister>{
+/* Manual Biometric fills in day by day (owner, 28 Nov 2026), as the Biometric tab does: until then a month showed nothing
+   until its last day had arrived. `days`: each day's reading state; `counts`: the punches of a day that was read;
+   `partial`: the days read so far, joined (sent only when another day has arrived). In `partial` the days still to come
+   are listed in failedDays, so the roster leaves them blank instead of calling them absent. */
+export type ManualProgress={days:Record<string,DayState>;counts:Record<string,number>;errors:Record<string,string>;partial?:SiteRegister};
+export async function fetchManualBiometric(grant:string,from:string,to:string,site:string,onProgress?:(progress:ManualProgress)=>void):Promise<SiteRegister>{
  const days=daysBetween(from,to),results:SiteRegister[]=[],dayErrors:Record<string,string>={};let next=0;
- async function worker(){while(next<days.length){const day=days[next++];for(let attempt=1;attempt<=TRIP_ATTEMPTS;attempt++)try{
+ const states:Record<string,DayState>=Object.fromEntries(days.map(day=>[day,'queued' as DayState])),counts:Record<string,number>={};
+ const tell=(arrived=false)=>{
+  if(!onProgress)return;
+  const joined=arrived?joinBiometricDays(results):null;
+  onProgress({days:{...states},counts:{...counts},errors:{...dayErrors},...(joined?{partial:{...joined,from,to,failedDays:days.filter(day=>states[day]!=='done'),dayErrors:{...dayErrors}}}:{})});
+ };
+ tell();
+ async function worker(){while(next<days.length){const day=days[next++];states[day]='loading';tell();for(let attempt=1;attempt<=TRIP_ATTEMPTS;attempt++)try{
    const register=await api<SiteRegister>(grant,'attendance/manual-biometric?'+new URLSearchParams({site,from:day,to:day}),'GET',undefined,BIO_DAY_TIMEOUT_MS);
-   results.push({...register,rows:Array.isArray(register?.rows)?register.rows:[],machines:Array.isArray(register?.machines)?register.machines:[]});delete dayErrors[day];break;
-  }catch(error){dayErrors[day]=(error as Error).message||'HR did not answer';if(attempt>=TRIP_ATTEMPTS||NO_ACCESS.test(dayErrors[day]))break;await pause(1500*attempt);}}
+   const machines=Array.isArray(register?.machines)?register.machines:[];
+   results.push({...register,rows:Array.isArray(register?.rows)?register.rows:[],machines});delete dayErrors[day];
+   states[day]='done';counts[day]=machines.reduce((sum,machine)=>sum+(Number(machine.punches)||0),0);tell(true);break;
+  }catch(error){
+   dayErrors[day]=(error as Error).message||'HR did not answer';
+   if(attempt>=TRIP_ATTEMPTS||NO_ACCESS.test(dayErrors[day])){states[day]='failed';tell();break;}
+   states[day]='retrying';tell();await pause(1500*attempt);
+  }}
  }
  await Promise.all(Array.from({length:Math.min(2,days.length)},worker));
  const joined=joinBiometricDays(results);

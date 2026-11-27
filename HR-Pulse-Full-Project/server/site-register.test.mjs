@@ -120,3 +120,25 @@ test('manual biometric excludes people whose only punches are outside the select
  assert.match(idRead,/p\.punched_at>=\$2::date AND p\.punched_at<\$3::date\+1/);
  assert.doesNotMatch(idRead,/\$2::date-1|\$3::date\+2/);
 });
+
+test('one day of a site roster never holds more than two database connections, and reads the policy and holidays once (28 Nov 2026)', async () => {
+  const inner = fakeDb({machines, punches: [{serial: 'SST01', id: '1021', at: '2026-11-02 06:02'}, {serial: 'SST01', id: '1021', at: '2026-11-02 14:08'}, {serial: 'SST02', id: '77', at: '2026-11-02 09:00'}]});
+  let running = 0, most = 0;
+  const db = {async query(sql, params) { running++; most = Math.max(most, running); await new Promise(resolve => setTimeout(resolve, 5)); try { return await inner.query(sql, params); } finally { running--; } }};
+  const register = await loadSiteRegister(db, site, '2026-11-02', '2026-11-02', '2026-11-23');
+  assert.deepEqual(register.rows.map(r => [r.name, r.linked]), [['Ramesh Kumar', true], ['RAMU', false]], 'the same roster as before');
+  assert.ok(most <= 2, `at most two lookups at a time, saw ${most}`);
+  assert.equal(inner.calls.filter(sql => /FROM hr_attendance_policy/.test(sql)).length, 1, 'the policy is read once');
+  assert.equal(inner.calls.filter(sql => /kind='holidays'/.test(sql)).length, 1, 'the holidays are read once');
+});
+
+test('lookups in turns keep their order and stop at the first failure', async () => {
+  const {inTurns} = await import('./attendance-register.mjs');
+  const order = [];
+  const results = await inTurns([20, 5, 1, 10].map((ms, i) => async () => { await new Promise(resolve => setTimeout(resolve, ms)); order.push(i); return 'r' + i; }));
+  assert.deepEqual(results, ['r0', 'r1', 'r2', 'r3']);
+  assert.notDeepEqual(order, [0, 1, 2, 3], 'two run side by side');
+  let started = 0;
+  await assert.rejects(inTurns([async () => { started++; throw new Error('database busy'); }, async () => { started++; }, async () => { started++; }, async () => { started++; }], 1), /database busy/);
+  assert.equal(started, 1);
+});

@@ -540,3 +540,25 @@ it('saved biometric days are asked for three days at a time; a piece that fails 
  await expect(readSavedBiometric('a'.repeat(43),'Sasti OC','2026-11-01','2026-11-08')).rejects.toThrow('outside your assigned access');
  setApiRetryPause(ms=>new Promise(resolve=>setTimeout(resolve,ms)));
 });
+
+it('Manual Biometric reports every day as it arrives, with the days still to come left blank (28 Nov 2026)',async()=>{
+ const {fetchManualBiometric,setRetryPause}=await import('./rosterData');setRetryPause(async()=>{});
+ let failOnce=true;
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const day=new URL(url,'https://x').searchParams.get('from')!;
+  if(day==='2026-11-03'&&failOnce){failOnce=false;return Response.json({error:'Database busy'},{status:503});}
+  if(day==='2026-11-04')return Response.json({error:'Database busy'},{status:503});
+  return Response.json({from:day,to:day,policy:DEFAULT_POLICY,site:'Majri OB',machines:[{serial:'M1',name:'',location:'',online:false,lastContact:null,lastPunch:'',punches:4}],rows:[{...bio,site:'Majri OB',days:bio.days.filter(d=>d.date===day),linked:true,machinesUsed:['M1']}]});}));
+ const seen:import('./rosterData').ManualProgress[]=[];
+ const result=await fetchManualBiometric('a'.repeat(43),'2026-11-02','2026-11-04','Majri OB',progress=>seen.push(progress));
+ expect(seen[0].days).toEqual({'2026-11-02':'queued','2026-11-03':'queued','2026-11-04':'queued'});
+ expect(seen.some(p=>p.days['2026-11-03']==='retrying')).toBe(true);
+ const first=seen.find(p=>p.partial)!;
+ expect(first.partial!.rows[0].days.map(d=>d.date)).toEqual(['2026-11-02']);
+ expect(first.partial!.failedDays,'days not read yet are left blank, never shown as absent').toEqual(['2026-11-03','2026-11-04']);
+ expect(first.counts).toEqual({'2026-11-02':4});
+ const last=seen.at(-1)!;
+ expect(last.days).toEqual({'2026-11-02':'done','2026-11-03':'done','2026-11-04':'failed'});
+ expect(last.errors).toEqual({'2026-11-04':'Database busy'});
+ expect(result.failedDays).toEqual(['2026-11-04']);
+ expect(result.rows[0].days.map(d=>d.date)).toEqual(['2026-11-02','2026-11-03']);
+});
