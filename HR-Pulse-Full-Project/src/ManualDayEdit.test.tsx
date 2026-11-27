@@ -11,11 +11,15 @@ const row=(days:ReturnType<typeof day>[]):RegisterRow=>({id:'e1',code:'CMLL20611
  designation:'TIPPER HELPER',exempt:false,shiftStart:'',shiftEnd:'',days,
  summary:{full:1,half:0,absent:0,missPunch:1,late:0,early:0,lateEarly:0,halfDutyCuts:0,duties:1,gatePassDeduction:0,H:0,L:0,OD:0,WO:0,IN:0}} as RegisterRow);
 
-function mockApi(canCorrect:boolean,days=[day('2026-11-01','P'),day('2026-11-02','MP')]){
+const savedReads:string[]=[];
+function mockApi(canCorrect:boolean,days=[day('2026-11-01','P'),day('2026-11-02','MP')],savedListLate=false){
  const sent:{url:string;method:string;body:unknown}[]=[];
  vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{const q=new URL(url,'https://x').searchParams,method=init?.method||'GET';
   if(method!=='GET'){sent.push({url,method,body:init?.body?JSON.parse(String(init.body)):null});return Response.json({day:'2026-11-02',savedCopyUpdated:true});}
   if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'DH',name:'Dhoptala OB 2nd'}]);
+  if(url.includes('manual-biometric-days'))savedReads.push(url);
+  // The answer starts but does not finish in time, as on Majri OC 1-20 Nov (27 Nov 2026).
+  if(savedListLate&&url.includes('manual-biometric-days'))return {ok:true,status:200,json:async()=>{throw new DOMException('signal timed out','TimeoutError');}} as unknown as Response;
   if(url.includes('manual-biometric-days'))return Response.json({site:'Dhoptala OB 2nd',days:[{day:'2026-11-01',savedBy:'stupal',savedAt:'2026-11-25T10:16:00Z',punches:4,people:1,register:{rows:[],machines:[]}}]});
   if(url.includes('attendance/manual-biometric'))return Response.json({from:q.get('from'),to:q.get('to'),policy:DEFAULT_POLICY,site:'Dhoptala OB 2nd',machines:[],canCorrect,
    rows:[{...row(days),linked:true,machinesUsed:['CEXJ230861482']}]});
@@ -44,6 +48,18 @@ it('Site HR sees the roster with no day correction and no Delete of saved logs',
  const saved=screen.getByRole('dialog',{name:'Saved manual biometric logs'});
  expect(within(saved).queryByRole('button',{name:/Delete/})).toBeNull();
  expect(within(saved).getByText('HR administrator only')).toBeTruthy();
+});
+
+it('a saved-day list that arrives too late no longer hides the punches (27 Nov 2026, Majri OC)',async()=>{
+ savedReads.length=0;mockApi(false,undefined,true);
+ await openManual();
+ expect(savedReads.length).toBeGreaterThan(0);
+ for(const url of savedReads)expect(new URL(url,'https://x').searchParams.get('brief'),'only the saved-day list is asked for').toBe('1');
+ const warning=await screen.findByText(/Could not read which days are already saved/,undefined,{timeout:4000});
+ expect(warning.textContent).toContain('HR Pulse took too long to answer');
+ expect(screen.queryByText(/signal timed out/)).toBeNull();
+ expect(screen.queryByText(/Biometric punches unavailable/)).toBeNull();
+ expect((screen.getByRole('button',{name:/Save manual biometric/}) as HTMLButtonElement).disabled,'Save waits until the saved days are known').toBe(true);
 });
 
 it('an HR administrator corrects a miss punch with the In / Out and a reason',async()=>{

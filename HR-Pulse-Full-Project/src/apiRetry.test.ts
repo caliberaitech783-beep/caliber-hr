@@ -21,3 +21,21 @@ it('does not retry an expired session',async()=>{
  await expect(api('a'.repeat(43),'lookups')).rejects.toThrow('Sign in again');
  expect(request).toHaveBeenCalledOnce();
 });
+
+/** An answer whose headers arrived in time but whose body did not: reading it fails the way AbortSignal.timeout does. */
+const lateBody=()=>({ok:true,status:200,json:async()=>{throw new DOMException('signal timed out','TimeoutError');}}) as unknown as Response;
+
+it('a read whose answer runs out of time on the way is tried again (27 Nov 2026: "signal timed out")',async()=>{
+ setApiRetryPause(async()=>{});let calls=0;
+ vi.stubGlobal('fetch',vi.fn(async()=>++calls<2?lateBody():Response.json({days:[]})));
+ await expect(api('a'.repeat(43),'attendance/manual-biometric-days?site=Majri+OC')).resolves.toEqual({days:[]});
+ expect(calls).toBe(2);
+});
+
+it('never shows the browser words "signal timed out" when the answer arrives too late',async()=>{
+ setApiRetryPause(async()=>{});const request=vi.fn(async()=>lateBody());vi.stubGlobal('fetch',request);
+ await expect(api('a'.repeat(43),'lookups')).rejects.toThrow('HR Pulse took too long to answer. Try again.');
+ expect(request).toHaveBeenCalledTimes(3);
+ await expect(api('a'.repeat(43),'attendance/fetch','POST',{deviceSerial:'ABC'})).rejects.toThrow('Reload the page to see whether it was saved.');
+ expect(request).toHaveBeenCalledTimes(4);
+});
