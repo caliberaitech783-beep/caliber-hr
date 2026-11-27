@@ -13,8 +13,8 @@ export const MANUAL_MISMATCH_LEGEND=[
 
 export const MANUAL_MISMATCH_COLOURS:Record<ManualMismatchTone,{fill:string;text:string}>={
  match:{fill:'EAF3DE',text:'27500A'},
- 'absent-present':{fill:'FCEBEB',text:'791F1F'},
- 'present-absent':{fill:'FAEEDA',text:'633806'},
+ 'absent-present':{fill:'FAEEDA',text:'633806'},
+ 'present-absent':{fill:'FCEBEB',text:'791F1F'},
  'miss-present':{fill:'EEEDFE',text:'3C3489'},
  'half-present':{fill:'FFF3CD',text:'664D03'},
  'miss-absent':{fill:'FFD6F1',text:'8A075E'},

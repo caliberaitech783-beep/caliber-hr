@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
 import {RosterTable,VIEW_TABS,type TripState} from './AttendanceRoster';
-import {manualMismatchTone} from './manualMismatchColors';
+import {MANUAL_MISMATCH_COLOURS,manualMismatchTone} from './manualMismatchColors';
 
 describe('Manual Biometric attendance roster',()=>{
  it('uses the requested colour category for each MB / Trip Card combination',()=>{
@@ -13,6 +13,8 @@ describe('Manual Biometric attendance roster',()=>{
   expect(manualMismatchTone('HD','P')).toBe('half-present');
   expect(manualMismatchTone('MP','A')).toBe('miss-absent');
   expect(manualMismatchTone('HD','A')).toBe('half-absent');
+  expect(MANUAL_MISMATCH_COLOURS['absent-present'].fill).toBe('FAEEDA');
+  expect(MANUAL_MISMATCH_COLOURS['present-absent'].fill).toBe('FCEBEB');
  });
  it('is a separate tab with import and no trip-card comparison controls',()=>{
   expect(VIEW_TABS.map(([,label])=>label)).toEqual(['Trip card (VLB · ELB · LMV)','Biometric','Trip card vs Biometric','Manual Biometric','M.B-Trip card Mismatch']);
