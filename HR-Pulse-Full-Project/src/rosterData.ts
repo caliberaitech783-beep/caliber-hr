@@ -147,21 +147,27 @@ export async function readSavedTripCards(grant: string, site: string, from: stri
   const result = await api<{days?: SavedDay[]}>(grant, 'attendance/trip-cards?' + new URLSearchParams({site, from, to}));
   return Array.isArray(result?.days) ? result.days : [];
 }
+/** How long the roster waits for Pulse-II's signatures before it shows the saved days unchecked. Asked once, never retried. */
+export const SAVED_CHECK_TIMEOUT_MS = 15_000;
 /**
- * Which saved days are still what Pulse-II holds. One small question to Pulse-II (signatures only, no cards): a saved
- * day whose signature differs, or that was saved before days were signed, is stale and is read from MIS again.
- * checked false: Pulse-II could not be asked (or does not sign yet); the saved days are then shown as before.
+ * Which saved days are still what Pulse-II holds. One small question to Pulse-II (signatures only, no cards) about the
+ * days that carry a signature: a day whose signature differs is stale and is read from MIS again.
+ * unsigned: days saved before Pulse-II signed days (27 Nov 2026). They cannot be compared and are shown as saved; they
+ *   are checked once somebody reads them from MIS (Fetch again) and saves them. They are not all read again by
+ *   themselves: on the first evening that put twenty MIS reads beside the Manual Biometric read and it timed out.
+ * checked false: Pulse-II could not be asked in time (or does not sign yet); the signed days are then shown as saved.
  */
-export async function checkSavedTripCards(grant: string, site: string, saved: SavedDay[]): Promise<{fresh: SavedDay[]; stale: string[]; checked: boolean}> {
-  if (!saved.length) return {fresh: saved, stale: [], checked: true};
-  const days = saved.map(d => d.day).sort();
+export async function checkSavedTripCards(grant: string, site: string, saved: SavedDay[]): Promise<{fresh: SavedDay[]; stale: string[]; unsigned: string[]; checked: boolean}> {
+  const signed = saved.filter(d => Boolean(d.signature)), unsigned = saved.filter(d => !d.signature).map(d => d.day).sort();
+  if (!signed.length) return {fresh: saved, stale: [], unsigned, checked: true};
+  const days = signed.map(d => d.day).sort();
   try {
-    const answer = await api<{supported?: boolean; days?: MisDay[]}>(grant, 'attendance/mis/days?' + new URLSearchParams({from: days[0], to: days[days.length - 1]}));
-    if (!answer?.supported || !Array.isArray(answer.days)) return {fresh: saved, stale: [], checked: false};
-    const fresh = saved.filter(d => Boolean(d.signature) && d.signature === misDaySignature(answer.days, site, d.day));
-    return {fresh, stale: saved.filter(d => !fresh.includes(d)).map(d => d.day).sort(), checked: true};
+    const answer = await api<{supported?: boolean; days?: MisDay[]}>(grant, 'attendance/mis/days?' + new URLSearchParams({from: days[0], to: days[days.length - 1]}), 'GET', undefined, SAVED_CHECK_TIMEOUT_MS);
+    if (!answer?.supported || !Array.isArray(answer.days)) return {fresh: saved, stale: [], unsigned, checked: false};
+    const stale = signed.filter(d => d.signature !== misDaySignature(answer.days, site, d.day)).map(d => d.day).sort();
+    return {fresh: saved.filter(d => !stale.includes(d.day)), stale, unsigned, checked: true};
   } catch {
-    return {fresh: saved, stale: [], checked: false};
+    return {fresh: saved, stale: [], unsigned, checked: false};
   }
 }
 /** Saves the given days, one day per request (each under the 2 MB request limit), three at a time. */
