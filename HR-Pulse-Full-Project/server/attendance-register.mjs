@@ -201,18 +201,18 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   if (!ids.length) return buildRegister({from, to, today, policy});
   const [punches, holidays, leaves, ods, passes, pay] = await Promise.all([
     db.query(manual?`WITH identity_map AS (
-      SELECT * FROM unnest($5::text[],$6::text[],$7::uuid[]) AS m(device_serial,biometric_id,employee_id)
+      SELECT * FROM unnest($3::text[],$4::text[],$5::uuid[]) AS m(device_serial,biometric_id,employee_id)
      )
      SELECT m.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM identity_map m
      JOIN ${punchTable} p ON p.device_serial=m.device_serial AND p.biometric_id=m.biometric_id
-      AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
+      AND p.punched_at>=$1::date-1 AND p.punched_at<$2::date+2
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial`:`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
      JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
      WHERE l.employee_id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
-      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`, manual?[ids,from,to,devices,manualMatches.map(m=>m.device_serial),manualMatches.map(m=>m.biometric_id),manualMatches.map(m=>m.employee_id)]:[ids, from, to, devices]),
+      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`, manual?[from,to,manualMatches.map(m=>m.device_serial),manualMatches.map(m=>m.biometric_id),manualMatches.map(m=>m.employee_id)]:[ids, from, to, devices]),
     db.query(`SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
      WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to]),
     db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'fromDate' AS from_date,coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate') AS to_date,
