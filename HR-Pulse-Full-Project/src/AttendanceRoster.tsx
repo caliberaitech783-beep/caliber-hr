@@ -307,9 +307,10 @@ type TripStream={key:string;days:Record<string,DayState>;rows:Record<string,Atte
  /** saved: days opened from (or written to) the saved copy; fresh: days read from MIS and not saved yet. */
  saved:Record<string,SavedInfo>;fresh:string[];save:{running:boolean;done:number;total:number;failed:string[];error:string}|null;
  /** signatures: what Pulse-II signed for each day read from it; stale: saved days that were no longer what Pulse-II holds
-     (read again from MIS); unchecked: Pulse-II could not be asked, so the saved days are shown as they were saved. */
- signatures:Record<string,string>;stale:string[];unchecked:boolean};
-const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null,signatures:{},stale:[],unchecked:false};
+     (read again from MIS); unsigned: days saved before Pulse-II signed days, shown as saved and not compared;
+     unchecked: Pulse-II could not be asked, so the signed days are shown as they were saved. */
+ signatures:Record<string,string>;stale:string[];unsigned:string[];unchecked:boolean};
+const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null,signatures:{},stale:[],unsigned:[],unchecked:false};
 export function applyDay(stream:TripStream,u:DayUpdate):TripStream{
  const days={...stream.days,[u.day]:u.state},errors={...stream.errors},rows=u.state==='done'?{...stream.rows,[u.day]:u.rows||[]}:stream.rows;
  if(u.state==='failed')errors[u.day]=u.error||'MIS did not answer';else if(u.state==='done')delete errors[u.day];
@@ -376,7 +377,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    if(keyRef.current!==runKey)return;
    const have=check.fresh;
    setTrip(t=>t.key!==runKey?t:{...t,days:{...t.days,...Object.fromEntries(have.map(d=>[d.day,'done' as DayState]))},rows:{...t.rows,...Object.fromEntries(have.map(d=>[d.day,d.rows]))},
-    saved:{...t.saved,...Object.fromEntries(have.map(d=>[d.day,{savedBy:d.savedBy,savedAt:d.savedAt}]))},stale:check.stale,unchecked:!check.checked});
+    saved:{...t.saved,...Object.fromEntries(have.map(d=>[d.day,{savedBy:d.savedBy,savedAt:d.savedAt}]))},stale:check.stale,unsigned:check.unsigned,unchecked:!check.checked});
    const missing=all.filter(d=>!have.some(x=>x.day===d));
    if(missing.length)readTrip(missing);
   }).catch(()=>{if(keyRef.current===runKey)readTrip(all);})
@@ -526,9 +527,13 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  tripState.canSave=!running&&!save?.running&&freshDone.length>0;
  tripState.saveLabel=save?.running?`Saving ${save.done} of ${save.total} days…`:freshDone.length?`Save trip cards (${freshDone.length} day${freshDone.length===1?'':'s'})`:savedDays.length?'Saved':'Save trip cards';
  tripState.savedNote=savedDays.length?`Saved copy: ${savedDays.length} of ${total} days (last saved ${latest?when(latest.savedAt):''}${latest?.savedBy?' by '+latest.savedBy:''}).`+
-  (freshDone.length?` ${freshDone.length} day${freshDone.length===1?'':'s'} read from MIS ${freshDone.length===1?'is':'are'} not saved yet.`:trip.unchecked?' Pulse-II could not be asked whether these days changed; press Fetch again for the latest from MIS.':' Every saved day was checked with MIS and is current.'):'';
- const staleNote=trip.key===key&&trip.stale.length?`${trip.stale.length} saved day${trip.stale.length===1?' was':'s were'} no longer what MIS holds (a card was added, corrected or changed after saving) and ${trip.stale.length===1?'was':'were'} read from MIS again: ${trip.stale.map(d=>d.slice(8,10)+'-'+d.slice(5,7)).join(', ')}. Press Save trip cards to keep the new copy.`:'';
- if(staleNote)tripState.savedNote=[tripState.savedNote,staleNote].filter(Boolean).join(' ');
+  (freshDone.length?` ${freshDone.length} day${freshDone.length===1?'':'s'} read from MIS ${freshDone.length===1?'is':'are'} not saved yet.`:trip.unchecked?' MIS could not be asked in time whether these days changed; press Fetch again for the latest from MIS.':trip.unsigned.length?'':' Every saved day was checked with MIS and is current.'):'';
+ const showDays=(list:string[])=>list.map(d=>d.slice(8,10)+'-'+d.slice(5,7)).join(', ');
+ // Days saved before MIS signed days: shown as saved; they are checked once they are read from MIS and saved again.
+ const unsignedLeft=trip.key===key?trip.unsigned.filter(d=>trip.saved[d]&&!trip.signatures[d]):[];
+ const unsignedNote=unsignedLeft.length?`${unsignedLeft.length} day${unsignedLeft.length===1?' was':'s were'} saved before MIS started signing days and ${unsignedLeft.length===1?'is':'are'} shown as saved, not checked with MIS: ${showDays(unsignedLeft)}. On the Trip card tab press Fetch again, then Save trip cards, once; after that they are checked by themselves.`:'';
+ const staleNote=trip.key===key&&trip.stale.length?`${trip.stale.length} saved day${trip.stale.length===1?' was':'s were'} no longer what MIS holds (a card was added, corrected or changed after saving) and ${trip.stale.length===1?'was':'were'} read from MIS again: ${showDays(trip.stale)}. Press Save trip cards to keep the new copy.`:'';
+ if(staleNote||unsignedNote)tripState.savedNote=[tripState.savedNote,staleNote,unsignedNote].filter(Boolean).join(' ');
  tripState.saveError=save&&!save.running&&save.failed.length?`Could not save ${save.failed.map(show).join(', ')}: ${save.error}`:'';
  if(tripState.status==='error')tripState.message=trip.errors[failedDays[0]]||'The MIS attendance feed is temporarily unavailable.';
  const bioDays=bio.key===bioKey?Object.entries(bio.days):[],bioTotal=bioDays.length,bioDone=bioDays.filter(([,st])=>st==='done'||st==='failed').length;

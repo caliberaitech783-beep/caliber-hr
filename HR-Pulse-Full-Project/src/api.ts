@@ -20,7 +20,7 @@ let apiRetryPause=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 export const setApiRetryPause=(pause:typeof apiRetryPause)=>{apiRetryPause=pause;};
 /** timeoutMs: how long the browser waits; a heavier read (a site's biometric day) may ask for longer. */
 export async function api<T>(grant:string,path:string,method='GET',body?:unknown,timeoutMs=30000):Promise<T>{
-  const read=method==='GET',streamedAttendance=/^attendance\/(?:mis|site-register|manual-biometric)(?:\?|$)/.test(path),retryHere=read&&!streamedAttendance,attempts=retryHere?3:1;
+  const read=method==='GET',streamedAttendance=/^attendance\/(?:mis(?:\/days)?|site-register|manual-biometric)(?:\?|$)/.test(path),retryHere=read&&!streamedAttendance,attempts=retryHere?3:1;
   for(let attempt=1;attempt<=attempts;attempt++){
     let response:Response;
     try{response=await fetch(API+'/api/'+path,{method,headers:{Authorization:'Bearer '+grant,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(timeoutMs)});}
