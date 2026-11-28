@@ -605,3 +605,43 @@ it('names each Fetch again, so the server reads a week once for all its days',as
  await streamTripCards('a'.repeat(43),days,'Gevra',()=>{});
  expect(asked.map(q=>[q.get('refresh'),q.get('run')])).toEqual([[null,null],[null,null],[null,null]]);
 });
+
+// Owner, 28 Nov 2026: "plz fix the attached issue also". HR "Dudhichua OB East" was read as both MIS "Dudhichua East OC"
+// and "Dudhichua OC", so the East roster also took the other site's trip cards.
+const siteDuty=(site:string,siteKey:string,employeeId:string,date='2026-11-02')=>({date,site,siteKey,shift:'S1',employeeId,employeeKey:employeeId,employeeName:employeeId,caliberCode:employeeId,doors:'D1',equipment:'Dumper',category:'Dumper',logBooks:['VLB'],books:'',trips:3});
+const dudhichua=(extra={})=>({attendanceEquipment:[],attendanceShifts:[],ot:[],performance:[],details:[],exceptions:[],corrections:[],canEdit:true,signed:true,
+ // The server leaves the other site out, but keeps its duty by the same person in the same shift (to mark both).
+ otDuties:[siteDuty('Dudhichua East OC','dudhichua east ob','E1'),siteDuty('Dudhichua OC','dudhichua ob','E1')],
+ days:[{siteKey:'dudhichua east ob',date:'2026-11-02',signature:'east'},{siteKey:'dudhichua ob',date:'2026-11-02',signature:'west'}],
+ knownSites:['Dudhichua East OC','Dudhichua OC','dudhichua east ob','dudhichua ob'],...extra});
+
+it('a site of almost another site\'s name shows only its own trip cards and is signed alone',async()=>{
+ const {streamTripCards,setRetryPause}=await import('./rosterData');
+ setRetryPause(async()=>{});
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json(dudhichua())));
+ const read=async(site:string)=>{const got:{sites:string[];signature?:string}[]=[];await streamTripCards('a'.repeat(43),['2026-11-02'],site,u=>{if(u.state==='done')got.push({sites:(u.rows||[]).map(r=>r.site),signature:u.signature});});return got[0];};
+ expect(await read('Dudhichua OB East')).toEqual({sites:['Dudhichua East OC'],signature:'dudhichua east ob:east'});
+ // West has no MIS site of exactly its name: "Dudhichua OC" is West, as before.
+ expect(await read('Dudhichua OB West')).toEqual({sites:['Dudhichua OC'],signature:'dudhichua ob:west'});
+ // A server from before this change names no sites: the names on the lines decide, with the same result here.
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json(dudhichua({knownSites:undefined}))));
+ expect((await read('Dudhichua OB East')).sites).toEqual(['Dudhichua East OC']);
+});
+
+it('saved days of such a site are shown without the other site\'s cards, and the check asks for the site\'s days only',async()=>{
+ const {readSavedTripCards,checkSavedTripCards}=await import('./rosterData');
+ const asked:string[]=[];
+ const row=(site:string,date:string)=>({id:site+date,date,site,siteKey:site.toLowerCase(),shift:'S1',employeeId:'E1',employeeKey:'E1',employeeName:'E1',caliberCode:'E1',designation:'',sources:['Trip card'],equipment:[],references:'',note:'',output:'',status:'Present',verification:'MIS batch closed',verified:true,otHours:null,otNote:''});
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{asked.push(url);
+  if(url.includes('attendance/trip-cards'))return Response.json({days:[
+   {day:'2026-11-02',rows:[row('Dudhichua East OC','2026-11-02'),row('Dudhichua OC','2026-11-02')],duties:2,savedBy:'hr',savedAt:'2026-11-22T10:00:00Z'},
+   // A day East saved nothing of its own: the other site's cards are still not East's.
+   {day:'2026-11-03',rows:[row('Dudhichua OC','2026-11-03')],duties:1,savedBy:'hr',savedAt:'2026-11-22T10:00:00Z',signature:'old'}]});
+  return Response.json({supported:true,days:[{siteKey:'dudhichua east ob',date:'2026-11-03',signature:'east3'}]});}));
+ const east=await readSavedTripCards('a'.repeat(43),'Dudhichua OB East','2026-11-02','2026-11-03');
+ expect(east.map(d=>d.rows.map(r=>r.site))).toEqual([['Dudhichua East OC'],[]]);
+ const check=await checkSavedTripCards('a'.repeat(43),'Dudhichua OB East',east);
+ expect(new URL(asked.at(-1)!,'https://x').searchParams.get('site')).toBe('Dudhichua OB East');
+ // The day signed under the old rule no longer matches, so it is read from MIS again.
+ expect(check.stale).toEqual(['2026-11-03']);
+});

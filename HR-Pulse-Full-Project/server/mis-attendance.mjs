@@ -1,5 +1,6 @@
 import {siteIds} from './scope.mjs';
 import {trimMisReport, weekOf, dayOfWeekReport} from './mis-trim.mjs';
+import {siteMatcher} from './site-match.mjs';
 
 const ORIGIN = 'https://pulse-ll.cmll.in';
 const FIRST_DATE = '2026-11-01';
@@ -127,7 +128,9 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
   }
   // The signatures of the site-days Pulse-II holds now, without the cards (a small answer).
   // supported: false while Pulse-II still sends the whole report (before its release of 27 Nov 2026).
-  async function days(grant, from, to) {
+  // site (28 Nov 2026): only that site's days are sent, by the names of every site Pulse-II lists (its signed days and
+  // the days still open), so "Dudhichua OB East" is not also given the days of "Dudhichua OC" (site-match.mjs).
+  async function days(grant, from, to, site = '') {
     if (!validDay(from) || !validDay(to) || from < FIRST_DATE || from > to || Date.parse(to) - Date.parse(from) > 30 * DAY) fail('Choose up to 31 days from 1 November 2026 onward.');
     // A short wait: the roster shows its saved days unchecked rather than keep the user waiting for this.
     const {status, ok, result} = await mis(grant, '/api/integrations/hr/attendance', {query: {from, to, only: 'days'}, timeout: DAYS_TIMEOUT_MS});
@@ -135,7 +138,10 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     if (!ok || !result) fail('The MIS attendance feed is temporarily unavailable.', 503);
     learn(result);
     const supported = Array.isArray(result.days) && !Array.isArray(result.otDuties);
-    return {supported, days: supported ? result.days : []};
+    const all = supported ? result.days : [];
+    if (!site || !supported) return {supported, days: all};
+    const isSite = siteMatcher(site, [...all, ...(Array.isArray(result.pendingDays) ? result.pendingDays : [])].map(day => day?.siteKey).filter(name => typeof name === 'string'));
+    return {supported, days: all.filter(day => day && isSite(day.siteKey))};
   }
   // A change of attendance is made in Pulse-II, never kept here: ask (the OTP goes to RHR), then the OTP.
   async function change(profile, grant, path, input, action) {
@@ -245,7 +251,7 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
       ]);
       return {...report, corrections: rows.map(publicCorrection), sites: siteRows.rows.map(row => row.name), canEdit: true};
     }
-    if (route === 'mis/days' && method === 'GET') return days(grant, params.get('from'), params.get('to'));
+    if (route === 'mis/days' && method === 'GET') return days(grant, params.get('from'), params.get('to'), String(params.get('site') || '').trim());
     if (route === 'mis/change' && method === 'POST') {
       const {site, date, shift, employeeId, mark, reason} = input || {};
       return change(profile, grant, 'change', {site, date, shift, employeeId, mark, reason}, 'ASK_MIS_ATTENDANCE_CHANGE');

@@ -13,16 +13,29 @@
    The site is matched with the roster's own rule (site-match.mjs), so a name written differently in MIS is kept exactly
    when the roster would have kept it. misSites lists the sites MIS had cards for in the dates asked: the roster shows
    them when it finds none for the chosen site. */
-import {sameSite} from './site-match.mjs';
+import {siteMatcher} from './site-match.mjs';
 
 const list = value => Array.isArray(value) ? value : [];
+/* Every MIS site name and site key the answer holds (28 Nov 2026, site-match.mjs): its lines, its shift list (which
+   names every site on every date, also one with no card), its signed days, and the names Pulse-II or an earlier cut
+   sent along. With them "Dudhichua OB East" is known to have a site of exactly its own name in MIS, so "Dudhichua OC"
+   is not taken for it. Pulse-II's own cut (its shared/hr-site-cut.mjs) still uses the looser rule on purpose: it may
+   send a line too many, never one too few, and this cut then leaves the other site out. */
+function knownSites(report) {
+  const names = new Set(list(report.knownSites).filter(name => typeof name === 'string' && name));
+  const add = value => { if (typeof value === 'string' && value) names.add(value); };
+  for (const key of ['otDuties', 'attendanceEquipment', 'hrChanges', 'attendanceShifts', 'days', 'ot']) for (const entry of list(report[key])) { add(entry?.site); add(entry?.siteKey); }
+  if (report.misSiteDays && typeof report.misSiteDays === 'object') for (const sites of Object.values(report.misSiteDays)) list(sites).forEach(add);
+  return [...names].sort();
+}
 const siteKey = site => String(site || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 // The same two keys as the roster's reading: a duty, and a person's shift whatever the site.
 const dutyKey = entry => JSON.stringify([siteKey(entry.siteKey || entry.site), entry.date, entry.shift, String(entry.employeeId || '').trim().toUpperCase()]);
 const slotKey = (employeeKey, entry) => JSON.stringify([employeeKey, entry.date, entry.shift]);
 
 export function trimMisReport(report, site, from, to) {
-  const mine = entry => Boolean(entry) && (sameSite(site, entry.site) || sameSite(site, entry.siteKey));
+  const known = knownSites(report), isSite = siteMatcher(site, known);
+  const mine = entry => Boolean(entry) && (isSite(entry.site) || isSite(entry.siteKey));
   const duties = list(report.otDuties), lines = list(report.attendanceEquipment), changes = list(report.hrChanges);
   // The sites MIS had lines for, date by date. An answer Pulse-II already cut to the site (cut: 'site') no longer holds
   // the other sites' lines, so it says itself where they were (misSiteDays); otherwise they are counted here.
@@ -51,11 +64,12 @@ export function trimMisReport(report, site, from, to) {
     performance: list(report.performance).filter(whole),
     details: list(report.details).filter(whole),
     exceptions: list(report.exceptions).filter(whole),
-    attendanceShifts: list(report.attendanceShifts).filter(row => row && sameSite(site, row.siteKey)),
+    attendanceShifts: list(report.attendanceShifts).filter(row => row && isSite(row.siteKey)),
     ot: list(report.ot).filter(mine),
     ...(Array.isArray(report.hrChanges) ? {hrChanges: changes.filter(keepChange)} : {}),
-    ...(Array.isArray(report.days) ? {days: report.days.filter(day => day && sameSite(site, day.siteKey))} : {}),
-    misSites, misSiteDays
+    ...(Array.isArray(report.days) ? {days: report.days.filter(day => day && isSite(day.siteKey))} : {}),
+    // knownSites goes along, so a later cut of this answer and the browser decide by the same names.
+    misSites, misSiteDays, knownSites: known
   };
 }
 

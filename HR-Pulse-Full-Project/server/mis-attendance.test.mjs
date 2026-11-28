@@ -320,3 +320,47 @@ test('a Pulse-II that stops cutting still gives the right day, and is no longer 
   await day('2026-11-18');
   assert.equal(asked.at(-1), '2026-11-17 2026-11-19 every site');
 });
+
+// Owner, 28 Nov 2026: "plz fix the attached issue also". HR "Dudhichua OB East" was read as both MIS "Dudhichua East OC"
+// and "Dudhichua OC" (the looser rule finds no word in "Dudhichua OC" that East lacks), so the East roster also took the
+// other site's trip cards. The site names below are the ones live sent on 28 Nov 2026.
+test('a site of almost another site\'s name is given only its own trip cards and signed days', async () => {
+  const {siteMatcher} = await import('./site-match.mjs');
+  const live = ['Dhoptala OC (2nd)', 'Dudhichua East OC', 'Dudhichua OC', 'Gauri Pauni OC (2nd)', 'Jayant OC', 'Majri OC', 'Sasti OC',
+    'dhoptala ob 2nd', 'dudhichua east ob', 'dudhichua ob', 'gauri pauni ob 2nd', 'jayant ob', 'lalpeth ob', 'majri ob', 'sasti ob'];
+  const sitesOf = hr => live.filter(siteMatcher(hr, live));
+  assert.deepEqual(sitesOf('Dudhichua OB East'), ['Dudhichua East OC', 'dudhichua east ob']);
+  assert.deepEqual(sitesOf('Dudhichua OB West'), ['Dudhichua OC', 'dudhichua ob']);
+  // Every other site keeps exactly what it had.
+  assert.deepEqual(sitesOf('Majri OC'), ['Majri OC', 'majri ob']);
+  assert.deepEqual(sitesOf('Dhoptala OC'), ['Dhoptala OC (2nd)', 'dhoptala ob 2nd']);
+  assert.deepEqual(sitesOf('Gauri Pauni OB'), ['Gauri Pauni OC (2nd)', 'gauri pauni ob 2nd']);
+  assert.deepEqual(sitesOf('Jayant OB'), ['Jayant OC', 'jayant ob']);
+  assert.deepEqual(sitesOf('Hindustan Lalpeth OC'), ['lalpeth ob']);
+  assert.deepEqual(sitesOf('Nagpur CO'), []);
+
+  const line = (site, siteKey, employeeId) => ({date: '2026-11-16', site, siteKey, shift: 'S1', employeeId, employeeKey: employeeId, employeeName: employeeId});
+  // East saved no card of its own on this day; MIS still names it in the shift list of every date.
+  const whole = {
+    attendanceEquipment: [], ot: [], performance: [], details: [], exceptions: [],
+    attendanceShifts: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shift: 'S1', state: 'none', batch: ''}, {siteKey: 'dudhichua ob', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'B'}],
+    otDuties: [line('Dudhichua OC', 'dudhichua ob', 'W1'), line('Dudhichua OC', 'dudhichua ob', 'W2')],
+    days: [{siteKey: 'dudhichua ob', date: '2026-11-16', lines: 2, signature: 'w'}],
+    pendingDays: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shifts: []}]
+  };
+  const db = {async query() { return {rows: []}; }, release() {}};
+  const pool = {connect: async () => db, async query(sql) { return {rows: sql.includes("kind='sites'") ? [{name: 'Dudhichua OB East'}] : []}; }};
+  const api = createMisAttendance(pool, {fetchMis: async url => Response.json(url.searchParams.get('only') === 'days' ? {days: whole.days, pendingDays: whole.pendingDays} : whole)});
+  const day = site => api({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site, trim: '1'}));
+  const east = await day('Dudhichua OB East'), west = await day('Dudhichua OB West');
+  assert.deepEqual([east.otDuties.length, east.days.length, east.attendanceShifts.map(s => s.siteKey)], [0, 0, ['dudhichua east ob']]);
+  assert.deepEqual(east.misSites, ['Dudhichua OC'], 'the roster can still say where MIS had cards');
+  assert.deepEqual(east.knownSites, ['Dudhichua OC', 'dudhichua east ob', 'dudhichua ob']);
+  assert.deepEqual([west.otDuties.map(d => d.employeeId), west.days.map(d => d.signature), west.attendanceShifts.map(s => s.siteKey)], [['W1', 'W2'], ['w'], ['dudhichua ob']]);
+
+  // The check of saved days gives each site its own signed days.
+  const signed = site => api({actor: 'hr', permissions: {}}, grant, 'mis/days', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16', ...(site ? {site} : {})}));
+  assert.deepEqual((await signed('Dudhichua OB East')).days, []);
+  assert.deepEqual((await signed('Dudhichua OB West')).days.map(d => d.signature), ['w']);
+  assert.deepEqual((await signed('')).days.map(d => d.signature), ['w'], 'without a site every day is sent, as before');
+});
