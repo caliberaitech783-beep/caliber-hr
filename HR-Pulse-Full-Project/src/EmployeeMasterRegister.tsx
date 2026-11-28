@@ -2,6 +2,8 @@ import {useEffect, useRef, useState, type FormEvent} from 'react';
 import {ChevronDown, Download} from 'lucide-react';
 import {api, downloadBlob} from './api';
 import {assetPrintHtml} from './assetPrint';
+import WorkingHoursImport from './WorkingHoursImport';
+import {WORKING_HOURS_OPTIONS} from '../server/working-hours.mjs';
 
 const columns = [
   ['employeeId','Employee ID',18], ['name','Name',28], ['region','Region',12], ['site','Site / Office',27],
@@ -12,14 +14,18 @@ const bankColumns = [
   ['bankName','Bank Name',28],['ifscCode','IFSC Code',18],['accountNo','Account No',22],['branch','Branch',28],
 ] as const;
 const aFormColumn = ['aFormNo','A-Form No',18] as const;
+/* Working Hours (owner, 28 Nov 2026) is shown and downloaded with the register. It is not one of `columns`, which is
+   also the layout of the register's own Excel import. */
+const workingHoursColumn = ['workingHours','Working Hours',16] as const;
+const registerColumns = [...columns,workingHoursColumn] as const;
 const bankReportColumns = [columns[0],aFormColumn,columns[1],columns[3],...bankColumns] as const;
 const formats = [['excel','Excel'], ['pdf','PDF']] as const;
 type ExportFormat = typeof formats[number][0];
-type Employee = Record<typeof columns[number][0] | typeof bankColumns[number][0] | 'aFormNo', string> & {id:string};
+type Employee = Record<typeof columns[number][0] | typeof bankColumns[number][0] | 'aFormNo' | 'workingHours', string> & {id:string};
 type RegisterColumn = typeof columns[number];
 type EditableColumn = Exclude<RegisterColumn,readonly ['region'|'site',string,number]>;
 const editableColumns = columns.filter((column):column is EditableColumn=>column[0]!=='region'&&column[0]!=='site');
-type EditField = EditableColumn[0] | 'siteCode' | 'leavingDate';
+type EditField = EditableColumn[0] | 'siteCode' | 'leavingDate' | 'workingHours';
 type EditValues = Record<EditField,string>;
 type EmployeeEditSnapshot = {
   name:string;
@@ -85,6 +91,7 @@ function EmployeeEditDialog({employee,grant,onClose,onSaved,onRemoved}:{
       initial.name = result.name;
       initial.siteCode = result.siteCode;
       initial.leavingDate = result.fields.leavingDate ?? '';
+      initial.workingHours = result.fields.workingHours ?? '';
       setOriginal(initial);
       setValues(initial);
       setSnapshot(result);
@@ -138,6 +145,13 @@ function EmployeeEditDialog({employee,grant,onClose,onSaved,onRemoved}:{
           <input value={values[key]} maxLength={1000} required={key==='name'} disabled={saving}
             onChange={event=>setValues({...values,[key]:event.target.value})}/>
         </label>)}
+        <label>Working Hours
+          <select value={values.workingHours} disabled={saving} onChange={event=>setValues({...values,workingHours:event.target.value})}>
+            <option value="">Not set</option>
+            {!WORKING_HOURS_OPTIONS.includes(values.workingHours) && values.workingHours && <option value={values.workingHours}>{values.workingHours}</option>}
+            {WORKING_HOURS_OPTIONS.map(option=><option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
         <label>Leaving date (when Status is LEFT)
           <input type="date" value={values.leavingDate} disabled={saving} onChange={event=>setValues({...values,leavingDate:event.target.value})}/>
         </label>
@@ -323,7 +337,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       if (!complete) throw new Error('The full employee export is temporarily unavailable. Try again shortly.');
       if (!rows.length) throw new Error('No employees match the current selection.');
       if (format==='excel') {
-        const activeColumns=view==='bank'?bankReportColumns:columns;
+        const activeColumns=view==='bank'?bankReportColumns:registerColumns;
         const {regionEmployeeExcel} = await import('./regionEmployeeExcel');
         const workbook = await regionEmployeeExcel(
           activeColumns.map(([,header,width])=>({header,width})),
@@ -333,7 +347,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
         downloadBlob(view==='bank'?'bank-details.xlsx':'hr-employee-master.xlsx',workbook);
       } else {
         const records = rows.map((row,index)=>({...row,serial:index+1}));
-        const activeColumns=view==='bank'?bankReportColumns:columns;
+        const activeColumns=view==='bank'?bankReportColumns:registerColumns;
         const activeExportColumns=[{key:'serial',label:'Serial No'},...activeColumns.map(([key,label])=>({key,label:label.toUpperCase()}))];
         if (popup) {
           if (popup.closed) throw new Error('The PDF window was closed. Choose PDF from the Export menu again.');
@@ -375,7 +389,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
   }
 
   const first = (page-1)*(data?.pageSize ?? 50);
-  const activeColumns=view==='bank'?bankReportColumns:columns;
+  const activeColumns=view==='bank'?bankReportColumns:registerColumns;
   const canDownload = !loading && !importing && !exporting && Boolean(data?.total);
   return <section className="data-card employee-report" aria-labelledby="employee-master-register-title">
     <div className="data-heading">
@@ -414,6 +428,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
           if (file) void importData(file);
         }}/>
       </label>}
+      {view==='employees'&&data?.canImport&&<WorkingHoursImport grant={grant} disabled={importing||loading} onDone={text=>{setError('');setMessage(text);setRevision(value=>value+1);}}/>}
       {view==='bank'&&data?.canImport&&<button type="button" className="danger" disabled={loading||importing||deletingAll} onClick={()=>void deleteAllBankEmployees()}>{deletingAll?'Deleting…':'Delete all'}</button>}
     </div>
     <div className="module-tabs" aria-label="Employee Master reports">

@@ -132,6 +132,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const employeeMasterRegister=path.match(/^\/api\/employee-master-register(?:\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}))?$/i);
       const employeeBankDetails=path==='/api/employee-master-bank-details';
       const employeeBankDetailsDeleteAll=path==='/api/employee-master-bank-details/delete-all';
+      const employeeWorkingHours=path==='/api/employee-master-working-hours';
       // Remove a line of Employee Master (a POST: the browser is not allowed to send DELETE to this API).
       const registerRemove=path.match(/^\/api\/employee-master-register\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\/remove$/i);
       const deletion=path.match(/^\/api\/deletion\/([a-zA-Z]+)\/(preview|confirm)$/);
@@ -141,7 +142,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const completedEmployeeDelete=path.match(/^\/api\/approvals\/completed-employees\/([a-fA-F0-9-]+)\/permanent-delete$/);
       const leaveOtp=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/(otp|otp-verify)$/);
       const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/transfer-flows':'transferFlows','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals','/api/approvals/employees':'employeeApprovals','/api/approvals/completed-employees':'completedEmployees','/api/reporting-managers':'reportingManagers','/api/request-preview':'requestPreview','/api/transfer-options':'transferOptions'};
-      if(path!=='/api/payroll'&&!telegramRoute&&!attendanceRoute&&!assetRoute&&!documents&&!employeeDocuments&&!employeeMasterRegister&&!employeeBankDetails&&!employeeBankDetailsDeleteAll&&!registerRemove&&!deletion&&!masterImport&&!record&&!decision&&!completedEmployeeDelete&&!leaveOtp&&!simple[path]&&!['/api/import/employees','/api/import/trial-employee','/api/aadhaar/scan','/api/letters/email','/api/employee-code/next'].includes(path))return send(404,{error:'Not found'});
+      if(path!=='/api/payroll'&&!telegramRoute&&!attendanceRoute&&!assetRoute&&!documents&&!employeeDocuments&&!employeeMasterRegister&&!employeeBankDetails&&!employeeBankDetailsDeleteAll&&!employeeWorkingHours&&!registerRemove&&!deletion&&!masterImport&&!record&&!decision&&!completedEmployeeDelete&&!leaveOtp&&!simple[path]&&!['/api/import/employees','/api/import/trial-employee','/api/aadhaar/scan','/api/letters/email','/api/employee-code/next'].includes(path))return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
       if(!profile)return send(401,{error:'Sign in with your Caliber Pulse account to continue'});
@@ -174,6 +175,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       else if(employeeMasterRegister?.[1]&&req.method==='PATCH')result=await service.updateEmployeeMasterRegister(profile,employeeMasterRegister[1],await body(req,64_000));
       else if(employeeMasterRegister&&!employeeMasterRegister[1]&&req.method==='POST')result=await service.importEmployeeMasterRegister(profile,(await body(req,36_000_000)).rows);
       else if(employeeBankDetails&&req.method==='POST')result=await service.importEmployeeBankDetails(profile,(await body(req,12_000_000)).rows);
+      else if(employeeWorkingHours&&req.method==='POST')result=await service.importEmployeeWorkingHours(profile,await body(req,6_000_000));
       else if(employeeBankDetailsDeleteAll&&req.method==='POST')result=await service.deleteAllEmployeeMasterBankDetails(profile,await body(req,8_000));
       else if(registerRemove&&req.method==='POST')result=await service.removeEmployeeMasterRegister(profile,registerRemove[1],await body(req,8_000));
       else if(deletion&&req.method==='POST')result=deletion[2]==='preview'?await service.deletePreview(profile,deletion[1]):await service.deleteRecords(profile,deletion[1],await body(req));

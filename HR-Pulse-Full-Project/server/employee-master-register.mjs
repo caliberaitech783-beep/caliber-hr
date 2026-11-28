@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { grantedMenus } from './modules.mjs';
 import { siteIds } from './scope.mjs';
 import {employeeNumber,typedIdProblem,numberHolders,holderLine,samePerson} from './employee-number.mjs';
+import {normalizeWorkingHours,workingHoursProblem} from './working-hours.mjs';
 
 const kind = 'employeeMasterRegister';
 const pageSize = 50;
@@ -96,7 +97,7 @@ function parseChanges(input) {
       typeof input.changes !== 'object' || Array.isArray(input.changes)) throw fail('Invalid employee changes.');
   const changes = {};
   for (const [key,value] of Object.entries(input.changes)) {
-    if ((!fields.includes(key) && key!=='siteCode' && key!=='leavingDate') || typeof value!=='string' || value.length>1000 || value.includes('\0')) {
+    if ((!fields.includes(key) && key!=='siteCode' && key!=='leavingDate' && key!=='workingHours') || typeof value!=='string' || value.length>1000 || value.includes('\0')) {
       throw fail('Invalid employee field or value.');
     }
     changes[key] = key==='employeeId' ? normalizeEmployeeId(value.trim()) : value.trim();
@@ -105,6 +106,8 @@ function parseChanges(input) {
   if (changes.name==='') throw fail('Name is required.');
   if (changes.siteCode!==undefined && !Object.hasOwn(siteNames,changes.siteCode)) throw fail('Select a valid site.');
   if (changes.leavingDate && !isDate(changes.leavingDate)) throw fail('Leaving date must be a date.');
+  // Working Hours of a register line (owner, 28 Nov 2026): 8, 9, 10, 11 or 12 hours, or blank.
+  if (changes.workingHours!==undefined) { if (workingHoursProblem(changes.workingHours)) throw fail(workingHoursProblem(changes.workingHours)); changes.workingHours = normalizeWorkingHours(changes.workingHours); }
   return changes;
 }
 
