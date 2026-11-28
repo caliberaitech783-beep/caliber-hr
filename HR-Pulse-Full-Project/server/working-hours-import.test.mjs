@@ -61,8 +61,9 @@ const rows = [
   {employeeId:'CMLL107',name:'TWO HOURS',hours:'12 hours',sheet:'JAYANT OB',row:9},
   {employeeId:'CMLL101',name:'FIRST MAN',hours:'8 hours',sheet:'JAYANT OB',row:10},
 ];
-const expected = {rows:9,people:7,updated:2,same:1,registerLines:2,joinedEmployees:1,held:{notFound:1,twoLines:1,otherName:1,twoHours:1}};
-const figures = result => ({rows:result.rows,people:result.people,updated:result.updated,same:result.same,registerLines:result.registerLines,joinedEmployees:result.joinedEmployees,held:result.held});
+// CMPL104 has another spelling of the name in Employee Master: it goes by Employee ID, so it is updated and listed.
+const expected = {rows:9,people:7,updated:3,same:1,registerLines:3,joinedEmployees:1,held:{notFound:1,twoLines:1,twoHours:1},nameDiffers:1};
+const figures = result => ({rows:result.rows,people:result.people,updated:result.updated,same:result.same,registerLines:result.registerLines,joinedEmployees:result.joinedEmployees,held:result.held,nameDiffers:result.nameDiffers});
 
 test('the preview says what would change and writes nothing', async()=>{
   const {pool,statements} = database({register,joined});
@@ -71,7 +72,8 @@ test('the preview says what would change and writes nothing', async()=>{
   assert.deepEqual(figures(result),expected);
   assert.equal(result.lists.notFound[0].employeeId,'CMPL999');
   assert.match(result.lists.twoLines[0].detail,/TWIN ONE, Majri OB \/ TWIN TWO, Sasti OB/);
-  assert.match(result.lists.otherName[0].detail,/SOMEBODY ELSE/);
+  assert.equal(result.lists.otherName,undefined);
+  assert.deepEqual([result.nameDiffersList[0].employeeId,result.nameDiffersList[0].name,result.nameDiffersList[0].detail],['CMPL104','RAM KUMAR YADAV','Employee Master: SOMEBODY ELSE']);
   assert.match(result.lists.twoHours[0].detail,/8 hours.*12 hours/);
   assert.equal(statements.some(({sql})=>/^\s*(UPDATE|INSERT|DELETE)/i.test(sql)),false);
   assert.equal(statements.some(({sql})=>sql.includes('FOR UPDATE')),false);
@@ -87,7 +89,8 @@ test('the update writes Working Hours only: no line is added, removed or moved a
   assert.equal(writes.length,3);
   const [toRegister,toJoined,audit] = writes;
   assert.match(toRegister.sql,/UPDATE hr_employee_master_register r SET data=r\.data\|\|jsonb_build_object\('workingHours',e\.hours\),version=r\.version\+1\s+FROM jsonb_to_recordset/);
-  assert.deepEqual(JSON.parse(toRegister.params[0]),[{id:register[0].id,hours:'8 hours'},{id:register[5].id,hours:'12 hours'}]);
+  assert.deepEqual(JSON.parse(toRegister.params[0]),[{id:register[0].id,hours:'8 hours'},{id:register[4].id,hours:'8 hours'},{id:register[5].id,hours:'12 hours'}]);
+  assert.equal(audit.params[1].nameDiffers,1);
   assert.match(toJoined.sql,/UPDATE hr_records r SET data=jsonb_set\(/);
   assert.match(toJoined.sql,/ARRAY\['officeData',\$2::text\],to_jsonb\(e\.hours\)\),version=r\.version\+1,updated_by=\$3,updated_at=now\(\)/);
   assert.deepEqual([JSON.parse(toJoined.params[0]),toJoined.params[1],toJoined.params[2]],[[{id:joined[0].id,hours:'12 hours'}],'Working Hours *','hr-test']);

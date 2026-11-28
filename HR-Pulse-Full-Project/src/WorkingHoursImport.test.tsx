@@ -23,8 +23,9 @@ function hourWiseFile() {
 it('shows what the hour-wise Excel will change, then updates Working Hours only on Update',async()=>{
   const posts:{apply:boolean;rows:Record<string,unknown>[]}[] = [];
   const answer = (applied:boolean)=>({applied,rows:3,people:3,updated:2,same:0,registerLines:2,joinedEmployees:0,
-    held:{notFound:1,twoLines:0,otherName:0,twoHours:0},listLimit:300,
-    lists:{notFound:[{employeeId:'CMLL20287',name:'THIRD MAN',sheet:'GOURI POUNI OB',row:2,hours:'11 hours',detail:''}],twoLines:[],otherName:[],twoHours:[]}});
+    held:{notFound:1,twoLines:0,twoHours:0},listLimit:300,nameDiffers:1,
+    nameDiffersList:[{employeeId:'CMPL1203',name:'SECOND MAN',sheet:'MAJRI OB',row:3,hours:'8 hours',detail:'Employee Master: SECAND MAN'}],
+    lists:{notFound:[{employeeId:'CMLL20287',name:'THIRD MAN',sheet:'GOURI POUNI OB',row:2,hours:'11 hours',detail:''}],twoLines:[],twoHours:[]}});
   vi.stubGlobal('fetch',vi.fn(async(url:string,options?:RequestInit)=>{
     if (url.endsWith('/employee-master-working-hours')) {
       const input = JSON.parse(String(options?.body));
@@ -46,6 +47,10 @@ it('shows what the hour-wise Excel will change, then updates Working Hours only 
   expect(dialog).toHaveTextContent('No employee is added, removed or moved and no other detail is changed.');
   expect(dialog).toHaveTextContent('Employee ID not in Employee Master: 1');
   expect(dialog).toHaveTextContent('Rows of the file left out: 1');
+  // A name written differently is updated by Employee ID and only listed.
+  expect(dialog).toHaveTextContent('Updated by Employee ID, name written differently: 1');
+  expect(dialog).toHaveTextContent('Employee Master: SECAND MAN');
+  expect(dialog).not.toHaveTextContent('A different name on this Employee ID');
   fireEvent.click(within(dialog).getByRole('button',{name:'Update Working Hours of 2 employees'}));
   await waitFor(()=>expect(posts).toHaveLength(2));
   expect(posts[1].apply).toBe(true);
