@@ -1,5 +1,6 @@
 import {siteIds} from './scope.mjs';
 import {trimMisReport} from './mis-trim.mjs';
+import {createMisReadLimit} from './mis-read-limit.mjs';
 
 const ORIGIN = 'https://pulse-ll.cmll.in';
 const FIRST_DATE = '2026-11-01';
@@ -33,7 +34,19 @@ function publicCorrection(row) {
     reason: row.reason, version: row.version, updatedBy: row.updated_by, updatedAt: row.updated_at};
 }
 
-export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
+export function createMisAttendance(pool, {fetchMis = fetch, readLimit} = {}) {
+  // The MIS busy limit (mis-read-limit.mjs, 28 Nov 2026): at most two reads open at Pulse-II, a short line, then
+  // "MIS is busy" at once. Every read of the attendance report goes through it; a change with an OTP never does.
+  const limiter = createMisReadLimit(readLimit);
+  const timedOut = error => error?.name === 'TimeoutError' || error?.name === 'AbortError';
+  // One read of Pulse-II in its place: the answer and its JSON (null when it cannot be read).
+  const limited = (url, options, waitMs) => limiter.run(async slot => {
+    let response;
+    try { response = await fetchMis(url, options); }
+    catch (error) { if (timedOut(error)) slot.timedOut = true; throw error; }
+    const result = await response.json().catch(error => { if (timedOut(error)) slot.timedOut = true; return null; });
+    return {response, result};
+  }, waitMs);
   // The reads of Pulse-II now running on this server, by copy key: a second PC asking the same waits for the same answer.
   const inFlight = new Map();
   // cut: the roster's day read asks Pulse-II for the one site only (cut=site, Pulse-II PR 582, 28 Nov 2026). Pulse-II
@@ -44,18 +57,20 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     const reports = await Promise.all(ranges.map(async ([start, end]) => {
       const url = new URL('/api/integrations/hr/attendance', ORIGIN);
       url.search = new URLSearchParams({from: dayString(start), to: dayString(end), ...(selectedSite ? {site: selectedSite} : {}), ...(selectedSite && cut ? {cut: 'site'} : {}), ...(refresh ? {refresh: '1'} : {})});
-      let response;
+      let answer;
       try {
-        response = await fetchMis(url, {
+        answer = await limited(url, {
           headers: {Authorization: 'Bearer ' + grant, Accept: 'application/json'},
           redirect: 'error', signal: AbortSignal.timeout(22_000)
         });
-      } catch {
+      } catch (error) {
+        // "MIS is busy" is passed on as it is: the roster waits and asks again by itself.
+        if (error?.misBusy) throw error;
         fail('The MIS attendance feed is temporarily unavailable.', 503);
       }
+      const {response, result} = answer;
       if (response.status === 403) fail('MIS attendance is outside your assigned access.', 403);
       if (!response.ok) fail('The MIS attendance feed is temporarily unavailable.', 503);
-      const result = await response.json().catch(() => null);
       if (!result || sections.some(key => !Array.isArray(result[key]))) fail('MIS returned an incomplete attendance report.', 502);
       return result;
     }));
@@ -74,17 +89,21 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
   }
 
   // One call to Pulse-II with the user's own grant. Pulse-II's own words come back when it refuses.
-  async function mis(grant, path, {method = 'GET', query, body, timeout = 22_000} = {}) {
+  // report: a read of the attendance report, which takes a place under the busy limit and never waits in the line.
+  async function mis(grant, path, {method = 'GET', query, body, timeout = 22_000, report = false} = {}) {
     const url = new URL(path, ORIGIN);
     if (query) url.search = new URLSearchParams(query);
-    let response;
+    const options = {method, headers: {Authorization: 'Bearer ' + grant, Accept: 'application/json', ...(body ? {'Content-Type': 'application/json'} : {})},
+      ...(body ? {body: JSON.stringify(body)} : {}), redirect: 'error', signal: AbortSignal.timeout(timeout)};
+    let response, result;
     try {
-      response = await fetchMis(url, {method, headers: {Authorization: 'Bearer ' + grant, Accept: 'application/json', ...(body ? {'Content-Type': 'application/json'} : {})},
-        ...(body ? {body: JSON.stringify(body)} : {}), redirect: 'error', signal: AbortSignal.timeout(timeout)});
-    } catch {
+      if (report) ({response, result} = await limited(url, options, 0));
+      else response = await fetchMis(url, options);
+    } catch (error) {
+      if (error?.misBusy) throw error;
       fail('Pulse-II did not answer. Try again.', 503);
     }
-    const result = await response.json().catch(() => null);
+    if (!report) result = await response.json().catch(() => null);
     return {status: response.status, ok: response.ok, result};
   }
   // The signatures of the site-days Pulse-II holds now, without the cards (a small answer).
@@ -92,7 +111,9 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
   async function days(grant, from, to) {
     if (!validDay(from) || !validDay(to) || from < FIRST_DATE || from > to || Date.parse(to) - Date.parse(from) > 30 * DAY) fail('Choose up to 31 days from 1 November 2026 onward.');
     // A short wait: the roster shows its saved days unchecked rather than keep the user waiting for this.
-    const {status, ok, result} = await mis(grant, '/api/integrations/hr/attendance', {query: {from, to, only: 'days'}, timeout: DAYS_TIMEOUT_MS});
+    // Pulse-II builds this answer in its report places too, so it counts under the busy limit. It does not wait in the
+    // line: when both places are taken the roster is told at once and shows its saved days unchecked.
+    const {status, ok, result} = await mis(grant, '/api/integrations/hr/attendance', {query: {from, to, only: 'days'}, timeout: DAYS_TIMEOUT_MS, report: true});
     if (status === 403) fail('MIS attendance is outside your assigned access.', 403);
     if (!ok || !result) fail('The MIS attendance feed is temporarily unavailable.', 503);
     const supported = Array.isArray(result.days) && !Array.isArray(result.otDuties);
@@ -200,5 +221,7 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     }
     fail('Not found', 404);
   }
+  // The busy limit now: places taken, reads in the line, and how many were told "MIS is busy" (attendance/read-times).
+  api.readLimit = () => limiter.state();
   return api;
 }
