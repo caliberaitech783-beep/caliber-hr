@@ -57,8 +57,8 @@ export default function BiometricExceptionMaster({grant}:{grant:string}){
   <div className="shift-title"><span className="shift-icon"><Fingerprint/></span><div><small>MASTER CONFIGURATION</small><h1 id="biometric-exception-title">Biometric Exception Master</h1>
    <p>Employees on this list do not have to punch. The system marks them present on every working day; holidays, approved leave and OD still show. Everyone else follows the biometric process.</p></div></div>
   <div className="shift-site"><span>{loading?'Loading…':`${active.toLocaleString('en-IN')} employee${active===1?'':'s'} on the list`}</span>
-   <label><input type="checkbox" checked={showRemoved} onChange={event=>setShowRemoved(event.target.checked)}/> Show removed</label>
-   <button type="button" aria-label="Refresh the exception list" disabled={loading||busy} onClick={()=>void load()}><RefreshCw/></button></div>
+   <label className="shift-check"><input type="checkbox" checked={showRemoved} onChange={event=>setShowRemoved(event.target.checked)}/> Show removed</label>
+   <button type="button" className="shift-refresh" aria-label="Refresh the exception list" disabled={loading||busy} onClick={()=>void load()}><RefreshCw/></button></div>
   {error&&<p className="error" role="alert">{error}</p>}{message&&<p className="shift-success" role="status">{message}</p>}
   <div className="shift-grid">
    <section className="shift-card"><h2>Exception list</h2>
@@ -69,7 +69,7 @@ export default function BiometricExceptionMaster({grant}:{grant:string}){
       <td>{dmy(entry.fromDate)}</td><td>{entry.removedAt?dmy(entry.toDate):'On the list'}</td>
       <td>{entry.reason}{entry.removedAt&&<><br/><small>Removed: {entry.removeReason}</small></>}</td>
       <td>{entry.addedBy}<br/><small>{when(entry.addedAt)}</small>{entry.removedAt&&<><br/><small>Removed by {entry.removedBy}, {when(entry.removedAt)}</small></>}</td>
-      <td>{entry.removedAt?'Removed':<button type="button" disabled={busy} aria-label={`Remove ${entry.name} from the exception list`} onClick={()=>{setRemoving(entry);setRemoveReason('');setMessage('');setError('');}}>Remove</button>}</td>
+      <td>{entry.removedAt?'Removed':<button type="button" className="shift-remove" disabled={busy} aria-label={`Remove ${entry.name} from the exception list`} onClick={()=>{setRemoving(entry);setRemoveReason('');setMessage('');setError('');}}>Remove</button>}</td>
      </tr>)}</tbody>
     </table>{!loading&&!entries.length&&<p className="shift-help">No employee is on the exception list. Everyone follows the biometric process.</p>}</div>
     {removing&&<div className="shift-confirm" role="alert">
@@ -82,13 +82,13 @@ export default function BiometricExceptionMaster({grant}:{grant:string}){
    <section className="shift-card"><h2>Add employee</h2>
     <form onSubmit={search} aria-label="Find employee in Employee Master"><div className="shift-fields">
      <label>Employee ID or name<input value={find} maxLength={100} disabled={busy} placeholder="CMLL1234 or name" onChange={event=>setFind(event.target.value)}/></label>
-    </div><button className="shift-add" disabled={busy||find.trim().length<2}><Search/> Find in Employee Master</button></form>
+    </div><button className="primary shift-add" disabled={busy||find.trim().length<2}><Search/> Find in Employee Master</button></form>
     {people&&!people.length&&<p className="shift-help">No employee of Employee Master matches. Check the Employee ID.</p>}
     {people&&people.length>0&&!picked&&<ul className="shift-help" aria-label="Employees found">{people.map(person=>{
      const blocked=person.onList?'Already on the list':person.driver?'Driver: attendance from trip card':person.status==='LEFT'?'Has left':'';
      return <li key={person.employeeId+person.name}><strong>{person.employeeId}</strong> {person.name} · {person.site} · {person.designation||'—'} {blocked
       ?<em>({blocked})</em>
-      :<button type="button" disabled={busy} aria-label={`Select ${person.name} (${person.employeeId})`} onClick={()=>{setPicked(person);setError('');}}>Select</button>}</li>;
+      :<button type="button" className="shift-pick" disabled={busy} aria-label={`Select ${person.name} (${person.employeeId})`} onClick={()=>{setPicked(person);setError('');}}>Select</button>}</li>;
     })}</ul>}
     {picked&&<form onSubmit={add} aria-label="Add to the exception list"><fieldset disabled={busy}>
      <p className="shift-help"><strong>{picked.employeeId}</strong> {picked.name}<br/>{picked.site} · {picked.department||'—'} · {picked.designation||'—'}</p>
@@ -96,8 +96,8 @@ export default function BiometricExceptionMaster({grant}:{grant:string}){
       <label>Exempt from<input type="date" required value={fromDate} onChange={event=>setFromDate(event.target.value)}/></label>
       <label>Reason<input required minLength={5} maxLength={500} value={reason} placeholder="Why this employee does not punch" onChange={event=>setReason(event.target.value)}/></label>
      </div>
-     <button className="shift-add" disabled={busy||reason.trim().length<5||!fromDate}><Plus/> Add to exception list</button>
-     <button type="button" disabled={busy} onClick={()=>setPicked(null)}>Choose another</button>
+     <button className="primary shift-add" disabled={busy||reason.trim().length<5||!fromDate}><Plus/> Add to exception list</button>
+     <button type="button" className="shift-remove shift-other" disabled={busy} onClick={()=>setPicked(null)}>Choose another</button>
     </fieldset></form>}
     <p className="shift-help">A driver is not taken: a driver's attendance comes from the trip card and logbook. A biometric day that was already saved keeps its saved sheet until it is saved again.</p>
    </section>
