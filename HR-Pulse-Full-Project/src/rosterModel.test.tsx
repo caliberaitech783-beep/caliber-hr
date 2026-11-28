@@ -524,6 +524,15 @@ it('Manual Biometric reads every site in daily batches and retries only a failed
  expect(asked.filter(day=>day==='2026-11-03')).toHaveLength(2);
 });
 
+it('Manual Biometric II reads its separate import source',async()=>{
+ const {fetchManualBiometric}=await import('./rosterData');
+ const asked:string[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{asked.push(url);return Response.json({from:'2026-11-02',to:'2026-11-02',policy:DEFAULT_POLICY,site:'Majri OB',machines:[],rows:[]});}));
+ await fetchManualBiometric('a'.repeat(43),'2026-11-02','2026-11-02','Majri OB',undefined,'manual2');
+ expect(asked).toHaveLength(1);
+ expect(asked[0]).toContain('/attendance/manual-biometric-ii?');
+});
+
 it('Biometric tab shows which days it is reading and how many punches arrived; machines without a bridge PC are not waited for',async()=>{
  const {AttendanceRosterPage}=await import('./AttendanceRoster');
  const posts:string[]=[];

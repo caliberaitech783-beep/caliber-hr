@@ -119,7 +119,7 @@ export async function fetchBiometric(grant: string, from: string, to: string, si
    `partial`: the days read so far, joined (sent only when another day has arrived). In `partial` the days still to come
    are listed in failedDays, so the roster leaves them blank instead of calling them absent. */
 export type ManualProgress={days:Record<string,DayState>;counts:Record<string,number>;errors:Record<string,string>;partial?:SiteRegister};
-export async function fetchManualBiometric(grant:string,from:string,to:string,site:string,onProgress?:(progress:ManualProgress)=>void):Promise<SiteRegister>{
+export async function fetchManualBiometric(grant:string,from:string,to:string,site:string,onProgress?:(progress:ManualProgress)=>void,source:'manual1'|'manual2'='manual1'):Promise<SiteRegister>{
  const days=daysBetween(from,to),results:SiteRegister[]=[],dayErrors:Record<string,string>={};let next=0;
  const states:Record<string,DayState>=Object.fromEntries(days.map(day=>[day,'queued' as DayState])),counts:Record<string,number>={};
  const tell=(arrived=false)=>{
@@ -129,7 +129,8 @@ export async function fetchManualBiometric(grant:string,from:string,to:string,si
  };
  tell();
  async function worker(){while(next<days.length){const day=days[next++];states[day]='loading';tell();for(let attempt=1;attempt<=TRIP_ATTEMPTS;attempt++)try{
-   const register=await api<SiteRegister>(grant,'attendance/manual-biometric?'+new URLSearchParams({site,from:day,to:day}),'GET',undefined,BIO_DAY_TIMEOUT_MS);
+   const endpoint=source==='manual2'?'attendance/manual-biometric-ii':'attendance/manual-biometric';
+   const register=await api<SiteRegister>(grant,endpoint+'?'+new URLSearchParams({site,from:day,to:day}),'GET',undefined,BIO_DAY_TIMEOUT_MS);
    const machines=Array.isArray(register?.machines)?register.machines:[];
    results.push({...register,rows:Array.isArray(register?.rows)?register.rows:[],machines});delete dayErrors[day];
    states[day]='done';counts[day]=machines.reduce((sum,machine)=>sum+(Number(machine.punches)||0),0);tell(true);break;

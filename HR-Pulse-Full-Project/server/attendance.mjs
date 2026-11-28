@@ -117,7 +117,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
  const biometricDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadSiteRegister(pool,site,from,to,indiaDay()),today:indiaDay,siteKey:attendanceSiteKey});
  // Manual Biometric: the imported punches with an HR administrator's day corrections laid over them (manual-attendance-corrections.mjs);
  // a saved copy is made from the same.
- const loadManual=async(site,from,to)=>applyCorrections(await loadSiteRegister(pool,site,from,to,indiaDay(),{manual:true}),await corrections.read(site.name,from,to));
+ const loadManual=async(site,from,to,manualSource='manual1')=>applyCorrections(await loadSiteRegister(pool,site,from,to,indiaDay(),{manual:true,manualSource}),await corrections.read(site.name,from,to));
  const manualBiometricDays=createBiometricDayStore(pool,{load:loadManual,today:indiaDay,manual:true,siteKey:attendanceSiteKey});
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
@@ -283,7 +283,8 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    await audit(db,profile.actor,'IMPORT_BIOMETRIC_PUNCHES',{site:siteName,received:clean.length,added});
    return {received:clean.length,added};
   });
-  if(route==='manual-biometric/import'&&method==='POST')return tx(async db=>{
+  if(['manual-biometric/import','manual-biometric-ii/import'].includes(route)&&method==='POST')return tx(async db=>{
+   const source=route==='manual-biometric-ii/import'?'manual2':'manual1';
    const siteName=String(input?.site||'').trim(),rows=input?.rows;
    if(!siteName)fail('Choose a site before importing biometric punches.');
    if(!Array.isArray(rows)||!rows.length||rows.length>MAX_PUNCHES_PER_UPLOAD)fail(`Import 1–${MAX_PUNCHES_PER_UPLOAD} biometric punches at a time.`);
@@ -296,8 +297,8 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=ANY($1::uuid[]) AND serial=ANY($2::text[])',[matchingSiteIds,serials])).rows.map(row=>row.serial);
    const missing=serials.filter(serial=>!devices.includes(serial));
    if(missing.length)fail(`Machine Serial is not registered at ${siteName}: ${missing.join(', ')}`);
-   const added=(await db.query('INSERT INTO hr_manual_biometric_punches(device_serial,biometric_id,punched_at,verify,punch_type,imported_by) SELECT x.s,x.b,x.t::timestamp,x.v,x.p,$6 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[]) AS x(s,b,t,v,p) ON CONFLICT DO NOTHING',[clean.map(row=>row.serial),clean.map(row=>row.punch.biometricId),clean.map(row=>row.punch.punchedAt),clean.map(row=>row.punch.verify),clean.map(row=>row.punch.punchType),profile.actor])).rowCount;
-   await audit(db,profile.actor,'IMPORT_MANUAL_BIOMETRIC_PUNCHES',{site:siteName,received:clean.length,added});
+   const added=(await db.query('INSERT INTO hr_manual_biometric_punches(source,device_serial,biometric_id,punched_at,verify,punch_type,imported_by) SELECT $1,x.s,x.b,x.t::timestamp,x.v,x.p,$7 FROM unnest($2::text[],$3::text[],$4::text[],$5::text[],$6::text[]) AS x(s,b,t,v,p) ON CONFLICT DO NOTHING',[source,clean.map(row=>row.serial),clean.map(row=>row.punch.biometricId),clean.map(row=>row.punch.punchedAt),clean.map(row=>row.punch.verify),clean.map(row=>row.punch.punchType),profile.actor])).rowCount;
+   await audit(db,profile.actor,source==='manual2'?'IMPORT_MANUAL_BIOMETRIC_II_PUNCHES':'IMPORT_MANUAL_BIOMETRIC_PUNCHES',{site:siteName,received:clean.length,added});
    return {received:clean.length,added};
   });
   if(route==='status'&&method==='GET'){
@@ -340,11 +341,11 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    if(!site)fail(siteAccessMessage(profile),403);
    return loadSiteRegister(pool,{id:site.id,name:site.name,siteType:site.site_type||''},from,to,indiaDay());
   }
-  if(route==='manual-biometric'&&method==='GET'){
+  if(['manual-biometric','manual-biometric-ii'].includes(route)&&method==='GET'){
    const {from,to}=validateRange(params);
    const site=await findSite(pool,String(params.get('site')||''));
    if(!site)fail(siteAccessMessage(profile),403);
-   return {...await loadManual({id:site.id,name:site.name,siteType:site.site_type||''},from,to),canCorrect:attendanceAdmin(profile)};
+   return {...await loadManual({id:site.id,name:site.name,siteType:site.site_type||''},from,to,route==='manual-biometric-ii'?'manual2':'manual1'),canCorrect:attendanceAdmin(profile)};
   }
   // An HR administrator corrects one person's day, or undoes the correction (owner, 25 Nov 2026). A saved copy of that
   // day is made again, so it shows the day as corrected. Undo is a POST to …/undo (the browser cannot send DELETE here).

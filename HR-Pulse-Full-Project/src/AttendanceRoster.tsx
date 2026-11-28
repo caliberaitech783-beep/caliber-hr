@@ -368,7 +368,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const [pull,setPull]=useState<{running:boolean;message:string;error:string}|null>(null),[bioReload,setBioReload]=useState(0);
  const [editDay,setEditDay]=useState<DayEditTarget|null>(null);
  const [manualDays,setManualDays]=useState<{key:string;days:Record<string,DayState>;counts:Record<string,number>;errors:Record<string,string>}>({key:'',days:{},counts:{},errors:{}});
- const [uploading,setUploading]=useState<''|'bio'|'manual'>(''),[importNote,setImportNote]=useState(''),[manualReload,setManualReload]=useState(0);
+ const [uploading,setUploading]=useState<''|'bio'|'manual'|'manual2'>(''),[importNote,setImportNote]=useState(''),[manualReload,setManualReload]=useState(0);
  const keyRef=useRef(''),forceMis=useRef(false),forceBio=useRef(false);
  const [reload,setReload]=useState(0);
  useEffect(()=>{let live=true;
@@ -449,7 +449,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    .finally(()=>setBio(b=>b.key===runKey?{...b,runs:b.runs-1}:b));
  },[wantBio,bioKey]); // eslint-disable-line react-hooks/exhaustive-deps
  useEffect(()=>{if(bioRef.current&&bioRef.current!==bioKey)bioRef.current='';},[bioKey]);
- const manualSaveKey=[site,from,to].join('|'),manualKey=[manualSaveKey,manualReload].join('|');
+ const manualSaveKey=[site,from,to].join('|'),manualSource=view==='manual2'?'manual2':'manual1',manualKey=[manualSaveKey,manualSource,manualReload].join('|');
  useEffect(()=>{if(!ready||(!manualSelected&&view!=='manualMismatch')||manual.key===manualKey)return;let live=true;setManual({key:manualKey,status:'loading',message:'Reading imported biometric attendance…',data:null});
   // The punches and the list of saved days are read side by side but apart (27 Nov 2026): a slow or failed saved-day
   // list used to throw the punches away too ("Biometric punches unavailable: signal timed out", every count 0).
@@ -459,7 +459,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    if(!live)return;
    setManualDays({key:manualKey,days:progress.days,counts:progress.counts,errors:progress.errors});
    if(progress.partial)setManual(current=>current.key===manualKey&&current.status==='loading'?{...current,data:progress.partial!}:current);
-  }).then(data=>{if(live){setManual({key:manualKey,status:'ready',message:'Manual biometric attendance',data});setManualSave(null);}}).catch(e=>{if(live)setManual({key:manualKey,status:'error',message:(e as Error).message,data:null});});
+  },view==='manual2'?'manual2':'manual1').then(data=>{if(live){setManual({key:manualKey,status:'ready',message:'Manual biometric attendance',data});setManualSave(null);}}).catch(e=>{if(live)setManual({key:manualKey,status:'error',message:(e as Error).message,data:null});});
   setManualSavedError({key:'',message:''});
   readSavedManualBiometric(grant,site,from,to).then(saved=>{if(live)setManualSaved({key:manualSaveKey,days:Object.fromEntries(saved.map(day=>[day.day,day]))});}).catch(e=>{if(live)setManualSavedError({key:manualSaveKey,message:(e as Error).message});});
   return()=>{live=false;};
@@ -527,7 +527,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  /** After Upload machine log: say what came in and read the roster again (MachineLogUpload reads, checks and sends the file). */
  function imported(message:string){
   setImportNote(message);
-  if(uploading==='manual')setManualReload(value=>value+1);else{forceBio.current=true;setBioReload(value=>value+1);}
+  if(uploading==='manual'||uploading==='manual2')setManualReload(value=>value+1);else{forceBio.current=true;setBioReload(value=>value+1);}
  }
  const dates=useMemo(()=>ready?datesBetween(from,to):[],[ready,from,to]);
  const tripList=useMemo(()=>trip.key===key?Object.values(trip.rows).flat():[],[trip.key,trip.rows,key]);
@@ -640,9 +640,9 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    {view==='manual2'&&<p className="roster-saved" role="note">Manual Biometric II includes all departments and designations except Drivers and Operators.</p>}
    {(view==='bio'||manualSelected)&&importNote&&<p className="roster-saved" role="status">{importNote}</p>}
    {editDay&&<ManualDayEdit grant={grant} target={editDay} onClose={()=>setEditDay(null)} onSaved={message=>{setEditDay(null);setImportNote(message);setManualReload(value=>value+1);}}/>}
-   {uploading&&<MachineLogUpload grant={grant} site={site} onClose={()=>setUploading('')} onImported={imported} onManageMachines={onManageMachines} importPath={uploading==='manual'?'attendance/manual-biometric/import':undefined} title={uploading==='manual'?(view==='manual2'?'Import Manual Biometric II attendance':'Import manual biometric attendance'):undefined}/>}
+   {uploading&&<MachineLogUpload grant={grant} site={site} onClose={()=>setUploading('')} onImported={imported} onManageMachines={onManageMachines} importPath={uploading==='manual'?'attendance/manual-biometric/import':uploading==='manual2'?'attendance/manual-biometric-ii/import':undefined} title={uploading==='manual'?'Import Manual Biometric I · Driver & Operator':uploading==='manual2'?'Import Manual Biometric II · Other departments':undefined}/>}
    <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} bio={shownBioState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} showAForm={manualUsesAForm(site)} loading={bioLoading||(view==='manualMismatch'&&tripState.status==='loading')} error={view!=='trip'?bioError:''}
-    onImport={view==='bio'||(manualSelected&&!dates.every(day=>Boolean(currentManualSaved[day])))?()=>{setImportNote('');setUploading(view==='bio'?'bio':'manual');}:undefined}
+    onImport={view==='bio'||(manualSelected&&!dates.every(day=>Boolean(currentManualSaved[day])))?()=>{setImportNote('');setUploading(view==='bio'?'bio':view==='manual2'?'manual2':'manual');}:undefined}
     emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):manualSelected?`No ${view==='manual2'?'Manual Biometric II':'manual biometric'} attendance imported for ${site} in these dates.`:undefined}/></>}
  </section>;
 }
