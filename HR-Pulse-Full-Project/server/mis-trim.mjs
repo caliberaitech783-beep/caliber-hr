@@ -25,7 +25,10 @@ export function trimMisReport(report, site, from, to) {
   const mine = entry => Boolean(entry) && (sameSite(site, entry.site) || sameSite(site, entry.siteKey));
   const duties = list(report.otDuties), lines = list(report.attendanceEquipment), changes = list(report.hrChanges);
   const inDates = entry => entry.date >= from && entry.date <= to;
-  const misSites = [...new Set([...duties, ...lines, ...changes.filter(c => c?.mark === 'absent')].filter(e => e && inDates(e)).map(e => e.site).filter(Boolean))].sort();
+  // An answer Pulse-II already cut to the site (cut=site) no longer holds the other sites' lines; it names them in misSiteDays.
+  const cutSites = report.cut === 'site' && report.misSiteDays && typeof report.misSiteDays === 'object'
+    ? Object.entries(report.misSiteDays).filter(([date]) => date >= from && date <= to).flatMap(([, sites]) => list(sites)) : [];
+  const misSites = [...new Set([...cutSites, ...[...duties, ...lines, ...changes.filter(c => c?.mark === 'absent')].filter(e => e && inDates(e)).map(e => e.site)].filter(Boolean))].sort();
 
   // A person's shifts at this site, by every key the roster may give the line (the card's, a line's, a change's).
   const slots = new Set();

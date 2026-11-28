@@ -149,7 +149,12 @@ it('M.B-Trip card Mismatch says how many days are read and counts only those day
  await openRange('M.B-Trip card Mismatch');
  expect(await screen.findByText(/Reading… Manual Biometric 1 of 2 days · Trip cards \d of 2\. The figures below are for the \d days? read on both sides so far\./)).toBeTruthy();
  expect(screen.queryByText(/Biometric punches unavailable/)).toBeNull();
+ // 28 Nov 2026: a day still being read is marked as such, never drawn "— / —" like a day with no record.
+ const grid=screen.getByRole('table',{name:'Manual Biometric and Trip Card comparison'});
+ expect(within(grid).getAllByLabelText(/still being read/).length).toBe(1);
  release();
  await screen.findByText('Data loaded.',undefined,{timeout:8000});
  expect(screen.queryByText(/^Reading… Manual Biometric/)).toBeNull();
+ expect(within(grid).queryAllByLabelText(/still being read/).length).toBe(0);
+ expect(within(grid).queryByText(/Reading…|…/)).toBeNull();
 });
