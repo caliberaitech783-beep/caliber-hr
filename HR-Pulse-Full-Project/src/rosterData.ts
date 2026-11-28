@@ -36,8 +36,9 @@ export const setRetryPause = (fn: typeof pause) => {pause = fn;};
 
 /* The server reads a site's whole week from MIS in one request and hands out its days (28 Nov 2026; a day on its own
    took MIS about 14 seconds, 28 times for a month). The first day of a week waits for that week, which can take longer
-   than the 30 seconds an ordinary request is given. */
-export const TRIP_DAY_TIMEOUT_MS = 60_000;
+   than the 30 seconds an ordinary request is given: the first read of a week after a Pulse-II release took 38 seconds
+   on live (28 Nov 2026), and the server waits up to 75. */
+export const TRIP_DAY_TIMEOUT_MS = 90_000;
 /** A name for one "Fetch again": the server reads each week once for it instead of once for every day. */
 const newRun = () => Array.from({length: 4}, () => Math.random().toString(36).slice(2, 8).padEnd(6, '0')).join('');
 

@@ -206,7 +206,7 @@ test('the roster\'s day read keeps the chosen site only, in the answer and in th
 // Owner, 28 Nov 2026: "Yes, build it". Pulse-II took about 14 seconds for every single day asked, 28 times for a month.
 // Once Pulse-II says it can cut its answer to one site, the server reads the site's whole week in one request and
 // hands out the days of that week from it.
-function weekSetup({cutWorks = true, weekFails = false} = {}) {
+function weekSetup({cutWorks = true, weekFails = false, slowWeek = null} = {}) {
   const dates = Array.from({length: 9}, (_, i) => '2026-11-' + String(14 + i).padStart(2, '0'));
   const line = (site, date, employeeId) => ({date, site, siteKey: site.toLowerCase(), shift: 'S1', employeeId, employeeKey: employeeId, employeeName: employeeId});
   const everySite = wanted => ({
@@ -235,11 +235,12 @@ function weekSetup({cutWorks = true, weekFails = false} = {}) {
   };
   const pool = {
     connect: async () => db,
-    async query(sql) { return {rows: sql.includes("kind='sites'") ? [{name: 'Majri OC'}] : []}; }
+    async query(sql, args) { return sql.includes("kind='sites'") ? {rows: [{name: 'Majri OC'}]} : db.query(sql, args); }
   };
   const api = createMisAttendance(pool, {fetchMis: async url => {
     const q = url.searchParams, cut = q.get('cut') === 'site';
     asked.push([q.get('from'), q.get('to'), cut ? 'cut ' + q.get('site') : 'every site'].join(' '));
+    if (cut && slowWeek) await slowWeek;
     if (cut && weekFails) throw new Error('timed out');
     // cutWorks false: Pulse-II is taken back to an older release after its first answer (no cut, no "supports").
     const whole = {...everySite(between(q.get('from'), q.get('to'))), ...(cutWorks || asked.length === 1 ? {} : {supports: undefined})};
@@ -363,4 +364,26 @@ test('a site of almost another site\'s name is given only its own trip cards and
   assert.deepEqual((await signed('Dudhichua OB East')).days, []);
   assert.deepEqual((await signed('Dudhichua OB West')).days.map(d => d.signature), ['w']);
   assert.deepEqual((await signed('')).days.map(d => d.signature), ['w'], 'without a site every day is sent, as before');
+});
+
+// Measured on live on 28 Nov 2026: the first read of a week took Pulse-II 38 seconds. The second day of the week waited
+// for it on a database lock, the database ends a statement after 5 seconds, so the wait was cut off, the week was taken
+// for failed, and the rest of the week was read day by day. The days now wait for the one read in the server's memory.
+test('the days of a week that arrive while it is being read wait for that one read', async () => {
+  let release;
+  const slowWeek = new Promise(resolve => { release = resolve; });
+  const {day, asked} = weekSetup({slowWeek});
+  await day('2026-11-16');
+  // Three days of the same week are asked while Pulse-II is still answering the first.
+  const waiting = [day('2026-11-17'), day('2026-11-18'), day('2026-11-19')];
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual(asked.slice(1), ['2026-11-14 2026-11-22 cut Majri OC'], 'Pulse-II is asked once');
+  release();
+  const answers = await Promise.all(waiting);
+  assert.deepEqual(answers.map(a => a.timing.week), ['read', 'shared', 'shared']);
+  assert.deepEqual(answers.map(a => a.otDuties.map(d => d.date).join(' ')), ['2026-11-16 2026-11-17 2026-11-18', '2026-11-17 2026-11-18 2026-11-19', '2026-11-18 2026-11-19 2026-11-20']);
+  assert.equal(asked.length, 2);
+  // A day after that is handed out from the week kept in memory.
+  assert.equal((await day('2026-11-20')).timing.week, 'kept');
+  assert.equal(asked.length, 2);
 });
