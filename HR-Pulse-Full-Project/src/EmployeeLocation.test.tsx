@@ -71,12 +71,16 @@ describe('Corporate / HO import headers',()=>{
  });
  it('exports the exact Update Existing Employee columns and displayed values',()=>{
   const grid=corporateOfficeExportGrid([{id:'1',kind:'employees',code:'EMP-1',name:'Employee One',data:{officeData:{'Sr. No.':1,'Joining Category *':'CORPORATE'}} as any,status:'DRAFT',version:1,updated_at:'2026-10-23'}]);
-  expect(grid[0]).toEqual(officeHeaders.map(header=>header==='Candidate E-mail *'?'Candidate E-mail':header));
+  const withHours=officeHeaders.flatMap(header=>header==='Shift *'?[header,'Working Hours *']:[header]);
+  expect(grid[0]).toEqual(withHours.map(header=>header==='Candidate E-mail *'?'Candidate E-mail':header));
+  // A workbook with the Working Hours column is taken, and so is one made before it existed.
+  expect(validCorporateOfficeHeaders(grid[0])).toBe(true);
+  expect(validCorporateOfficeHeaders(officeHeaders)).toBe(true);
   expect(grid[1][0]).toBe(1);
   expect(grid[1][1]).toBe('CORPORATE');
   expect(grid[1][2]).toBe('EMP-1');
   expect(grid[1][3]).toBe('Employee One');
-  expect(grid[1][51]).toBe('DRAFT');
+  expect(grid[1][52]).toBe('DRAFT');
  });
  it('keeps the selected job designation separate from experience and preserves section details',()=>{
   expect(joiningOfficeData({
@@ -710,7 +714,7 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Department',{exact:true,selector:'select:not([name])'}),{target:{value:'Operator'}});
   fireEvent.change(screen.getByLabelText('Sub-department',{exact:true,selector:'select:not([name])'}),{target:{value:'Drilling'}});
   fireEvent.change(screen.getByLabelText('Designation',{exact:true,selector:'select:not([name])'}),{target:{value:'Drill Operator'}});
-  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Marital Status':'Unmarried','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Nagpur Corporate Office','Bank Name':'State Bank of India','Account No':'1234567890','IFSC Code':'SBIN0001234','Branch Name':'Nagpur','Payment Mode':'BANK'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Marital Status':'Unmarried','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Working Hours':'12 hours','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Nagpur Corporate Office','Bank Name':'State Bank of India','Account No':'1234567890','IFSC Code':'SBIN0001234','Branch Name':'Nagpur','Payment Mode':'BANK'}))setField(field,value);
   for(const [field,value] of Object.entries({'Family Member Name 1':'Parent One','Relationship 1':'Father/Mother','Aadhaar Number 1':'234500000001','Date of Birth 1':'1970-01-01','Contact No. 1':'9876543212','Occupation 1':'Home'}))setField(field,value);
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));
   upload('Upload Candidate photo','photo.jpg','image/jpeg');
@@ -729,7 +733,7 @@ describe('Employee Master tabs',()=>{
   fireEvent.change(screen.getByLabelText('Department',{exact:true,selector:'select:not([name])'}),{target:{value:'Operator'}});
   fireEvent.change(screen.getByLabelText('Sub-department',{exact:true,selector:'select:not([name])'}),{target:{value:'Drilling'}});
   fireEvent.change(screen.getByLabelText('Designation',{exact:true,selector:'select:not([name])'}),{target:{value:'Drill Operator'}});
-  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Marital Status':'Married','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Nagpur Corporate Office','Bank Name':'State Bank of India','Account No':'1234567890','IFSC Code':'SBIN0001234','Branch Name':'Nagpur','Payment Mode':'BANK'}))setField(field,value);
+  for(const [field,value] of Object.entries({'Identification Mark':'Mole on left hand','Marital Status':'Married','Full Name as per Aadhaar':'Employee One','Father / Spouse Name':'Parent One','Aadhaar No.':'234500000000','Full Name':'Employee One','Employee Code':'EMP-1','Mobile':'9876543210','Candidate E-mail':'employee@example.com','PAN No.':'ABCDE1234F','Present Address':'Nagpur','Reference Type':'Supervisor','Reference Name':'Supervisor One','Emergency Contact Name':'Contact One','Emergency Contact Number':'9876543211','Reporting To':'Manager','Joining Date':'2026-11-12','Shift':'General','Working Hours':'12 hours','Employment Type':'Permanent','Salary Type':'STD','Monthly Gross Salary':'30000','Site / Project':'Nagpur Corporate Office','Bank Name':'State Bank of India','Account No':'1234567890','IFSC Code':'SBIN0001234','Branch Name':'Nagpur','Payment Mode':'BANK'}))setField(field,value);
   for(const [field,value] of Object.entries({'Family Member Name 1':'Partner One','Relationship 1':'Husband/Wife','Aadhaar Number 1':'234500000001','Date of Birth 1':'1990-01-01','Contact No. 1':'9876543212','Occupation 1':'Home'}))setField(field,value);
   setField('Marital Status','Unmarried');
   fireEvent.click(screen.getByRole('button',{name:/Document Checklist/}));

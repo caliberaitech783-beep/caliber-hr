@@ -19,7 +19,7 @@ function employeeDetails(employee:Employee){
   if(!String(office.UAN||office['UAN No.']||data.uan||'').trim())missing.push('UAN');
   const role=[office['Employee Category'],office['Designation *'],data.designationTitle].join(' ');
   if(/\b(driver|operator)\b/i.test(role)&&!String(office['VT Certificate No.']||data.vtc||'').trim())missing.push('VTC');
-  const required=Object.keys(office).length?missingJoiningField(office):undefined;
+  const required=Object.keys(office).length?missingJoiningField(office,{workingHours:false}):undefined;
   if(required)missing.push(required);
   return missing;
 }

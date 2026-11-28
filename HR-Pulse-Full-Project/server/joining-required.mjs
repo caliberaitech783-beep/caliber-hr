@@ -1,3 +1,4 @@
+import {WORKING_HOURS_FIELD} from './working-hours.mjs';
 // Office field names used by the joining form after export aliases are applied.
 const requiredDetails = new Set([
   'Joining Category *','Employee Code','Full Name as per Aadhar','Full Name *','Father / Spouse Name *',
@@ -11,9 +12,11 @@ const filled = value => typeof value==='string'&&Boolean(value.trim());
 // Legacy employee editors can update other fields even if a required field was already empty.
 export const requiredEmployeeDetail = label => requiredDetails.has(label);
 
-export function missingJoiningField(office = {}) {
+// Working Hours (owner, 28 Nov 2026) is asked for on every new joining. The dashboard checks employees saved before
+// it existed too, so it passes {workingHours:false} and does not list each of them as missing it.
+export function missingJoiningField(office = {}, {workingHours = true} = {}) {
   if(!['Single','Unmarried','Married','Divorced'].includes(office['Marital Status']))return 'Marital Status';
-  const required = [...requiredDetails,'Candidate photo','Aadhaar (masked display)'];
+  const required = [...requiredDetails,...(workingHours?[WORKING_HOURS_FIELD]:[]),'Candidate photo','Aadhaar (masked display)'];
   const siteJoining = ['WCL','NCL'].includes(office['Joining Category *']);
   const driverOrOperator = ['Driver','Operator'].includes(office['Employee Category']);
   const salaryType = office['Salary Type'];

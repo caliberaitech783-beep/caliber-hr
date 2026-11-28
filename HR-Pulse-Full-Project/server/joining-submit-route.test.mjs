@@ -13,7 +13,7 @@ const officeData={
  'Father / Spouse Name *':'Sample Parent','Mobile *':'9876543210','Aadhaar No. *':'234500000009',
  'Marital Status':'Single','Identification mark':'Mole on left hand','PAN No.':'ABCDE1234F','Present Address':'Sample Address','Reference Type':'Supervisor','Reference Name':'Sample Referrer',
  'Emergency Contact Name':'Sample Contact','Emergency Contact Number':'9876543211','Department *':'Operations','Sub-department *':'Mining',
- 'Designation *':'Supervisor','Employee Category':'Staff','Reporting To':'Site Manager','Joining Date *':'2026-11-21','Shift *':'General',
+ 'Designation *':'Supervisor','Employee Category':'Staff','Reporting To':'Site Manager','Joining Date *':'2026-11-21','Shift *':'General','Working Hours *':'9 hours',
  'Employment Type':'Permanent','Salary Type':'Monthly','Site / Project':'Jayant OB East','PT State':'Madhya Pradesh','Skill Category':'Skilled',
  'A-Form No.':'A-9','Mess Plan':'NO','Candidate photo':'photo.jpg','Aadhaar (masked display)':'aadhaar.pdf',
 };

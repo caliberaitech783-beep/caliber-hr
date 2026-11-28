@@ -22,6 +22,7 @@ import {validateTrialJoining} from './trial-joining.mjs';
 import {requireTrialRole} from './trial-access.mjs';
 import {isProjectManager,PM_EMPLOYEE_WRITE_ERROR} from './pm-access.mjs';
 import {missingJoiningField, requiredEmployeeDetail, siteProjectMismatch, underageBirthDate} from './joining-required.mjs';
+import {WORKING_HOURS_FIELD,normalizeWorkingHours,workingHoursProblem} from './working-hours.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
@@ -333,6 +334,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       authorize(profile,'employees',true);
       if(!uuid(id))throw problem('Invalid employee ID');
       if(!officeData||typeof officeData!=='object'||Array.isArray(officeData))throw problem('Employee details are required');
+      if(Object.hasOwn(officeData,WORKING_HOURS_FIELD)){const hours=officeData[WORKING_HOURS_FIELD];if(typeof hours==='string'&&workingHoursProblem(hours))throw problem(workingHoursProblem(hours));if(typeof hours==='string')officeData={...officeData,[WORKING_HOURS_FIELD]:normalizeWorkingHours(hours)};}
       const changes=Object.entries(officeData);
       if(!changes.length||changes.length>250||changes.some(([key,value])=>key.length>150||typeof value!=='string'||value.length>4000))throw problem('Invalid employee details');
       if(officeData['New Account No']?.trim()&&!/^[0-9]{1,18}$/.test(officeData['New Account No'].trim()))throw problem('New Account No must contain up to 18 digits.');
@@ -417,6 +419,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
           const officeData=input.__officeData;delete input.__officeData;
           if(officeData&&(!officeData.constructor||officeData.constructor!==Object))throw problem(`Row ${count+1}: Corporate / HO employee data is invalid`);
           if(officeData){const mismatch=siteProjectMismatch(officeData);if(mismatch)throw problem('Row '+(count+1)+': '+mismatch);}
+          if(officeData&&Object.hasOwn(officeData,WORKING_HOURS_FIELD)){const hours=officeData[WORKING_HOURS_FIELD],normal=normalizeWorkingHours(hours);if(normal===null)throw problem('Row '+(count+1)+': '+workingHoursProblem(hours));officeData[WORKING_HOURS_FIELD]=normal;}
           if (submitForApproval||trialClearance) {
             const missing=missingJoiningField(officeData);
             if(missing)throw problem('Row '+(count+1)+': '+missing.replace(/\s*\*$/,'')+' is required');
