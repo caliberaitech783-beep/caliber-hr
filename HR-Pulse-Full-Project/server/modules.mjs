@@ -2,6 +2,7 @@ import {isProjectManager} from './pm-access.mjs';
 import {managementModules, managementMenus} from './management-modules.mjs';
 import {leaveModules,requestFields,policyFields,prepareLeave,validateLeave} from './leave.mjs';
 import {gatePassTypes,validateGatePass} from './gate-pass.mjs';
+import {masterLine} from './working-hours.mjs';
 const text = (key, label, required = false) => ({ key, label, type: 'text', required });
 const ref = (key, label, reference, required = false) => ({ key, label, type: 'reference', reference, required });
 const date = (key, label, required = false) => ({ key, label, type: 'date', required });
@@ -39,6 +40,9 @@ export const modules = {
   departments: module('Departments','Master Configuration',[text('code','Department code',true),text('name','Department name',true),ref('companyId','Company','companies',true)]),
   grades: module('Grades','Master Configuration',[text('code','Grade code',true),text('name','Grade name',true),{key:'rank',label:'Rank',type:'number',required:true,min:1}]),
   designations: module('Designations','Master Configuration',[text('code','Designation code',true),text('name','Designation name',true),ref('gradeId','Grade','grades',true),ref('departmentId','Department','departments')]),
+  /* Working Hour Master (owner, 28 Nov 2026): one list of working hours for Corporate / HO and OB / COAL. The code is the
+     hours; the name is set to "N hours" by itself. working-hours.mjs reads the active lines. */
+  workingHours: module('Working Hour Master','Master Configuration',[text('code','Working hours (whole hours, 1 to 24)',true),text('name','Shown as'),text('remarks','Remarks')]),
   shifts: module('Shifts','Shift Management',[text('code','Shift code',true),text('name','Shift name',true),ref('siteId','Site','sites',true),{key:'startTime',label:'Start time',type:'time',required:true},{key:'endTime',label:'End time',type:'time',required:true},text('weeklyOff','Weekly off'),text('shiftCode','Display code'),{key:'graceMinutes',label:'Grace (minutes)',type:'number',min:0},{key:'halfDayHours',label:'Half day below (hours)',type:'number',min:0},{key:'fullDayHours',label:'Full day (hours)',type:'number',min:0.25},{key:'overtimeAfterHours',label:'OT after (hours)',type:'number',min:0},select('nightShift','Night shift',['No','Yes'])]),
   holidays: module('Holidays','Holiday & Leave',[text('code','Holiday code',true),text('name','Holiday name',true),date('date','Date',true),text('siteId','Site ID (CSV value; blank = all sites)')]),
   leavePolicies: module('Leave policies','Holiday & Leave',[text('code','Policy code',true),text('name','Leave type',true),{key:'annualDays',label:'Annual entitlement (days)',type:'number',required:true,min:0},ref('companyId','Company','companies',true)]),
@@ -110,6 +114,7 @@ export function validate(kind, input) {
     data[field.key] = field.type === 'number' ? Number(value) : value;
   }
   if (kind==='gatePasses') validateGatePass(data);
+  if (kind==='workingHours') Object.assign(data, masterLine(data));
   /* A transfer is for an HR-joined employee (employeeId) or an Employee Master register line (registerId). */
   if (kind==='employeeTransfers' && !data.employeeId && !data.registerId) throw Object.assign(new Error('Employee is required'),{status:400});
   if (kind==='employeeTransfers' && data.fromSiteId && data.fromSiteId===data.toSiteId) throw Object.assign(new Error('To location must be different from the current location'),{status:400});

@@ -13,7 +13,7 @@
 // was not the name on that ID, and held 141 people whose names the sites merely spell differently (AJAYA SAHU /
 // AJAY SAHU, HEERA LAL KOL / HEERALAL KOL). A name that differs is now listed for information and still updated.
 import {employeeNumber,samePerson} from './employee-number.mjs';
-import {WORKING_HOURS_FIELD,normalizeWorkingHours} from './working-hours.mjs';
+import {WORKING_HOURS_FIELD,allowedText,loadWorkingHours,normalizeWorkingHours,workingHoursNumber} from './working-hours.mjs';
 export {readWorkingHoursSheets} from './working-hours-sheet.mjs';
 import {isEmployeeEntry} from './employee-master-register.mjs';
 import {grantedMenus} from './modules.mjs';
@@ -23,13 +23,13 @@ export const WORKING_HOURS_IMPORT_LIMIT = 15000;
 const LIST_LIMIT = 300;
 const fail = (message, status = 400) => Object.assign(new Error(message), {status});
 const text = value => value === null || value === undefined ? '' : String(value).trim();
-function parseRows(rows) {
+function parseRows(rows, allowed) {
   if (!Array.isArray(rows) || !rows.length || rows.length > WORKING_HOURS_IMPORT_LIMIT) throw fail(`Send 1 to ${WORKING_HOURS_IMPORT_LIMIT.toLocaleString('en-IN')} working hours rows at a time.`);
   return rows.map((row,index)=>{
-    const employeeId = text(row?.employeeId), number = employeeNumber(employeeId), hours = normalizeWorkingHours(row?.hours);
+    const employeeId = text(row?.employeeId), number = employeeNumber(employeeId), hours = normalizeWorkingHours(row?.hours, allowed);
     const clean = (value,max) => { const result = text(value); if (result.length>max || result.includes('\0')) throw fail(`Working Hours row ${index+1}: invalid value.`); return result; };
     if (!number) throw fail(`Working Hours row ${index+1}: enter a valid Employee ID.`);
-    if (!hours) throw fail(`Working Hours row ${index+1}: hours must be 8, 9, 10, 11 or 12.`);
+    if (!hours) throw fail(`Working Hours row ${index+1}: hours must be ${allowedText(allowed)} (Working Hour Master).`);
     return {employeeId:clean(employeeId,40),number,hours,name:clean(row?.name,300),sheet:clean(row?.sheet,120),row:Number.isInteger(row?.row)?row.row:index+1};
   });
 }
@@ -44,7 +44,7 @@ export function createWorkingHoursImport(pool) {
   return {
     // apply=false only reports what would change. apply=true writes Working Hours of the matched people, all or none.
     async importEmployeeWorkingHours(profile, input) {
-      const scope = await access(pool, profile), apply = input?.apply === true, rows = parseRows(input?.rows);
+      const scope = await access(pool, profile), apply = input?.apply === true, rows = parseRows(input?.rows, await loadWorkingHours(pool));
       const db = await pool.connect();
       try {
         await db.query('BEGIN');
@@ -76,8 +76,8 @@ export function createWorkingHoursImport(pool) {
           const other = row.name && targets.find(target=>text(target.name) && !samePerson(target.name,row.name));
           if (other) nameDiffers.push(line(row,`Employee Master: ${other.name}`));
           let changed = false;
-          for (const target of inRegister) if (normalizeWorkingHours(target.hours) !== row.hours) { registerWrites.push({id:target.id,hours:row.hours}); changed = true; }
-          for (const target of inJoined) if (normalizeWorkingHours(target.hours) !== row.hours) { joinedWrites.push({id:target.id,hours:row.hours}); changed = true; }
+          for (const target of inRegister) if (workingHoursNumber(target.hours) !== workingHoursNumber(row.hours)) { registerWrites.push({id:target.id,hours:row.hours}); changed = true; }
+          for (const target of inJoined) if (workingHoursNumber(target.hours) !== workingHoursNumber(row.hours)) { joinedWrites.push({id:target.id,hours:row.hours}); changed = true; }
           if (changed) updated++; else same++;
         }
         if (apply) {

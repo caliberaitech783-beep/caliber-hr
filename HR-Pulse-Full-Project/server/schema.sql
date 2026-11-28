@@ -83,3 +83,12 @@ FROM (VALUES
 CROSS JOIN (SELECT id FROM hr_records WHERE kind='companies' AND status='ACTIVE' ORDER BY created_at LIMIT 1) company
 JOIN hr_records region ON region.kind='regions' AND region.code=source.region_code AND region.status='ACTIVE'
 ON CONFLICT(kind,code) DO NOTHING;
+-- Working Hour Master (owner, 28 Nov 2026): one list of working hours for Corporate / HO and OB / COAL. It starts with
+-- the five hours the forms had; a line HR switched off or changed is never put back.
+INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES
+ ('7a000000-0000-4000-8000-000000000008','workingHours','8','8 hours','{"code":"8","name":"8 hours","remarks":""}','ACTIVE','system','system'),
+ ('7a000000-0000-4000-8000-000000000009','workingHours','9','9 hours','{"code":"9","name":"9 hours","remarks":""}','ACTIVE','system','system'),
+ ('7a000000-0000-4000-8000-000000000010','workingHours','10','10 hours','{"code":"10","name":"10 hours","remarks":""}','ACTIVE','system','system'),
+ ('7a000000-0000-4000-8000-000000000011','workingHours','11','11 hours','{"code":"11","name":"11 hours","remarks":""}','ACTIVE','system','system'),
+ ('7a000000-0000-4000-8000-000000000012','workingHours','12','12 hours','{"code":"12","name":"12 hours","remarks":""}','ACTIVE','system','system')
+ON CONFLICT DO NOTHING;

@@ -23,7 +23,7 @@ import {validateTrialJoining} from './trial-joining.mjs';
 import {requireTrialRole} from './trial-access.mjs';
 import {isProjectManager,PM_EMPLOYEE_WRITE_ERROR} from './pm-access.mjs';
 import {missingJoiningField, requiredEmployeeDetail, siteProjectMismatch, underageBirthDate} from './joining-required.mjs';
-import {WORKING_HOURS_FIELD,normalizeWorkingHours,workingHoursProblem} from './working-hours.mjs';
+import {DEFAULT_WORKING_HOURS,WORKING_HOURS_FIELD,loadWorkingHours,normalizeWorkingHours,workingHoursProblem} from './working-hours.mjs';
 import {importWithDrafts,resolveImportReferences} from './import-drafts.mjs';
 import {createDeletion} from './deletion.mjs';
 import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.mjs';
@@ -259,7 +259,11 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     ...createMisTripCardDays(pool),
     ...createReportingManagers(pool),
     ...createTransferOptions(pool),
-    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests','gatePasses'].includes(kind))}]))}; },
+    async config(profile) { const scoped=assignedSites(profile)!==null;
+      /* Working Hour Master (working-hours.mjs): the hours every Working Hours field offers. A failed read leaves the
+         starting list on the screen; the save still checks the master. */
+      const workingHours=await loadWorkingHours(pool).catch(()=>DEFAULT_WORKING_HOURS);
+      return {profile,workingHours,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests','gatePasses'].includes(kind))}]))}; },
     async list(profile,kind,params) {
       authorize(profile,kind);
       const page=Math.max(1,Math.min(10000,Number(params.get('page'))||1));
@@ -336,7 +340,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       authorize(profile,'employees',true);
       if(!uuid(id))throw problem('Invalid employee ID');
       if(!officeData||typeof officeData!=='object'||Array.isArray(officeData))throw problem('Employee details are required');
-      if(Object.hasOwn(officeData,WORKING_HOURS_FIELD)){const hours=officeData[WORKING_HOURS_FIELD];if(typeof hours==='string'&&workingHoursProblem(hours))throw problem(workingHoursProblem(hours));if(typeof hours==='string')officeData={...officeData,[WORKING_HOURS_FIELD]:normalizeWorkingHours(hours)};}
+      if(Object.hasOwn(officeData,WORKING_HOURS_FIELD)){const hours=officeData[WORKING_HOURS_FIELD],allowed=await loadWorkingHours(pool);if(typeof hours==='string'&&workingHoursProblem(hours,allowed))throw problem(workingHoursProblem(hours,allowed));if(typeof hours==='string')officeData={...officeData,[WORKING_HOURS_FIELD]:normalizeWorkingHours(hours,allowed)};}
       const changes=Object.entries(officeData);
       if(!changes.length||changes.length>250||changes.some(([key,value])=>key.length>150||typeof value!=='string'||value.length>4000))throw problem('Invalid employee details');
       if(officeData['New Account No']?.trim()&&!/^[0-9]{1,18}$/.test(officeData['New Account No'].trim()))throw problem('New Account No must contain up to 18 digits.');
@@ -415,13 +419,13 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       authorize(profile,'employees',true);
       if(!Array.isArray(records)||!records.length||records.length>500)throw problem('Import 1–500 rows at a time');
       return transaction(async(db,afterCommit)=>{
-        let count=0,submitted=0;
+        let count=0,submitted=0,workingHoursList=null;
         for(const record of records){
           const input={...record};
           const officeData=input.__officeData;delete input.__officeData;
           if(officeData&&(!officeData.constructor||officeData.constructor!==Object))throw problem(`Row ${count+1}: Corporate / HO employee data is invalid`);
           if(officeData){const mismatch=siteProjectMismatch(officeData);if(mismatch)throw problem('Row '+(count+1)+': '+mismatch);}
-          if(officeData&&Object.hasOwn(officeData,WORKING_HOURS_FIELD)){const hours=officeData[WORKING_HOURS_FIELD],normal=normalizeWorkingHours(hours);if(normal===null)throw problem('Row '+(count+1)+': '+workingHoursProblem(hours));officeData[WORKING_HOURS_FIELD]=normal;}
+          if(officeData&&Object.hasOwn(officeData,WORKING_HOURS_FIELD)){const hours=officeData[WORKING_HOURS_FIELD],allowed=workingHoursList||(workingHoursList=await loadWorkingHours(db)),normal=normalizeWorkingHours(hours,allowed);if(normal===null)throw problem('Row '+(count+1)+': '+workingHoursProblem(hours,allowed));officeData[WORKING_HOURS_FIELD]=normal;}
           if (submitForApproval||trialClearance) {
             const missing=missingJoiningField(officeData);
             if(missing)throw problem('Row '+(count+1)+': '+missing.replace(/\s*\*$/,'')+' is required');
