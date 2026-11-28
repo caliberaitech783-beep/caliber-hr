@@ -2,11 +2,13 @@
 
 Set by the owner on 28 November 2026: an extra field for working hours for every employee of Employee Master, Corporate / HO and OB / COAL.
 
-- **Working Hours** sits in Job & Posting Details right after Shift: in the employee table of both groups, the joining form (asked for, a choice of 8, 9, 10 or 12 hours), Edit employee details, the local review form and both Excel formats. It is saved as `Working Hours *` ("12 hours").
+- **Working Hours** sits in Job & Posting Details right after Shift: in the employee table of both groups, the joining form (asked for, a choice of 8, 9, 10, 11 or 12 hours; 11 was added the same day because the sites' hour-wise sheet has people on 11 hours), Edit employee details, the local review form and both Excel formats. It is saved as `Working Hours *` ("12 hours").
 - Every new joining must have it. Employees saved before it existed keep it blank until HR fills it in on Edit; the dashboard does not list them as missing it. Corporate / HO workbooks without the column are still imported.
-- The save and the import refuse anything but 8, 9, 10 or 12 hours ("12", "12 hrs" and the Excel number 12 are taken as 12 hours).
+- The save and the import refuse anything but 8, 9, 10, 11 or 12 hours ("12", "12 hrs" and the Excel number 12 are taken as 12 hours).
 - Pulse-II's minute copy gets it as `workingHours` (12, or null when not set) and shows it read only. It only records the hours: attendance, OT and the Shift Master do not use it.
-- `HR-Pulse-Full-Project/server/working-hours.mjs` holds the rule; `server/working-hours.test.mjs` (run by the API deploy) checks it.
+- The all-sites register (Employee Master › Employee Master) shows Working Hours as a column and in its downloads, and Edit employee details there has it as a dropdown. It is kept as `workingHours` on the line, outside the register's own Excel layout.
+- **Update Working Hours from Excel** on that page (a login with every HR site), owner 28 Nov 2026: "update the working hours as per employee id; apart from this don't change anything or remove from the master". It takes the sites' hour-wise workbook (one sheet per site, each laid out differently): the Employee ID column and the hours column are found by what is in them (`server/working-hours-sheet.mjs`), and only the Employee ID, name and hours leave the browser. "8 Hrs Day & Night" is 8 hours. It first shows what will change and saves nothing; **Update** then writes Working Hours of the matched register lines and joined employees, all or none (`POST /api/employee-master-working-hours`, `server/working-hours-import.mjs`). Never let it add, remove or move a line or write another field. Held, with nothing changed: an ID not in Employee Master, an ID on two lines, a completely different name on the ID, two different hours for one ID in the file.
+- `HR-Pulse-Full-Project/server/working-hours.mjs` holds the rule; `server/working-hours.test.mjs` with `server/working-hours-import.test.mjs` (run by the API deploy) and `src/WorkingHoursImport.test.tsx` check it.
 
 # Trip card drivers with no biometric line get leave, OD, PH and absent days
 

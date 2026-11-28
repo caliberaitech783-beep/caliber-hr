@@ -11,6 +11,7 @@ import {createHierarchies,employeeHierarchy,approvalSteps,nextApproval,isDriverO
 import {createHolidayDocuments,holidayAliases} from './holiday-documents.mjs';
 import {createEmployeeDocuments} from './employee-documents.mjs';
 import {createEmployeeMasterRegister,isEmployeeEntry} from './employee-master-register.mjs';
+import {createWorkingHoursImport} from './working-hours-import.mjs';
 import {employeeNumber,heldNumbers,nextEmployeeNumber,otherPersonWithNumber,holderLine,OUR_PREFIXES,inSeries} from './employee-number.mjs';
 import {createMisEmployeeSync} from './mis-employee-sync.mjs';
 import {createMisSiteMove} from './mis-site-move.mjs';
@@ -251,6 +252,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     ...createTransferFlows(pool),
     ...createHolidayDocuments(pool),
     ...createEmployeeMasterRegister(pool),
+    ...createWorkingHoursImport(pool),
     ...createMisEmployeeSync(pool),
     ...createMisSiteMove(pool),
     ...createMisBiometricPunches(pool),
