@@ -37,7 +37,8 @@ test('the report keeps what Pulse-II signed and what HR changed there, and retir
   assert.deepEqual(result.days, days);
   assert.deepEqual(result.hrChanges, hrChanges);
   assert.equal(result.signed, true);
-  assert.deepEqual(result.corrections.map(c => [c.id, c.status, c.retired]), [['d1', 'absent', true], ['d2', 'present', false]]);
+  // Duty times kept only in HR Pulse are retired too since 28 Nov 2026 ("Yes, send to MIS").
+  assert.deepEqual(result.corrections.map(c => [c.id, c.status, c.retired]), [['d1', 'absent', true], ['d2', 'present', true]]);
   // A Pulse-II that does not sign yet: no days, signed false, the report still opens.
   const old = await setup(() => Response.json(report)).api(hr, grant, 'mis', 'GET', null, new URLSearchParams({from: '2026-11-16', to: '2026-11-16'}));
   assert.deepEqual([old.days, old.hrChanges, old.signed], [[], [], false]);
@@ -49,7 +50,25 @@ test('HR Pulse no longer saves an absent or a pending of its own', async () => {
     await assert.rejects(api(hr, grant, 'mis/correction', 'POST', {...duty, status, version: 0, reason: 'Roster checked'}),
       error => error.status === 400 && /marked in Pulse-II with an OTP/.test(error.message));
   }
+  // Nor duty times (owner, 28 Nov 2026: "Yes, send to MIS"): they are set in Pulse-II with an OTP.
+  for (const status of ['present', 'mis']) {
+    await assert.rejects(api(hr, grant, 'mis/correction', 'POST', {...duty, status, version: 0, start: '06:00', end: '14:00', reason: 'Roster checked'}),
+      error => error.status === 400 && /Duty times are now set in Pulse-II with an OTP/.test(error.message));
+  }
   assert.equal(queries.length, 0);
+});
+
+test('duty times go to Pulse-II with the OTP, and an older Pulse-II is named', async () => {
+  const asked = {id: '22222222-2222-4222-8222-222222222222', status: 'sent', sentTo: ['rhr.ncl'], ...duty, mark: 'times', start: '06:00', end: '14:30', reason: 'Driver came one hour late'};
+  const {api, sent, queries} = setup(() => Response.json(asked, {status: 201}));
+  await api(hr, grant, 'mis/change', 'POST', {...duty, mark: 'times', start: '06:00', end: '14:30', reason: 'Driver came one hour late', status: 'x'}, new URLSearchParams());
+  assert.deepEqual(sent[0].body, {site: duty.site, date: duty.date, shift: 'S1', employeeId: 'CMPL101', mark: 'times', reason: 'Driver came one hour late', start: '06:00', end: '14:30'});
+  assert.deepEqual([queries[0][1][2].mark, queries[0][1][2].start, queries[0][1][2].end], ['times', '06:00', '14:30'], 'the audit line names the times');
+  await api(hr, grant, 'mis/change', 'POST', {...duty, mark: 'card-times', start: '06:00', end: '14:30', reason: 'Times were right after all'}, new URLSearchParams());
+  assert.deepEqual(sent[1].body, {site: duty.site, date: duty.date, shift: 'S1', employeeId: 'CMPL101', mark: 'card-times', reason: 'Times were right after all'}, 'taking back sends no times');
+  const old = setup(() => Response.json({error: 'Choose Present, Absent or "as the trip card says".'}, {status: 400}));
+  await assert.rejects(old.api(hr, grant, 'mis/change', 'POST', {...duty, mark: 'times', start: '06:00', end: '14:30', reason: 'Driver came one hour late'}, new URLSearchParams()),
+    error => error.status === 503 && /does not take duty times from HR Pulse yet/.test(error.message));
 });
 
 test('the signatures of the days are asked without the cards, and an older Pulse-II is recognised', async () => {

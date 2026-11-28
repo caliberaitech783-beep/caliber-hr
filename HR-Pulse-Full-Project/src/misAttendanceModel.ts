@@ -26,7 +26,13 @@ type SavedDuty = DutyIdentity & {
   logBooks: string[];
   books: string;
   trips: number | null;
+  /** Duty times HR Pulse set in Pulse-II with an OTP. performance keeps the Shift Master times (two times in one shift
+      there would read as a schedule conflict), so they are put on this duty's row only. */
+  hrTimes?: HrTimes;
 };
+/** Corrected duty times kept in Pulse-II (owner, 28 Nov 2026: "Yes, send to MIS"). HH:MM; an end before the start is the
+    next day; window: the same as Shift Master labels ("2026-11-16 06:00"). */
+export type HrTimes = {id: string; start: string; end: string; window?: {start: string; end: string}; by: string; reason: string; at: string};
 type MisReport = {
   attendanceEquipment: EquipmentDuty[];
   attendanceShifts: {siteKey: string; date: string; shift: string; state: string; batch: string; start?: string; end?: string}[];
@@ -45,11 +51,12 @@ export type CorrectionStatus = 'mis' | 'present' | 'absent' | 'pending';
 export type AttendanceCorrection = {
   id: string; status: CorrectionStatus; start: string; end: string; reason: string;
   version: number; updatedBy: string; updatedAt: string;
-  /** An absent / pending kept only in HR Pulse before 27 Nov 2026: shown, never applied. */
+  /** Kept only in HR Pulse: shown, never applied. Absent / pending since 27 Nov 2026, duty times since 28 Nov 2026. */
   retired?: boolean;
 };
-/** Present / absent is decided in Pulse-II; a correction kept only in HR Pulse that said otherwise no longer counts. */
-export const retiredCorrection = (c?: AttendanceCorrection) => Boolean(c && (c.retired || c.status === 'absent' || c.status === 'pending'));
+/** Present / absent and duty times are decided in Pulse-II; a correction kept only in HR Pulse no longer counts.
+    "Use MIS" changed nothing, so it is not shown at all. */
+export const retiredCorrection = (c?: AttendanceCorrection) => Boolean(c && (c.retired || c.status !== 'mis'));
 type Window = {start: string; end: string; startMs: number; endMs: number};
 export type AttendanceRow = DutyIdentity & {
   id: string;
@@ -66,6 +73,8 @@ export type AttendanceRow = DutyIdentity & {
   correction?: AttendanceCorrection;
   /** What HR Pulse changed for this duty in Pulse-II (with an OTP). */
   hrChange?: HrChange;
+  /** Duty times HR Pulse set in Pulse-II with an OTP (window already holds them). */
+  hrTimes?: HrTimes;
   verification: string;
   verified: boolean;
   otHours: number | null;
@@ -172,7 +181,7 @@ export function mapMisAttendance(value: unknown): AttendanceRow[] {
       note: existingValues(...lines.flatMap(row => [row.reason, row.remarks])).join(' · '),
       output: trips !== null ? `${trips} ${trips === 1 ? 'trip' : 'trips'}` : detail?.km != null ? `${detail.km} km` : '',
       window, status: verified ? presentStatus(zero) : 'Pending', verification,
-      verified: Boolean(verified), otHours: null, otNote: ''
+      verified: Boolean(verified), otHours: null, otNote: '', ...(card?.hrTimes ? {hrTimes: card.hrTimes} : {})
     };
   });
 
@@ -203,6 +212,11 @@ export function mapMisAttendance(value: unknown): AttendanceRow[] {
     timelines.set(timeline, [...(timelines.get(timeline) || []), row]);
   }
   for (const row of rows) {
+    // The duty's own times, set in Pulse-II with an OTP, replace the Shift Master times of this row only.
+    if (row.hrTimes) {
+      const {start, end} = row.hrTimes, endDate = end < start ? dateAfter(row.date) : row.date;
+      row.window = parseWindow(row.hrTimes.window?.start || `${row.date} ${start}`, row.hrTimes.window?.end || `${endDate} ${end}`) || row.window;
+    }
     const correction = corrections.get(row.id);
     if (!correction) continue;
     row.correction = correction;

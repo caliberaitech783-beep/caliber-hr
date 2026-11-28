@@ -1,9 +1,9 @@
 import {Fragment, useEffect, useState} from 'react';
-import {ChevronDown, Download, Pencil, Printer, RefreshCw} from 'lucide-react';
+import {ChevronDown, Clock, Download, Printer, RefreshCw} from 'lucide-react';
 import {api} from './api';
 import {assetPrintHtml} from './assetPrint';
 import {downloadExcel} from './excelFiles';
-import {mapMisAttendance, retiredCorrection, type AttendanceRow, type CorrectionStatus} from './misAttendanceModel';
+import {mapMisAttendance, retiredCorrection, type AttendanceRow} from './misAttendanceModel';
 import MisAttendanceChange, {type ChangeTarget} from './MisAttendanceChange';
 import {DEFAULT_POLICY, type AttendancePolicy} from '../server/attendance-policy.mjs';
 import './mis-attendance.css';
@@ -30,14 +30,11 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
   const [result, setResult] = useState<{range: string; rows: AttendanceRow[]; sites: string[]; updated: Date; canEdit: boolean}>();
   const [failure, setFailure] = useState<{range: string; message: string}>();
   const [loading, setLoading] = useState(false);
-  const [editing, setEditing] = useState<AttendanceRow>();
-  const [status, setStatus] = useState<CorrectionStatus>('mis');
-  const [saving, setSaving] = useState(false);
-  const [editError, setEditError] = useState('');
   const [saved, setSaved] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
-  // A present / absent change is made in MIS with the RHR's OTP (MisAttendanceChange). rowId '': Mark present, for a person with no card.
-  const [changing, setChanging] = useState<{rowId: string; target?: ChangeTarget}>();
+  // A present / absent or duty times change is made in MIS with the RHR's OTP (MisAttendanceChange); HR Pulse keeps none of
+  // its own (owner, 27 and 28 Nov 2026). rowId '': Mark present, for a person with no card. key: which form of the row is open.
+  const [changing, setChanging] = useState<{rowId: string; key: string; target?: ChangeTarget}>();
   const range = `${fromDate}:${toDate}`;
   const valid = fromDate >= startOfRecords && toDate <= latest && fromDate <= toDate && Date.parse(toDate) - Date.parse(fromDate) <= 30 * 86_400_000;
   const error = failure?.range === range ? failure.message : '';
@@ -46,9 +43,13 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
     setFromDate(from);
     setToDate(to);
     setPage(0);
-    setEditing(undefined);
     setChanging(undefined);
     setSaved('');
+  }
+  // Opens (or closes, when it is open) one OTP form of a duty.
+  function toggle(row: AttendanceRow, key: string, target: ChangeTarget) {
+    setSaved('');
+    setChanging(changing?.rowId === row.id && changing.key === key ? undefined : {rowId: row.id, key, target});
   }
   function changed(message: string) {
     setChanging(undefined);
@@ -86,28 +87,6 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
       clearTimeout(timer);
     };
   }, [fromDate, toDate, range, valid, refresh, grant]);
-
-  async function saveCorrection(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editing || saving) return;
-    const fields = new FormData(event.currentTarget);
-    const {date, site, siteKey, shift, employeeId, correction} = editing;
-    setSaving(true);
-    setEditError('');
-    try {
-      await api(grant, 'attendance/mis/correction', 'POST', {
-        date, site, siteKey, shift, employeeId, status, version: correction?.version || 0, reason: fields.get('reason'),
-        start: fields.get('start') || '', end: fields.get('end') || ''
-      });
-      setEditing(undefined);
-      setSaved('Attendance correction saved.');
-      setRefresh(n => n + 1);
-    } catch (error) {
-      setEditError((error as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
 
   const current = result?.range === range ? result : undefined;
   const awaitingResult = valid && !current && !error;
@@ -159,15 +138,15 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
       <div className="trip-attendance-header">
         <div>
           <h2 id="trip-card-heading">{shiftManagement ? 'Shift roster' : overtimeOnly ? 'Overtime' : 'Trip cards & driver logbooks'}</h2>
-          <p>MIS is the master of trip card attendance: present or absent is changed in MIS only, with the RHR's OTP, and shows here at once. Closed MIS batches verify attendance. Two verified back-to-back 8-hour shifts give 8 hours of OT.{!shiftManagement && !overtimeOnly &&
+          <p>MIS is the master of trip card attendance: present or absent, and duty times, are changed in MIS only, with the RHR's OTP, and show here at once. Closed MIS batches verify attendance. Two verified back-to-back 8-hour shifts give 8 hours of OT.{!shiftManagement && !overtimeOnly &&
             ' A driver or operator with a punched trip card or logbook is present for the day, whatever the hours: no half day from trip card hours.'}</p>
         </div>
         <div className="trip-attendance-header-actions">
           <button type="button" className="trip-attendance-refresh" disabled={loading || !valid} onClick={() => setRefresh(n => n + 1)}>
             <RefreshCw size={16} aria-hidden="true"/> {loading && valid ? 'Syncing…' : 'Refresh MIS'}
           </button>
-          {current?.canEdit && !shiftManagement && !overtimeOnly && <button type="button" className="trip-attendance-refresh" disabled={saving} aria-expanded={changing?.rowId === ''}
-            onClick={() => {setEditing(undefined); setSaved(''); setChanging(changing?.rowId === '' ? undefined : {rowId: ''});}}>Mark present (OTP)</button>}
+          {current?.canEdit && !shiftManagement && !overtimeOnly && <button type="button" className="trip-attendance-refresh" aria-expanded={changing?.rowId === ''}
+            onClick={() => {setSaved(''); setChanging(changing?.rowId === '' ? undefined : {rowId: '', key: 'present'});}}>Mark present (OTP)</button>}
           <div className="trip-attendance-export">
             <button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!rows.length} onClick={() => setExportOpen(open => !open)}>
               <Download size={17} aria-hidden="true"/> Print/Export <ChevronDown size={16} aria-hidden="true"/>
@@ -181,13 +160,13 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
         </div>
       </div>
       <div className="trip-attendance-filters">
-        <label>From date<input type="date" min={startOfRecords} max={toDate < latest ? toDate : latest} value={fromDate} disabled={saving} onChange={e => selectRange(e.target.value, toDate)}/></label>
-        <label>To date<input type="date" min={fromDate > startOfRecords ? fromDate : startOfRecords} max={latest} value={toDate} disabled={saving} onChange={e => selectRange(fromDate, e.target.value)}/></label>
+        <label>From date<input type="date" min={startOfRecords} max={toDate < latest ? toDate : latest} value={fromDate} onChange={e => selectRange(e.target.value, toDate)}/></label>
+        <label>To date<input type="date" min={fromDate > startOfRecords ? fromDate : startOfRecords} max={latest} value={toDate} onChange={e => selectRange(fromDate, e.target.value)}/></label>
         <label>Site<select value={activeSite} onChange={e => {setSite(e.target.value); setPage(0);}}>
           <option value="">All sites</option>
           {sites.map(name => <option key={name}>{name}</option>)}
         </select></label>
-        {shiftManagement && <label>Shift<select value={activeShift} onChange={e => {setShift(e.target.value); setPage(0); setEditing(undefined);}}><option value="">All shifts</option>{shifts.map(value => <option key={value}>{value}</option>)}</select></label>}
+        {shiftManagement && <label>Shift<select value={activeShift} onChange={e => {setShift(e.target.value); setPage(0); setChanging(undefined);}}><option value="">All shifts</option>{shifts.map(value => <option key={value}>{value}</option>)}</select></label>}
         <label>Employee<input type="search" value={search} placeholder="Search name or code" onChange={e => {setSearch(e.target.value); setPage(0);}}/></label>
         <label className="trip-attendance-checkbox"><input type="checkbox" checked={pendingOnly} onChange={e => {setPendingOnly(e.target.checked); setPage(0);}}/> Pending only</label>
       </div>
@@ -211,43 +190,38 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
               <td><div className="trip-attendance-sources">{row.sources.map(type => <span key={type} className="trip-attendance-tag">{type}</span>)}</div></td>
               <td>{row.equipment.join(', ') || '—'}{row.references && <small>{row.references}</small>}</td>
               <td>{row.window ? `${row.window.start.slice(-5)} – ${row.window.end.slice(-5)}` : '—'}
-                {row.window && <small>{row.correction?.start ? 'HR corrected' : 'Scheduled'}{row.window.start.slice(0, 10) !== row.window.end.slice(0, 10) && ' · next day end'}</small>}
+                {row.window && <small>{row.hrTimes ? 'Set in MIS (OTP)' : 'Scheduled'}{row.window.start.slice(0, 10) !== row.window.end.slice(0, 10) && ' · next day end'}</small>}
               </td>
               <td>{row.output || '—'}{row.note && <small>{row.note}</small>}</td>
               <td>{row.window ? <>{`${(row.window.endMs - row.window.startMs) / 3_600_000} h`}</> : '—'}</td>
               <td><span className={`trip-attendance-tag ${row.status === 'Absent' ? 'trip-absent' : row.verified ? 'trip-present' : 'trip-pending'}`}>{row.status}</span></td>
-              <td>{row.verification}{row.correction && (retiredCorrection(row.correction)
-                ? <small>Earlier HR-only “{row.correction.status}” is not applied ({row.correction.reason} · {row.correction.updatedBy}). Use Mark absent to make it in MIS.</small>
-                : <small>{row.correction.reason} · {row.correction.updatedBy}</small>)}</td>
+              <td>{row.verification}
+                {row.hrTimes && <small>Duty times {row.hrTimes.start}–{row.hrTimes.end} set in MIS · {row.hrTimes.reason} · {row.hrTimes.by}</small>}
+                {retiredCorrection(row.correction) && row.correction && <small>{row.correction.status === 'present'
+                  ? `Earlier HR-only duty times${row.correction.start ? ` ${row.correction.start}–${row.correction.end}` : ''} are not applied (${row.correction.reason} · ${row.correction.updatedBy}). Use Duty times (OTP) to set them in MIS.`
+                  : `Earlier HR-only “${row.correction.status}” is not applied (${row.correction.reason} · ${row.correction.updatedBy}). Use Mark absent to make it in MIS.`}</small>}</td>
               <td className="trip-attendance-ot" title={row.otNote || undefined}>{row.otHours === null ? '—' : `${row.otHours} h`}{row.otNote && <small>{row.otNote}</small>}</td>
-              {current?.canEdit && <td>{row.sources[0] !== 'HR change' && <button type="button" className="trip-attendance-edit" disabled={saving}
-                aria-label={`Edit ${row.employeeName}, ${row.date}, ${row.shift}`} aria-expanded={editing?.id === row.id} onClick={() => {
-                  setChanging(undefined); setEditing(row); setStatus(row.correction && !retiredCorrection(row.correction) ? row.correction.status : 'mis'); setEditError(''); setSaved('');
-                }}><Pencil size={14} aria-hidden="true"/> Edit</button>}
-                {/* Present / absent is changed in MIS, with the RHR's OTP: never kept only in HR Pulse. */}
-                <button type="button" className="trip-attendance-edit" disabled={saving} aria-expanded={changing?.rowId === row.id}
-                  aria-label={`${row.hrChange ? 'Take back the HR change for' : 'Mark absent'} ${row.employeeName}, ${row.date}, ${row.shift}`} onClick={() => {
-                    setEditing(undefined); setSaved('');
-                    setChanging(changing?.rowId === row.id ? undefined : {rowId: row.id, target: {site: row.site, date: row.date, shift: row.shift, employeeId: row.employeeId, employeeName: row.employeeName, mark: row.hrChange ? 'card' : 'absent'}});
-                  }}>{row.hrChange ? 'Take back (OTP)' : 'Mark absent (OTP)'}</button></td>}
+              {current?.canEdit && <td>{(() => {
+                // Present / absent and duty times are changed in MIS, with the RHR's OTP: never kept only in HR Pulse.
+                const duty = {site: row.site, date: row.date, shift: row.shift, employeeId: row.employeeId, employeeName: row.employeeName};
+                const open = (key: string) => changing?.rowId === row.id && changing.key === key;
+                const present = row.sources[0] !== 'HR change' && row.status !== 'Absent';
+                return <>
+                  {present && <button type="button" className="trip-attendance-edit" aria-expanded={open('times')}
+                    aria-label={`Duty times of ${row.employeeName}, ${row.date}, ${row.shift}`}
+                    onClick={() => toggle(row, 'times', {...duty, mark: 'times', start: row.window?.start.slice(-5), end: row.window?.end.slice(-5)})}>
+                    <Clock size={14} aria-hidden="true"/> Duty times (OTP)</button>}
+                  {row.hrTimes && <button type="button" className="trip-attendance-edit" aria-expanded={open('card-times')}
+                    aria-label={`Take back the duty times of ${row.employeeName}, ${row.date}, ${row.shift}`}
+                    onClick={() => toggle(row, 'card-times', {...duty, mark: 'card-times'})}>Take back times (OTP)</button>}
+                  <button type="button" className="trip-attendance-edit" aria-expanded={open('presence')}
+                    aria-label={`${row.hrChange ? 'Take back the HR change for' : 'Mark absent'} ${row.employeeName}, ${row.date}, ${row.shift}`}
+                    onClick={() => toggle(row, 'presence', {...duty, mark: row.hrChange ? 'card' : 'absent'})}>{row.hrChange ? 'Take back (OTP)' : 'Mark absent (OTP)'}</button>
+                </>;
+              })()}</td>}
             </tr>
-            {editing?.id === row.id && <tr><td colSpan={columns.length + 1}>
-              <form className="trip-attendance-editor" onSubmit={saveCorrection} aria-label={`Edit attendance for ${row.employeeName}`}>
-                <label>Status<select value={status} onChange={event => setStatus(event.target.value as CorrectionStatus)}>
-                  <option value="mis">Use MIS</option><option value="present">Present (correct duty times)</option>
-                </select></label>
-                {status === 'present' && <>
-                  <label>Duty start<input type="time" name="start" defaultValue={editing.correction?.start || ''}/></label>
-                  <label>Duty end<input type="time" name="end" defaultValue={editing.correction?.end || ''}/></label>
-                </>}
-                <label className="trip-attendance-reason">Reason<input name="reason" maxLength={500} required placeholder="Reason for the correction"/></label>
-                <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save correction'}</button>
-                <button type="button" disabled={saving} onClick={() => setEditing(undefined)}>Cancel</button>
-                {editError && <p role="alert">{editError}</p>}
-              </form>
-            </td></tr>}
             {changing?.rowId === row.id && <tr><td colSpan={columns.length + 1}>
-              <MisAttendanceChange grant={grant} target={changing.target} latest={latest} onDone={changed} onCancel={() => setChanging(undefined)}/>
+              <MisAttendanceChange key={changing.key} grant={grant} target={changing.target} latest={latest} onDone={changed} onCancel={() => setChanging(undefined)}/>
             </td></tr>}
             </Fragment>)}
             {!rows.length && <tr><td className="trip-attendance-empty" colSpan={columns.length + Number(Boolean(current?.canEdit))}>
