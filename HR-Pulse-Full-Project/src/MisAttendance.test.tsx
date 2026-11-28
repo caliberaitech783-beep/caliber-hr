@@ -86,36 +86,75 @@ it('offers PDF, print and Excel for the complete filtered attendance report', as
   expect(screen.getByRole('menuitem', {name: 'Download as Excel'})).toBeTruthy();
 });
 
-it('saves a duty time correction with the duty identity and version and reloads it from HR', async () => {
+// Owner, 28 Nov 2026, on duty times corrected only in HR Pulse: "Yes, send to MIS". They are set in MIS with the RHR's
+// OTP like present / absent, and come back from MIS on the duty.
+it('sets a duty\'s times in MIS with the OTP from RHR, then shows the times MIS sends', async () => {
   const original = {...report('closed'), canEdit: true};
-  const target = mapMisAttendance(original).find(row => row.employeeId === 'DEMO-1' && row.shift === 'S1')!;
-  const correction = {id: target.id, status: 'present', start: '06:00', end: '13:00', reason: 'Roster checked', version: 1, updatedBy: 'test'};
+  const asked = {id: '33333333-3333-4333-8333-333333333333', status: 'sent', sentTo: ['rhr.ncl'], site, date: morning.date, shift: 'S1', employeeId: morning.employeeId, employeeName: 'Demo Operator', mark: 'times', start: '06:00', end: '13:00'};
+  const hrTimes = {id: asked.id, start: '06:00', end: '13:00', window: {start: '2026-11-16 06:00', end: '2026-11-16 13:00'}, by: 'Meena', reason: 'Came one hour late', at: '2026-11-28T10:00:00Z'};
+  // MIS keeps the Shift Master times in performance and sends HR's times on the duty only.
+  const after = {...original, otDuties: original.otDuties.map(row => row.shift === 'S1' ? {...row, hrTimes} : row)};
   const request = vi.fn()
     .mockResolvedValueOnce({ok: true, json: async () => original})
-    .mockResolvedValueOnce({ok: true, json: async () => correction})
-    .mockResolvedValueOnce({ok: true, json: async () => ({...original, corrections: [correction]})});
+    .mockResolvedValueOnce({ok: true, json: async () => asked})
+    .mockResolvedValueOnce({ok: true, json: async () => ({...asked, status: 'used'})})
+    .mockResolvedValueOnce({ok: true, json: async () => after});
   vi.stubGlobal('fetch', request);
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-16T06:00:00Z'));
   render(<MisAttendance grant="test"/>);
   await act(async () => {});
-  fireEvent.click(screen.getByRole('button', {name: 'Edit Demo Operator, 2026-11-16, S1'}));
-  const form = screen.getByRole('form', {name: 'Edit attendance for Demo Operator'});
-  // Present / absent is no longer offered here: it is changed in MIS with the RHR's OTP.
-  expect(within(form).queryByRole('option', {name: 'Absent'})).toBeNull();
-  expect(within(form).queryByRole('option', {name: 'Pending'})).toBeNull();
-  fireEvent.change(within(form).getByLabelText('Status'), {target: {value: 'present'}});
+  // HR Pulse has no correction form of its own any more.
+  expect(screen.queryByRole('button', {name: /^Edit /})).toBeNull();
+  fireEvent.click(screen.getByRole('button', {name: 'Duty times of Demo Operator, 2026-11-16, S1'}));
+  const form = screen.getByRole('form', {name: 'Duty times of Demo Operator'});
+  expect((within(form).getByLabelText('Duty start') as HTMLInputElement).value).toBe('05:00');
+  expect((within(form).getByLabelText('Duty end') as HTMLInputElement).value).toBe('13:00');
+  expect(within(form).getByText(/duty times are kept in MIS/)).toBeTruthy();
   fireEvent.change(within(form).getByLabelText('Duty start'), {target: {value: '06:00'}});
-  fireEvent.change(within(form).getByLabelText('Duty end'), {target: {value: '13:00'}});
-  fireEvent.change(within(form).getByLabelText('Reason'), {target: {value: 'Roster checked'}});
-  fireEvent.click(within(form).getByRole('button', {name: 'Save correction'}));
+  fireEvent.change(within(form).getByLabelText('Reason'), {target: {value: 'Came one hour late'}});
+  fireEvent.click(within(form).getByRole('button', {name: 'Send OTP to RHR'}));
   await act(async () => {});
-  expect(JSON.parse(request.mock.calls[1][1].body)).toMatchObject({
-    date: morning.date, site, shift: 'S1', employeeId: morning.employeeId, status: 'present', version: 0, reason: 'Roster checked', start: '06:00', end: '13:00'
-  });
+  expect(request.mock.calls[1][0]).toMatch(/attendance\/mis\/change$/);
+  expect(JSON.parse(request.mock.calls[1][1].body)).toEqual({site, date: morning.date, shift: 'S1', employeeId: morning.employeeId, mark: 'times', reason: 'Came one hour late', start: '06:00', end: '13:00'});
+  const otp = screen.getByRole('form', {name: 'Enter the OTP from RHR'});
+  expect(within(otp).getByText(/duty times 06:00–13:00/)).toBeTruthy();
+  fireEvent.change(within(otp).getByLabelText('OTP from RHR'), {target: {value: '123456'}});
+  fireEvent.click(within(otp).getByRole('button', {name: 'Confirm with OTP'}));
+  await act(async () => {});
+  await act(async () => {});
+  expect(screen.getByText(/The duty times of Demo Operator are now 06:00–13:00 in MIS/)).toBeTruthy();
   const row = screen.getByRole('row', {name: /S1 Demo Operator/});
-  expect(within(row).getByText('HR corrected')).toBeTruthy();
+  expect(within(row).getByText('Set in MIS (OTP)')).toBeTruthy();
   expect(within(row).getByText('7 h')).toBeTruthy();
+  expect(within(row).getByText(/Duty times 06:00–13:00 set in MIS · Came one hour late · Meena/)).toBeTruthy();
+  expect(within(row).getByRole('button', {name: 'Take back the duty times of Demo Operator, 2026-11-16, S1'})).toBeTruthy();
+});
+
+it('times set in MIS move only their own duty: the shift is not a schedule conflict and the others keep their times', () => {
+  const second = {...morning, employeeId: 'DEMO-3', employeeName: 'Second Driver', employeeKey: 'DEMO3'};
+  const base = report('closed');
+  const hrTimes = {id: 't1', start: '06:00', end: '14:00', window: {start: '2026-11-16 06:00', end: '2026-11-16 14:00'}, by: 'Meena', reason: 'Late start', at: ''};
+  const rows = mapMisAttendance({...base,
+    otDuties: [...base.otDuties.map(row => row.shift === 'S1' ? {...row, hrTimes} : row), saved(second)],
+    performance: [...base.performance, {...second, start: '2026-11-16 05:00', end: '2026-11-16 13:00'}]});
+  const mine = rows.find(row => row.employeeId === 'DEMO-1' && row.shift === 'S1')!, other = rows.find(row => row.employeeId === 'DEMO-3')!;
+  expect([mine.window?.start, mine.window?.end]).toEqual(['2026-11-16 06:00', '2026-11-16 14:00']);
+  expect([other.window?.start, other.window?.end]).toEqual(['2026-11-16 05:00', '2026-11-16 13:00']);
+  for (const row of [mine, other]) expect([row.status, row.verification]).toEqual(['Present', 'MIS batch closed']);
+  // The night duty ends at 05:00 and the corrected one starts at 06:00: no longer back to back, so no OT.
+  expect(mine.otHours).toBe(0);
+});
+
+it('no longer applies duty times that were kept only in HR Pulse, and says so on the duty', () => {
+  const original = report('closed');
+  const target = mapMisAttendance(original).find(row => row.employeeId === 'DEMO-1' && row.shift === 'S1')!;
+  const correction = {id: target.id, status: 'present' as const, start: '06:00', end: '13:00', reason: 'Roster checked', version: 1, updatedBy: 'test', updatedAt: ''};
+  const row = mapMisAttendance({...original, corrections: [correction]}).find(r => r.id === target.id)!;
+  expect([row.window?.start, row.window?.end]).toEqual(['2026-11-16 05:00', '2026-11-16 13:00']);
+  expect(row.verification).toBe('MIS batch closed');
+  expect(row.otHours).toBe(8);
+  expect(row.correction?.reason).toBe('Roster checked');
 });
 
 // Owner, 27 Nov 2026: MIS is the master of trip card attendance. "If HR makes any changes, it has to be through OTP ...
@@ -160,6 +199,7 @@ it('marks a duty absent in MIS with the OTP from RHR, then shows what MIS says',
   // The only thing left to do for it is to take the change back, again with an OTP.
   expect(within(row).getByRole('button', {name: 'Take back the HR change for Demo Operator, 2026-11-16, S1'})).toBeTruthy();
   expect(within(row).queryByRole('button', {name: /^Edit /})).toBeNull();
+  expect(within(row).queryByRole('button', {name: /^Duty times of /})).toBeNull();
 });
 
 it('no longer applies an absent that was kept only in HR Pulse, and says so on the duty', () => {

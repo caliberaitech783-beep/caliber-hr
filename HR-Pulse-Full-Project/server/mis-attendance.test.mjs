@@ -31,25 +31,13 @@ function setup() {
   return {calls, api: createMisAttendance({connect: async () => db}, {fetchMis})};
 }
 
-test('only a duty returned for the signed-in HR user can be corrected', async () => {
+// Owner, 28 Nov 2026 ("Yes, send to MIS"): HR Pulse keeps no duty times of its own; they are set in Pulse-II with an OTP.
+test('HR Pulse saves no correction of its own, and touches nothing when asked', async () => {
   const {api, calls} = setup();
-  await assert.rejects(api({actor: 'test'}, grant, 'mis/correction', 'POST', {...change, site: 'Other Site'}), {status: 404});
+  for (const body of [change, {...change, version: 1}, {...change, site: 'Other Site'}]) {
+    await assert.rejects(api({actor: 'test'}, grant, 'mis/correction', 'POST', body), {status: 400});
+  }
   assert.equal(calls.length, 0);
-});
-
-test('a correction is versioned and audited in the same transaction', async () => {
-  const {api, calls} = setup();
-  const result = await api({actor: 'test'}, grant, 'mis/correction', 'POST', change);
-  assert.equal(result.version, 1);
-  assert.equal(result.reason, 'Roster confirmed');
-  assert.deepEqual(calls.map(call => call[0]), ['BEGIN', 'INSERT INTO', 'INSERT INTO', 'COMMIT']);
-  assert.equal(calls[2][1][1], 'CORRECT_MIS_ATTENDANCE');
-});
-
-test('a conflicting correction rolls back without writing an audit entry', async () => {
-  const {api, calls} = setup();
-  await assert.rejects(api({actor: 'test'}, grant, 'mis/correction', 'POST', {...change, version: 1}), {status: 409});
-  assert.deepEqual(calls.map(call => call[0]), ['BEGIN', 'UPDATE hr_mis_attendance_corrections', 'ROLLBACK']);
 });
 
 test('two PCs receive the same centrally cached site and day report', async () => {

@@ -6,22 +6,34 @@
    Telegram), then sends the OTP; only then is the change made, in Pulse-II, and both sides show the same.
      present: a Present entry is made in Pulse-II (no trip card);
      absent:  the trip card stays in Pulse-II with its trips, only the attendance of that shift is not counted;
-     card:    an earlier change from HR Pulse is taken back ("as the trip card says"). */
+     card:    an earlier change from HR Pulse is taken back ("as the trip card says").
+   Duty times (owner, 28 Nov 2026: "Yes, send to MIS"): a present duty's times are set in Pulse-II the same way.
+     times:      the duty's start and end (an end before the start is the next day);
+     card-times: the corrected times are taken back; the duty is again on the Shift Master times. */
 import {useState} from 'react';
 import {api} from './api';
 
-export type ChangeMark = 'present' | 'absent' | 'card';
-export type ChangeTarget = {site: string; date: string; shift: string; employeeId: string; employeeName?: string; mark: ChangeMark};
-type Asked = {id: string; sentTo?: string[]; employeeId: string; employeeName?: string; site: string; date: string; shift: string; mark: ChangeMark};
+export type ChangeMark = 'present' | 'absent' | 'card' | 'times' | 'card-times';
+export type ChangeTarget = {site: string; date: string; shift: string; employeeId: string; employeeName?: string; mark: ChangeMark; start?: string; end?: string};
+type Asked = {id: string; sentTo?: string[]; employeeId: string; employeeName?: string; site: string; date: string; shift: string; mark: ChangeMark; start?: string; end?: string};
 export const CHANGE_SHIFTS = ['S1', 'S2', 'S3', 'D', 'N'];
 export const CHANGE_REASON_MIN = 10;
-const WORD: Record<ChangeMark, string> = {present: 'present', absent: 'absent', card: 'as the trip card says'};
+const WORD: Record<ChangeMark, string> = {present: 'present', absent: 'absent', card: 'as the trip card says', times: 'duty times', 'card-times': 'Shift Master times'};
 const EFFECT: Record<ChangeMark, string> = {
   present: 'A Present entry will be made in MIS for this shift. No trip card is made.',
   absent: 'The trip card stays in MIS with its trips; only the attendance of this shift will not be counted.',
-  card: 'The earlier change from HR Pulse will be taken back; attendance is again what the trip card says.'
+  card: 'The earlier change from HR Pulse will be taken back; attendance is again what the trip card says.',
+  times: 'The duty times are kept in MIS and sent to HR Pulse from there; the trip card and the attendance stay as they are. An end before the start is the next day.',
+  'card-times': 'The corrected duty times will be taken back in MIS; the duty is again on the Shift Master times.'
 };
 const show = (date: string) => date.split('-').reverse().join('-');
+const asking = (c: {mark: ChangeMark; start?: string; end?: string}) => c.mark === 'times' ? `duty times ${c.start}–${c.end}` :
+  c.mark === 'card-times' ? 'take back the corrected duty times' : `mark ${WORD[c.mark]}`;
+const doneText = (c: Asked) => c.mark === 'times' ? `The duty times of ${c.employeeName || c.employeeId} are now ${c.start}–${c.end} in MIS` :
+  c.mark === 'card-times' ? `The duty times of ${c.employeeName || c.employeeId} are again the Shift Master times in MIS` :
+  `${c.employeeName || c.employeeId} is now ${WORD[c.mark]} in MIS`;
+const label = (target: ChangeTarget) => target.mark === 'times' ? `Duty times of ${target.employeeName || target.employeeId}` :
+  target.mark === 'card-times' ? `Take back the duty times of ${target.employeeName || target.employeeId}` : `Mark ${target.employeeName || target.employeeId} ${WORD[target.mark]}`;
 
 /** target: the duty to change. Without one (Mark present for a person with no card) the user fills in who, where and when. */
 export default function MisAttendanceChange({grant, target, sites = [], latest, onDone, onCancel}: {
@@ -40,8 +52,12 @@ export default function MisAttendanceChange({grant, target, sites = [], latest, 
     const text = (name: string) => String(fields.get(name) || '').trim();
     const body = {
       site: target?.site || text('site'), date: target?.date || text('date'), shift: target?.shift || text('shift'),
-      employeeId: target?.employeeId || text('employeeId'), mark, reason: text('reason')
+      employeeId: target?.employeeId || text('employeeId'), mark, reason: text('reason'),
+      ...(mark === 'times' ? {start: text('start'), end: text('end')} : {})
     };
+    if (mark === 'times' && (!/^\d{2}:\d{2}$/.test(body.start || '') || !/^\d{2}:\d{2}$/.test(body.end || '') || body.start === body.end)) {
+      setError('Enter both duty times, under 24 hours apart.'); return;
+    }
     if (body.reason.length < CHANGE_REASON_MIN) { setError(`Write why this attendance is changed (at least ${CHANGE_REASON_MIN} letters).`); return; }
     setBusy(true); setError('');
     try {
@@ -58,7 +74,7 @@ export default function MisAttendanceChange({grant, target, sites = [], latest, 
     setBusy(true); setError('');
     try {
       const done = await api<Asked>(grant, 'attendance/mis/change/verify', 'POST', {id: asked.id, otp});
-      onDone(`${done.employeeName || done.employeeId} is now ${WORD[done.mark]} in MIS · ${done.site} · ${show(done.date)} · ${done.shift}.`);
+      onDone(`${doneText(done)} · ${done.site} · ${show(done.date)} · ${done.shift}.`);
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -72,7 +88,7 @@ export default function MisAttendanceChange({grant, target, sites = [], latest, 
 
   if (asked) return <form className="trip-attendance-editor" onSubmit={confirm} aria-label="Enter the OTP from RHR">
     <p className="trip-attendance-change-note" role="status">
-      OTP sent to RHR{asked.sentTo?.length ? ` (${asked.sentTo.join(', ')})` : ''} on Telegram for {asked.employeeName || asked.employeeId} · {asked.site} · {show(asked.date)} · {asked.shift}: mark {WORD[asked.mark]}.
+      OTP sent to RHR{asked.sentTo?.length ? ` (${asked.sentTo.join(', ')})` : ''} on Telegram for {asked.employeeName || asked.employeeId} · {asked.site} · {show(asked.date)} · {asked.shift}: {asking(asked)}.
       It is valid for 10 minutes. Nothing changes until the OTP is entered.
     </p>
     <label>OTP from RHR<input name="otp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" required autoFocus/></label>
@@ -82,7 +98,11 @@ export default function MisAttendanceChange({grant, target, sites = [], latest, 
     {error && <p role="alert">{error}</p>}
   </form>;
 
-  return <form className="trip-attendance-editor" onSubmit={ask} aria-label={target ? `Mark ${target.employeeName || target.employeeId} ${WORD[mark]}` : 'Mark present in MIS'}>
+  return <form className="trip-attendance-editor" onSubmit={ask} aria-label={target ? label(target) : 'Mark present in MIS'}>
+    {mark === 'times' && <>
+      <label>Duty start<input type="time" name="start" required defaultValue={target?.start || ''}/></label>
+      <label>Duty end<input type="time" name="end" required defaultValue={target?.end || ''}/></label>
+    </>}
     {!target && <>
       <label>Employee ID<input name="employeeId" required maxLength={40} placeholder="CMLL…"/></label>
       <label>Site<select name="site" required defaultValue="">

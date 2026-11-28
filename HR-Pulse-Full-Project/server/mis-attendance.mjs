@@ -36,29 +36,10 @@ function reportRanges(from, to) {
   return split < last ? [[first, split], [split + DAY, last]] : [[first, last]];
 }
 
-function correctionInput(input) {
-  const {date, site, siteKey: canonical, shift, employeeId, status, version, start = '', end = ''} = input;
-  const safeText = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 200 && !/[\u0000-\u001f]/.test(value);
-  if (![site, canonical || site, shift, employeeId].every(safeText) || !validDay(date) || date < FIRST_DATE ||
-      !['mis', 'present', 'absent', 'pending'].includes(status) || !Number.isSafeInteger(version) || version < 0) {
-    fail('Choose a valid attendance record and status.');
-  }
-  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
-  if (!reason || reason.length > 500) fail('Enter a correction reason up to 500 characters.');
-  if (start !== '' || end !== '') {
-    const clock = /^([01]\d|2[0-3]):[0-5]\d$/;
-    if (status !== 'present' || typeof start !== 'string' || typeof end !== 'string' ||
-        !clock.test(start) || !clock.test(end) || start === end) {
-      fail('Enter both duty times in HH:MM with a duration under 24 hours.');
-    }
-  }
-  return {date, site, siteKey: canonical || site, shift, employeeId, status, version, start, end, reason};
-}
-
-// A correction that said absent or pending was kept only in HR Pulse; it is shown, never applied (retired).
-const RETIRED_STATUSES = ['absent', 'pending'];
+// A correction kept only in HR Pulse is shown, never applied (retired): absent / pending since 27 Nov 2026, the
+// corrected duty times of a present duty since 28 Nov 2026 (owner: "Yes, send to MIS"; they are set in Pulse-II with an OTP).
 function publicCorrection(row) {
-  return {id: row.duty_id, status: row.status, retired: RETIRED_STATUSES.includes(row.status), start: row.start_time, end: row.end_time,
+  return {id: row.duty_id, status: row.status, retired: row.status !== 'mis', start: row.start_time, end: row.end_time,
     reason: row.reason, version: row.version, updatedBy: row.updated_by, updatedAt: row.updated_at};
 }
 
@@ -147,9 +128,14 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
   async function change(profile, grant, path, input, action) {
     const {status, ok, result} = await mis(grant, '/api/integrations/hr/attendance/' + path, {method: 'POST', body: input, timeout: 30_000});
     if (status === 404 && !result?.error) fail('Pulse-II does not take attendance changes from HR Pulse yet. It will after its next release.', 503);
+    // A Pulse-II from before 28 Nov 2026 knows present / absent only.
+    if (status === 400 && ['times', 'card-times'].includes(input?.mark) && /^Choose Present, Absent or/.test(String(result?.error || ''))) {
+      fail('Pulse-II does not take duty times from HR Pulse yet. It will after its next release.', 503);
+    }
     if (!ok || !result) fail(result?.error || 'Pulse-II could not make this change.', status >= 500 || ok ? 503 : status);
     await pool.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)", [profile.actor, action,
-      {id: result.id, site: result.site, date: result.date, shift: result.shift, employeeId: result.employeeId, mark: result.mark, reason: result.reason, status: result.status, sentTo: result.sentTo}]);
+      {id: result.id, site: result.site, date: result.date, shift: result.shift, employeeId: result.employeeId, mark: result.mark, reason: result.reason, status: result.status, sentTo: result.sentTo,
+        ...(result.mark === 'times' ? {start: result.start, end: result.end} : {})}]);
     return result;
   }
 
@@ -271,8 +257,10 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     }
     if (route === 'mis/days' && method === 'GET') return days(grant, params.get('from'), params.get('to'), String(params.get('site') || '').trim());
     if (route === 'mis/change' && method === 'POST') {
-      const {site, date, shift, employeeId, mark, reason} = input || {};
-      return change(profile, grant, 'change', {site, date, shift, employeeId, mark, reason}, 'ASK_MIS_ATTENDANCE_CHANGE');
+      const {site, date, shift, employeeId, mark, reason, start, end} = input || {};
+      // mark times {start,end} / card-times: a present duty's times, set in Pulse-II with the same OTP (28 Nov 2026).
+      const times = mark === 'times' ? {start: String(start || ''), end: String(end || '')} : {};
+      return change(profile, grant, 'change', {site, date, shift, employeeId, mark, reason, ...times}, 'ASK_MIS_ATTENDANCE_CHANGE');
     }
     if (route === 'mis/change/verify' && method === 'POST') {
       const done = await change(profile, grant, 'change/verify', {id: input?.id, otp: input?.otp}, 'MIS_ATTENDANCE_CHANGED');
@@ -288,37 +276,11 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
       return {changes: Array.isArray(result?.changes) ? result.changes : [], supported: true};
     }
     if (route === 'mis/correction' && method === 'POST') {
-      const change = correctionInput(input);
-      // Owner, 27 Nov 2026: present / absent is decided in Pulse-II. HR Pulse corrects only a present duty's times here.
-      if (RETIRED_STATUSES.includes(change.status)) fail('Absent is now marked in Pulse-II with an OTP (Mark absent). HR Pulse keeps no attendance of its own.');
-      const id = dutyKey(change);
-      const report = await read(grant, change.date, change.date);
-      const source = [...report.otDuties, ...report.attendanceEquipment].find(row => dutyKey(row) === id);
-      if (!source) {
-        fail('The duty could not be found in your assigned MIS attendance.', 404);
-      }
-      const db = await pool.connect();
-      try {
-        await db.query('BEGIN');
-        const values = [id, change.status, change.start, change.end, change.reason, profile.actor];
-        const statement = change.version === 0
-          ? `INSERT INTO hr_mis_attendance_corrections(duty_id,status,start_time,end_time,reason,updated_by)
-             VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING *`
-          : `UPDATE hr_mis_attendance_corrections SET status=$2,start_time=$3,end_time=$4,reason=$5,
-             updated_by=$6,updated_at=now(),version=version+1 WHERE duty_id=$1 AND version=$7 RETURNING *`;
-        const row = (await db.query(statement, change.version === 0 ? values : [...values, change.version])).rows[0];
-        if (!row) fail('Another HR user updated this duty. Refresh and try again.', 409);
-        await db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)", [
-          profile.actor, 'CORRECT_MIS_ATTENDANCE', {...change, site: source.site, dutyId: id, version: row.version}
-        ]);
-        await db.query('COMMIT');
-        return publicCorrection(row);
-      } catch (error) {
-        await db.query('ROLLBACK');
-        throw error;
-      } finally {
-        db.release();
-      }
+      // Owner, 27 Nov 2026: present / absent is decided in Pulse-II. 28 Nov 2026 ("Yes, send to MIS"): so are a present
+      // duty's times. HR Pulse keeps no correction of its own any more; the old ones are shown, never applied.
+      const status = String(input?.status || '');
+      if (status === 'absent' || status === 'pending') fail('Absent is now marked in Pulse-II with an OTP (Mark absent). HR Pulse keeps no attendance of its own.');
+      fail('Duty times are now set in Pulse-II with an OTP (Duty times). HR Pulse keeps no attendance of its own.');
     }
     fail('Not found', 404);
   }
