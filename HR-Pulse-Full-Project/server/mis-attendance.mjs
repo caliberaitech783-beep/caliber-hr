@@ -7,6 +7,7 @@ const FIRST_DATE = '2026-11-01';
 const DAY = 86_400_000;
 export const MIS_ATTENDANCE_CACHE_MS = 30_000;
 export const DAYS_TIMEOUT_MS = 12_000;
+const WHOLE_KEEP_MS = 10 * 60_000;
 const sections = ['attendanceEquipment', 'attendanceShifts', 'otDuties', 'ot', 'performance', 'details', 'exceptions'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), {status}); };
 const dayString = stamp => new Date(stamp).toISOString().slice(0, 10);
@@ -179,12 +180,40 @@ export function createMisAttendance(pool, {fetchMis = fetch, readLimit} = {}) {
     }
   }
 
+  // All sites (Shift roster, Trip card and logbook, Overtime). 28 Nov 2026, "MIS is busy" on Shift roster: every open
+  // page asked Pulse-II for the whole company's report every 30 seconds, with no copy and no sharing, so these reads
+  // filled the two places of the busy limit. Now PCs with the same login scope and dates share one read, and its answer
+  // is kept here in memory for 30 seconds (it is too large for the database copy). The last good answer is also kept
+  // (up to 10 minutes) and given while Pulse-II is busy, marked stale, instead of an empty page.
+  const wholeCopies = new Map();
+  async function wholeRead(profile, grant, from, to) {
+    const scope = await siteIds(pool, profile);
+    const key = JSON.stringify(['all sites', scope === null ? null : [...scope].map(String).sort(), from, to]);
+    const now = Date.now();
+    for (const [name, copy] of wholeCopies) if (now - copy.at > WHOLE_KEEP_MS) wholeCopies.delete(name);
+    const copy = wholeCopies.get(key);
+    if (copy && now - copy.at <= MIS_ATTENDANCE_CACHE_MS) return copy.report;
+    let running = inFlight.get(key);
+    if (!running) {
+      running = {startedAt: now, promise: read(grant, from, to).then(report => ({report}))};
+      inFlight.set(key, running);
+      running.promise.then(({report}) => wholeCopies.set(key, {at: Date.now(), report}), () => {})
+        .finally(() => { if (inFlight.get(key) === running) inFlight.delete(key); });
+    }
+    try { return (await running.promise).report; }
+    catch (error) {
+      const last = wholeCopies.get(key);
+      if (last && error?.status === 503) return {...last.report, stale: {at: new Date(last.at).toISOString(), reason: error.message}};
+      throw error;
+    }
+  }
+
   async function api(profile, grant, route, method, input, params) {
     if (route === 'mis' && method === 'GET') {
       const selectedSite = String(params.get('site') || '').trim();
       const report = selectedSite
         ? await sharedRead(profile, grant, params.get('from'), params.get('to'), selectedSite, params.get('refresh') === '1', params.get('trim') === '1')
-        : await read(grant, params.get('from'), params.get('to'));
+        : await wholeRead(profile, grant, params.get('from'), params.get('to'));
       const ids = [...new Set([...report.otDuties, ...report.attendanceEquipment].map(dutyKey))];
       const scope = await siteIds(pool, profile);
       const [{rows}, siteRows] = await Promise.all([
