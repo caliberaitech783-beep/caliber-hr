@@ -19,11 +19,11 @@ import {MANUAL_MISMATCH_LEGEND,manualMismatchTone} from './manualMismatchColors'
      which opens those days below the table.
    Manual mismatch breakdowns stay closed until the user selects a drill option.
    The user chooses the site and dates first; each tab fetches only its own source for that site. */
-export type RosterView='trip'|'bio'|'compare'|'manual'|'manualMismatch';
+export type RosterView='trip'|'bio'|'compare'|'manual'|'manual2'|'manualMismatch';
 export const ROSTER_CODES:[string,string][]=[['P','Present'],['HD','Half day'],['A','Absent'],['WO','Weekly off'],['H','Holiday'],['CO','Comp off'],['L','Leave'],['OD','On duty'],['MP','Miss punch'],['IN','In, no Out yet'],['?','Trip card not verified yet']];
 export const ROSTER_TOTALS:[keyof LineTotals,string][]=[['totalDays','Total days'],['present','Present'],['half','Half day'],['absent','Absent'],['weeklyOff','Weekly off'],['holiday','Holiday'],['compOff','Comp off'],['leave','Leave'],['onDuty','On duty'],['missPunch','Miss punch'],['lateEarly','Late / early'],['cuts','Half duty cuts'],['paidDays','Paid days']];
 export const DIFF_HEADING='Diff. of Trip Card and Bio-matric';
-export const VIEW_TABS:[RosterView,string][]=[['trip','Trip card (VLB · ELB · LMV)'],['bio','Biometric'],['compare','Trip card vs Biometric'],['manual','Manual Biometric'],['manualMismatch','M.B-Trip card Mismatch']];
+export const VIEW_TABS:[RosterView,string][]=[['trip','Trip card (VLB · ELB · LMV)'],['bio','Biometric'],['compare','Trip card vs Biometric'],['manual','Manual Biometric'],['manual2','Manual Biometric II'],['manualMismatch','M.B-Trip card Mismatch']];
 const WEEKDAY=['Su','Mo','Tu','We','Th','Fr','Sa'];
 export const weekday=(date:string)=>WEEKDAY[new Date(date+'T00:00:00Z').getUTCDay()];
 function MultiRosterFilter({label,allLabel,options,values,change}:{label:string;allLabel:string;options:string[];values:string[];change:(values:string[])=>void}){
@@ -51,7 +51,10 @@ export function bioTotals(group:RosterGroup,dates:string[]){
 export const tripTotals=(group:RosterGroup,dates:string[])=>lineTotals(group.tripCodes,dates);
 export const diffText=(group:RosterGroup,tripsLoaded:boolean)=>!tripsLoaded?'—':!group.hasTripCards?'No trip card':String(group.mismatches.length);
 /** The groups a view lists: trip card people, biometric people, or everyone. */
-export const viewGroups=(groups:RosterGroup[],view:RosterView)=>groups.filter(g=>view==='trip'?g.hasTripCards:view==='bio'||view==='manual'?Boolean(g.bio):true);
+export const isManualRosterView=(view:RosterView)=>view==='manual'||view==='manual2';
+export const viewGroups=(groups:RosterGroup[],view:RosterView)=>groups.filter(g=>view==='trip'?g.hasTripCards:view==='bio'||isManualRosterView(view)?Boolean(g.bio):true);
+/** Manual Biometric II is for every department/designation except Driver and Operator staff. */
+export const isManualBiometricIIEmployee=(group:Pick<RosterGroup,'department'|'designation'>)=>!/(driver|operator)/i.test(`${group.department||''} ${group.designation||''}`);
 /** M.B–Trip Card Mismatch covers all trip-card staff plus biometric-only drivers/operators. */
 export const isManualMismatchEmployee=(group:RosterGroup)=>group.hasTripCards||Boolean(group.bio||Object.keys(group.bioCodes).length)&&/\b(driver|operator)\b/i.test(group.designation||'');
 type ColumnFilters=Record<string,string>;
@@ -65,11 +68,11 @@ function ColumnFilter({filters,setFilters,sort,setSort,keyName,label,values}:{fi
  function toggle(){if(open){setOpen(false);return;}const rect=anchor.current?.getBoundingClientRect(),width=230,left=Math.max(8,Math.min(rect?.left??8,window.innerWidth-width-8)),top=(rect?.bottom??0)+5;setPosition({left,top,maxHeight:Math.max(180,window.innerHeight-top-8)});setOpen(true);}
  return <span className="roster-column-filter"><button ref={anchor} type="button" className={active?'active':undefined} aria-label={`Filter ${label}`} aria-expanded={open} onClick={toggle}><Filter/></button>{open&&<span className="roster-filter-popover" style={position} role="dialog" aria-label={`${label} column filter`}><span className="roster-filter-title"><b>{label}</b><button type="button" onClick={()=>setOpen(false)}><X/>Close</button></span><span className="roster-filter-sort"><button type="button" aria-label={`Sort ${label} ascending`} onClick={()=>setSort({key:keyName,direction:'asc'})}><ArrowUp/></button><button type="button" aria-label={`Sort ${label} descending`} onClick={()=>setSort({key:keyName,direction:'desc'})}><ArrowDown/></button><button type="button" aria-label={`Clear ${label} filter and sort`} onClick={()=>{setColumnFilter(setFilters,keyName,'');if(sort?.key===keyName)setSort(null);}}><X/></button></span><label className="roster-filter-search"><Search/><input aria-label={`Search ${label} values`} value={query} onChange={event=>setQuery(event.target.value)} placeholder="Filter..."/></label><button type="button" aria-pressed={!active} className={!active?'selected':undefined} onClick={()=>setColumnFilter(setFilters,keyName,'')}>All values</button><span className="roster-filter-values">{shown.map(value=>{const normalized=value.toLowerCase(),checked=selected.includes(normalized);return <button type="button" key={value} aria-pressed={checked} className={checked?'selected':undefined} onClick={()=>{const next=checked?selected.filter(item=>item!==normalized):[...selected,normalized];setColumnFilter(setFilters,keyName,next.length?'='+next.join(FILTER_SEPARATOR):'');}}>{value||'—'}</button>;})}</span></span>}</span>;
 }
-const groupColumnValue=(g:RosterGroup,key:string,index:number,dates:string[],view:RosterView)=>key==='sr'?String(index+1):key==='code'?(view==='manual'||g.linked?g.code:'Not linked'):key==='aFormNo'?(g.aFormNo||''):key==='name'?g.name:key==='site'?g.site:key==='department'?g.department:key==='designation'?g.designation:key==='machine'?g.machines.join(' · '):key==='source'?'Trip Card Bio Matric':key==='cards'?cardSummary(g,dates):key==='hours'?workedHours(g):key==='gate'?money(g.bio?.summary.gatePassDeduction||0):key==='diff'?diffText(g,true):key.startsWith('date:')?`${g.tripCodes[key.slice(5)]||''} ${g.bioCodes[key.slice(5)]||''}`.trim():key.startsWith('total:')?[...(view==='trip'||view==='compare'?[tripTotals(g,dates)]:[]),...(view!=='trip'?[bioTotals(g,dates)]:[])].map(total=>String(total[key.slice(6) as keyof LineTotals]??'')).join(' '):'';
+const groupColumnValue=(g:RosterGroup,key:string,index:number,dates:string[],view:RosterView)=>key==='sr'?String(index+1):key==='code'?(isManualRosterView(view)||g.linked?g.code:'Not linked'):key==='aFormNo'?(g.aFormNo||''):key==='name'?g.name:key==='site'?g.site:key==='department'?g.department:key==='designation'?g.designation:key==='machine'?g.machines.join(' · '):key==='source'?'Trip Card Bio Matric':key==='cards'?cardSummary(g,dates):key==='hours'?workedHours(g):key==='gate'?money(g.bio?.summary.gatePassDeduction||0):key==='diff'?diffText(g,true):key.startsWith('date:')?`${g.tripCodes[key.slice(5)]||''} ${g.bioCodes[key.slice(5)]||''}`.trim():key.startsWith('total:')?[...(view==='trip'||view==='compare'?[tripTotals(g,dates)]:[]),...(view!=='trip'?[bioTotals(g,dates)]:[])].map(total=>String(total[key.slice(6) as keyof LineTotals]??'')).join(' '):'';
 const columnValues=(groups:RosterGroup[],key:string,dates:string[],view:RosterView)=>[...new Set(groups.map((group,index)=>groupColumnValue(group,key,index,dates,view)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
 const sortGroups=(groups:RosterGroup[],sort:ColumnSort,dates:string[],view:RosterView)=>!sort?groups:[...groups].sort((a,b)=>{const source=groups;const compared=groupColumnValue(a,sort.key,source.indexOf(a),dates,view).localeCompare(groupColumnValue(b,sort.key,source.indexOf(b),dates,view),undefined,{numeric:true});return sort.direction==='asc'?compared:-compared;});
 const groupMatches=(g:RosterGroup,filters:ColumnFilters,dates:string[],view:RosterView,index:number)=>{
- if(!contains(index+1,filterNeedle(filters,'sr'))||!contains(view==='manual'||g.linked?g.code:'Not linked',filterNeedle(filters,'code'))||!contains(g.aFormNo,filterNeedle(filters,'aFormNo'))||!contains(g.name,filterNeedle(filters,'name'))||!contains(g.site,filterNeedle(filters,'site'))||!contains(g.department,filterNeedle(filters,'department'))||!contains(g.designation,filterNeedle(filters,'designation'))||!contains(g.machines.join(' '),filterNeedle(filters,'machine')))return false;
+ if(!contains(index+1,filterNeedle(filters,'sr'))||!contains(isManualRosterView(view)||g.linked?g.code:'Not linked',filterNeedle(filters,'code'))||!contains(g.aFormNo,filterNeedle(filters,'aFormNo'))||!contains(g.name,filterNeedle(filters,'name'))||!contains(g.site,filterNeedle(filters,'site'))||!contains(g.department,filterNeedle(filters,'department'))||!contains(g.designation,filterNeedle(filters,'designation'))||!contains(g.machines.join(' '),filterNeedle(filters,'machine')))return false;
  if(!contains('Trip Card Bio Matric',filterNeedle(filters,'source'))||!contains(cardSummary(g,dates),filterNeedle(filters,'cards'))||!contains(workedHours(g),filterNeedle(filters,'hours'))||!contains(diffText(g,true),filterNeedle(filters,'diff')))return false;
  const totals=[...(view==='trip'||view==='compare'?[tripTotals(g,dates)]:[]),...(view!=='trip'?[bioTotals(g,dates)]:[])];
  if(dates.some(d=>{const n=filterNeedle(filters,'date:'+d);return n&&!contains(`${g.tripCodes[d]||''} ${g.bioCodes[d]||''}`,n);} ))return false;
@@ -160,7 +163,8 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
  const openKey=openGroup?.key||'';
  useEffect(()=>{if(openKey)drill.current?.scrollIntoView?.({block:'nearest',behavior:'smooth'});},[openKey]);
  const diffCount=shown.filter(g=>g.mismatches.length).length;
- const lines=view==='manual'?(['bio'] as const):(['trip','bio'] as const).filter(line=>compare||view===line);
+ const manualRoster=isManualRosterView(view);
+ const lines=manualRoster?(['bio'] as const):(['trip','bio'] as const).filter(line=>compare||view===line);
  // Biometric by site: the machine and ID column, In / Out under each day's code, and the month's worked hours.
  const machineCol=view!=='trip'&&shown.some(g=>g.machines.length>0),showTimes=times&&view!=='trip',hoursCol=view!=='trip';
  const span=dates.length+ROSTER_TOTALS.length+(monthly?1:0)+(view==='trip'?1:0)+(hoursCol?1:0);
@@ -187,7 +191,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
    (bio?`${codeLabel(code)}${bio.in?` · ${bio.in}–${bio.out||'?'}`:''}${bio.note?' · '+bio.note:''}`:codeLabel(code)));
   const punches=!isTrip&&bio?.punches?.length?NEWLINE+bio.punches.join(NEWLINE):'';
   // Manual Biometric: an HR administrator presses a past day to correct it; a corrected day carries a mark.
-  const fix=!isTrip&&bio?.corrected,editable=!isTrip&&view==='manual'&&Boolean(bioState?.onEditDay)&&date<india()&&Boolean(group.code);
+  const fix=!isTrip&&bio?.corrected,editable=!isTrip&&manualRoster&&Boolean(bioState?.onEditDay)&&date<india()&&Boolean(group.code);
   const fixText=fix?`${NEWLINE}Corrected by ${fix.by||'HR administrator'}: ${fix.reason} (was ${fix.before.status||'—'} ${fix.before.in||'—'}–${fix.before.out||'—'})`:'';
   const edit=editable?{role:'button',tabIndex:0,'aria-label':`Correct ${group.name} on ${show(date)}`,onClick:()=>bioState!.onEditDay!(group,date),
    onKeyDown:(e:{key:string;preventDefault:()=>void})=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();bioState!.onEditDay!(group,date);}}}:{};
@@ -202,7 +206,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
    <td colSpan={span} className="roster-nolink">{tripRunning?'No trip card in the days read so far':trip.status==='error'?'Trip cards unavailable':'No trip card or log book in these dates'}</td>)
   :(g.bio?<>{cells(g.bioCodes,g,false)}{totals(bioTotals(g,dates))}{monthly&&<td className="roster-total">{g.linked?money(g.bio.summary.gatePassDeduction):'—'}</td>}{hoursCol&&<td className="roster-total">{workedHours(g)}</td>}</>:
    <td colSpan={span} className="roster-nolink">Biometric ID not linked in Biometric integration</td>);
- const biometricView=view==='bio'||view==='manual',bioRunning=biometricView&&Boolean(bio?.running);
+ const biometricView=view==='bio'||manualRoster,bioRunning=biometricView&&Boolean(bio?.running);
  const status=biometricView&&bioRunning?bio!.message+` · ${shown.length} employee${shown.length===1?'':'s'} so far`:biometricView&&bio?.message?`${shown.length} employee${shown.length===1?'':'s'} · ${bio.message}`:!biometricView&&tripRunning?(trip.message||'Reading trip cards…')+(tripsLoaded?` · ${shown.length} employee${shown.length===1?'':'s'} so far`:''):!biometricView&&trip.status==='error'?`Trip cards unavailable: ${trip.message}`:
   loading?'Reading biometric punches…':`${shown.length} employee${shown.length===1?'':'s'}`+(compare?` · ${diffCount} with a difference`:'');
  const empty=<tr><td colSpan={60} className="attendance-empty">{bioRunning&&biometricView?'Reading punches… the muster fills in as each day arrives.':loading||(tripRunning&&!biometricView)?'Loading attendance… the muster fills in as each day arrives from MIS.':error?'Attendance is unavailable.':onlyDiff&&compare?'No employee has a difference between trip card and biometric.':emptyText||'No attendance for this selection.'}</td></tr>;
@@ -222,15 +226,15 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
    {compare&&<label className="roster-check"><input type="checkbox" checked={onlyDiff} onChange={e=>setOnlyDiff(e.target.checked)}/>Only employees with a difference</label>}
    <span role="status">{status}</span>
    {view!=='trip'&&<span className="roster-seg" role="group" aria-label="Day boxes"><button type="button" aria-pressed={!times} onClick={()=>setTimes(false)}>Codes only</button><button type="button" aria-pressed={times} onClick={()=>setTimes(true)}>Codes + In / Out</button></span>}
-   {view==='manual'&&bio?.onDeleteSaved&&<button type="button" className="roster-delete" disabled={bio.deletingSaved} onClick={bio.onDeleteSaved}><Trash2/>{bio.deletingSaved?'Deleting…':'Delete All'}</button>}
+   {manualRoster&&bio?.onDeleteSaved&&<button type="button" className="roster-delete" disabled={bio.deletingSaved} onClick={bio.onDeleteSaved}><Trash2/>{bio.deletingSaved?'Deleting…':'Delete All'}</button>}
    {!biometricView&&trip.onSave&&<button type="button" className="roster-save" disabled={!trip.canSave} onClick={trip.onSave}><Save/>{trip.saveLabel||'Save trip cards'}</button>}
    {biometricView&&bio?.onSave&&<button type="button" className="roster-save" disabled={!bio.canSave} onClick={bio.onSave}>{bio.saveLabel==='Saved'?<Lock/>:<Save/>}{bio.saveLabel||'Save biometric'}</button>}
-   {view==='manual'&&Boolean(bio?.savedCount)&&bio?.onViewSaved&&<button type="button" onClick={bio.onViewSaved}><Lock/>View Saved Logs</button>}
+   {manualRoster&&Boolean(bio?.savedCount)&&bio?.onViewSaved&&<button type="button" onClick={bio.onViewSaved}><Lock/>View Saved Logs</button>}
    {biometricView&&onImport&&<div className="roster-export roster-import">
-    <button type="button" onClick={onImport}><Upload/>{view==='manual'?'Import attendance log':'Upload machine log'}</button>
+    <button type="button" onClick={onImport}><Upload/>{view==='manual2'?'Import DAT file':manualRoster?'Import attendance log':'Upload machine log'}</button>
    </div>}
    <div className="roster-export">
-    <button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!shown.length||exporting||(view==='manual'&&Boolean(bio?.running))} onClick={()=>setExportOpen(value=>!value)}><Download/>{exporting?'Preparing…':'Print/Export'}<ChevronDown/></button>
+    <button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!shown.length||exporting||(manualRoster&&Boolean(bio?.running))} onClick={()=>setExportOpen(value=>!value)}><Download/>{exporting?'Preparing…':'Print/Export'}<ChevronDown/></button>
     {exportOpen&&<div className="roster-export-menu" role="menu">
      <button type="button" role="menuitem" onClick={printRoster}><Download/>Download as PDF</button>
      <button type="button" role="menuitem" onClick={printRoster}><Printer/>Smart Print</button>
@@ -239,7 +243,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
    </div>
   </div>
   <div className="attendance-table"><table ref={rosterTable} className={'register-grid roster-grid'+(compare?'':' roster-nosrc')} aria-label="Attendance roster">
-   <thead><tr>{compare&&<th className="roster-fixed roster-src"><span className="roster-heading">Source{filterInput(filters,setFilters,'source','Source')}</span></th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}><span className="roster-heading">Sr. No.{filterInput(filters,setFilters,'sr','Sr. No.')}</span></th><th className="roster-fixed roster-id"><span className="roster-heading">Employee ID{filterInput(filters,setFilters,'code','Employee ID')}</span></th>{view==='manual'&&<th className="roster-text"><span className="roster-heading">A-Form No.{filterInput(filters,setFilters,'aFormNo','A-Form No.')}</span></th>}<th className="roster-fixed roster-name"><span className="roster-heading">Name{filterInput(filters,setFilters,'name','Name')}</span></th><th className="roster-text"><span className="roster-heading">Site{filterInput(filters,setFilters,'site','Site')}</span></th><th className="roster-text"><span className="roster-heading">Department{filterInput(filters,setFilters,'department','Department')}</span></th><th className="roster-text"><span className="roster-heading">Designation{filterInput(filters,setFilters,'designation','Designation')}</span></th>{machineCol&&<th className="roster-text roster-machine"><span className="roster-heading">Machine · ID{filterInput(filters,setFilters,'machine','Machine ID')}</span></th>}
+   <thead><tr>{compare&&<th className="roster-fixed roster-src"><span className="roster-heading">Source{filterInput(filters,setFilters,'source','Source')}</span></th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}><span className="roster-heading">Sr. No.{filterInput(filters,setFilters,'sr','Sr. No.')}</span></th><th className="roster-fixed roster-id"><span className="roster-heading">Employee ID{filterInput(filters,setFilters,'code','Employee ID')}</span></th>{manualRoster&&<th className="roster-text"><span className="roster-heading">A-Form No.{filterInput(filters,setFilters,'aFormNo','A-Form No.')}</span></th>}<th className="roster-fixed roster-name"><span className="roster-heading">Name{filterInput(filters,setFilters,'name','Name')}</span></th><th className="roster-text"><span className="roster-heading">Site{filterInput(filters,setFilters,'site','Site')}</span></th><th className="roster-text"><span className="roster-heading">Department{filterInput(filters,setFilters,'department','Department')}</span></th><th className="roster-text"><span className="roster-heading">Designation{filterInput(filters,setFilters,'designation','Designation')}</span></th>{machineCol&&<th className="roster-text roster-machine"><span className="roster-heading">Machine · ID{filterInput(filters,setFilters,'machine','Machine ID')}</span></th>}
     {dates.map(d=>{const onBio=biometricView,state=onBio?bio?.days[d]:trip.days?.[d],label=state?(onBio?BIO_DAY_STATE:DAY_STATE)[state]:'',why=onBio?bio?.errors[d]:trip.errors?.[d];
      return <th key={d} title={show(d)+(state==='done'&&(onBio?bio?.saved:trip.saved)?.[d]?' · Saved copy':'')+(state?' · '+label+(onBio&&state==='done'?` · ${(bio?.counts[d]||0).toLocaleString('en-IN')} punches`:'')+(state==='failed'&&why?': '+why:''):'')} className={[weekday(d)==='Su'?'roster-sunday':'',state&&state!=='done'?'roster-day-'+state:''].filter(Boolean).join(' ')||undefined}><span className="roster-heading">{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small>{state&&state!=='done'&&<i className="roster-day-mark" aria-label={label}/>} {filterInput(filters,setFilters,'date:'+d,show(d))}</span></th>;})}
     {ROSTER_TOTALS.map(([key,label])=><th key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}><span className="roster-heading">{label}{filterInput(filters,setFilters,'total:'+key,label)}</span></th>)}{monthly&&<th className="roster-total"><span className="roster-heading">Gate pass{filterInput(filters,setFilters,'gate','Gate pass')}</span></th>}{hoursCol&&<th className="roster-total"><span className="roster-heading">Worked hours{filterInput(filters,setFilters,'hours','Worked hours')}</span></th>}
@@ -247,7 +251,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
    <tbody>{shown.length?shown.map((g,i)=>{const picked=g.key===open,diff=diffText(g,tripsLoaded),rows=lines.length;return <Fragment key={g.key}>
     {lines.map((line,j)=><tr key={line} className={(line==='trip'?'roster-trip':'roster-bio')+(rows===1?' roster-single':'')+(picked?' roster-picked':'')+(g.linked?'':' roster-unlinked')}>
      {compare&&<th scope="row" className="roster-fixed roster-src">{line==='trip'?'Trip Card':'Bio Matric'}</th>}
-     {j===0&&<><td rowSpan={rows} className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>{i+1}</td><td rowSpan={rows} className={'roster-fixed roster-id'+(g.linked?'':' roster-unlinked-id')}>{g.linked||view==='manual'?g.code:'Not linked'}</td>{view==='manual'&&<td rowSpan={rows} className="roster-text">{g.aFormNo||'—'}</td>}
+     {j===0&&<><td rowSpan={rows} className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>{i+1}</td><td rowSpan={rows} className={'roster-fixed roster-id'+(g.linked?'':' roster-unlinked-id')}>{g.linked||manualRoster?g.code:'Not linked'}</td>{manualRoster&&<td rowSpan={rows} className="roster-text">{g.aFormNo||'—'}</td>}
       <td rowSpan={rows} className="roster-fixed roster-name"><strong>{g.name}</strong>{(g.shift||g.exempt)&&<small className="register-sub">{[g.shift,g.exempt?'Exempt':''].filter(Boolean).join(' · ')}</small>}</td>
       <td rowSpan={rows} className="roster-text">{g.site||'—'}</td><td rowSpan={rows} className="roster-text">{g.department||'—'}</td><td rowSpan={rows} className="roster-text">{g.designation||'—'}</td>{machineCol&&<td rowSpan={rows} className="roster-text roster-machine">{g.machines.length?g.machines.map(m=><span key={m}>{m}</span>):'—'}</td>}</>}
      {lineCells(g,line)}
@@ -265,7 +269,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
      <td><span className={'register-cell roster-code '+codeClass(m.bio)}>{m.bio||'—'}</span></td><td className="roster-detail">{m.bioDetail}</td><td className="roster-reason">{m.reason}</td></tr>)}</tbody>
    </table></div>
   </div>}
-  <p className="help-text">{view==='bio'?'Biometric: every punch on this site’s machines (Biometric machines), rated with the attendance policy: In is the first punch of the shift, Out the last; +1 is the next morning. Orange In is late come, red Out is early going. Hover a day for every punch and its machine. Machine IDs not linked to an employee show the name on the machine; link them in Machine punches. ':view==='manual'?'Manual Biometric: attendance calculated only from the Text, CSV or DAT log imported in this tab. ':'Trip card: MIS VLB trip cards, ELB job cards and LMV vehicle log books, rated with the attendance policy hours rule (? until the MIS batch is closed). '}
+  <p className="help-text">{view==='bio'?'Biometric: every punch on this site’s machines (Biometric machines), rated with the attendance policy: In is the first punch of the shift, Out the last; +1 is the next morning. Orange In is late come, red Out is early going. Hover a day for every punch and its machine. Machine IDs not linked to an employee show the name on the machine; link them in Machine punches. ':manualRoster?`${view==='manual2'?'Manual Biometric II':'Manual Biometric'}: attendance calculated only from the Text, CSV or DAT log imported in this tab. ${view==='manual2'?'Driver and Operator departments/designations are excluded. ':''}`:'Trip card: MIS VLB trip cards, ELB job cards and LMV vehicle log books, rated with the attendance policy hours rule (? until the MIS batch is closed). '}
    {compare?'Bio Matric: every punch on this site’s machines (Biometric machines). ':''}Weekly off, holiday, leave, comp off and OD come from HR records{compare?' and show on both lines':''}. Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + comp off + leave + on duty.</p>
  </>;
 }
@@ -374,10 +378,11 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const days=from&&to&&to>=from?(Date.parse(to)-Date.parse(from))/86_400_000+1:0;
  const rangeError=!from||!to?'Choose both dates.':to<from?'The end date must be on or after the start date.':days>MAX_ROSTER_DAYS?`Choose up to ${MAX_ROSTER_DAYS} days.`:to>today?'The end date cannot be after today.':(view==='trip'||view==='compare'||view==='manualMismatch')&&to<FIRST_TRIP_DATE?'Trip cards are available from 1 November 2026.':'';
  const ready=Boolean(site)&&!rangeError;
+ const manualSelected=view==='manual'||view==='manual2';
  const key=[site,from,to,reload].join('|');
  // The Trip card tab also reads the HR employee details (department, designation, leave and holidays) from the register;
  // its day codes still come only from MIS.
- const wantTrip=ready&&(view==='trip'||view==='compare'||view==='manualMismatch'),wantBio=ready&&Boolean(view)&&view!=='manual'&&view!=='manualMismatch';
+ const wantTrip=ready&&(view==='trip'||view==='compare'||view==='manualMismatch'),wantBio=ready&&Boolean(view)&&!manualSelected&&view!=='manualMismatch';
  useEffect(()=>{
   if(!wantTrip||trip.key===key)return;
   setTrip({...noStream,key});
@@ -443,7 +448,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  },[wantBio,bioKey]); // eslint-disable-line react-hooks/exhaustive-deps
  useEffect(()=>{if(bioRef.current&&bioRef.current!==bioKey)bioRef.current='';},[bioKey]);
  const manualSaveKey=[site,from,to].join('|'),manualKey=[manualSaveKey,manualReload].join('|');
- useEffect(()=>{if(!ready||(view!=='manual'&&view!=='manualMismatch')||manual.key===manualKey)return;let live=true;setManual({key:manualKey,status:'loading',message:'Reading imported biometric attendance…',data:null});
+ useEffect(()=>{if(!ready||(!manualSelected&&view!=='manualMismatch')||manual.key===manualKey)return;let live=true;setManual({key:manualKey,status:'loading',message:'Reading imported biometric attendance…',data:null});
   // The punches and the list of saved days are read side by side but apart (27 Nov 2026): a slow or failed saved-day
   // list used to throw the punches away too ("Biometric punches unavailable: signal timed out", every count 0).
   // The roster fills in as each day arrives (28 Nov 2026): a month used to show nothing until its last day was read.
@@ -456,7 +461,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   setManualSavedError({key:'',message:''});
   readSavedManualBiometric(grant,site,from,to).then(saved=>{if(live)setManualSaved({key:manualSaveKey,days:Object.fromEntries(saved.map(day=>[day.day,day]))});}).catch(e=>{if(live)setManualSavedError({key:manualSaveKey,message:(e as Error).message});});
   return()=>{live=false;};
- },[ready,view,manualKey,grant,from,to,site]); // manual.key is intentionally excluded: setting the loading state must not cancel this request.
+ },[ready,view,manualSelected,manualKey,grant,from,to,site]); // manual.key is intentionally excluded: setting the loading state must not cancel this request.
  function readBio(list:string[]){
   const runKey=bioKey;bioRef.current=runKey;
   setBio(b=>b.key===runKey?{...b,runs:b.runs+1}:b);
@@ -528,13 +533,13 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const bioResults=useMemo(()=>bio.key===bioKey?Object.values(bio.results):[],[bio.key,bio.results,bioKey]);
  const bioRead=useMemo(()=>new Set(bio.key===bioKey?Object.keys(bio.results):[]),[bio.key,bio.results,bioKey]);
  const liveBioData=useMemo(()=>joinBiometricDays(bioResults,bioResults[0]?.policy?.lateEarlyPerHalfCut),[bioResults]);
- const manualView=view==='manual'||view==='manualMismatch';
+ const manualView=manualSelected||view==='manualMismatch';
  const bioData=manualView&&manual.key===manualKey?manual.data:liveBioData;
  const tripRows=trip.key===key&&tripRead.size?tripList:null;
  const policy=bioData?.policy||DEFAULT_POLICY;
  const manualRead=useMemo(()=>new Set(manualView&&manual.data?dates.filter(day=>!manual.data?.failedDays?.includes(day)):[]),[manualView,manual.data,dates]);
- const groups=useMemo(()=>buildRoster(bioData?.rows||[],view==='bio'||view==='manual'?null:tripRows,dates,today,policy,tripRead,manualView?manualRead:bioRead).map(g=>({...g,site:g.site||site})),[bioData,tripRows,dates,today,policy,view,site,tripRead,bioRead,manualRead,manualView]);
- const people=groups.filter(g=>view?viewGroups([g],view).length>0:false);
+ const groups=useMemo(()=>buildRoster(bioData?.rows||[],view==='bio'||manualSelected?null:tripRows,dates,today,policy,tripRead,manualView?manualRead:bioRead).map(g=>({...g,site:g.site||site})),[bioData,tripRows,dates,today,policy,view,site,tripRead,bioRead,manualRead,manualView,manualSelected]);
+ const people=groups.filter(g=>view&&viewGroups([g],view).length>0&&(view!=='manual2'||isManualBiometricIIEmployee(g)));
  const departmentOptions=[...new Set([...departments,...people.map(g=>g.department)].filter(Boolean))].sort();
  const designationOptions=[...new Set(people.filter(g=>!departmentsSelected.length||departmentsSelected.includes(g.department)).map(g=>g.designation).filter(Boolean))].sort();
  const shown=people.filter(g=>(!departmentsSelected.length||departmentsSelected.includes(g.department))&&(!designationsSelected.length||designationsSelected.includes(g.designation))&&(!employee||g.key===employee));
@@ -619,8 +624,8 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    <label>To<input type="date" value={to} min={from} max={today} onChange={e=>setTo(e.target.value)}/></label>
    <MultiRosterFilter label="Department" allLabel="All departments" options={departmentOptions} values={departmentsSelected} change={values=>{setDepartmentsSelected(values);setDesignationsSelected([]);setEmployee('');}}/>
    <MultiRosterFilter label="Designation" allLabel="All designations" options={designationOptions} values={designationsSelected} change={values=>{setDesignationsSelected(values);setEmployee('');}}/>
-   <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>(!departmentsSelected.length||departmentsSelected.includes(g.department))&&(!designationsSelected.length||designationsSelected.includes(g.designation))).map(g=><option key={g.key} value={g.key}>{g.linked||view==='manual'?g.code:'Not linked'} · {g.name}</option>)}</select></label>
-   <button type="button" disabled={!ready||!view||busy} onClick={()=>{if(view==='manual')setManualReload(n=>n+1);else if(view==='manualMismatch'){setManualReload(n=>n+1);forceMis.current=true;setReload(n=>n+1);}else{forceMis.current=view!=='bio';forceBio.current=true;setReload(n=>n+1);}}}><RefreshCw className={busy?'spin':''}/>Fetch again</button>
+   <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>(!departmentsSelected.length||departmentsSelected.includes(g.department))&&(!designationsSelected.length||designationsSelected.includes(g.designation))).map(g=><option key={g.key} value={g.key}>{g.linked||manualSelected?g.code:'Not linked'} · {g.name}</option>)}</select></label>
+   <button type="button" disabled={!ready||!view||busy} onClick={()=>{if(manualSelected)setManualReload(n=>n+1);else if(view==='manualMismatch'){setManualReload(n=>n+1);forceMis.current=true;setReload(n=>n+1);}else{forceMis.current=view!=='bio';forceBio.current=true;setReload(n=>n+1);}}}><RefreshCw className={busy?'spin':''}/>Fetch again</button>
   </div>
   {lookupError&&<p className="error" role="alert">Sites could not be loaded: {lookupError}</p>}
   {sites&&!sites.length&&!lookupError&&<p className="error" role="alert">No site is assigned to your login.</p>}
@@ -630,11 +635,12 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   {!site?<p className="roster-hint">Select a site first.</p>:!view?<p className="roster-hint">Press <b>Trip card</b> to fetch from MIS, or <b>Biometric</b> to fetch the machine punches, for {site} · {show(from)} to {show(to)}.</p>:
    ready&&<>{view!=='trip'&&bioError&&<p className="error" role="alert">Biometric punches unavailable: {bioError}</p>}
    {(view==='bio'||view==='compare')&&liveBioData&&<MachinesPanel site={site} machines={liveBioData.machines} pull={pull} onPull={()=>void pullMachines(liveBioData.machines)} onManage={onManageMachines}/>}
-   {(view==='bio'||view==='manual')&&importNote&&<p className="roster-saved" role="status">{importNote}</p>}
+   {view==='manual2'&&<p className="roster-saved" role="note">Manual Biometric II includes all departments and designations except Drivers and Operators.</p>}
+   {(view==='bio'||manualSelected)&&importNote&&<p className="roster-saved" role="status">{importNote}</p>}
    {editDay&&<ManualDayEdit grant={grant} target={editDay} onClose={()=>setEditDay(null)} onSaved={message=>{setEditDay(null);setImportNote(message);setManualReload(value=>value+1);}}/>}
-   {uploading&&<MachineLogUpload grant={grant} site={site} onClose={()=>setUploading('')} onImported={imported} onManageMachines={onManageMachines} importPath={uploading==='manual'?'attendance/manual-biometric/import':undefined} title={uploading==='manual'?'Import manual biometric attendance':undefined}/>}
+   {uploading&&<MachineLogUpload grant={grant} site={site} onClose={()=>setUploading('')} onImported={imported} onManageMachines={onManageMachines} importPath={uploading==='manual'?'attendance/manual-biometric/import':undefined} title={uploading==='manual'?(view==='manual2'?'Import Manual Biometric II attendance':'Import manual biometric attendance'):undefined}/>}
    <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} bio={shownBioState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} loading={bioLoading||(view==='manualMismatch'&&tripState.status==='loading')} error={view!=='trip'?bioError:''}
-    onImport={view==='bio'||(view==='manual'&&!dates.every(day=>Boolean(currentManualSaved[day])))?()=>{setImportNote('');setUploading(view as 'bio'|'manual');}:undefined}
-    emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):view==='manual'?`No manual biometric attendance imported for ${site} in these dates.`:undefined}/></>}
+    onImport={view==='bio'||(manualSelected&&!dates.every(day=>Boolean(currentManualSaved[day])))?()=>{setImportNote('');setUploading(view==='bio'?'bio':'manual');}:undefined}
+    emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):manualSelected?`No ${view==='manual2'?'Manual Biometric II':'manual biometric'} attendance imported for ${site} in these dates.`:undefined}/></>}
  </section>;
 }
