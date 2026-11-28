@@ -163,3 +163,8 @@
   align-items: start;
   background: transparent;
 }
+
+/* Caliber One, one sign-in: open HR with the Pulse sign-in already on this computer. */
+.hr-login .sign-in-pulse{width:100%;height:46px;margin-top:10px;border:1px solid #9ccfcc;border-radius:10px;background:#fff;color:#07686b;font-weight:700}
+.hr-login .sign-in-pulse:hover{background:#eef8f7}
+.hr-login[data-theme="night"] .sign-in-pulse{background:transparent;color:#7fe0d6;border-color:#2f6d6b}
