@@ -190,3 +190,19 @@ it('shows site in Bank Details, imports its Excel form, and lets an all-sites ad
   expect(await screen.findByText('8,849 employee records permanently deleted.')).toBeVisible();
   expect(posts.at(-1)).toEqual({confirmation:'DELETE ALL'});
 });
+
+it('lists an employee who joined through HR Pulse: View opens, Edit is where the joining record is kept',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+    if (url.includes('/employee-master-register/joined-1')) return Response.json({name:'New Joiner',source:'joining',sources:[],fields:{employeeId:'CMLL22501',name:'New Joiner',designation:'Tipper Driver'}});
+    return Response.json({rows:[
+      {id:'employee-1',name:'Imported One',employeeId:'CMLL101',site:'Majri OB'},
+      {id:'joined-1',name:'New Joiner',employeeId:'CMLL22501',site:'Majri OB',workingHours:'12 hours',source:'joining'},
+    ],total:2,pageSize:50,sites:[{code:'WCL-MAJRI',label:'Majri OB'}],canImport:false});
+  }));
+  render(<EmployeeMasterRegister grant={'a'.repeat(43)}/>);
+  expect(await screen.findByRole('button',{name:'Edit details for Imported One'})).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'Edit details for New Joiner'})).toBeNull();
+  expect(screen.getByText('Joining form')).toHaveAttribute('title',expect.stringContaining('Update Existing Employee'));
+  fireEvent.click(screen.getByRole('button',{name:'View details for New Joiner'}));
+  expect(await screen.findByText(/Joined through HR Pulse\. The full record is under Corporate \/ HO or OB \/ COAL › Update Existing Employee\./)).toBeInTheDocument();
+});

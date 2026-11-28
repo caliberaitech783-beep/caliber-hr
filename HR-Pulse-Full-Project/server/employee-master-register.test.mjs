@@ -16,7 +16,7 @@ const siteId = '20000000-0000-4000-8000-000000000008';
 
 test('register requires both HR menus and restricts the rows and details to the user site', async()=>{
   const service = createEmployeeMasterRegister({query:async(sql,params)=>{
-    if (sql.includes("kind='sites'")) return {rows:[{id:siteId}]};
+    if ((sql.includes("kind='sites'")&&!sql.startsWith('WITH '))) return {rows:[{id:siteId}]};
     assert.match(sql,/hr_employee_master_register/);
     assert.match(sql,/site_id=ANY/);
     assert.deepEqual(sql.includes('WHERE id=$1')?params[1]:params[0],[siteId]);
@@ -77,7 +77,7 @@ test('details correct only the employee ID fields copied from the workbook',asyn
 test('export returns the full filtered register within the assigned sites',async()=>{
   const queries = [];
   const service = createEmployeeMasterRegister({query:async(sql,params)=>{
-    if (sql.includes("kind='sites'")) return {rows:[{id:siteId}]};
+    if ((sql.includes("kind='sites'")&&!sql.startsWith('WITH '))) return {rows:[{id:siteId}]};
     queries.push({sql,params});
     return {rows:Array.from({length:51},(_,index)=>({
       id:String(index),site_name:'Sasti OB',site_code:'WCL-SASTI',data:{employeeId:`CMLL${index}`,name:'Test Operator',sources:[{label:'Sheet',fields:[['Bank Name','SBI'],['IFSC','SBIN0001234'],['A/C No.','00123'],['Bank Branch','Sasti'],['Father Name','Parent']]}]},
@@ -155,4 +155,46 @@ test('editing a register entry preserves site scope and rejects stale saves',asy
   assert.equal(writes.length,0);
   assert.deepEqual(await service.updateEmployeeMasterRegister(scoped,employeeId,{version:3,changes:{employeeId:'CMPL-04',contact:'123'}}),{saved:true});
   assert.deepEqual(writes,[[employeeId,'{"employeeId":"CMLL-04","contact":"123"}',siteId,'WCL-SASTI','Sasti OB']]);
+});
+
+test('Employee Master lists the employees who joined through HR Pulse with the imported lines, one line per number',async()=>{
+  const queries = [];
+  const joiner = {id:'j1',site_name:'Majri OB',site_code:'WCL-MAJRI',source:'joining',data:{employeeId:'CMLL22501',name:'New Joiner',designation:'Tipper Driver',workingHours:'12 hours',bankName:'SBI'}};
+  const imported = {id:'r1',site_name:'Majri OB',site_code:'WCL-MAJRI',source:'register',data:{employeeId:'CMLL101',name:'Imported One',sources:[{label:'Sheet',fields:[]}]}};
+  const service = createEmployeeMasterRegister({query:async(sql,params)=>{
+    queries.push({sql,params});
+    if (sql.includes('count(*)')) return {rows:[{total:2}]};
+    if (sql.includes('SELECT DISTINCT site_code')) return {rows:[{site_code:'NAGPUR-CO',site_name:'Nagpur CO',source:'joining'},{site_code:'WCL-MAJRI',site_name:'Majri',source:'joining'},{site_code:'WCL-MAJRI',site_name:'Majri OB',source:'register'}]};
+    return {rows:[imported,joiner]};
+  }});
+  const result = await service.employeeMasterRegister(admin,new URLSearchParams());
+  assert.equal(result.total,2);
+  assert.deepEqual(result.rows.map(row=>[row.id,row.employeeId,row.site,row.region,row.source]),[['r1','CMLL101','Majri OB','WCL',undefined],['j1','CMLL22501','Majri OB','WCL','joining']]);
+  assert.deepEqual(result.sites,[{code:'WCL-MAJRI',label:'Majri OB'},{code:'NAGPUR-CO',label:'Nagpur CO'}]);
+  for (const {sql} of queries) {
+    assert.match(sql,/^WITH held AS MATERIALIZED/);
+    assert.match(sql,/UNION ALL/);
+    // Read from the joining record, never copied: only people whose form is done, and not one an imported line holds.
+    assert.match(sql,/e\.kind='employees' AND e\.status IN \('ACTIVE','APPROVED','INACTIVE'\)/);
+    assert.match(sql,/NOT EXISTS \(SELECT 1 FROM held WHERE held\.n=/);
+    assert.doesNotMatch(sql,/Aadhaar|Gross Salary|PAN No/);
+    assert.doesNotMatch(sql,/^\s*(INSERT|UPDATE|DELETE)/im);
+  }
+  // The register's own Excel import asks for the imported lines only.
+  queries.length = 0;
+  await service.employeeMasterRegister(admin,new URLSearchParams({export:'1',joined:'0'}));
+  assert.equal(queries.length,1);
+  assert.doesNotMatch(queries[0].sql,/hr_records|UNION ALL/);
+});
+
+test('a joined employee is viewed from Employee Master with work details only, and edited where the record is kept',async()=>{
+  const service = createEmployeeMasterRegister({query:async(sql)=>{
+    if (sql.includes('FROM hr_employee_master_register')&&!sql.includes('FROM hr_records e')) return {rows:[],rowCount:0};
+    assert.match(sql,/e\.id=\$1/);
+    return {rowCount:1,rows:[{name:'New Joiner',fields:{employeeId:'CMLL22501',name:'New Joiner',designation:'Tipper Driver',workingHours:'12 hours',bankName:'SBI',accountNo:'00123',ifscCode:'SBIN0001234',branch:'Majri',aFormNo:'AF-1'}}]};
+  }});
+  const id = '20000000-0000-4000-8000-000000000001';
+  assert.deepEqual(await service.employeeMasterRegisterDetails(admin,id),{name:'New Joiner',source:'joining',sources:[],
+    fields:{employeeId:'CMLL22501',name:'New Joiner',designation:'Tipper Driver',workingHours:'12 hours'}});
+  await assert.rejects(service.employeeMasterRegisterDetails(admin,id,true),{status:409,message:/Update Existing Employee/});
 });

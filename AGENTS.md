@@ -1,3 +1,14 @@
+# Employee Master lists every employee, joined or imported
+
+Set by the owner on 28 November 2026: a new employee "is going to the existing employee, not in the employee master"; he chose to show both on the Employee Master page.
+
+- HR Pulse keeps employees in two places: the imported all-sites lines (`hr_employee_master_register`) and the employees who joined through the joining form (`hr_records`, kind `employees`). Employee Master › Employee Master lists both: the imported lines as before, and every joined employee whose form is done (Active, Approved or Inactive), read from the joining record. Nothing is copied into the register, so there is no second copy to keep in step.
+- One line per employee number (CMPL123 = CMLL123 = 123): a joined employee whose number an imported line holds is that line. A draft or a form still waiting for approval is not listed.
+- A joined employee's line is searched, counted, filtered by site and downloaded like any other, with work details only (ID, name, site, department, designation, category, reporting to, contact, email, status, working hours, and the bank columns on Bank Details). Aadhaar, PAN and salary are never read for this page.
+- View opens those work details. Edit and Remove stay where the record is kept: the line says "Joining form" and the details are changed under Corporate / HO or OB / COAL › Update Existing Employee. The Bank Details import and "Delete all" still act on imported lines only.
+- The register's own Excel import asks for the imported lines only (`joined=0`), so its "already imported" check is unchanged.
+- `registerLines` in `HR-Pulse-Full-Project/server/employee-master-register.mjs` holds it; `server/employee-master-register.test.mjs` and `src/EmployeeMasterRegister.test.tsx` check it.
+
 # Working Hours of every employee
 
 Set by the owner on 28 November 2026: an extra field for working hours for every employee of Employee Master, Corporate / HO and OB / COAL.
