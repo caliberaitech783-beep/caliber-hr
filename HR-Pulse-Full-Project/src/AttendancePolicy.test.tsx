@@ -123,6 +123,21 @@ it('opens the five tab-only screens from Late come / early going, not from the s
  expect(attendanceSidebarView('Shift roster')).toBe('Shift roster');
 });
 
+// Owner, 28 Nov 2026: Shift roster has both rosters, the trip card roster and the other staff roster, on tabs.
+it('shows the trip card roster and the other staff roster on their own tabs',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>Response.json(url.includes('lookups')?[{kind:'sites',id:'s1',name:'Majri OC'}]:url.includes('policy')?{policy,version:0,canEdit:false}:{rows:[]})));
+ render(<AttendanceManagement grant={'a'.repeat(43)} view="Shift roster"/>);
+ const tabs=screen.getByRole('tablist',{name:'Roster'});
+ expect(within(tabs).getAllByRole('tab').map(t=>t.textContent)).toEqual(['Trip card roster','Other staff roster']);
+ expect(within(tabs).getByRole('tab',{name:'Trip card roster'}).getAttribute('aria-selected')).toBe('true');
+ expect(screen.getByRole('heading',{name:'Shift roster'})).toBeTruthy();
+ fireEvent.click(within(tabs).getByRole('tab',{name:'Other staff roster'}));
+ expect(await screen.findByRole('heading',{name:'Other staff roster'})).toBeTruthy();
+ expect(screen.queryByRole('heading',{name:'Shift roster'})).toBeNull();
+ const source=screen.getByLabelText('Roster source');
+ expect(within(source).getAllByRole('button').map(b=>b.textContent)).toEqual(['Other Staff Biometric','Comparison']);
+});
+
 it('shows no regularization tabs on other attendance screens',()=>{
  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({})));
  render(<AttendanceManagement grant={'a'.repeat(43)} view="Monthly attendance register"/>);
