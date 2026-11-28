@@ -14,7 +14,7 @@ const standalonePortals = [
 
 const portals = inPulseII ? standalonePortals.filter(portal => portal.name === 'MIS') : standalonePortals;
 
-export default function HrLogin({onLogin, preload, embedded}: {onLogin: (session: Session) => void; preload: () => Promise<unknown>; embedded: boolean}) {
+export default function HrLogin({onLogin, preload, embedded, notice = '', onPulse}: {onLogin: (session: Session) => void; preload: () => Promise<unknown>; embedded: boolean; notice?: string; onPulse?: () => void}) {
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -75,8 +75,9 @@ export default function HrLogin({onLogin, preload, embedded}: {onLogin: (session
           <button type="button" aria-label="Toggle password" aria-pressed={visible} onClick={() => setVisible(!visible)}>{visible ? <EyeOff/> : <Eye/>}</button>
         </div>
         <label className="remember"><input type="checkbox" name="remember"/>Remember me</label>
-        {error && <p role="alert" className="error">{error}</p>}
+        {(error || notice) && <p role="alert" className="error">{error || notice}</p>}
         <button className="sign-in" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<ArrowRight aria-hidden="true"/></button>
+        {onPulse && <button className="sign-in-pulse" type="button" onClick={onPulse}>Continue with my Pulse sign-in</button>}
       </form>
     </main>
   </div>;
