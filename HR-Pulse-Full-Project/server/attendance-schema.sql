@@ -31,30 +31,36 @@ CREATE INDEX IF NOT EXISTS hr_attendance_punches_device_time ON hr_attendance_pu
 -- live machine punches so a manual file can never change the live biometric register.
 CREATE TABLE IF NOT EXISTS hr_manual_biometric_punches(
  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
- source text NOT NULL DEFAULT 'manual1',
  device_serial text NOT NULL,
  biometric_id text NOT NULL,
  punched_at timestamp NOT NULL,
  verify text NOT NULL DEFAULT '',
  punch_type text NOT NULL DEFAULT '',
  imported_by text NOT NULL DEFAULT '',
- imported_at timestamptz NOT NULL DEFAULT now()
+ imported_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(device_serial,biometric_id,punched_at)
 );
-ALTER TABLE hr_manual_biometric_punches ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual1';
-ALTER TABLE hr_manual_biometric_punches DROP CONSTRAINT IF EXISTS hr_manual_biometric_punches_device_serial_biometric_id_punched_;
-DELETE FROM hr_manual_biometric_punches old USING hr_employee_master_register e
-WHERE old.source='manual1' AND hr_employee_number(e.data->>'employeeId')=hr_employee_number(old.biometric_id)
- AND upper(btrim(coalesce(e.data->>'department',''))) NOT IN ('DRIVER','OPERATOR')
- AND EXISTS(SELECT 1 FROM hr_manual_biometric_punches newer WHERE newer.source='manual2'
-  AND newer.device_serial=old.device_serial AND newer.biometric_id=old.biometric_id AND newer.punched_at=old.punched_at);
-UPDATE hr_manual_biometric_punches p SET source='manual2' FROM hr_employee_master_register e
-WHERE p.source='manual1' AND hr_employee_number(e.data->>'employeeId')=hr_employee_number(p.biometric_id)
- AND upper(btrim(coalesce(e.data->>'department',''))) NOT IN ('DRIVER','OPERATOR');
-CREATE UNIQUE INDEX IF NOT EXISTS hr_manual_biometric_punches_source_punch ON hr_manual_biometric_punches(source,device_serial,biometric_id,punched_at);
+CREATE UNIQUE INDEX IF NOT EXISTS hr_manual_biometric_punches_punch ON hr_manual_biometric_punches(device_serial,biometric_id,punched_at);
 CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_time ON hr_manual_biometric_punches(punched_at);
 CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_device_time ON hr_manual_biometric_punches(device_serial,punched_at);
 -- Manual roster first narrows by machine and day, then reads the biometric ID without returning to the table.
 CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_device_time_id ON hr_manual_biometric_punches(device_serial,punched_at,biometric_id);
+
+-- Manual Biometric II is deliberately isolated from the original imported log.
+CREATE TABLE IF NOT EXISTS hr_manual_biometric_ii_punches(
+ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ device_serial text NOT NULL,
+ biometric_id text NOT NULL,
+ punched_at timestamp NOT NULL,
+ verify text NOT NULL DEFAULT '',
+ punch_type text NOT NULL DEFAULT '',
+ imported_by text NOT NULL DEFAULT '',
+ imported_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(device_serial,biometric_id,punched_at)
+);
+CREATE INDEX IF NOT EXISTS hr_manual_biometric_ii_punches_time ON hr_manual_biometric_ii_punches(punched_at);
+CREATE INDEX IF NOT EXISTS hr_manual_biometric_ii_punches_device_time ON hr_manual_biometric_ii_punches(device_serial,punched_at);
+CREATE INDEX IF NOT EXISTS hr_manual_biometric_ii_punches_device_time_id ON hr_manual_biometric_ii_punches(device_serial,punched_at,biometric_id);
 
 -- Names stored on the machine for each user ID. Shown only as a hint to help
 -- HR link a machine ID to the right employee.

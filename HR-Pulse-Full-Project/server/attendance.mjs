@@ -284,7 +284,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    return {received:clean.length,added};
   });
   if(['manual-biometric/import','manual-biometric-ii/import'].includes(route)&&method==='POST')return tx(async db=>{
-   const source=route==='manual-biometric-ii/import'?'manual2':'manual1';
+   const source=route==='manual-biometric-ii/import'?'manual2':'manual1',punchTable=source==='manual2'?'hr_manual_biometric_ii_punches':'hr_manual_biometric_punches';
    const siteName=String(input?.site||'').trim(),rows=input?.rows;
    if(!siteName)fail('Choose a site before importing biometric punches.');
    if(!Array.isArray(rows)||!rows.length||rows.length>MAX_PUNCHES_PER_UPLOAD)fail(`Import 1–${MAX_PUNCHES_PER_UPLOAD} biometric punches at a time.`);
@@ -297,7 +297,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=ANY($1::uuid[]) AND serial=ANY($2::text[])',[matchingSiteIds,serials])).rows.map(row=>row.serial);
    const missing=serials.filter(serial=>!devices.includes(serial));
    if(missing.length)fail(`Machine Serial is not registered at ${siteName}: ${missing.join(', ')}`);
-   const added=(await db.query('INSERT INTO hr_manual_biometric_punches(source,device_serial,biometric_id,punched_at,verify,punch_type,imported_by) SELECT $1,x.s,x.b,x.t::timestamp,x.v,x.p,$7 FROM unnest($2::text[],$3::text[],$4::text[],$5::text[],$6::text[]) AS x(s,b,t,v,p) ON CONFLICT DO NOTHING',[source,clean.map(row=>row.serial),clean.map(row=>row.punch.biometricId),clean.map(row=>row.punch.punchedAt),clean.map(row=>row.punch.verify),clean.map(row=>row.punch.punchType),profile.actor])).rowCount;
+   const added=(await db.query(`INSERT INTO ${punchTable}(device_serial,biometric_id,punched_at,verify,punch_type,imported_by) SELECT x.s,x.b,x.t::timestamp,x.v,x.p,$6 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[]) AS x(s,b,t,v,p) ON CONFLICT DO NOTHING`,[clean.map(row=>row.serial),clean.map(row=>row.punch.biometricId),clean.map(row=>row.punch.punchedAt),clean.map(row=>row.punch.verify),clean.map(row=>row.punch.punchType),profile.actor])).rowCount;
    await audit(db,profile.actor,source==='manual2'?'IMPORT_MANUAL_BIOMETRIC_II_PUNCHES':'IMPORT_MANUAL_BIOMETRIC_PUNCHES',{site:siteName,received:clean.length,added});
    return {received:clean.length,added};
   });
