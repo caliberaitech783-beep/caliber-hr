@@ -71,7 +71,8 @@ describe('one site of the MIS trip card feed', () => {
     expect(lines).toBeGreaterThan(5000);
     expect(multipleSites).toBeGreaterThan(200);
     expect(cut).toBeGreaterThan(10000);
-  });
+    // 300 made-up answers: a slower machine (GitHub's, at release) needs more than the usual 5 seconds.
+  }, 60_000);
 
   it('keeps the signatures of the site\'s days and names the sites MIS had cards for', () => {
     const whole = madeUpReport(7), trimmed = trimMisReport(whole, 'Majri OC', DATES[1], DATES[1]);
