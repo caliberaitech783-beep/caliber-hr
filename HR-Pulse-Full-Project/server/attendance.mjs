@@ -12,7 +12,7 @@ import {createTripCardStore} from './trip-card-store.mjs';
 import {createBiometricDayStore} from './biometric-day-store.mjs';
 import {createBridges,looksLikeSiteKey} from './attendance-bridges.mjs';
 import {createDirectMachines} from './attendance-direct.mjs';
-import {loadRegister,loadSiteRegister,readPolicy,savePolicy} from './attendance-register.mjs';
+import {loadHrCalendar,loadRegister,loadSiteRegister,readPolicy,savePolicy} from './attendance-register.mjs';
 import {recentReads} from './read-times.mjs';
 import {removeMachine} from './machine-delete.mjs';
 import {applyCorrections,cleanCorrection,correctionCode,createCorrections} from './manual-attendance-corrections.mjs';
@@ -347,6 +347,15 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const site=await findSite(pool,String(params.get('site')||''));
    if(!site)fail(siteAccessMessage(profile),403);
    return loadSiteRegister(pool,{id:site.id,name:site.name,siteType:site.site_type||''},from,to,indiaDay());
+  }
+  if(route==='trip-calendar'&&method==='POST'){
+   // Attendance roster › Trip card: leave, OD, holidays and absent days of the trip card people who have no biometric
+   // line at the site (owner, 28 Nov 2026). Only for a site of the login, only the codes on that site's trip cards.
+   const {from,to}=validateRange(new URLSearchParams({from:String(input?.from||''),to:String(input?.to||'')}));
+   const site=await findSite(pool,String(input?.site||''));
+   if(!site)fail(siteAccessMessage(profile),403);
+   const codes=Array.isArray(input?.codes)?input.codes.map(String).slice(0,3000):[];
+   return loadHrCalendar(pool,codes,from,to,indiaDay());
   }
   if(['manual-biometric','manual-biometric-ii'].includes(route)&&method==='GET'){
    const {from,to}=validateRange(params);

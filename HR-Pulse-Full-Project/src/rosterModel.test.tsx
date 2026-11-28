@@ -329,7 +329,7 @@ it('opens saved trip cards at once, reads MIS only for the other days, and saves
  expect(calls.filter(c=>c.url.includes('attendance/mis?')).map(c=>new URL(c.url,'https://x').searchParams.get('from')).sort()).toEqual(['2026-11-03','2026-11-04']);
  fireEvent.click(save);
  await screen.findByRole('button',{name:'Saved'});
- const posts=calls.filter(c=>c.method==='POST');
+ const posts=calls.filter(c=>c.method==='POST'&&c.url.includes('attendance/trip-cards'));
  expect(posts.map(c=>c.body!.day).sort()).toEqual(['2026-11-03','2026-11-04']);
  expect(posts.every(c=>c.body!.rows.length>0)).toBe(true);
  expect(screen.getByText(/Saved copy: 3 of 3 days/)).toBeTruthy();
@@ -373,13 +373,13 @@ it('shows a saved day only while MIS still signs it the same way, and reads a ch
  expect(screen.getByText(/1 day was saved before MIS started signing days and is shown as saved, not checked with MIS: 04-11\. On the Trip card tab press Fetch again, then Save trip cards, once/)).toBeTruthy();
  fireEvent.click(save);
  await screen.findByRole('button',{name:'Saved'});
- const posts=calls.filter(c=>c.method==='POST');
+ const posts=calls.filter(c=>c.method==='POST'&&c.url.includes('attendance/trip-cards'));
  expect(posts.map(c=>c.body!.day+'='+c.body!.signature).sort()).toEqual(['2026-11-03=gevra:new']);
  // Fetch again reads every day from MIS; saving them signs them, and the note about unsigned days goes.
  fireEvent.click(screen.getByRole('button',{name:/Fetch again/}));
  fireEvent.click(await screen.findByRole('button',{name:'Save trip cards (3 days)'}));
  await screen.findByRole('button',{name:'Saved'});
- expect(calls.filter(c=>c.method==='POST').slice(1).map(c=>c.body!.day+'='+c.body!.signature).sort()).toEqual(['2026-11-02=gevra:same','2026-11-03=gevra:new','2026-11-04=gevra:four']);
+ expect(calls.filter(c=>c.method==='POST'&&c.url.includes('attendance/trip-cards')).slice(1).map(c=>c.body!.day+'='+c.body!.signature).sort()).toEqual(['2026-11-02=gevra:same','2026-11-03=gevra:new','2026-11-04=gevra:four']);
  expect(screen.queryByText(/saved before MIS started signing days/)).toBeNull();
 });
 
@@ -437,8 +437,8 @@ it('opens saved biometric logs at once, reads the punches only for the other day
  expect(calls.filter(c=>c.url.includes('site-register')).map(c=>new URL(c.url,'https://x').searchParams.get('from')).sort()).toEqual(['2026-11-03','2026-11-04']);
  fireEvent.click(save);
  await screen.findByRole('button',{name:'Saved'});
- expect(calls.filter(c=>c.method==='POST').map(c=>c.body!.day).sort()).toEqual(['2026-11-03','2026-11-04']);
- expect(calls.filter(c=>c.method==='POST').every(c=>c.body!.site==='Sasti OC'&&Object.keys(c.body!).length===2)).toBe(true);
+ expect(calls.filter(c=>c.method==='POST'&&c.url.includes('attendance/biometric-days')).map(c=>c.body!.day).sort()).toEqual(['2026-11-03','2026-11-04']);
+ expect(calls.filter(c=>c.method==='POST'&&c.url.includes('attendance/biometric-days')).every(c=>c.body!.site==='Sasti OC'&&Object.keys(c.body!).length===2)).toBe(true);
  expect(screen.getByText(/Saved biometric logs: 3 of 3 days/)).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:/Fetch again/}));
  await waitFor(()=>expect(calls.filter(c=>c.url.includes('site-register')).length).toBe(5));
