@@ -1,3 +1,16 @@
+# Biometric Exception Master
+
+Set by the owner on 28 November 2026: a Biometric Exception Master under Master Configuration to add or remove employees, fetched from Employee Master by Employee ID; "employees added to this list should be exempted from mandatory biometric punching, and their attendance should be generated automatically by the system. Employees not added to this list should continue following the existing biometric attendance process."
+
+- Master Configuration › Biometric Exception Master, for a login with Master Configuration, inside the sites of the login. Find by Employee ID or name in Employee Master (imported lines and joined employees), choose the day the exemption starts (62 days back to 31 days ahead, today by default) and write why. One active entry per employee number (CMPL123 = CMLL123 = 123).
+- An exempt day is rated as the Attendance Policy's exempt roles always were: Present with no punch asked, and no late, early, miss punch or cut even when there is a punch. The public holiday, approved leave / comp off, approved OD and an office's weekly off still show. The day carries `biometricException` and the note "Biometric exception: marked present, no punch needed".
+- The site roster is made from the punches on a site's machines, so an exempt employee who never punches is added to the roster of their own site (Attendance roster › Biometric and Manual Biometric), also at a site with no machine. Days before the entry starts are rated as for everybody else.
+- Remove (with a reason) ends the exemption with the day before; from that day the biometric process applies again. The entry is kept and shown under "Show removed". Every add and remove writes an audit line.
+- Not taken: a driver (attendance comes from the trip card and logbook, the Attendance Policy's rule), a person whose status is LEFT, an Employee ID that is on two lines or not in Employee Master.
+- A biometric day already saved with "Save biometric" keeps its saved sheet until it is saved again. Pulse-II's Biometric vs trip card check does not read this list.
+- Everybody not on the list is rated exactly as before: `buildRegister` changes nothing for an employee with no `exceptions`.
+- `HR-Pulse-Full-Project/server/biometric-exceptions.mjs` holds the list and the routes (`/api/biometric-exceptions`), table `hr_biometric_exceptions` (attendance-schema.sql); `buildRegister`, `loadRegister` and `loadSiteRegister` in `server/attendance-register.mjs` apply it; `src/BiometricExceptionMaster.tsx` is the screen. `server/biometric-exceptions.test.mjs` (run by the API deploy) and `src/BiometricExceptionMaster.test.tsx` check it.
+
 # Employee Master lists every employee, joined or imported
 
 Set by the owner on 28 November 2026: a new employee "is going to the existing employee, not in the employee master"; he chose to show both on the Employee Master page.

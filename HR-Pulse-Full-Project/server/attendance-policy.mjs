@@ -134,8 +134,9 @@ export function noBiometricHalfDay(site, designation) {
  * (and outMinute) past 1440 when they fall on the next day.
  */
 export function evaluateDay({inMinute = null, outMinute = null, shiftStart = null, shiftEnd = null, designation = '', site = '',
-  gatePassMinutes = 0, dailyWage = 0} = {}, policy = DEFAULT_POLICY) {
-  if (isExempt(designation, policy)) {
+  gatePassMinutes = 0, dailyWage = 0, exempt = false} = {}, policy = DEFAULT_POLICY) {
+  // exempt: this employee is on the Biometric Exception Master for the day (biometric-exceptions.mjs).
+  if (exempt || isExempt(designation, policy)) {
     return {status: 'P', exempt: true, missPunch: false, workedMinutes: null, late: false, early: false, gatePassMinutes: 0, gatePassDeduction: 0};
   }
   const missPunch = (inMinute == null) !== (outMinute == null) || (inMinute != null && outMinute <= inMinute);

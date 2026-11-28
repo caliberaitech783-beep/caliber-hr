@@ -20,6 +20,7 @@ import {Records,Approvals,Overview,Audit,AccessAdministration} from './Modules';
 import EmployeeLocation from './EmployeeLocation';
 import AdditionApprovalPopup from './AdditionApprovalPopup';
 import EmployeeMasterRegister from './EmployeeMasterRegister';
+import BiometricExceptionMaster from './BiometricExceptionMaster';
 import VtcBatchModule from './VtcBatchModule';
 import {PM_APPROVALS_PAGE,pmApprovalMenus,isProjectManager,type PmApprovalMenu} from './pmAccess';
 import type {JoiningDraft} from './joiningDrafts';
@@ -126,10 +127,11 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
     </header>
     <div className={'content '+(page==='VTC Batch Module'?'content-vtc':'')}>{pmOnly?pmContent:<>{page==='Master Configuration'&&<section className="master-configuration" aria-label="Master Configuration">
       <div className="module-tabs" aria-label="Master configuration menus">
-        {['Shift Master','Holiday & Leave Master','Trial Hierarchy'].map(item=><button type="button" key={item} className={masterMenu===item?'selected':''} aria-pressed={masterMenu===item} onClick={()=>setMasterMenu(item)}>{item}</button>)}
+        {['Shift Master','Holiday & Leave Master','Trial Hierarchy','Biometric Exception Master'].map(item=><button type="button" key={item} className={masterMenu===item?'selected':''} aria-pressed={masterMenu===item} onClick={()=>setMasterMenu(item)}>{item}</button>)}
       </div>
       {masterMenu==='Shift Master'?<ShiftMaster grant={session.grant} module={config.shifts}/>
         :masterMenu==='Trial Hierarchy'?<HierarchyMaster grant={session.grant}/>
+        :masterMenu==='Biometric Exception Master'?<BiometricExceptionMaster grant={session.grant}/>
         :masterMenu==='Holiday & Leave Master'?<LeaveMaster grant={session.grant} config={config} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>
         :null}
     </section>} {page==='Employee Master'&&<>{employeeMenu==='Employee Master'&&registerVisible&&<EmployeeMasterRegister grant={session.grant}/>}{employeeMenu==='Leave / OD / Gatepass'&&<LeaveRequests grant={session.grant} module={config.leaveRequests} odModule={config.outDutyRequests} gateModule={config.gatePasses} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>} {employeeMenu==='Employee Transfer'&&<section className="transfer-management" aria-labelledby="employee-transfer-title">

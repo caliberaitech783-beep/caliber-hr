@@ -165,7 +165,7 @@ const joinedFrom = `FROM hr_records e
 const heldNumbers = `held AS MATERIALIZED (SELECT DISTINCT n FROM (
     SELECT ${numberSql("data->>'employeeId'")} AS n FROM hr_employee_master_register WHERE ${isEmployeeEntry}) numbers WHERE n<>'')`;
 const notOnRegister = `NOT EXISTS (SELECT 1 FROM held WHERE held.n=${numberSql('e.code')})`;
-const registerLines = withJoined => `WITH ${withJoined?heldNumbers+', ':''}lines AS (
+export const registerLines = withJoined => `WITH ${withJoined?heldNumbers+', ':''}lines AS (
   SELECT id,site_id,site_name,site_code,name,data,'register' AS source FROM hr_employee_master_register WHERE ${isEmployeeEntry}${withJoined?`
   UNION ALL
   SELECT e.id,s.id,COALESCE(s.name,''),COALESCE(s.code,''),e.name,${joinedData},'joining' ${joinedFrom} AND ${notOnRegister}`:''})`;
