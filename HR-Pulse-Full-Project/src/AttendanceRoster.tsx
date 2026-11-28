@@ -449,7 +449,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    .finally(()=>setBio(b=>b.key===runKey?{...b,runs:b.runs-1}:b));
  },[wantBio,bioKey]); // eslint-disable-line react-hooks/exhaustive-deps
  useEffect(()=>{if(bioRef.current&&bioRef.current!==bioKey)bioRef.current='';},[bioKey]);
- const manualSaveKey=[site,from,to].join('|'),manualSource=view==='manual2'?'manual2':'manual1',manualKey=[manualSaveKey,manualSource,manualReload].join('|');
+ const manualSource=view==='manual2'?'manual2':'manual1',manualSaveKey=[site,from,to,manualSource].join('|'),manualKey=[manualSaveKey,manualReload].join('|');
  useEffect(()=>{if(!ready||(!manualSelected&&view!=='manualMismatch')||manual.key===manualKey)return;let live=true;setManual({key:manualKey,status:'loading',message:'Reading imported biometric attendance…',data:null});
   // The punches and the list of saved days are read side by side but apart (27 Nov 2026): a slow or failed saved-day
   // list used to throw the punches away too ("Biometric punches unavailable: signal timed out", every count 0).
@@ -461,7 +461,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    if(progress.partial)setManual(current=>current.key===manualKey&&current.status==='loading'?{...current,data:progress.partial!}:current);
   },view==='manual2'?'manual2':'manual1').then(data=>{if(live){setManual({key:manualKey,status:'ready',message:'Manual biometric attendance',data});setManualSave(null);}}).catch(e=>{if(live)setManual({key:manualKey,status:'error',message:(e as Error).message,data:null});});
   setManualSavedError({key:'',message:''});
-  readSavedManualBiometric(grant,site,from,to).then(saved=>{if(live)setManualSaved({key:manualSaveKey,days:Object.fromEntries(saved.map(day=>[day.day,day]))});}).catch(e=>{if(live)setManualSavedError({key:manualSaveKey,message:(e as Error).message});});
+  readSavedManualBiometric(grant,site,from,to,manualSource).then(saved=>{if(live)setManualSaved({key:manualSaveKey,days:Object.fromEntries(saved.map(day=>[day.day,day]))});}).catch(e=>{if(live)setManualSavedError({key:manualSaveKey,message:(e as Error).message});});
   return()=>{live=false;};
  },[ready,view,manualSelected,manualKey,grant,from,to,site]); // manual.key is intentionally excluded: setting the loading state must not cancel this request.
  function readBio(list:string[]){
@@ -490,7 +490,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   void saveManualBiometricDays(grant,site,list,(day,info,error)=>{
    if(info)setManualSaved(current=>current.key===runKey?{...current,days:{...current.days,[day]:{day,savedBy:info.savedBy,savedAt:info.savedAt,punches:info.punches,people:info.people}}}:current);
    setManualSave(current=>current?{...current,done:current.done+1,failed:info?current.failed:[...current.failed,day],error:current.error||error||''}:current);
-  }).finally(()=>setManualSave(current=>current?{...current,running:false}:current));
+  },manualSource).finally(()=>setManualSave(current=>current?{...current,running:false}:current));
  }
  async function deleteManualLogs(daysToDelete:string[],all=false){
   if(!daysToDelete.length||deletingSaved)return;
@@ -498,7 +498,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   if(!window.confirm(message))return;
   setDeletingSaved(true);
   try{
-   const result=await deleteManualBiometricDays(grant,site,daysToDelete);
+   const result=await deleteManualBiometricDays(grant,site,daysToDelete,manualSource);
    setManualSaved(current=>current.key===manualSaveKey?{...current,days:Object.fromEntries(Object.entries(current.days).filter(([day])=>!daysToDelete.includes(day)))}:current);
    setImportNote(`Manual Biometric attendance deleted · ${result.deleted} saved log${result.deleted===1?'':'s'} and ${result.punches.toLocaleString('en-IN')} punches removed.`);
    setManualReload(value=>value+1);

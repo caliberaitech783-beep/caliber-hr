@@ -185,6 +185,18 @@ CREATE TABLE IF NOT EXISTS hr_manual_biometric_days(
  PRIMARY KEY(site,day)
 );
 
+-- Manual Biometric II saved logs and locks are separate from Manual Biometric I.
+CREATE TABLE IF NOT EXISTS hr_manual_biometric_ii_days(
+ site text NOT NULL,
+ day date NOT NULL,
+ register jsonb NOT NULL,
+ punches integer NOT NULL,
+ people integer NOT NULL,
+ saved_by text NOT NULL,
+ saved_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(site,day)
+);
+
 -- Admin corrections of a Manual Biometric day (owner, 25 Nov 2026; manual-attendance-corrections.mjs). The imported
 -- punches stay as imported; a correction gives the day a new In / Out and / or code, with the reason and who made it.
 CREATE TABLE IF NOT EXISTS hr_manual_attendance_corrections(

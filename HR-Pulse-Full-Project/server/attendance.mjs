@@ -119,6 +119,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
  // a saved copy is made from the same.
  const loadManual=async(site,from,to,manualSource='manual1')=>applyCorrections(await loadSiteRegister(pool,site,from,to,indiaDay(),{manual:true,manualSource}),await corrections.read(site.name,from,to));
  const manualBiometricDays=createBiometricDayStore(pool,{load:loadManual,today:indiaDay,manual:true,siteKey:attendanceSiteKey});
+ const manualBiometricIIDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadManual(site,from,to,'manual2'),today:indiaDay,manual:true,manualSource:'manual2',siteKey:attendanceSiteKey});
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
  const corrections=createCorrections({pool,tx,audit});
@@ -231,10 +232,12 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   if(route==='biometric-days')return biometricDays(profile,method,input,params,sites);
   // Deleting saved Manual Biometric logs (and their imported punches) is for an HR administrator only (owner, 25 Nov 2026),
   // by either route (the browser sends it as a POST to …/delete).
-  const deletingManual=(route==='manual-biometric-days'&&method==='DELETE')||(route==='manual-biometric-days/delete'&&method==='POST');
+  const deletingManual=((route==='manual-biometric-days'||route==='manual-biometric-ii-days')&&method==='DELETE')||((route==='manual-biometric-days/delete'||route==='manual-biometric-ii-days/delete')&&method==='POST');
   if(deletingManual&&!attendanceAdmin(profile))fail('Only an HR administrator can delete saved manual biometric logs.',403);
   if(route==='manual-biometric-days/delete'&&method==='POST')return manualBiometricDays(profile,'DELETE',input,params,sites);
   if(route==='manual-biometric-days')return manualBiometricDays(profile,method,input,params,sites);
+  if(route==='manual-biometric-ii-days/delete'&&method==='POST')return manualBiometricIIDays(profile,'DELETE',input,params,sites);
+  if(route==='manual-biometric-ii-days')return manualBiometricIIDays(profile,method,input,params,sites);
   const findSites=async(db,siteName)=>{
    const exact=(await db.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[]))",[siteName,sites])).rows;
    if(exact.length)return exact;
@@ -291,7 +294,8 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const matchingSites=await findSites(db,siteName),matchingSiteIds=matchingSites.map(site=>site.id),site=matchingSites[0];
    const clean=rows.map(row=>{const serial=String(row?.serial||'').trim();const upload=validateUpload({device:{serial},punches:[{biometricId:row?.biometricId,punchedAt:row?.punchedAt,verify:row?.verify,punchType:row?.punchType}],users:[]});return {serial,punch:upload.punches[0]};});
    const days=[...new Set(clean.map(row=>row.punch.punchedAt.slice(0,10)))];
-   const locked=(await db.query('SELECT to_char(day,\'YYYY-MM-DD\') AS day FROM hr_manual_biometric_days WHERE site=$1 AND day=ANY($2::date[])',[site.name,days])).rows.map(row=>row.day);
+   const dayTable=source==='manual2'?'hr_manual_biometric_ii_days':'hr_manual_biometric_days';
+   const locked=(await db.query(`SELECT to_char(day,'YYYY-MM-DD') AS day FROM ${dayTable} WHERE site=$1 AND day=ANY($2::date[])`,[site.name,days])).rows.map(row=>row.day);
    if(locked.length)fail(`Manual biometric logs are saved and locked for ${locked.join(', ')}. Upload only unsaved dates.`,409);
    const serials=[...new Set(clean.map(row=>row.serial))];
    const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=ANY($1::uuid[]) AND serial=ANY($2::text[])',[matchingSiteIds,serials])).rows.map(row=>row.serial);
