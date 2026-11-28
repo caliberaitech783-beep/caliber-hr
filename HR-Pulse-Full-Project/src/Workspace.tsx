@@ -132,7 +132,7 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
         :masterMenu==='Trial Hierarchy'?<HierarchyMaster grant={session.grant}/>
         :masterMenu==='Holiday & Leave Master'?<LeaveMaster grant={session.grant} config={config} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>
         :null}
-    </section>} {page==='Employee Master'&&<>{employeeMenu==='Employee Master'&&registerVisible&&<EmployeeMasterRegister grant={session.grant}/>}{employeeMenu==='Leave / OD / Gatepass'&&<LeaveRequests grant={session.grant} module={config.leaveRequests} odModule={config.outDutyRequests} gateModule={config.gatePasses} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>} {employeeMenu==='Employee Transfer'&&<section className="transfer-management" aria-labelledby="employee-transfer-title">
+    </section>} {page==='Employee Master'&&<>{employeeMenu==='Employee Master'&&registerVisible&&<EmployeeMasterRegister grant={session.grant}/>}{employeeMenu==='Leave / OD / Gatepass'&&<LeaveRequests grant={session.grant} module={config.leaveRequests} odModule={config.outDutyRequests} gateModule={config.gatePasses} vtcModule={config.vtcRequests} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>} {employeeMenu==='Employee Transfer'&&<section className="transfer-management" aria-labelledby="employee-transfer-title">
       <div className="page-title"><div>
         <h1 id="employee-transfer-title">Employee Transfer</h1>
         <p>Enter the employee's current and destination details, save the draft, then submit it for approval.</p>

@@ -28,6 +28,8 @@ import {balance,checkLeave,employeeLeaveKinds,leaveApprovalSteps} from './leave.
 import {attachProgress,stepLabel} from './request-progress.mjs';
 import {gatePassWorkflow} from './gate-pass.mjs';
 import {nextRequestCode} from './request-number.mjs';
+import {createVtc} from './vtc-service.mjs';
+import {validateVtc} from './vtc.mjs';
 import { randomUUID,randomInt,createHash } from 'node:crypto';
 import { complianceKinds, modules, grantedMenus, canRead, canWrite, validate } from './modules.mjs';
 import {assignedSites,siteIds,scopeSql} from './scope.mjs';
@@ -45,8 +47,10 @@ const employeeDetailFields={
 };
 const employeeCategories=new Map([['fixed-term','Contract'],['fixed term','Contract'],['temporary','Contract'],...modules.employees.fields.find(field=>field.key==='category').options.map(value=>[value.toLowerCase(),value])]);
 const lockedEmployeeDetails=new Set(['Employee Code','Site *','Status','Employment Status']);
-export function createService(pool,{telegram=createTelegramNotifier()}={}) {
+export function createService(pool,{telegram=createTelegramNotifier(),fetchMis=fetch}={}) {
   const employeeDocuments=createEmployeeDocuments(pool);
+  /* VTC (vtc.mjs): HR keeps the request and its approval; Pulse-II keeps the record and marks the days present. */
+  const vtc=createVtc(pool,{fetchMis});
   /* Approval lists. `mine` keeps only requests the user submitted or must approve; every list stays inside the
      user's Pulse sites. `filter` and `limit` are fixed strings and numbers from this file, never user input. */
   const approvalRows=async(profile,{mine,filter='',limit})=>{
@@ -93,7 +97,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     if(kind==='sites')site=id;
     if(kind==='employeeTransfers'&&!data.employeeId)site=data.fromSiteId;
     else if(['assetEmployees','assetAllocationLog','assetExitClearances','employeeTransfers','outDutyRequests','gatePasses'].includes(kind)||employeeLeaveKinds.includes(kind))site=(await db.query("SELECT data->>'siteId' AS site FROM hr_records WHERE id=$1 AND kind='employees'",[data.employeeId])).rows[0]?.site;
-    if(!Object.hasOwn(managementModules,kind)&&![...complianceKinds,'calendarEvents','assetEmployees','assetAllocationLog','assetExitClearances','assets','employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers','outDutyRequests','gatePasses'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
+    if(!Object.hasOwn(managementModules,kind)&&![...complianceKinds,'calendarEvents','assetEmployees','assetAllocationLog','assetExitClearances','assets','employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','employeeTransfers','outDutyRequests','gatePasses','vtcRequests'].includes(kind))throw problem('Global master changes require an account without a site restriction',403);
     if(!ids.includes(site))throw problem('This record is outside your assigned Pulse site',403);
   }
   async function references(db,kind,data,id) {
@@ -137,7 +141,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       existing=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
       if(!existing)throw problem('Record not found',404);
       if(existing.version!==Number(input.version))throw problem('This record changed. Reload it before saving.',409);
-      if(['leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind)&&['APPROVED','CANCELLED','INACTIVE'].includes(existing.status))throw problem('Finalized requests cannot be edited',409);
+      if(['leaveRequests','leaveEncashments','outDutyRequests','gatePasses','vtcRequests'].includes(kind)&&['APPROVED','CANCELLED','INACTIVE'].includes(existing.status))throw problem('Finalized requests cannot be edited',409);
       if(kind==='leaveAllocations'&&existing.data.__importDraft!=='true'&&['employeeId','leaveTypeId','periodId'].some(key=>existing.data[key]!==input[key]))throw problem('Allocation employee, type and period cannot be changed. Create another allocation instead.',409);
       if(existing.status==='PENDING')throw problem('A record awaiting approval cannot be edited',409);
       if(!(existing.data.__importDraft==='true'&&existing.created_by===profile.actor))await locationAccess(db,profile,kind,existing.data,id);
@@ -145,6 +149,8 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     if(existing?.data.__importDraft==='true')input=await resolveImportReferences(db,kind,input);
     if(kind==='outDutyRequests')input={...input,code:await nextRequestCode(db,kind,existing?.code,input)};
     if(kind==='gatePasses')input={...input,code:await nextRequestCode(db,kind,existing?.code,input)};
+    /* VTC: the driver / operator is read from Employee Master at the chosen site, never typed (vtc-service.mjs). */
+    if(kind==='vtcRequests')input=await vtc.prepareVtc(db,input,existing);
     /* A transfer always starts from the employee's current posting: From location is read from Employee Master, never typed. */
     if(kind==='employeeTransfers')input=await transferEmployee(db,input,existing);
     data=validate(kind,input);
@@ -155,7 +161,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       const other=await otherPersonWithNumber(db,{code:data.code,name:data.name,registerFilter:isEmployeeEntry,exceptRecordId:id});
       if(other)throw problem('Employee number '+data.code+' already belongs to '+holderLine(other)+'. Use the number HR Pulse gives for a new employee.',409);
     }
-    const status=['employeeTransfers','outDutyRequests','gatePasses'].includes(kind)?'DRAFT':kind==='holidays'?'PENDING':['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)?'DRAFT':'ACTIVE';
+    const status=['employeeTransfers','outDutyRequests','gatePasses','vtcRequests'].includes(kind)?'DRAFT':kind==='holidays'?'PENDING':['employees','leaveRequests','leaveEncashments','outDutyRequests'].includes(kind)?'DRAFT':'ACTIVE';
     let result;
     if(id) result=await db.query('UPDATE hr_records SET code=$1,name=$2,data=$3,status=$4,version=version+1,updated_by=$5,updated_at=now() WHERE id=$6 RETURNING *',[data.code,data.name,data,status,profile.actor,id]);
     else result=await db.query('INSERT INTO hr_records(id,kind,code,name,data,status,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$7) RETURNING *',[randomUUID(),kind,data.code,data.name,data,status,profile.actor]);
@@ -207,12 +213,14 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         let companyId=record.data.companyId,siteId=record.data.siteId;
         let employeeDepartment='';
         if(['leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind)){const employee=(await db.query('SELECT data FROM hr_records WHERE id=$1',[record.data.employeeId])).rows[0];companyId=employee?.data.companyId;siteId=employee?.data.siteId;if(employee?.data.departmentId)employeeDepartment=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='departments'",[String(employee.data.departmentId)])).rows[0]?.name||'';}
-        const telegramFlow=kind==='leaveRequests'?await telegramLeaveFlow(db,siteId):null,odFlow=['outDutyRequests','gatePasses'].includes(kind)?await odSiteFlow(db,siteId):null,siteFlow=telegramFlow||odFlow;
+        /* VTC: the site and department are the request's own (read from Employee Master when it was saved); the OD route applies. */
+        if(kind==='vtcRequests'){siteId=record.data.siteId;employeeDepartment=String(record.data.department||'');validateVtc({...record.data});}
+        const telegramFlow=kind==='leaveRequests'?await telegramLeaveFlow(db,siteId):null,odFlow=['outDutyRequests','gatePasses','vtcRequests'].includes(kind)?await odSiteFlow(db,siteId):null,siteFlow=telegramFlow||odFlow;
         /* Site flow: only the site HR Manager raises leave / OD requests (on the employee's behalf). */
-        if(kind!=='leaveRequests'&&siteFlow?.type==='site'&&siteFlow.hods&&siteFlow.hrManager&&siteFlow.hrManager!==profile.actor){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'this site';throw problem(`${kind==='outDutyRequests'?'OD':kind==='gatePasses'?'Gate pass':'Leave'} requests at ${siteName} are raised by the site HR Manager (${siteFlow.hrManager}). Please contact them to submit this request.`,403);}
+        if(kind!=='leaveRequests'&&siteFlow?.type==='site'&&siteFlow.hods&&siteFlow.hrManager&&siteFlow.hrManager!==profile.actor){const siteName=(await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind='sites'",[siteId||''])).rows[0]?.name||'this site';throw problem(`${kind==='outDutyRequests'?'OD':kind==='vtcRequests'?'VTC':kind==='gatePasses'?'Gate pass':'Leave'} requests at ${siteName} are raised by the site HR Manager (${siteFlow.hrManager}). Please contact them to submit this request.`,403);}
         /* Office staff (Nagpur office, Chandrapur HO): office HR initiates → that office's HR Manager → Directors (office-staff-routing.mjs). */
         const officeRoute=kind==='employees'?await officeStaffHierarchy(db,siteId,profile.actor):null;
-        const hierarchy=officeRoute||(telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment,profile.actor)}}:kind==='outDutyRequests'?odApprovalWorkflow(odFlow,employeeDepartment):kind==='gatePasses'?gatePassWorkflow(odFlow,employeeDepartment):kind==='employeeTransfers'?await transferWorkflow(db,record.data.fromSiteId):['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId,{optional:kind==='employees',driverOperator:kind!=='employees'||await (async()=>{const d=record.data||{};const names=[];for(const [k,kindName] of [['departmentId','departments'],['designationId','designations']])if(d[k])names.push((await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind=$2",[String(d[k]),kindName])).rows[0]?.name||'');const f=d.fields||d.officeData||{};names.push(f['Department'],f['Designation'],f['Employee Category'],d.department,d.designation,d.category);return isDriverOperator(names.filter(Boolean).join(' '));})()}):null);
+        const hierarchy=officeRoute||(telegramFlow?{id:null,data:{steps:telegramSteps(telegramFlow,employeeDepartment,profile.actor)}}:['outDutyRequests','vtcRequests'].includes(kind)?odApprovalWorkflow(odFlow,employeeDepartment):kind==='gatePasses'?gatePassWorkflow(odFlow,employeeDepartment):kind==='employeeTransfers'?await transferWorkflow(db,record.data.fromSiteId):['employees','leaveRequests'].includes(kind)?await employeeHierarchy(db,siteId,{optional:kind==='employees',driverOperator:kind!=='employees'||await (async()=>{const d=record.data||{};const names=[];for(const [k,kindName] of [['departmentId','departments'],['designationId','designations']])if(d[k])names.push((await db.query("SELECT name FROM hr_records WHERE id::text=$1 AND kind=$2",[String(d[k]),kindName])).rows[0]?.name||'');const f=d.fields||d.officeData||{};names.push(f['Department'],f['Designation'],f['Employee Category'],d.department,d.designation,d.category);return isDriverOperator(names.filter(Boolean).join(' '));})()}):null);
         const rules=(await db.query("SELECT * FROM hr_records WHERE kind='approvalRules' AND status='ACTIVE' AND data->>'target'=$1 AND (COALESCE(data->>'companyId','')='' OR data->>'companyId'=$2) AND (COALESCE(data->>'siteId','')='' OR data->>'siteId'=$3)",[kind,companyId||'',siteId||''])).rows;
         const weight=r=>(r.data.companyId?1:0)+(r.data.siteId?2:0);rules.sort((a,b)=>weight(b)-weight(a));
         if(!hierarchy&&kind==='employeeTransfers')throw problem('Enable transfer routing and set the approvers in Approval Master › Employee Transfer before submitting',409);
@@ -256,7 +264,9 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     ...createMisTripCardDays(pool),
     ...createReportingManagers(pool),
     ...createTransferOptions(pool),
-    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests','gatePasses'].includes(kind))}]))}; },
+    async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests','gatePasses','vtcRequests'].includes(kind))}]))}; },
+    /* VTC: the drivers / operators of a site, the route preview, and the approved requests not yet in Pulse-II (Retry). */
+    vtcApi:(profile,route,method,input,params,grant)=>vtc.vtcApi(profile,route,method,input,params,grant),
     async list(profile,kind,params) {
       authorize(profile,kind);
       const page=Math.max(1,Math.min(10000,Number(params.get('page'))||1));
@@ -278,6 +288,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     /* Read-only: the employee details a leave / OD form fills in, and the approval route it would take. Nothing is saved. */
     async requestPreview(profile,params) {
       const kind=params.get('kind')||'',employeeId=params.get('employeeId')||'';
+      if(kind==='vtcRequests')return vtc.vtcPreview(profile,params);
       if(kind==='employeeTransfers'&&employeeId.startsWith('reg:')){
         authorize(profile,kind);
         const id=employeeId.slice(4);if(!uuid(id))throw problem('Invalid request preview');
@@ -369,18 +380,30 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         return saved;
       });
     },
-    async cancel(profile,kind,id,version){
-      authorize(profile,kind,true);if(!['leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind)||!uuid(id))throw problem('Invalid cancellation');
+    async cancel(profile,kind,id,version,{token,input}={}){
+      authorize(profile,kind,true);if(!['leaveRequests','leaveEncashments','outDutyRequests','gatePasses','vtcRequests'].includes(kind)||!uuid(id))throw problem('Invalid cancellation');
+      /* An approved VTC can be cancelled too: Pulse-II is told first (outside the transaction), so its days are no longer present. */
+      const cancellable=kind==='vtcRequests'?['DRAFT','PENDING','REJECTED','APPROVED']:['DRAFT','PENDING','REJECTED'];
+      let removed=false;
+      if(kind==='vtcRequests'){
+        const current=(await pool.query("SELECT * FROM hr_records WHERE id=$1 AND kind='vtcRequests'",[id])).rows[0];
+        if(current?.status==='APPROVED'&&current.version===Number(version)&&current.created_by===profile.actor){
+          await locationAccess(pool,profile,kind,current.data,id);
+          const reason=String(input?.reason||'').trim().slice(0,300)||`Cancelled in HR Pulse by ${profile.name||profile.actor}`;
+          await vtc.removeVtc(token,current,reason);removed=true;
+        }
+      }
        return transaction(async(db,afterCommit)=>{
         await db.query("SELECT id FROM hr_approvals WHERE record_id=$1 AND state='PENDING' FOR UPDATE",[id]);
         const record=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
         if(!record)throw problem('Record not found',404);
         await locationAccess(db,profile,kind,record.data,id);
-        if(record.version!==Number(version)||!['DRAFT','PENDING','REJECTED'].includes(record.status))throw problem('Only draft, pending or rejected requests can be cancelled',409);
+        if(record.version!==Number(version)||!cancellable.includes(record.status))throw problem(kind==='vtcRequests'?'Only draft, pending, rejected or approved requests can be cancelled':'Only draft, pending or rejected requests can be cancelled',409);
         if(record.created_by!==profile.actor)throw problem('Only the requester can cancel this request',403);
+        if(record.status==='APPROVED'&&!removed)throw problem('This request changed. Reload it.',409);
         await db.query("UPDATE hr_approvals SET state='CANCELLED',version=version+1,updated_at=now() WHERE record_id=$1 AND state='PENDING'",[id]);
-        await db.query("UPDATE hr_records SET status='CANCELLED',version=version+1,updated_by=$1,updated_at=now() WHERE id=$2",[profile.actor,id]);
-        await audit(db,profile.actor,'CANCEL',kind,id);return {status:'CANCELLED'};
+        await db.query("UPDATE hr_records SET status='CANCELLED',version=version+1,updated_by=$1,updated_at=now()"+(removed?",data=jsonb_set(data,'{pulse}',$3::jsonb)":'')+" WHERE id=$2",[profile.actor,id,...(removed?[JSON.stringify({state:'removed',at:new Date().toISOString()})]:[])]);
+        await audit(db,profile.actor,'CANCEL',kind,id,removed?{removedFromPulseII:true}:{});return {status:'CANCELLED'};
       });
     },
     async importMasters(profile,kind,records){
@@ -389,7 +412,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       return transaction(db=>importWithDrafts(db,profile,kind,records,input=>save(db,profile,kind,input)));
     },
     async deactivate(profile,kind,id,version) {
-      authorize(profile,kind,true);if(['leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind))throw problem('Use Cancel for requests',409);if(!uuid(id))throw problem('Invalid record ID');
+      authorize(profile,kind,true);if(['leaveRequests','leaveEncashments','outDutyRequests','gatePasses','vtcRequests'].includes(kind))throw problem('Use Cancel for requests',409);if(!uuid(id))throw problem('Invalid record ID');
       return transaction(async(db,afterCommit)=>{
         const current=(await db.query('SELECT * FROM hr_records WHERE id=$1 AND kind=$2 FOR UPDATE',[id,kind])).rows[0];
         if(!current)throw problem('Record not found',404);
@@ -471,7 +494,17 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
         return {imported:count,submitted,status:trialClearance?'ACTIVE':submitted===count?'PENDING':'DRAFT'};
       });
     },
-    async submit(profile,kind,id,version){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments','outDutyRequests','gatePasses'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');return transaction((db,afterCommit)=>submitRecord(db,profile,kind,id,version,afterCommit));},
+    async submit(profile,kind,id,version,{token}={}){authorize(profile,kind,true);if(!['employees','leaveRequests','leaveEncashments','outDutyRequests','gatePasses','vtcRequests'].includes(kind)||!uuid(id))throw problem('Invalid approval submission');
+      /* VTC: Pulse-II checks the request first (site, Employee Master, clash with another VTC / OD); a refusal stops the submit. */
+      if(kind==='vtcRequests'){
+        const record=(await pool.query("SELECT * FROM hr_records WHERE id=$1 AND kind='vtcRequests'",[id])).rows[0];
+        if(!record)throw problem('Record not found',404);
+        if(record.version!==Number(version)||!['DRAFT','REJECTED'].includes(record.status))throw problem('Reload the record; only drafts or rejected records can be submitted',409);
+        await locationAccess(pool,profile,kind,record.data,id);
+        validateVtc({...record.data});
+        await vtc.checkVtc(token,record);
+      }
+      return transaction((db,afterCommit)=>submitRecord(db,profile,kind,id,version,afterCommit));},
     async approvals(profile) {
       return approvalRows(profile,{mine:true,limit:200});
     },
@@ -544,10 +577,26 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
       if(result.wrong!==undefined)throw problem(`Wrong OTP (${result.wrong} attempt${result.wrong===1?'':'s'} left).`,400);
       return result;
     },
-    async decide(profile,id,input,trusted=false) {
+    async decide(profile,id,input,trusted=false,{token}={}) {
       if(!trusted&&!grantedMenus(profile).has('Approval Management'))throw problem('Approval Management permission required',403);
       if(!uuid(id)||!['APPROVED','REJECTED'].includes(input.decision))throw problem('Invalid approval decision');
       const comments=String(input.comments||'').trim();if(comments.length>2000||input.decision==='REJECTED'&&!comments)throw problem('A rejection reason is required (maximum 2000 characters)');
+      /* VTC, last approval: Pulse-II checks the request first (outside the transaction); a refusal keeps it waiting here.
+         Once approved, the course is sent to Pulse-II; when that fails the request stays APPROVED, marked for Retry. */
+      let vtcFinal=null;
+      if(!trusted&&input.decision==='APPROVED'&&typeof pool.query==='function'){ // (test pools without query never hold VTC)
+        const pending=(await pool.query('SELECT a.*,r.kind FROM hr_approvals a JOIN hr_records r ON r.id=a.record_id WHERE a.id=$1',[id])).rows[0];
+        if(pending?.kind==='vtcRequests'&&pending.state==='PENDING'&&pending.version===Number(input.version)&&Number(pending.stage)+1>=approvalSteps(pending).length){
+          const record=(await pool.query("SELECT * FROM hr_records WHERE id=$1 AND kind='vtcRequests'",[pending.record_id])).rows[0];
+          await locationAccess(pool,profile,'vtcRequests',record.data,record.id);
+          await vtc.checkVtc(token,record);vtcFinal=record.id;
+        }
+      }
+      const decided=await this.decideInTransaction(profile,id,input,trusted,comments);
+      if(vtcFinal&&decided.state==='APPROVED')decided.pulse=await vtc.pushVtc(token,vtcFinal,profile.actor);
+      return decided;
+    },
+    async decideInTransaction(profile,id,input,trusted,comments) {
       return transaction(async(db,afterCommit)=>{
         const approval=(await db.query('SELECT * FROM hr_approvals WHERE id=$1 FOR UPDATE',[id])).rows[0];
         if(!approval)throw problem('Approval not found',404);

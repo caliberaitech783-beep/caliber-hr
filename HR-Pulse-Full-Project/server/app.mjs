@@ -127,6 +127,8 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       }
       const telegramRoute=path.startsWith('/api/telegram/')?path.slice('/api/telegram/'.length):null;
       const assetRoute=path.startsWith('/api/asset-management/')?path.slice('/api/asset-management/'.length):null;
+      // VTC (vtc-service.mjs): drivers / operators of a site, route preview, approved requests not yet in Pulse-II and Retry.
+      const vtcRoute=path.match(/^\/api\/vtc\/(options|preview|pending|retry)$/)?.[1]||null;
       const documents=path==='/api/holiday-documents';
       const employeeDocuments=path==='/api/employee-documents';
       const employeeMasterRegister=path.match(/^\/api\/employee-master-register(?:\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}))?$/i);
@@ -141,7 +143,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const completedEmployeeDelete=path.match(/^\/api\/approvals\/completed-employees\/([a-fA-F0-9-]+)\/permanent-delete$/);
       const leaveOtp=path.match(/^\/api\/approvals\/([a-fA-F0-9-]+)\/(otp|otp-verify)$/);
       const simple={'/api/holiday-groups':'holidayGroups','/api/hierarchies':'hierarchies','/api/transfer-flows':'transferFlows','/api/config':'config','/api/lookups':'lookups','/api/summary':'summary','/api/audit':'audit','/api/approvals':'approvals','/api/approvals/employees':'employeeApprovals','/api/approvals/completed-employees':'completedEmployees','/api/reporting-managers':'reportingManagers','/api/request-preview':'requestPreview','/api/transfer-options':'transferOptions'};
-      if(path!=='/api/payroll'&&!telegramRoute&&!attendanceRoute&&!assetRoute&&!documents&&!employeeDocuments&&!employeeMasterRegister&&!employeeBankDetails&&!employeeBankDetailsDeleteAll&&!registerRemove&&!deletion&&!masterImport&&!record&&!decision&&!completedEmployeeDelete&&!leaveOtp&&!simple[path]&&!['/api/import/employees','/api/import/trial-employee','/api/aadhaar/scan','/api/letters/email','/api/employee-code/next'].includes(path))return send(404,{error:'Not found'});
+      if(path!=='/api/payroll'&&!telegramRoute&&!vtcRoute&&!attendanceRoute&&!assetRoute&&!documents&&!employeeDocuments&&!employeeMasterRegister&&!employeeBankDetails&&!employeeBankDetailsDeleteAll&&!registerRemove&&!deletion&&!masterImport&&!record&&!decision&&!completedEmployeeDelete&&!leaveOtp&&!simple[path]&&!['/api/import/employees','/api/import/trial-employee','/api/aadhaar/scan','/api/letters/email','/api/employee-code/next'].includes(path))return send(404,{error:'Not found'});
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
       if(!profile)return send(401,{error:'Sign in with your Caliber Pulse account to continue'});
@@ -165,6 +167,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       if(path==='/api/payroll'&&['GET','POST'].includes(req.method))result=await service.payroll(profile,req.method,url.searchParams,req.method==='POST'?await body(req):{});
       else if(telegramRoute&&['GET','POST'].includes(req.method))result=await service.telegramApi(profile,telegramRoute,req.method,req.method==='POST'?await body(req,12_000_000):{});
       else if(attendanceRoute&&['GET','POST'].includes(req.method))result=await service.attendanceApi(profile,attendanceRoute,req.method,req.method==='POST'?await body(req):{},url.searchParams,token);
+      else if(vtcRoute&&['GET','POST'].includes(req.method))result=await service.vtcApi(profile,vtcRoute,req.method,req.method==='POST'?await body(req,8_000):{},url.searchParams,token);
       else if(assetRoute&&['GET','POST'].includes(req.method))result=await service.assetApi(profile,assetRoute,req.method,req.method==='POST'?await body(req):{},url.searchParams);
       else if(documents&&['GET','POST'].includes(req.method))result=await service.holidayDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);
       else if(employeeDocuments&&['GET','POST'].includes(req.method))result=await service.employeeDocuments(profile,url.searchParams,req.method==='POST'?await body(req):undefined);
@@ -189,10 +192,10 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         else if(!id&&req.method==='POST')result=await service.save(profile,kind,await body(req));
         else if(id&&!action&&req.method==='PUT')result=await service.save(profile,kind,await body(req),id);
         else if(id&&!action&&kind==='employees'&&req.method==='PATCH')result=await service.updateEmployeeDetails(profile,id,await body(req));
-        else if(action&&req.method==='POST'){const input=await body(req);result=await service[action](profile,kind,id,input.version);}
+        else if(action&&req.method==='POST'){const input=await body(req);result=await service[action](profile,kind,id,input.version,{token,input});}
         else throw problem('Method not allowed',405);
       }else if(completedEmployeeDelete&&req.method==='POST')result=await service.permanentDeleteCompletedEmployee(profile,completedEmployeeDelete[1]);
-      else if(decision&&req.method==='POST')result=await service.decide(profile,decision[1],await body(req));
+      else if(decision&&req.method==='POST')result=await service.decide(profile,decision[1],await body(req),false,{token});
       else if(leaveOtp&&req.method==='POST')result=await service.leaveOtp(profile,leaveOtp[1],await body(req),leaveOtp[2]==='otp-verify');
       else if(masterImport&&req.method==='POST')result=await service.importMasters(profile,masterImport[1],(await body(req)).records);
       else if(path==='/api/import/employees'&&req.method==='POST'){const input=await body(req);result=await service.importEmployees(profile,input.records,input.submitForApproval===true);}

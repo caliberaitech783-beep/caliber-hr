@@ -2,6 +2,7 @@ import {isProjectManager} from './pm-access.mjs';
 import {managementModules, managementMenus} from './management-modules.mjs';
 import {leaveModules,requestFields,policyFields,prepareLeave,validateLeave} from './leave.mjs';
 import {gatePassTypes,validateGatePass} from './gate-pass.mjs';
+import {VTC_COURSES,VTC_STATUSES,validateVtc} from './vtc.mjs';
 const text = (key, label, required = false) => ({ key, label, type: 'text', required });
 const ref = (key, label, reference, required = false) => ({ key, label, type: 'reference', reference, required });
 const date = (key, label, required = false) => ({ key, label, type: 'date', required });
@@ -31,6 +32,8 @@ export const modules = {
   assets: module('Assets','Asset Management',[text('code','Asset code',true),text('name','Asset name',true),ref('siteId','Locations','sites',true),text('department','Departments'),text('vendor','Vendors'),text('condition','Conditions'),text('assetStatus','Asset Status'),text('employeeStatus','Employee Status'),text('movementAction','Movement Action'),text('assetGroup','Asset Group'),text('depreciationMethod','Dep. Method'),text('disposalMethod','Disposal Method')]),
   gatePasses: module('Gate Pass','Employee Master',[text('code','Gate pass number',true),ref('employeeId','Employee ID','employees',true),text('name','Employee name',true),ref('companyId','Company','companies'),text('department','Department'),ref('siteId','Location','sites'),date('passDate','Date',true),select('passType','Pass type',gatePassTypes,true),{key:'outTime',label:'Out time',type:'time',required:true},{key:'returnTime',label:'Expected return',type:'time',required:true},text('purpose','Purpose / reason',true)]),
   outDutyRequests: module('Out Duty Form','Employee Master',[text('code','OD reference',true),text('name','Employee name',true),ref('employeeId','Employee ID','employees',true),ref('companyId','Company','companies'),text('designation','Designation',true),text('department','Department',true),ref('siteId','Site / Location','sites',true),date('outDutyDate','From date',true),date('toDate','To date',true),text('purpose','Purpose of out duty',true),text('visitLocation','Location / Place to visit',true),text('authorityName','Authority name'),text('authoritySignature','Reporting to'),text('employeeSignature','Employee signature (typed name)'),date('signatureDate','Signature date')]),
+  /* VTC course of a driver / operator (vtc.mjs). Caliber ID, name, department and designation come from Employee Master. */
+  vtcRequests: module('VTC Form','Employee Master',[text('code','VTC reference',true),text('name','Employee name',true),ref('siteId','Site','sites',true),text('employeeId','Employee (Caliber ID · name)',true),text('registerId','Employee Master register line'),text('empCode','Caliber ID'),text('department','Department'),text('designation','Designation'),date('fromDate','From date',true),date('toDate','To date',true),select('course','Course',VTC_COURSES,true),text('courseOther','Course name (Other)'),text('institute','Institute / place',true),text('trainer','Trainer'),text('certificate','Certificate no.'),select('vtcStatus','Status',VTC_STATUSES,true),text('remarks','Remarks')]),
   employeeTransfers: module('Employee transfers','Employee Master',[text('code','Transfer reference',true),text('name','Reason for transfer',true),ref('employeeId','Employee','employees'),date('transferDate','Transfer date',true),ref('fromSiteId','From location','sites',true),ref('toSiteId','To location','sites',true),text('fromDesignation','From designation',true),text('toDesignation','To designation',true),text('fromManager','From reporting manager',true),text('toManager','To reporting manager',true),text('registerId','Employee Master register line'),text('empCode','Employee ID'),text('employeeName','Employee name')]),
   companies: module('Companies', 'Master Configuration', [text('code','Company code',true),text('name','Company name',true),text('address','Registered address'),text('email','Company email')]),
   clients: module('Clients','Master Configuration',[text('code','Client code',true),text('name','Client name',true),text('contact','Contact details')]),
@@ -48,7 +51,7 @@ export const modules = {
   approvalRules: module('Approval matrix','Master Configuration',[text('code','Rule code',true),text('name','Rule name',true),select('target','Module',['employees','leaveRequests'],true),ref('workflowId','Workflow','workflows',true),ref('companyId','Company (blank = all)','companies'),ref('siteId','Site (blank = all)','sites')]),
 };
 Object.assign(modules,leaveModules,managementModules);
-modules.outDutyRequests.autoCode=true;modules.gatePasses.autoCode=true;modules.employeeTransfers.autoCode=true;
+modules.outDutyRequests.autoCode=true;modules.vtcRequests.autoCode=true;modules.gatePasses.autoCode=true;modules.employeeTransfers.autoCode=true;
 modules.leaveRequests.fields=requestFields;modules.leaveRequests.autoCode=true;
 modules.leavePolicies.fields=policyFields;
 modules.holidays.fields.push(select('holidayType','Holiday type',['Public','Company','Optional','National','Government','Festival','Declared','Gazetted','Gazetted (General)','Paid (PH)']));
@@ -62,6 +65,8 @@ const leaveMenuOnly = granted => granted.has('Leave / OD / Gatepass') && granted
 export function canRead(profile, kind) {
   const granted = grantedMenus(profile);
   if(granted.has('Leave / OD / Gatepass')&&['leaveRequests','outDutyRequests','gatePasses','employees','companies','sites','departments','leaveTypes','leavePolicies','leavePeriods'].includes(kind))return true;
+  /* VTC is raised by HR for drivers and operators (beside OD), never by a leave-only login. */
+  if(kind==='vtcRequests')return !leaveMenuOnly(granted)&&(granted.has('Leave / OD / Gatepass')||granted.has('Employee Master'));
   if(leaveMenuOnly(granted))return false;
   if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu);
   if(kind==='calendarEvents')return granted.has('Calendar');
@@ -73,6 +78,8 @@ export function canRead(profile, kind) {
 export function canWrite(profile, kind) {
   const granted = grantedMenus(profile);
   if(granted.has('Leave / OD / Gatepass')&&['leaveRequests','outDutyRequests','gatePasses'].includes(kind))return true;
+  /* VTC is raised by HR for drivers and operators (beside OD), never by a leave-only login. */
+  if(kind==='vtcRequests')return !leaveMenuOnly(granted)&&(granted.has('Leave / OD / Gatepass')||granted.has('Employee Master'));
   if(leaveMenuOnly(granted))return false;
   if(Object.hasOwn(managementModules,kind))return granted.has(modules[kind].menu);
   if(kind==='calendarEvents')return granted.has('Calendar');
@@ -110,6 +117,7 @@ export function validate(kind, input) {
     data[field.key] = field.type === 'number' ? Number(value) : value;
   }
   if (kind==='gatePasses') validateGatePass(data);
+  if (kind==='vtcRequests') validateVtc(data);
   /* A transfer is for an HR-joined employee (employeeId) or an Employee Master register line (registerId). */
   if (kind==='employeeTransfers' && !data.employeeId && !data.registerId) throw Object.assign(new Error('Employee is required'),{status:400});
   if (kind==='employeeTransfers' && data.fromSiteId && data.fromSiteId===data.toSiteId) throw Object.assign(new Error('To location must be different from the current location'),{status:400});
