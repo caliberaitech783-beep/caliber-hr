@@ -26,6 +26,9 @@ export const ATTENDANCE_MENU=[
  {group:'Settings',items:['HR policy · attendance']},
 ] as const;
 export type AttendanceView=typeof ATTENDANCE_MENU[number]['items'][number];
+/** Opened from any one of them, these regularization screens show as tabs on one page (owner, 28 Nov 2026). */
+export const REGULARIZATION_TABS=['OD (on duty)','Miss punch','Gate pass','Overtime','Weekly off and holiday'] as const;
+const TAB_LABEL:Record<string,string>={'OD (on duty)':'OD'};
 export const attendanceViews:string[]=ATTENDANCE_MENU.flatMap(g=>[...g.items]);
 export const attendanceGroup=(view:string)=>ATTENDANCE_MENU.find(g=>(g.items as readonly string[]).includes(view))?.group||'';
 /** The legacy sheet-upload module opened on one view, rating days with the saved policy. */
@@ -67,11 +70,18 @@ export default function AttendanceManagement({grant,view='Biometric integration'
  const [policyState]=usePolicy(grant);
  const policy=policyState?.policy;
  const [shiftView,setShiftView]=useState<'duties'|'settings'>('duties');
- const current=(attendanceViews.includes(view)?view:'Biometric integration') as AttendanceView;
+ const [picked,setPicked]=useState(view);
+ useEffect(()=>setPicked(view),[view]);
+ const current=(attendanceViews.includes(picked)?picked:'Biometric integration') as AttendanceView;
+ const open=(next:AttendanceView)=>{setPicked(next);onNavigate?.(next);};
+ const tabbed=(REGULARIZATION_TABS as readonly string[]).includes(current);
  return <section className="attendance-module attendance" aria-label="Attendance Management">
   <div className="attendance-head">
    <div><h1>Attendance Management</h1>{current!=='Biometric integration'&&<p className="attendance-crumb">{attendanceGroup(current)} › {current}</p>}</div>
   </div>
+  {tabbed&&<div className="module-tabs attendance-reg-tabs" role="tablist" aria-label="Attendance regularization">
+   {REGULARIZATION_TABS.map(tab=><button key={tab} type="button" role="tab" aria-selected={current===tab} className={current===tab?'selected':''} onClick={()=>open(tab)}>{TAB_LABEL[tab]||tab}</button>)}
+  </div>}
   {current==='Biometric integration'&&<BiometricIntegration grant={grant} policy={policy} onNavigate={onNavigate}/>}
   {current==='Trip card and logbook'&&<MisAttendance grant={grant} policy={policy}/>}
   {current==='Late come / early going'&&<PunctualitySummary grant={grant} initialMonth={indiaToday().slice(0,7)}/>}
