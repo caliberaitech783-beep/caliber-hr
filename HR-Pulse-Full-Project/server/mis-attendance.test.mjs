@@ -137,3 +137,68 @@ test('an explicit refresh forwards the exact selected site and bypass flag to Pu
   assert.equal(requestedUrl.searchParams.get('from'), '2026-11-13');
   assert.equal(requestedUrl.searchParams.get('to'), '2026-11-15');
 });
+
+// Owner, 28 Nov 2026: one day of Majri OC took about 14 seconds. Measured on live: every answer carried three days of
+// all seven sites (15.9 MB), and the same 15.9 MB was written to the 30 second copy and sent to the browser.
+test('the roster\'s day read keeps the chosen site only, in the answer and in the stored copy', async () => {
+  const line = (site, employeeId, shift = 'S1', extra = {}) => ({date: '2026-11-16', site, siteKey: site.toLowerCase(), shift, employeeId, employeeKey: employeeId, employeeName: employeeId, ...extra});
+  const whole = {
+    attendanceEquipment: [line('Majri OC', 'CMLL1'), line('Sasti OC', 'CMLL9')],
+    attendanceShifts: [{siteKey: 'majri oc', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'B1'}, {siteKey: 'sasti oc', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'B2'}],
+    // CMLL2 has a card at both sites in the same shift: the roster must still see both to mark them.
+    otDuties: [line('Majri OC', 'CMLL1'), line('Majri OC', 'CMLL2', 'S2'), line('Sasti OC', 'CMLL2', 'S2'), line('Sasti OC', 'CMLL9'), line('Jayant OC', 'CMLL7')],
+    ot: [{site: 'Sasti OC', siteKey: 'sasti oc', employeeId: 'CMLL9', schedule: ''}],
+    performance: [line('Majri OC', 'CMLL1'), line('Jayant OC', 'CMLL7')], details: [line('Sasti OC', 'CMLL9')], exceptions: [line('Jayant OC', 'CMLL7', 'S1', {reason: 'x'})],
+    days: [{siteKey: 'majri oc', date: '2026-11-16', lines: 2, signature: 'm'}, {siteKey: 'sasti oc', date: '2026-11-16', lines: 2, signature: 's'}]
+  };
+  const stored = new Map();
+  let fetches = 0, requestedUrl, correctionIds;
+  const db = {
+    async query(sql, args) {
+      if (sql.startsWith('SELECT report')) {const report = stored.get(args[0]); return {rows: report ? [{report, fetched_at: new Date()}] : []};}
+      if (sql.startsWith('INSERT INTO hr_mis_attendance_cache')) stored.set(args[0], args[1]);
+      return {rows: []};
+    },
+    release() {}
+  };
+  const pool = {
+    connect: async () => db,
+    async query(sql, args) {
+      if (sql.includes('hr_mis_attendance_corrections')) {correctionIds = args[0]; return {rows: []};}
+      if (sql.includes("kind='sites'")) return {rows: [{name: 'Majri OC'}]};
+      return {rows: []};
+    }
+  };
+  const api = createMisAttendance(pool, {fetchMis: async url => {fetches++; requestedUrl = url; return Response.json(whole);}});
+  const ask = extra => api({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site: 'Majri OC', ...extra}));
+
+  const trimmed = await ask({trim: '1'});
+  // Pulse-II is asked exactly as before.
+  assert.equal(requestedUrl.searchParams.get('from'), '2026-11-15');
+  assert.equal(requestedUrl.searchParams.get('to'), '2026-11-17');
+  assert.deepEqual(trimmed.otDuties.map(d => d.site + ' ' + d.employeeId), ['Majri OC CMLL1', 'Majri OC CMLL2', 'Sasti OC CMLL2']);
+  assert.deepEqual(trimmed.attendanceEquipment.map(d => d.site), ['Majri OC']);
+  assert.deepEqual(trimmed.attendanceShifts.map(d => d.siteKey), ['majri oc']);
+  assert.deepEqual([trimmed.performance.length, trimmed.details.length, trimmed.exceptions.length, trimmed.ot.length], [1, 0, 0, 0]);
+  assert.deepEqual(trimmed.days, [{siteKey: 'majri oc', date: '2026-11-16', lines: 2, signature: 'm'}]);
+  assert.equal(trimmed.signed, true);
+  assert.deepEqual(trimmed.misSites, ['Jayant OC', 'Majri OC', 'Sasti OC']);
+  assert.equal(correctionIds.length, 3);
+  // The stored copy is the small one, and a second PC is served from it without asking Pulse-II again.
+  assert.equal(stored.size, 1);
+  assert.equal([...stored.values()][0].otDuties.length, 3);
+  const again = await ask({trim: '1'});
+  assert.deepEqual(again.otDuties, trimmed.otDuties);
+  // How long Pulse-II took and how long the copy took to store go with the answer that waited, and are not stored.
+  assert.equal(Number.isInteger(trimmed.timing.misMs) && Number.isInteger(trimmed.timing.storeMs), true);
+  assert.equal(again.timing, undefined);
+  assert.equal([...stored.values()][0].timing, undefined);
+  assert.equal(fetches, 1);
+
+  // A screen that does not ask for it (Trip card and logbook) still gets every site, from its own copy.
+  const everything = await ask({});
+  assert.equal(fetches, 2);
+  assert.equal(everything.otDuties.length, 5);
+  assert.equal(everything.misSites, undefined);
+  assert.equal(stored.size, 2);
+});

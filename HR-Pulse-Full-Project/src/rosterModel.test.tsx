@@ -255,6 +255,26 @@ it('reads MIS one day per request, retries failed days, and keeps the days that 
  expect(progress.at(-1)).toBe(4);
 });
 
+// Owner, 28 Nov 2026: one day of one site came back as three days of all seven sites (15.9 MB, about 14 seconds).
+it('asks the server for the chosen site only, and takes the names of MIS\'s sites from its answer',async()=>{
+ const {fetchTripCards,setRetryPause}=await import('./rosterData');
+ setRetryPause(async()=>{});
+ const asked:URLSearchParams[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const query=new URL(url,'https://x').searchParams;asked.push(query);
+  const report=misReport(),gevra=query.get('trim')==='1';
+  // The server's cut answer holds Gevra only and lists the sites it left out.
+  return Response.json(gevra?{...report,otDuties:report.otDuties.filter(d=>d.site==='Gevra'),misSites:['Dipka','Gevra','Kusmunda']}:report);}));
+ const oneSite=await fetchTripCards('a'.repeat(43),'2026-11-02','2026-11-02','Gevra');
+ expect(asked.map(q=>q.get('trim'))).toEqual(['1']);
+ expect(oneSite.misSites).toEqual(['Dipka','Gevra','Kusmunda']);
+ expect(oneSite.rows.every(r=>r.site==='Gevra')).toBe(true);
+ // Every site (the Weekly register's comparison) is not cut.
+ asked.length=0;
+ const everySite=await fetchTripCards('a'.repeat(43),'2026-11-02','2026-11-02','');
+ expect(asked.map(q=>[q.get('trim'),q.get('site')])).toEqual([[null,null]]);
+ expect(everySite.misSites).toEqual(['Dipka','Gevra']);
+});
+
 it('reports each day as it arrives so the muster fills in day by day',async()=>{
  const {streamTripCards,setRetryPause}=await import('./rosterData');
  const {applyDay}=await import('./AttendanceRoster');
