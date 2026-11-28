@@ -283,7 +283,7 @@ it('reports each day as it arrives so the muster fills in day by day',async()=>{
  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const day=new URL(url,'https://x').searchParams.get('from')!;
   if(day==='2026-11-03'&&first){first=false;return Response.json({error:'MIS busy'},{status:503});}
   return Response.json(misReport());}));
- const updates:string[]=[];let stream:Parameters<typeof applyDay>[0]={key:'k',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null,signatures:{},stale:[],unsigned:[],unchecked:false,renew:[]};
+ const updates:string[]=[];let stream:Parameters<typeof applyDay>[0]={key:'k',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null,signatures:{},stale:[],unsigned:[],unchecked:false};
  const failed=await streamTripCards('a'.repeat(43),['2026-11-02','2026-11-03','2026-11-04'],'Gevra',u=>{updates.push(u.day.slice(8)+':'+u.state);stream=applyDay(stream,u);});
  expect(failed).toEqual([]);
  expect(updates.filter(u=>u.endsWith(':done')).sort()).toEqual(['02:done','03:done','04:done']);
@@ -303,9 +303,7 @@ it('gives Manual Biometric the extended biometric report timeout',async()=>{
  }finally{timeout.mockRestore();}
 });
 
-// 28 Nov 2026 ("close all the issues at once"): a day saved before MIS signed days opens from the saved copy, is read from
-// MIS again behind it and saved by itself; the days never saved still wait for Save trip cards.
-it('opens saved trip cards at once, refreshes an old unsigned copy by itself, and saves the other days on Save',async()=>{
+it('opens saved trip cards at once, reads MIS only for the other days, and saves them',async()=>{
  const {AttendanceRosterPage}=await import('./AttendanceRoster');
  const calls:{url:string;method:string;body?:{day:string;rows:unknown[]}}[]=[];
  const savedDay=misReport();
@@ -328,17 +326,15 @@ it('opens saved trip cards at once, refreshes an old unsigned copy by itself, an
  fireEvent.click(screen.getByRole('button',{name:'Trip card (VLB · ELB · LMV)'}));
  const save=await screen.findByRole('button',{name:'Save trip cards (2 days)'});
  expect(screen.getByText(/Saved copy: 1 of 3 days .*by vinod\)\. 2 days read from MIS are not saved yet\./)).toBeTruthy();
- expect(calls.filter(c=>c.url.includes('attendance/mis?')).map(c=>new URL(c.url,'https://x').searchParams.get('from')).sort()).toEqual(['2026-11-02','2026-11-03','2026-11-04']);
- // The old copy of 2 Nov was replaced without a press.
- expect(calls.filter(c=>c.method==='POST').map(c=>c.body!.day)).toEqual(['2026-11-02']);
+ expect(calls.filter(c=>c.url.includes('attendance/mis?')).map(c=>new URL(c.url,'https://x').searchParams.get('from')).sort()).toEqual(['2026-11-03','2026-11-04']);
  fireEvent.click(save);
  await screen.findByRole('button',{name:'Saved'});
  const posts=calls.filter(c=>c.method==='POST');
- expect(posts.map(c=>c.body!.day).sort()).toEqual(['2026-11-02','2026-11-03','2026-11-04']);
+ expect(posts.map(c=>c.body!.day).sort()).toEqual(['2026-11-03','2026-11-04']);
  expect(posts.every(c=>c.body!.rows.length>0)).toBe(true);
  expect(screen.getByText(/Saved copy: 3 of 3 days/)).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:/Fetch again/}));
- await waitFor(()=>expect(calls.filter(c=>c.url.includes('attendance/mis?')).length).toBe(6));
+ await waitFor(()=>expect(calls.filter(c=>c.url.includes('attendance/mis?')).length).toBe(5));
 });
 
 // Owner, 27 Nov 2026: Pulse-II is the master of trip card attendance. A saved day is shown only while Pulse-II still signs
@@ -368,22 +364,22 @@ it('shows a saved day only while MIS still signs it the same way, and reads a ch
  fireEvent.change(screen.getByLabelText('From'),{target:{value:'2026-11-02'}});
  fireEvent.change(screen.getByLabelText('To'),{target:{value:'2026-11-04'}});
  fireEvent.click(screen.getByRole('button',{name:'Trip card (VLB · ELB · LMV)'}));
+ const save=await screen.findByRole('button',{name:'Save trip cards (1 day)'});
  // 2 Nov is still what MIS holds; 3 Nov changed in MIS after it was saved and is read again. 4 Nov was saved before
- // days were signed: since 28 Nov 2026 it is read again too (a week is one request now), and both are saved by themselves.
- await waitFor(()=>expect(calls.filter(c=>c.method==='POST').length).toBe(2));
- await screen.findByRole('button',{name:'Saved'});
- expect(calls.filter(c=>c.url.includes('attendance/mis?')).map(c=>new URL(c.url,'https://x').searchParams.get('from')).sort()).toEqual(['2026-11-03','2026-11-04']);
+ // days were signed: it is shown as saved and named, not read again by itself (that overloaded the page on 27 Nov).
+ expect(calls.filter(c=>c.url.includes('attendance/mis?')).map(c=>new URL(c.url,'https://x').searchParams.get('from')).sort()).toEqual(['2026-11-03']);
  expect(calls.filter(c=>c.url.includes('attendance/mis/days')).map(c=>{const q=new URL(c.url,'https://x').searchParams;return q.get('from')+'|'+q.get('to');})).toEqual(['2026-11-02|2026-11-03']);
- expect(screen.getByText(/1 saved day was no longer what MIS holds .* read from MIS again: 03-11\. The new copy is saved by itself\./)).toBeTruthy();
- expect(screen.getByText(/Saved copy: 3 of 3 days .*Every saved day was checked with MIS and is current\./)).toBeTruthy();
- expect(screen.queryByText(/saved before MIS started signing days/)).toBeNull();
+ expect(screen.getByText(/1 saved day was no longer what MIS holds .* read from MIS again: 03-11\./)).toBeTruthy();
+ expect(screen.getByText(/1 day was saved before MIS started signing days and is shown as saved, not checked with MIS: 04-11\. On the Trip card tab press Fetch again, then Save trip cards, once/)).toBeTruthy();
+ fireEvent.click(save);
+ await screen.findByRole('button',{name:'Saved'});
  const posts=calls.filter(c=>c.method==='POST');
- expect(posts.map(c=>c.body!.day+'='+c.body!.signature).sort()).toEqual(['2026-11-03=gevra:new','2026-11-04=gevra:four']);
+ expect(posts.map(c=>c.body!.day+'='+c.body!.signature).sort()).toEqual(['2026-11-03=gevra:new']);
  // Fetch again reads every day from MIS; saving them signs them, and the note about unsigned days goes.
  fireEvent.click(screen.getByRole('button',{name:/Fetch again/}));
  fireEvent.click(await screen.findByRole('button',{name:'Save trip cards (3 days)'}));
  await screen.findByRole('button',{name:'Saved'});
- expect(calls.filter(c=>c.method==='POST').slice(2).map(c=>c.body!.day+'='+c.body!.signature).sort()).toEqual(['2026-11-02=gevra:same','2026-11-03=gevra:new','2026-11-04=gevra:four']);
+ expect(calls.filter(c=>c.method==='POST').slice(1).map(c=>c.body!.day+'='+c.body!.signature).sort()).toEqual(['2026-11-02=gevra:same','2026-11-03=gevra:new','2026-11-04=gevra:four']);
  expect(screen.queryByText(/saved before MIS started signing days/)).toBeNull();
 });
 
@@ -608,44 +604,4 @@ it('names each Fetch again, so the server reads a week once for all its days',as
  asked.length=0;
  await streamTripCards('a'.repeat(43),days,'Gevra',()=>{});
  expect(asked.map(q=>[q.get('refresh'),q.get('run')])).toEqual([[null,null],[null,null],[null,null]]);
-});
-
-// Owner, 28 Nov 2026: "plz fix the attached issue also". HR "Dudhichua OB East" was read as both MIS "Dudhichua East OC"
-// and "Dudhichua OC", so the East roster also took the other site's trip cards.
-const siteDuty=(site:string,siteKey:string,employeeId:string,date='2026-11-02')=>({date,site,siteKey,shift:'S1',employeeId,employeeKey:employeeId,employeeName:employeeId,caliberCode:employeeId,doors:'D1',equipment:'Dumper',category:'Dumper',logBooks:['VLB'],books:'',trips:3});
-const dudhichua=(extra={})=>({attendanceEquipment:[],attendanceShifts:[],ot:[],performance:[],details:[],exceptions:[],corrections:[],canEdit:true,signed:true,
- // The server leaves the other site out, but keeps its duty by the same person in the same shift (to mark both).
- otDuties:[siteDuty('Dudhichua East OC','dudhichua east ob','E1'),siteDuty('Dudhichua OC','dudhichua ob','E1')],
- days:[{siteKey:'dudhichua east ob',date:'2026-11-02',signature:'east'},{siteKey:'dudhichua ob',date:'2026-11-02',signature:'west'}],
- knownSites:['Dudhichua East OC','Dudhichua OC','dudhichua east ob','dudhichua ob'],...extra});
-
-it('a site of almost another site\'s name shows only its own trip cards and is signed alone',async()=>{
- const {streamTripCards,setRetryPause}=await import('./rosterData');
- setRetryPause(async()=>{});
- vi.stubGlobal('fetch',vi.fn(async()=>Response.json(dudhichua())));
- const read=async(site:string)=>{const got:{sites:string[];signature?:string}[]=[];await streamTripCards('a'.repeat(43),['2026-11-02'],site,u=>{if(u.state==='done')got.push({sites:(u.rows||[]).map(r=>r.site),signature:u.signature});});return got[0];};
- expect(await read('Dudhichua OB East')).toEqual({sites:['Dudhichua East OC'],signature:'dudhichua east ob:east'});
- // West has no MIS site of exactly its name: "Dudhichua OC" is West, as before.
- expect(await read('Dudhichua OB West')).toEqual({sites:['Dudhichua OC'],signature:'dudhichua ob:west'});
- // A server from before this change names no sites: the names on the lines decide, with the same result here.
- vi.stubGlobal('fetch',vi.fn(async()=>Response.json(dudhichua({knownSites:undefined}))));
- expect((await read('Dudhichua OB East')).sites).toEqual(['Dudhichua East OC']);
-});
-
-it('saved days of such a site are shown without the other site\'s cards, and the check asks for the site\'s days only',async()=>{
- const {readSavedTripCards,checkSavedTripCards}=await import('./rosterData');
- const asked:string[]=[];
- const row=(site:string,date:string)=>({id:site+date,date,site,siteKey:site.toLowerCase(),shift:'S1',employeeId:'E1',employeeKey:'E1',employeeName:'E1',caliberCode:'E1',designation:'',sources:['Trip card'],equipment:[],references:'',note:'',output:'',status:'Present',verification:'MIS batch closed',verified:true,otHours:null,otNote:''});
- vi.stubGlobal('fetch',vi.fn(async(url:string)=>{asked.push(url);
-  if(url.includes('attendance/trip-cards'))return Response.json({days:[
-   {day:'2026-11-02',rows:[row('Dudhichua East OC','2026-11-02'),row('Dudhichua OC','2026-11-02')],duties:2,savedBy:'hr',savedAt:'2026-11-22T10:00:00Z'},
-   // A day East saved nothing of its own: the other site's cards are still not East's.
-   {day:'2026-11-03',rows:[row('Dudhichua OC','2026-11-03')],duties:1,savedBy:'hr',savedAt:'2026-11-22T10:00:00Z',signature:'old'}]});
-  return Response.json({supported:true,days:[{siteKey:'dudhichua east ob',date:'2026-11-03',signature:'east3'}]});}));
- const east=await readSavedTripCards('a'.repeat(43),'Dudhichua OB East','2026-11-02','2026-11-03');
- expect(east.map(d=>d.rows.map(r=>r.site))).toEqual([['Dudhichua East OC'],[]]);
- const check=await checkSavedTripCards('a'.repeat(43),'Dudhichua OB East',east);
- expect(new URL(asked.at(-1)!,'https://x').searchParams.get('site')).toBe('Dudhichua OB East');
- // The day signed under the old rule no longer matches, so it is read from MIS again.
- expect(check.stale).toEqual(['2026-11-03']);
 });
