@@ -4,7 +4,10 @@
    GET  attendance/trip-cards?site=&from=&to=  → {days:[{day,rows,duties,savedBy,savedAt,signature}]}
    POST attendance/trip-cards {site,day,rows,signature}  → {day,duties,savedBy,savedAt}  (one day per request, under 2 MB)
    signature (owner, 27 Nov 2026: Pulse-II is the master): what Pulse-II signed for that site and day when the rows were
-   read. The roster shows a saved day only while Pulse-II still gives the same signature; a day saved before this has none. */
+   read. The roster shows a saved day only while Pulse-II still gives the same signature; a day saved before this has none.
+   mis_changed_at (owner, 28 Nov 2026; mis-trip-card-days.mjs): Pulse-II named the day as changed after it was saved. Such a
+   day is not handed out here, so the roster reads it from Pulse-II again; saving it stores the new copy and clears the mark.
+   GET also answers changed:[day…], the saved days of the range left out for that reason. */
 import {siteAccessMessage,siteIds} from './scope.mjs';
 
 export const MAX_TRIP_ROWS = 5000, MAX_TRIP_DAYS = 31;
@@ -46,9 +49,12 @@ export function createTripCardStore(pool) {
       if (!validDay(from) || !validDay(to) || to < from) fail('Choose a valid date range.');
       if ((Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 > MAX_TRIP_DAYS) fail(`Choose up to ${MAX_TRIP_DAYS} days.`);
       await checkSite(pool, profile, site);
-      const {rows} = await pool.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,rows,duties,saved_by,saved_at,mis_signature FROM hr_trip_card_days
+      // A day Pulse-II named as changed comes without its cards: it is not a saved day any more, only listed.
+      const {rows} = await pool.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,CASE WHEN mis_changed_at IS NULL THEN rows END AS rows,duties,saved_by,saved_at,mis_signature,mis_changed_at FROM hr_trip_card_days
         WHERE site=$1 AND day BETWEEN $2::date AND $3::date ORDER BY day`, [site, from, to]);
-      return {site, days: rows.map(r => ({day: r.day, rows: r.rows, duties: r.duties, savedBy: r.saved_by, savedAt: r.saved_at, signature: r.mis_signature || ''}))};
+      const kept = rows.filter(r => !r.mis_changed_at);
+      return {site, days: kept.map(r => ({day: r.day, rows: r.rows, duties: r.duties, savedBy: r.saved_by, savedAt: r.saved_at, signature: r.mis_signature || ''})),
+        changed: rows.filter(r => r.mis_changed_at).map(r => r.day)};
     }
     if (method === 'POST') {
       const {site, day} = input || {};
@@ -57,7 +63,7 @@ export function createTripCardStore(pool) {
       await checkSite(pool, profile, site);
       const rows = input.rows.map(row => tripDuty(row, day));
       const saved = (await pool.query(`INSERT INTO hr_trip_card_days(site,day,rows,duties,saved_by,mis_signature) VALUES($1,$2,$3,$4,$5,$6)
-        ON CONFLICT(site,day) DO UPDATE SET rows=EXCLUDED.rows,duties=EXCLUDED.duties,saved_by=EXCLUDED.saved_by,saved_at=now(),mis_signature=EXCLUDED.mis_signature
+        ON CONFLICT(site,day) DO UPDATE SET rows=EXCLUDED.rows,duties=EXCLUDED.duties,saved_by=EXCLUDED.saved_by,saved_at=now(),mis_signature=EXCLUDED.mis_signature,mis_changed_at=NULL,mis_changed_note=NULL
         RETURNING to_char(day,'YYYY-MM-DD') AS day,duties,saved_by,saved_at`, [site, day, JSON.stringify(rows), rows.length, profile.actor, daySignature(input.signature)])).rows[0];
       await pool.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,'SAVE_TRIP_CARDS','attendance',NULL,$2)", [profile.actor, {site, day, duties: rows.length}]);
       return {day: saved.day, duties: saved.duties, savedBy: saved.saved_by, savedAt: saved.saved_at};
