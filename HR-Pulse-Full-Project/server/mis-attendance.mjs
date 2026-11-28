@@ -1,4 +1,5 @@
 import {siteIds} from './scope.mjs';
+import {trimMisReport} from './mis-trim.mjs';
 
 const ORIGIN = 'https://pulse-ll.cmll.in';
 const FIRST_DATE = '2026-11-01';
@@ -114,9 +115,10 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     return result;
   }
 
-  async function sharedRead(profile, grant, from, to, selectedSite, refresh) {
+  async function sharedRead(profile, grant, from, to, selectedSite, refresh, trim = false) {
     const scope = await siteIds(pool, profile);
-    const key = JSON.stringify([scope === null ? null : [...scope].map(String).sort(), siteKey(selectedSite), from, to]);
+    // trim: the roster's day read keeps only the chosen site (mis-trim.mjs); its copy is kept apart from the whole answer's.
+    const key = JSON.stringify([scope === null ? null : [...scope].map(String).sort(), siteKey(selectedSite), from, to, ...(trim ? ['site only'] : [])]);
     const requestedAt = new Date();
     const db = await pool.connect();
     try {
@@ -128,10 +130,15 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
       if (cached && (refresh ? fetchedAt >= requestedAt.getTime() : fresh)) return cached.report;
       // A stale HR snapshot may also be hiding behind Pulse-II's cache. Refresh both layers so newly saved old VLB,
       // ELB and LMV records appear without a special correction for that employee or date.
-      const report = await read(grant, from, to, selectedSite, refresh || Boolean(cached));
+      const asked = performance.now();
+      const whole = await read(grant, from, to, selectedSite, refresh || Boolean(cached));
+      const answered = performance.now();
+      const report = trim ? trimMisReport(whole, selectedSite, from, to) : whole;
       await db.query(`INSERT INTO hr_mis_attendance_cache(cache_key,report,fetched_by,fetched_at) VALUES($1,$2,$3,now())
         ON CONFLICT(cache_key) DO UPDATE SET report=EXCLUDED.report,fetched_by=EXCLUDED.fetched_by,fetched_at=now()`, [key, report, profile.actor]);
-      return report;
+      // Where the time of a day's read went (28 Nov 2026), so it can be read on live: waiting for Pulse-II's answer, and
+      // storing the copy. Only on the cut answer; it is not stored, so a copy served to a second PC carries none.
+      return trim ? {...report, timing: {misMs: Math.round(answered - asked), storeMs: Math.round(performance.now() - answered)}} : report;
     } finally {
       await db.query('SELECT pg_advisory_unlock(hashtext($1))', [key]).catch(() => {});
       db.release();
@@ -142,7 +149,7 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     if (route === 'mis' && method === 'GET') {
       const selectedSite = String(params.get('site') || '').trim();
       const report = selectedSite
-        ? await sharedRead(profile, grant, params.get('from'), params.get('to'), selectedSite, params.get('refresh') === '1')
+        ? await sharedRead(profile, grant, params.get('from'), params.get('to'), selectedSite, params.get('refresh') === '1', params.get('trim') === '1')
         : await read(grant, params.get('from'), params.get('to'));
       const ids = [...new Set([...report.otDuties, ...report.attendanceEquipment].map(dutyKey))];
       const scope = await siteIds(pool, profile);

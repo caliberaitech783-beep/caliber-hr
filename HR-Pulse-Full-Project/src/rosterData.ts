@@ -37,11 +37,14 @@ export const setRetryPause = (fn: typeof pause) => {pause = fn;};
 async function readDay(grant: string, day: string, site: string, attempts: number, onRetry: (attempt: number, error: string) => void, refresh = false) {
   for (let attempt = 1; ; attempt++) {
     try {
-      const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day, ...(site ? {site} : {}), ...(refresh ? {refresh: '1'} : {})}));
+      const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day, ...(site ? {site, trim: '1'} : {}), ...(refresh ? {refresh: '1'} : {})}));
       // The feed also carries the day before (for night shifts); keep only this day so no duty is counted twice.
       const all = mapMisAttendance(data).filter(r => r.date === day);
-      const signed = data as {days?: MisDay[]; signed?: boolean};
-      return {rows: all.filter(r => !site || sameSite(site, r.site)), sites: [...new Set(all.map(r => r.site).filter(Boolean))],
+      // trim: for one site the server sends that site only (server/mis-trim.mjs; one day of every site was 15.9 MB) and
+      // names in misSites the sites MIS had cards for. A server from before 28 Nov 2026 sends every site, as before.
+      const signed = data as {days?: MisDay[]; signed?: boolean; misSites?: unknown};
+      const misSites = Array.isArray(signed?.misSites) ? signed.misSites.filter((s): s is string => typeof s === 'string') : [...new Set(all.map(r => r.site).filter(Boolean))];
+      return {rows: all.filter(r => !site || sameSite(site, r.site)), sites: misSites,
         signature: signed?.signed === false ? '' : misDaySignature(signed?.days, site, day)};
     } catch (e) {
       const message = (e as Error).message || 'MIS did not answer';

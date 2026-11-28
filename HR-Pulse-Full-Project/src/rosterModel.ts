@@ -4,6 +4,7 @@
    leave, comp off and OD come from the HR records and are shown on both lines. The last column,
    "Diff. of Trip Card and Bio-matric", counts the days the two lines disagree; pressing it lists those days. */
 import {DEFAULT_POLICY, type AttendancePolicy} from '../server/attendance-policy.mjs';
+import {sameSite} from '../server/site-match.mjs';
 import type {AttendanceRow} from './misAttendanceModel';
 import type {RegisterDay, RegisterRow} from './AttendanceRegister';
 
@@ -11,18 +12,9 @@ export type TripDuty = {shift: string; site: string; equipment: string; time: st
 /** MIS card sources → the card names HR uses: VLB trip card, ELB job card, LMV vehicle log book. */
 export const CARD_TYPES: [string, string][] = [['Trip card', 'VLB'], ['Job card', 'ELB'], ['Vehicle logbook', 'LMV']];
 export const cardTypes = (sources: string[]) => CARD_TYPES.filter(([source]) => sources.includes(source)).map(([, card]) => card);
-/** HR site names and MIS site names are written differently ("Jayant" / "Jayant OB"): compare letters and digits only. */
-const siteWords = (site: string) => String(site || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-// Words that only say what kind of site it is: "Sasti OC", "Sasti OCP" and "Sasti" are the same site.
-const SITE_KIND = new Set(['ob', 'oc', 'ocp', 'ocm', 'opencast', 'coal', 'mine', 'mines', 'project', 'site', 'colliery']);
-const placeWords = (site: string) => {const words = siteWords(site).split(' ').filter(Boolean), place = words.filter(w => !SITE_KIND.has(w)); return place.length ? place : words;};
-export function sameSite(hrSite: string, misSite: string) {
-  const a = siteWords(hrSite), b = siteWords(misSite);
-  if (!a || !b) return false;
-  if (a === b || (' ' + b + ' ').includes(' ' + a + ' ') || (' ' + a + ' ').includes(' ' + b + ' ')) return true;
-  const pa = placeWords(hrSite), pb = placeWords(misSite);
-  return pa.every(w => pb.includes(w)) || pb.every(w => pa.includes(w));
-}
+/** HR site names and MIS site names are written differently ("Jayant" / "Jayant OB"). One rule, shared with the server
+    (server/site-match.mjs), which leaves the other sites out of a day's trip cards with it. */
+export {sameSite};
 /** The roster's dates in week-long pieces, so each MIS trip card request stays well inside the time limit. */
 export function weekPieces(from: string, to: string) {
   const pieces: {from: string; to: string}[] = [];
