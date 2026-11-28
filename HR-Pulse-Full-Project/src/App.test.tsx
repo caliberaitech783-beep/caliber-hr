@@ -136,7 +136,8 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  expect(screen.getByRole('heading',{name:'Attendance Management'})).toBeTruthy();
  const attendanceMenu=within(sidebar).getByLabelText('Attendance Management submenus');
  for(const group of ['Attendance fetch','Attendance regularization','Shift management','Settings'])expect(within(attendanceMenu).getByText(group)).toBeTruthy();
- for(const item of ['Biometric integration','Trip card and logbook','Late come / early going','OD (on duty)','Miss punch','Gate pass','Overtime','Weekly off and holiday','Shift roster','Monthly attendance register','Weekly and daily attendance register','Site-wise attendance','HR policy · attendance'])expect(within(attendanceMenu).getByRole('button',{name:item})).toBeTruthy();
+ for(const item of ['Biometric integration','Trip card and logbook','Late come / early going','Shift roster','Monthly attendance register','Weekly and daily attendance register','Site-wise attendance','HR policy · attendance'])expect(within(attendanceMenu).getByRole('button',{name:item})).toBeTruthy();
+ for(const item of ['OD (on duty)','Miss punch','Gate pass','Overtime','Weekly off and holiday'])expect(within(attendanceMenu).queryByRole('button',{name:item})).toBeNull();
  fireEvent.click(within(attendanceMenu).getByRole('button',{name:'Monthly attendance register'}));
  expect(screen.getByRole('heading',{name:'Monthly attendance register'})).toBeTruthy();
  expect(within(attendanceMenu).getByRole('button',{name:'Monthly attendance register'})).toHaveAttribute('aria-pressed','true');

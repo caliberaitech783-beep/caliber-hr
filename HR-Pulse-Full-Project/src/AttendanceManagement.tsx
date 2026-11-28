@@ -26,10 +26,16 @@ export const ATTENDANCE_MENU=[
  {group:'Settings',items:['HR policy · attendance']},
 ] as const;
 export type AttendanceView=typeof ATTENDANCE_MENU[number]['items'][number];
-/** Opened from any one of them, these regularization screens show as tabs on one page (owner, 28 Nov 2026). */
-export const REGULARIZATION_TABS=['OD (on duty)','Miss punch','Gate pass','Overtime','Weekly off and holiday'] as const;
+/** The regularization screens are tabs on one page (owner, 28 Nov 2026). OD, Miss punch, Gate pass, Overtime and
+    Weekly off and holiday are not in the sidebar; they open from the tab row of Late come / early going. */
+export const REGULARIZATION_TABS=['Late come / early going','OD (on duty)','Miss punch','Gate pass','Overtime','Weekly off and holiday'] as const;
+const TAB_ONLY:readonly string[]=REGULARIZATION_TABS.slice(1);
 const TAB_LABEL:Record<string,string>={'OD (on duty)':'OD'};
 export const attendanceViews:string[]=ATTENDANCE_MENU.flatMap(g=>[...g.items]);
+/** The sub menus listed in the sidebar. */
+export const attendanceSidebarViews:string[]=attendanceViews.filter(v=>!TAB_ONLY.includes(v));
+/** The sidebar entry that stays highlighted while a view is open. */
+export const attendanceSidebarView=(view:string)=>TAB_ONLY.includes(view)?REGULARIZATION_TABS[0]:view;
 export const attendanceGroup=(view:string)=>ATTENDANCE_MENU.find(g=>(g.items as readonly string[]).includes(view))?.group||'';
 /** The legacy sheet-upload module opened on one view, rating days with the saved policy. */
 export const legacyModuleUrl=(view:string,policy?:AttendancePolicy)=>hrAsset('attendance-module.html')+'?'+new URLSearchParams({view,...(policy?{grace:String(policy.graceMinutes),full:String(policy.fullDutyHours),absent:String(policy.absentBelowHours),lunch:String(policy.lunchMinutes),perCut:String(policy.lateEarlyPerHalfCut)}:{})});
