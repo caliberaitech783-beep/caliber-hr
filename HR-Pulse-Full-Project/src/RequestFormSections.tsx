@@ -2,8 +2,9 @@ import {useEffect,useState,type ReactNode} from 'react';
 import {Check} from 'lucide-react';
 import {api,type Field} from './api';
 import './requestProgress.css';
+import {vtcProblem} from './vtc';
 
-export const requestFormKinds=['leaveRequests','outDutyRequests','gatePasses','employeeTransfers'];
+export const requestFormKinds=['leaveRequests','outDutyRequests','gatePasses','employeeTransfers','vtcRequests'];
 type Data=Record<string,string|number>;
 type Section={title:string;keys:string[]};
 
@@ -27,6 +28,12 @@ export const formSections:Record<string,Section[]>={
     {title:'Reason',keys:['purpose']},
     {title:'Review',keys:[]},
   ],
+  vtcRequests:[
+    {title:'Site and driver / operator',keys:['siteId','employeeId']},
+    {title:'Course and dates',keys:['course','courseOther','fromDate','toDate','vtcStatus']},
+    {title:'Institute and certificate',keys:['institute','trainer','certificate']},
+    {title:'Remarks and review',keys:[]},
+  ],
   employeeTransfers:[
     {title:'Site and employee',keys:['fromSiteId','employeeId','transferDate']},
     {title:'Current posting (from Employee Master)',keys:['fromDesignation','fromManager']},
@@ -37,9 +44,10 @@ export const formSections:Record<string,Section[]>={
 
 const problemKeys=['toDate','returnTime','toSiteId'];
 const filled=(v:unknown)=>String(v??'').trim()!=='';
-const isRequired=(kind:string,field:Field,data:Data)=>!!field.required&&!(kind==='leaveRequests'&&field.key==='name'&&filled(data.reasonAudio));
+const isRequired=(kind:string,field:Field,data:Data)=>kind==='vtcRequests'&&field.key==='courseOther'?data.course==='Other':!!field.required&&!(kind==='leaveRequests'&&field.key==='name'&&filled(data.reasonAudio));
 
 export function dateProblem(kind:string,data:Data){
+  if(kind==='vtcRequests')return vtcProblem(data);
   if(kind==='employeeTransfers')return data.fromSiteId&&data.fromSiteId===data.toSiteId?'To location must be different from the current location.':'';
   if(kind==='gatePasses'){const o=String(data.outTime||''),r=String(data.returnTime||'');return o&&r&&r<=o?'Expected return must be after the out time.':'';}
   const from=String(data[kind==='outDutyRequests'?'outDutyDate':'fromDate']||''),to=String(data.toDate||'');
@@ -61,13 +69,15 @@ export function formProgress(kind:string,fields:Field[],data:Data){
 type Preview={employee:{name:string;companyId:string;siteId:string;department:string;designation:string;reportingTo?:string};route:string[]|null;routeNote:string;missing?:string[]};
 
 // Fills the chosen employee's details in and fetches the approval route the request would take.
-function usePreview(grant:string,kind:string,employeeId:string,setData:(f:(d:Data)=>Data)=>void,autofill:boolean){
+function usePreview(grant:string,kind:string,employeeId:string,setData:(f:(d:Data)=>Data)=>void,autofill:boolean,siteId=''){
   const[preview,setPreview]=useState<Preview|null>(null),[failure,setFailure]=useState('');
   useEffect(()=>{
     setFailure('');if(!employeeId){setPreview(null);return;}
     let live=true;
-    api<Preview>(grant,`request-preview?kind=${kind}&employeeId=${encodeURIComponent(employeeId)}`).then(p=>{
+    api<Preview>(grant,`request-preview?kind=${kind}&employeeId=${encodeURIComponent(employeeId)}`+(kind==='vtcRequests'?`&siteId=${encodeURIComponent(siteId)}`:'')).then(p=>{
       if(!live||!p?.employee)return;setPreview(p);
+      /* VTC: the server reads the employee's details from Employee Master when the request is saved. */
+      if(kind==='vtcRequests')return;
       /* Transfers: the From side is always the employee's current posting; department only narrows the manager list. */
       if(autofill)setData(d=>kind==='employeeTransfers'
         ?{...d,fromSiteId:p.employee.siteId||'',fromDesignation:p.employee.designation||d.fromDesignation||'',fromManager:p.employee.reportingTo||d.fromManager||'',department:p.employee.department||'',...(d.toSiteId&&d.toSiteId===p.employee.siteId?{toSiteId:'',toManager:''}:{})}
@@ -77,12 +87,12 @@ function usePreview(grant:string,kind:string,employeeId:string,setData:(f:(d:Dat
         :{...d,name:p.employee.name||d.name||'',companyId:p.employee.companyId||d.companyId||'',siteId:p.employee.siteId||d.siteId||'',department:d.department||p.employee.department||'',designation:d.designation||p.employee.designation||''});
     }).catch(e=>{if(live){setPreview(null);setFailure((e as Error).message||'Could not load the employee details.');}});
     return()=>{live=false;};
-  },[grant,kind,employeeId,autofill]);// eslint-disable-line react-hooks/exhaustive-deps
+  },[grant,kind,employeeId,autofill,siteId]);// eslint-disable-line react-hooks/exhaustive-deps
   return {preview,failure};
 }
 
 export default function RequestFormSections({grant,kind,fields,data,setData,render,showMissing,writable}:{grant:string;kind:string;fields:Field[];data:Data;setData:(f:(d:Data)=>Data)=>void;render:(f:Field)=>ReactNode;showMissing:boolean;writable:boolean}){
-  const p=formProgress(kind,fields,data),{preview,failure}=usePreview(grant,kind,String(data.employeeId||''),setData,writable);
+  const p=formProgress(kind,fields,data),{preview,failure}=usePreview(grant,kind,String(data.employeeId||''),setData,writable,String(data.siteId||''));
   const missing=new Set(showMissing?missingFields(kind,fields,data).map(f=>f.key):[]),dates=dateProblem(kind,data);
   const pct=p.total?Math.round(p.done/p.total*100):100;
   const last=p.groups.length-1;

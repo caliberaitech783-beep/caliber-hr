@@ -1,3 +1,14 @@
+# VTC Form and VTC approvals: HR keeps the request, Pulse-II keeps the days
+
+Owner, 28 Nov 2026: VTC (Vocational Training Centre course) for drivers and operators, as tabs beside OD on Employee Master › Leave / OD / Gatepass, with a form and approvals like OD.
+
+- Kind `vtcRequests`, numbered VTC0001/<from date>/<Caliber ID>. Site first, then a driver or operator of that site from Employee Master (register line `reg:<id>` or joined employee); Caliber ID, name, department and designation are read on save, never typed. Course list, Other → course name, institute required, status Ongoing / Completed (only when To date ≤ today) / Left midway. Dates from 01-11-2026, at most 92 days, at most 60 days ahead.
+- Route: the OD route (Approval Master › OD: HOD (concerned) → Regional HR; the site HR Manager rule applies). No Telegram messages, like OD.
+- Pulse-II (caliber-mis PR 592) is asked with the user's own grant, never inside a database transaction: `vtc/check` before submit and before the last approval (a refusal stops it, in Pulse-II's words); `PUT vtc` after the final approval. When the PUT fails the request stays APPROVED with `data.pulse` = failed and the reason; VTC Form lists it under "Approved, not yet in Pulse-II" with Retry, retried every 5 minutes while the tab is open (the server has no grant of its own to retry with). Cancelling an approved VTC tells Pulse-II first (`vtc/remove`); while Pulse-II has it and cannot be told, it stays approved.
+- HR Pulse never writes VTC days into its own attendance: the roster gets them from Pulse-II's feed.
+- OB / COAL only (owner, 28 Nov 2026: "move the VTC to in OB/coal"): VTC Batch Module is an Employee Master item shown beside Trial Form when OB / COAL is the chosen side (`showsTrialForm`), no longer a top-level menu; the VTC Form / VTC approvals tabs on Leave / OD / Gatepass show only on that side too. An old #VTC Batch Module link opens Employee Master › OB / COAL › VTC Batch Module; a login with VTC Batch Module and no Employee Master keeps the old top-level item (`Workspace.tsx`).
+- `server/vtc.mjs`, `server/vtc-service.mjs`, `src/VtcFields.tsx`, `src/vtc.ts`; `server/vtc.test.mjs` (run by the deploy) and `src/VtcForm.test.tsx` check it.
+
 # M.B-Trip card Mismatch: a day still being read is not "— / —"
 
 Owner, 28 Nov 2026 (Gauri Pauni OB 2nd, 1 to 20 Nov: days 7 to 20 showed "— / —" after 162 seconds): "why it is showing --".
