@@ -1,11 +1,20 @@
 import {siteIds} from './scope.mjs';
-import {trimMisReport} from './mis-trim.mjs';
+import {trimMisReport, weekOf, dayOfWeekReport} from './mis-trim.mjs';
 
 const ORIGIN = 'https://pulse-ll.cmll.in';
 const FIRST_DATE = '2026-11-01';
 const DAY = 86_400_000;
 export const MIS_ATTENDANCE_CACHE_MS = 30_000;
 export const DAYS_TIMEOUT_MS = 12_000;
+// A site's week in one request (28 Nov 2026). Measured on live that day: nine days of every site took Pulse-II about
+// 18 seconds; cut to one site it has less to send, but the first read of a week may still pass the 22 seconds a day is
+// given, so a week is waited for longer.
+export const WEEK_READ_TIMEOUT_MS = 45_000;
+// One "Fetch again" reads a week once: its later days use the week that run already read, for at most this long.
+export const WEEK_RUN_KEEP_MS = 10 * 60_000;
+// After a week read failed, days are read one by one (as before) for this long, then weeks are tried again.
+export const WEEK_RETRY_MS = 2 * 60_000;
+const stamp = value => value instanceof Date ? value.getTime() : Date.parse(value);
 const sections = ['attendanceEquipment', 'attendanceShifts', 'otDuties', 'ot', 'performance', 'details', 'exceptions'];
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), {status}); };
 const dayString = stamp => new Date(stamp).toISOString().slice(0, 10);
@@ -53,16 +62,30 @@ function publicCorrection(row) {
 }
 
 export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
-  async function read(grant, from, to, selectedSite = '', refresh = false) {
+  // What Pulse-II's feed can do, learned from its own answers (supports: ['site-cut'], from its release after
+  // 28 Nov 2026). Until an answer says so, nothing is asked that an older Pulse-II would answer with every site.
+  let canCut = false, weekOffUntil = 0;
+  const learn = answer => { if (Array.isArray(answer?.supports) && answer.supports.includes('site-cut')) canCut = true; };
+  // The last weeks read, so the seven days of a week are not each read back from the database (a week is about 7 MB).
+  const weeks = new Map();
+  const remember = (key, fetchedAt, report) => {
+    weeks.delete(key);
+    weeks.set(key, {fetchedAt, report});
+    while (weeks.size > 8) weeks.delete(weeks.keys().next().value);
+  };
+
+  // cut: ask Pulse-II for the chosen site only (its shared/hr-site-cut.mjs); it marks such an answer cut: 'site' and
+  // says in misSiteDays which sites had lines on each date.
+  async function read(grant, from, to, selectedSite = '', refresh = false, {cut = false, timeout = 22_000} = {}) {
     const ranges = reportRanges(from, to);
     const reports = await Promise.all(ranges.map(async ([start, end]) => {
       const url = new URL('/api/integrations/hr/attendance', ORIGIN);
-      url.search = new URLSearchParams({from: dayString(start), to: dayString(end), ...(selectedSite ? {site: selectedSite} : {}), ...(refresh ? {refresh: '1'} : {})});
+      url.search = new URLSearchParams({from: dayString(start), to: dayString(end), ...(selectedSite ? {site: selectedSite} : {}), ...(cut ? {cut: 'site'} : {}), ...(refresh ? {refresh: '1'} : {})});
       let response;
       try {
         response = await fetchMis(url, {
           headers: {Authorization: 'Bearer ' + grant, Accept: 'application/json'},
-          redirect: 'error', signal: AbortSignal.timeout(22_000)
+          redirect: 'error', signal: AbortSignal.timeout(timeout)
         });
       } catch {
         fail('The MIS attendance feed is temporarily unavailable.', 503);
@@ -76,8 +99,16 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     // Pulse-II is the master of trip card attendance (owner, 27 Nov 2026). It signs every site-day it sends (days) and
     // lists what HR Pulse changed there with an OTP (hrChanges). signed: false while Pulse-II does not send them yet.
     const listed = key => reports.flatMap(report => Array.isArray(report[key]) ? report[key] : []);
-    return {...Object.fromEntries(sections.map(key => [key, reports.flatMap(report => report[key])])),
+    reports.forEach(learn);
+    const answer = {...Object.fromEntries(sections.map(key => [key, reports.flatMap(report => report[key])])),
       days: listed('days'), hrChanges: listed('hrChanges'), signed: reports.every(report => Array.isArray(report.days))};
+    if (!cut) return answer;
+    // A Pulse-II that does not cut (taken back to an older release) answers with every site: the answer is still right,
+    // only heavy, so no more cuts are asked until one of its answers offers them again.
+    if (!reports.every(report => report.cut === 'site')) { canCut = false; return answer; }
+    const misSiteDays = {};
+    for (const report of reports) for (const [date, sites] of Object.entries(report.misSiteDays || {})) misSiteDays[date] = [...new Set([...(misSiteDays[date] || []), ...(Array.isArray(sites) ? sites : [])])];
+    return {...answer, cut: 'site', misSiteDays};
   }
 
   // One call to Pulse-II with the user's own grant. Pulse-II's own words come back when it refuses.
@@ -102,6 +133,7 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     const {status, ok, result} = await mis(grant, '/api/integrations/hr/attendance', {query: {from, to, only: 'days'}, timeout: DAYS_TIMEOUT_MS});
     if (status === 403) fail('MIS attendance is outside your assigned access.', 403);
     if (!ok || !result) fail('The MIS attendance feed is temporarily unavailable.', 503);
+    learn(result);
     const supported = Array.isArray(result.days) && !Array.isArray(result.otDuties);
     return {supported, days: supported ? result.days : []};
   }
@@ -145,12 +177,66 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     }
   }
 
+  /* One day of one site out of that site's week (28 Nov 2026). Pulse-II took about 14 seconds for every single day
+     asked, 28 times for a month; a week costs it little more than a day. The week is read once (cut to the site by
+     Pulse-II), kept like every other copy for 30 seconds, and its days are handed out from it; the lines of a day are
+     the same either way (checked on live, see mis-trim.mjs).
+     run: the roster's name for one "Fetch again". Each of its days asks to be read afresh, and they do not all start
+     before the week arrives, so a week read by the same run counts as fresh for that run. */
+  async function weekDay(profile, grant, day, selectedSite, refresh, run) {
+    const scope = await siteIds(pool, profile), week = weekOf(day, FIRST_DATE);
+    const key = JSON.stringify([scope === null ? null : [...scope].map(String).sort(), siteKey(selectedSite), week.from, week.to, 'site week']);
+    const requestedAt = Date.now();
+    const db = await pool.connect();
+    try {
+      await db.query('SELECT pg_advisory_lock(hashtext($1))', [key]);
+      const held = (await db.query("SELECT fetched_at,report->>'run' AS run FROM hr_mis_attendance_cache WHERE cache_key=$1", [key])).rows[0];
+      const fetchedAt = held ? stamp(held.fetched_at) : NaN, age = requestedAt - fetchedAt;
+      const usable = Number.isFinite(fetchedAt) && (refresh
+        ? fetchedAt >= requestedAt || (Boolean(run) && held.run === run && age <= WEEK_RUN_KEEP_MS)
+        : age <= MIS_ATTENDANCE_CACHE_MS);
+      if (usable) {
+        const kept = weeks.get(key);
+        const report = kept?.fetchedAt === fetchedAt ? kept.report : (await db.query('SELECT report FROM hr_mis_attendance_cache WHERE cache_key=$1', [key])).rows[0]?.report;
+        if (report) {
+          remember(key, fetchedAt, report);
+          return {...dayOfWeekReport(report, day), timing: {week: 'kept', misMs: 0, storeMs: 0}};
+        }
+      }
+      const asked = performance.now();
+      const whole = await read(grant, week.from, week.to, selectedSite, refresh || Boolean(held), {cut: true, timeout: WEEK_READ_TIMEOUT_MS});
+      const answered = performance.now();
+      const [[first, last]] = reportRanges(week.from, week.to);
+      const report = {...trimMisReport(whole, selectedSite, dayString(first), dayString(last)), run: run || ''};
+      const stored = (await db.query(`INSERT INTO hr_mis_attendance_cache(cache_key,report,fetched_by,fetched_at) VALUES($1,$2,$3,now())
+        ON CONFLICT(cache_key) DO UPDATE SET report=EXCLUDED.report,fetched_by=EXCLUDED.fetched_by,fetched_at=now() RETURNING fetched_at`, [key, report, profile.actor])).rows[0];
+      if (stored) remember(key, stamp(stored.fetched_at), report);
+      return {...dayOfWeekReport(report, day), timing: {week: 'read', misMs: Math.round(answered - asked), storeMs: Math.round(performance.now() - answered)}};
+    } finally {
+      await db.query('SELECT pg_advisory_unlock(hashtext($1))', [key]).catch(() => {});
+      db.release();
+    }
+  }
+
   async function api(profile, grant, route, method, input, params) {
     if (route === 'mis' && method === 'GET') {
-      const selectedSite = String(params.get('site') || '').trim();
-      const report = selectedSite
-        ? await sharedRead(profile, grant, params.get('from'), params.get('to'), selectedSite, params.get('refresh') === '1', params.get('trim') === '1')
-        : await read(grant, params.get('from'), params.get('to'));
+      const selectedSite = String(params.get('site') || '').trim(), from = params.get('from'), to = params.get('to');
+      const refresh = params.get('refresh') === '1', trim = params.get('trim') === '1';
+      const run = /^[A-Za-z0-9_-]{8,64}$/.test(params.get('run') || '') ? params.get('run') : '';
+      let report;
+      // The roster's day read, once Pulse-II cuts its answer to a site: the day comes out of the site's week.
+      if (selectedSite && trim && canCut && from === to && validDay(from) && from >= FIRST_DATE && Date.now() >= weekOffUntil) {
+        try {
+          report = await weekDay(profile, grant, from, selectedSite, refresh, run);
+        } catch (error) {
+          if (error?.status === 403) throw error;
+          // The week could not be read (Pulse-II busy or slow): this day is read on its own, as before.
+          weekOffUntil = Date.now() + WEEK_RETRY_MS;
+        }
+      }
+      report ??= selectedSite
+        ? await sharedRead(profile, grant, from, to, selectedSite, refresh, trim)
+        : await read(grant, from, to);
       const ids = [...new Set([...report.otDuties, ...report.attendanceEquipment].map(dutyKey))];
       const scope = await siteIds(pool, profile);
       const [{rows}, siteRows] = await Promise.all([
