@@ -101,3 +101,21 @@ it('opens OD and gate pass from the existing leave screens without the leave for
  expect(screen.queryByRole('button',{name:'Gate Pass'})).toBeNull();
 });
 
+
+it('shows OD, Miss punch, Gate pass, Overtime and Weekly off and holiday as tabs',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams;return Response.json(url.includes('register')?{...register,from:q.get('from'),to:q.get('to'),rows:[]}:url.includes('policy')?{policy,version:0,canEdit:false}:url.includes('records/')?{rows:[],total:0}:{});}));
+ const onNavigate=vi.fn();
+ render(<AttendanceManagement grant={'a'.repeat(43)} view="Miss punch" onNavigate={onNavigate}/>);
+ const tabs=screen.getByRole('tablist',{name:'Attendance regularization'});
+ expect(within(tabs).getAllByRole('tab').map(t=>t.textContent)).toEqual(['OD','Miss punch','Gate pass','Overtime','Weekly off and holiday']);
+ expect(within(tabs).getByRole('tab',{name:'Miss punch'}).getAttribute('aria-selected')).toBe('true');
+ fireEvent.click(within(tabs).getByRole('tab',{name:'OD'}));
+ expect(onNavigate).toHaveBeenCalledWith('OD (on duty)');
+ expect(await screen.findByText('Attendance regularization › OD (on duty)')).toBeTruthy();
+});
+
+it('shows no regularization tabs on other attendance screens',()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json({})));
+ render(<AttendanceManagement grant={'a'.repeat(43)} view="Late come / early going"/>);
+ expect(screen.queryByRole('tablist',{name:'Attendance regularization'})).toBeNull();
+});
