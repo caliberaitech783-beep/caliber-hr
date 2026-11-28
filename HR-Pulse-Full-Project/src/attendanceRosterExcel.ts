@@ -27,7 +27,7 @@ export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,v
  ws.getCell(1,1).value=`Attendance roster · ${show(from)} to ${show(to)} · ${TITLE[view]}`;
  ws.getCell(1,1).font={bold:true,size:13,color:{argb:'FF3C2A55'}};
  ws.mergeCells(2,1,2,last);
- ws.getCell(2,1).value=Object.keys(CODE_COLOURS).map(k=>`${k} ${codeLabel(k)}`).join('   ·   ')+'   ·   Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + PH worked + comp off + leave + on duty (PH worked = paid twice; PH with A the day before and after = A)';
+ ws.getCell(2,1).value=Object.keys(CODE_COLOURS).map(k=>`${k} ${codeLabel(k)}`).join('   ·   ')+'   ·   Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + PH worked + comp off + leave + on duty (drivers and operators only: PH worked = paid twice; PH with A the day before and after = A)';
  ws.getCell(2,1).font={size:10,color:{argb:'FF5C4D6E'}};
  const sub=ws.getRow(3),head=ws.getRow(4);
  heads.forEach((h,i)=>{const c=head.getCell(i+1);c.value=h;c.font={bold:true,color:{argb:'FF5C4D6E'}};c.alignment={horizontal:'center',vertical:'middle',wrapText:true};c.fill=fill(compare&&i+1===last?'FCEBEB':'F3F0F7');});

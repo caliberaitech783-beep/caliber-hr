@@ -40,7 +40,8 @@ export type RosterGroup = {
   /** Biometric by site: the machines and IDs punched on, and false for a machine ID not linked to an employee. */
   machines: string[];
   linked: boolean;
-  /** The public holidays HR set for this person's site in the roster's dates (from the register's HR calendar). */
+  /** The public holidays HR set for this person's site in the roster's dates (from the register's HR calendar) that the
+      PH rule applies to: a driver's or operator's only (owner, 28 Nov 2026); empty for everyone else. */
   holidays?: string[];
 };
 
@@ -57,6 +58,8 @@ const hm = (ms: number) => new Date(ms + 330 * 60_000).toISOString().slice(11, 1
 const hoursText = (minutes: number | null) => minutes == null ? '' : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')} h`;
 const LABEL: Record<string, string> = {P: 'Present', HD: 'Half day', A: 'Absent', WO: 'Weekly off', H: 'Holiday', CO: 'Comp off', L: 'Leave', OD: 'On duty', MP: 'Miss punch', IN: 'In, no Out yet', '?': 'Trip card not verified yet', '': 'No record'};
 export const codeLabel = (code: string) => LABEL[code] ?? code;
+/** A driver or operator by department or designation (the same test as Other Staff Biometric, which leaves them out). */
+export const isDriverOperator = (group: {department?: string; designation?: string}) => /(driver|operator)/i.test(`${group.department || ''} ${group.designation || ''}`);
 
 /** A trip card duty: a saved VLB / ELB / LMV card (trip card punched) marks the driver or operator Present, whatever
     its hours (owner, 23 Nov 2026: the 4-hour half day rule no longer applies to trip cards). Absent only when HR marks it. */
@@ -149,7 +152,8 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
   }
   for (const group of groups) {
     const days = new Map((group.bio?.days || []).map(d => [d.date, d]));
-    group.holidays = dates.filter(date => days.get(date)?.calendar === 'H');
+    // The PH rule is for drivers and operators only (owner, 28 Nov 2026): everyone else keeps a holiday paid once.
+    group.holidays = isDriverOperator(group) ? dates.filter(date => days.get(date)?.calendar === 'H') : [];
     for (const date of dates) {
       if (date > today) continue;
       const day = days.get(date);
