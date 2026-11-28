@@ -318,8 +318,13 @@ type TripStream={key:string;days:Record<string,DayState>;rows:Record<string,Atte
  /** signatures: what Pulse-II signed for each day read from it; stale: saved days that were no longer what Pulse-II holds
      (read again from MIS); unsigned: days saved before Pulse-II signed days, shown as saved and not compared;
      unchecked: Pulse-II could not be asked, so the signed days are shown as they were saved. */
- signatures:Record<string,string>;stale:string[];unsigned:string[];unchecked:boolean};
-const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null,signatures:{},stale:[],unsigned:[],unchecked:false};
+ signatures:Record<string,string>;stale:string[];unsigned:string[];unchecked:boolean;
+ /** renew (owner, 28 Nov 2026: "close all the issues at once"): the saved days whose copy is being replaced, that is the
+     stale ones and the unsigned ones. They are read from MIS again and saved by themselves, so no site has to press
+     Fetch again and Save trip cards to bring an old copy up to date. (On 28 Nov 2026 the copy of Majri OC for 1 to 20 Nov,
+     saved on 22 Nov, lacked 808 of the 11,782 present-days MIS held.) */
+ renew:string[]};
+const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null,signatures:{},stale:[],unsigned:[],unchecked:false,renew:[]};
 export function applyDay(stream:TripStream,u:DayUpdate):TripStream{
  const days={...stream.days,[u.day]:u.state},errors={...stream.errors},rows=u.state==='done'?{...stream.rows,[u.day]:u.rows||[]}:stream.rows;
  if(u.state==='failed')errors[u.day]=u.error||'MIS did not answer';else if(u.state==='done')delete errors[u.day];
@@ -357,7 +362,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const [editDay,setEditDay]=useState<DayEditTarget|null>(null);
  const [manualDays,setManualDays]=useState<{key:string;days:Record<string,DayState>;counts:Record<string,number>;errors:Record<string,string>}>({key:'',days:{},counts:{},errors:{}});
  const [uploading,setUploading]=useState<''|'bio'|'manual'>(''),[importNote,setImportNote]=useState(''),[manualReload,setManualReload]=useState(0);
- const keyRef=useRef(''),forceMis=useRef(false),forceBio=useRef(false);
+ const keyRef=useRef(''),forceMis=useRef(false),forceBio=useRef(false),renewTried=useRef<{key:string;days:Set<string>}>({key:'',days:new Set()});
  const [reload,setReload]=useState(0);
  useEffect(()=>{let live=true;
   api<Lookup[]>(grant,'lookups').then(rows=>{if(!live)return;const list=Array.isArray(rows)?rows:[];
@@ -387,8 +392,11 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    if(keyRef.current!==runKey)return;
    const have=check.fresh;
    setTrip(t=>t.key!==runKey?t:{...t,days:{...t.days,...Object.fromEntries(have.map(d=>[d.day,'done' as DayState]))},rows:{...t.rows,...Object.fromEntries(have.map(d=>[d.day,d.rows]))},
-    saved:{...t.saved,...Object.fromEntries(have.map(d=>[d.day,{savedBy:d.savedBy,savedAt:d.savedAt}]))},stale:check.stale,unsigned:check.unsigned,unchecked:!check.checked});
-   const missing=all.filter(d=>!have.some(x=>x.day===d));
+    saved:{...t.saved,...Object.fromEntries(have.map(d=>[d.day,{savedBy:d.savedBy,savedAt:d.savedAt}]))},stale:check.stale,unsigned:check.unsigned,unchecked:!check.checked,
+    renew:[...check.stale,...check.unsigned].filter(d=>all.includes(d))});
+   // The unsigned days open at once from the saved copy and are read from MIS again behind it (a week in one request
+   // since 28 Nov 2026; reading twenty single days at once is what PR 148 had to avoid).
+   const missing=all.filter(d=>!have.some(x=>x.day===d)||check.unsigned.includes(d));
    if(missing.length)readTrip(missing);
   }).catch(()=>{if(keyRef.current===runKey)readTrip(all);})
    .finally(()=>setTrip(t=>t.key===runKey?{...t,runs:t.runs-1}:t));
@@ -403,9 +411,9 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   void streamTripCards(grant,list,site,u=>setTrip(t=>t.key===runKey?applyDay(t,u):t),()=>keyRef.current===runKey,refresh)
    .finally(()=>setTrip(t=>t.key===runKey?{...t,runs:t.runs-1}:t));
  }
- /** Save trip cards: every day read from MIS and not saved yet, one day per request. */
- function saveTrip(){
-  const runKey=key,list=trip.fresh.filter(d=>trip.days[d]==='done').sort().map(day=>({day,rows:trip.rows[day]||[],signature:trip.signatures[day]||''}));
+ /** Save trip cards: every day read from MIS and not saved yet, one day per request. only: just these days. */
+ function saveTrip(only?:string[]){
+  const runKey=key,list=trip.fresh.filter(d=>trip.days[d]==='done'&&(!only||only.includes(d))).sort().map(day=>({day,rows:trip.rows[day]||[],signature:trip.signatures[day]||''}));
   if(!list.length)return;
   setTrip(t=>({...t,save:{running:true,done:0,total:list.length,failed:[],error:''}}));
   void saveTripCards(grant,site,list,(day,info,error)=>setTrip(t=>{
@@ -542,18 +550,34 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const savedDays=trip.key===key?Object.entries(trip.saved):[],freshDone=trip.key===key?trip.fresh.filter(d=>trip.days[d]==='done'):[],save=trip.key===key?trip.save:null;
  const latest=savedDays.map(([,info])=>info).sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)))[0];
  const when=(at:string)=>{const t=Date.parse(at);return Number.isFinite(t)?new Date(t).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):at;};
- tripState.onSave=saveTrip;
+ tripState.onSave=()=>saveTrip();
  tripState.saved=trip.key===key?trip.saved:undefined;
  tripState.canSave=!running&&!save?.running&&freshDone.length>0;
  tripState.saveLabel=save?.running?`Saving ${save.done} of ${save.total} days…`:freshDone.length?`Save trip cards (${freshDone.length} day${freshDone.length===1?'':'s'})`:savedDays.length?'Saved':'Save trip cards';
- tripState.savedNote=savedDays.length?`Saved copy: ${savedDays.length} of ${total} days (last saved ${latest?when(latest.savedAt):''}${latest?.savedBy?' by '+latest.savedBy:''}).`+
-  (freshDone.length?` ${freshDone.length} day${freshDone.length===1?'':'s'} read from MIS ${freshDone.length===1?'is':'are'} not saved yet.`:trip.unchecked?' MIS could not be asked in time whether these days changed; press Fetch again for the latest from MIS.':trip.unsigned.length?'':' Every saved day was checked with MIS and is current.'):'';
  const showDays=(list:string[])=>list.map(d=>d.slice(8,10)+'-'+d.slice(5,7)).join(', ');
- // Days saved before MIS signed days: shown as saved; they are checked once they are read from MIS and saved again.
+ // Days saved before MIS signed days open from the saved copy, are read from MIS again behind it and saved by themselves
+ // (28 Nov 2026). unsignedLeft: those still shown from the old copy.
  const unsignedLeft=trip.key===key?trip.unsigned.filter(d=>trip.saved[d]&&!trip.signatures[d]):[];
- const unsignedNote=unsignedLeft.length?`${unsignedLeft.length} day${unsignedLeft.length===1?' was':'s were'} saved before MIS started signing days and ${unsignedLeft.length===1?'is':'are'} shown as saved, not checked with MIS: ${showDays(unsignedLeft)}. On the Trip card tab press Fetch again, then Save trip cards, once; after that they are checked by themselves.`:'';
- const staleNote=trip.key===key&&trip.stale.length?`${trip.stale.length} saved day${trip.stale.length===1?' was':'s were'} no longer what MIS holds (a card was added, corrected or changed after saving) and ${trip.stale.length===1?'was':'were'} read from MIS again: ${showDays(trip.stale)}. Press Save trip cards to keep the new copy.`:'';
+ tripState.savedNote=savedDays.length?`Saved copy: ${savedDays.length} of ${total} days (last saved ${latest?when(latest.savedAt):''}${latest?.savedBy?' by '+latest.savedBy:''}).`+
+  (freshDone.length?` ${freshDone.length} day${freshDone.length===1?'':'s'} read from MIS ${freshDone.length===1?'is':'are'} not saved yet.`:trip.unchecked?' MIS could not be asked in time whether these days changed; press Fetch again for the latest from MIS.':unsignedLeft.length?'':' Every saved day was checked with MIS and is current.'):'';
+ const unsignedNote=!unsignedLeft.length?'':running
+  ?`${unsignedLeft.length} day${unsignedLeft.length===1?'':'s'} saved before MIS started signing days ${unsignedLeft.length===1?'is':'are'} being read from MIS again and will be saved by ${unsignedLeft.length===1?'itself':'themselves'}: ${showDays(unsignedLeft)}.`
+  :`${unsignedLeft.length} day${unsignedLeft.length===1?'':'s'} saved before MIS started signing days could not be read from MIS again and ${unsignedLeft.length===1?'is':'are'} shown as saved, not checked with MIS: ${showDays(unsignedLeft)}. Press Fetch again.`;
+ const staleNote=trip.key===key&&trip.stale.length?`${trip.stale.length} saved day${trip.stale.length===1?' was':'s were'} no longer what MIS holds (a card was added, corrected or changed after saving) and ${trip.stale.length===1?'was':'were'} read from MIS again: ${showDays(trip.stale)}. The new copy is saved by itself.`:'';
  if(staleNote||unsignedNote)tripState.savedNote=[tripState.savedNote,staleNote,unsignedNote].filter(Boolean).join(' ');
+ // The days read again in place of an old saved copy are saved without a press. A day that could not be saved stays
+ // on the Save trip cards button and in the red line, and is not tried again by itself.
+ const renewReady=trip.key===key&&!running&&!save?.running?trip.renew.filter(d=>trip.fresh.includes(d)&&trip.days[d]==='done').sort():[];
+ const renewKey=renewReady.join(',');
+ useEffect(()=>{
+  if(!renewReady.length)return;
+  // Each day is sent once for a reading: a day that fails comes back into renewReady when the saving ends.
+  if(renewTried.current.key!==key)renewTried.current={key,days:new Set()};
+  const list=renewReady.filter(d=>!renewTried.current.days.has(d));
+  if(!list.length)return;
+  for(const day of list)renewTried.current.days.add(day);
+  saveTrip(list);
+ },[renewKey]); // eslint-disable-line react-hooks/exhaustive-deps
  tripState.saveError=save&&!save.running&&save.failed.length?`Could not save ${save.failed.map(show).join(', ')}: ${save.error}`:'';
  if(tripState.status==='error')tripState.message=trip.errors[failedDays[0]]||'The MIS attendance feed is temporarily unavailable.';
  const bioDays=bio.key===bioKey?Object.entries(bio.days):[],bioTotal=bioDays.length,bioDone=bioDays.filter(([,st])=>st==='done'||st==='failed').length;
