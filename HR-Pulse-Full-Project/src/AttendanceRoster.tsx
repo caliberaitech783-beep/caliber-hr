@@ -52,6 +52,8 @@ export const tripTotals=(group:RosterGroup,dates:string[])=>lineTotals(group.tri
 export const diffText=(group:RosterGroup,tripsLoaded:boolean)=>!tripsLoaded?'—':!group.hasTripCards?'No trip card':String(group.mismatches.length);
 /** The groups a view lists: trip card people, biometric people, or everyone. */
 export const isManualRosterView=(view:RosterView)=>view==='manual'||view==='manual2';
+/** NCL manual logs use A-Form No.; WCL manual logs use Employee ID. */
+export const manualUsesAForm=(site:string)=>/^(?:jayant|dudhichua)\b/i.test(site.trim());
 export const viewGroups=(groups:RosterGroup[],view:RosterView)=>groups.filter(g=>view==='trip'?g.hasTripCards:view==='bio'||isManualRosterView(view)?Boolean(g.bio):true);
 /** Manual Biometric II is for every department/designation except Driver and Operator staff. */
 export const isManualBiometricIIEmployee=(group:Pick<RosterGroup,'department'|'designation'>)=>!/(driver|operator)/i.test(`${group.department||''} ${group.designation||''}`);
@@ -91,7 +93,7 @@ export type BioState={running:boolean;message:string;days:Record<string,DayState
  /** Manual Biometric, HR administrator only (owner, 25 Nov 2026): press a day to correct it. */
  onEditDay?:(group:RosterGroup,date:string)=>void};
 const BIO_DAY_STATE:Record<DayState,string>={queued:'Waiting to be read',loading:'Reading punches…',retrying:'Busy · trying again…',done:'Read',failed:'Could not be read'};
-type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripState;bio?:BioState;monthly:boolean;from:string;to:string;loading?:boolean;error?:string;emptyText?:string;onImport?:()=>void};
+type TableProps={groups:RosterGroup[];dates:string[];view:RosterView;trip:TripState;bio?:BioState;monthly:boolean;from:string;to:string;loading?:boolean;error?:string;emptyText?:string;onImport?:()=>void;showAForm?:boolean};
 
 /** The roster table, its toolbar, the difference drill-down and Export Excel. */
 export function RosterTable(props:TableProps){
@@ -152,7 +154,7 @@ function ManualMismatchTable({groups,dates,trip,bio,from,to,loading=false,error=
   </div><p className="help-text">Each date shows Manual Biometric / Trip Card. Green: matching codes including P / P and A / A. Orange: A / P. Red: P / A. Purple: MP / P. Yellow: HD / P. Magenta: MP / A. Blue: HD / A. Grey: neither record exists. Click any colour item to list every matching employee, then View dates for exact details or Print/Export the drill report to Excel.</p></>;
 }
 
-function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading=false,error='',emptyText,onImport}:TableProps){
+function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading=false,error='',emptyText,onImport,showAForm=true}:TableProps){
  const [onlyDiff,setOnlyDiff]=useState(false),[open,setOpen]=useState(''),[exporting,setExporting]=useState(false),[exportOpen,setExportOpen]=useState(false),[times,setTimes]=useState(true),[filters,setFilters]=useState<ColumnFilters>({}),[sort,setSort]=useState<ColumnSort>(null);
  const drill=useRef<HTMLDivElement>(null);
  const rosterTable=useRef<HTMLTableElement>(null);
@@ -163,7 +165,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
  const openKey=openGroup?.key||'';
  useEffect(()=>{if(openKey)drill.current?.scrollIntoView?.({block:'nearest',behavior:'smooth'});},[openKey]);
  const diffCount=shown.filter(g=>g.mismatches.length).length;
- const manualRoster=isManualRosterView(view);
+ const manualRoster=isManualRosterView(view),aFormColumn=manualRoster&&showAForm;
  const lines=manualRoster?(['bio'] as const):(['trip','bio'] as const).filter(line=>compare||view===line);
  // Biometric by site: the machine and ID column, In / Out under each day's code, and the month's worked hours.
  const machineCol=view!=='trip'&&shown.some(g=>g.machines.length>0),showTimes=times&&view!=='trip',hoursCol=view!=='trip';
@@ -171,7 +173,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
 
  async function exportExcel(){
   setExporting(true);
-  try{const {downloadRosterExcel}=await import('./attendanceRosterExcel');await downloadRosterExcel({groups:shown,dates,tripsLoaded,monthly,from,to,view});setExportOpen(false);}
+  try{const {downloadRosterExcel}=await import('./attendanceRosterExcel');await downloadRosterExcel({groups:shown,dates,tripsLoaded,monthly,from,to,view,showAForm:aFormColumn});setExportOpen(false);}
   finally{setExporting(false);}
  }
  function printRoster(){
@@ -243,7 +245,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
    </div>
   </div>
   <div className="attendance-table"><table ref={rosterTable} className={'register-grid roster-grid'+(compare?'':' roster-nosrc')} aria-label="Attendance roster">
-   <thead><tr>{compare&&<th className="roster-fixed roster-src"><span className="roster-heading">Source{filterInput(filters,setFilters,'source','Source')}</span></th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}><span className="roster-heading">Sr. No.{filterInput(filters,setFilters,'sr','Sr. No.')}</span></th><th className="roster-fixed roster-id"><span className="roster-heading">Employee ID{filterInput(filters,setFilters,'code','Employee ID')}</span></th>{manualRoster&&<th className="roster-text"><span className="roster-heading">A-Form No.{filterInput(filters,setFilters,'aFormNo','A-Form No.')}</span></th>}<th className="roster-fixed roster-name"><span className="roster-heading">Name{filterInput(filters,setFilters,'name','Name')}</span></th><th className="roster-text"><span className="roster-heading">Site{filterInput(filters,setFilters,'site','Site')}</span></th><th className="roster-text"><span className="roster-heading">Department{filterInput(filters,setFilters,'department','Department')}</span></th><th className="roster-text"><span className="roster-heading">Designation{filterInput(filters,setFilters,'designation','Designation')}</span></th>{machineCol&&<th className="roster-text roster-machine"><span className="roster-heading">Machine · ID{filterInput(filters,setFilters,'machine','Machine ID')}</span></th>}
+   <thead><tr>{compare&&<th className="roster-fixed roster-src"><span className="roster-heading">Source{filterInput(filters,setFilters,'source','Source')}</span></th>}<th className={'roster-fixed roster-sr'+(compare?'':' roster-first')}><span className="roster-heading">Sr. No.{filterInput(filters,setFilters,'sr','Sr. No.')}</span></th><th className="roster-fixed roster-id"><span className="roster-heading">Employee ID{filterInput(filters,setFilters,'code','Employee ID')}</span></th>{aFormColumn&&<th className="roster-text"><span className="roster-heading">A-Form No.{filterInput(filters,setFilters,'aFormNo','A-Form No.')}</span></th>}<th className="roster-fixed roster-name"><span className="roster-heading">Name{filterInput(filters,setFilters,'name','Name')}</span></th><th className="roster-text"><span className="roster-heading">Site{filterInput(filters,setFilters,'site','Site')}</span></th><th className="roster-text"><span className="roster-heading">Department{filterInput(filters,setFilters,'department','Department')}</span></th><th className="roster-text"><span className="roster-heading">Designation{filterInput(filters,setFilters,'designation','Designation')}</span></th>{machineCol&&<th className="roster-text roster-machine"><span className="roster-heading">Machine · ID{filterInput(filters,setFilters,'machine','Machine ID')}</span></th>}
     {dates.map(d=>{const onBio=biometricView,state=onBio?bio?.days[d]:trip.days?.[d],label=state?(onBio?BIO_DAY_STATE:DAY_STATE)[state]:'',why=onBio?bio?.errors[d]:trip.errors?.[d];
      return <th key={d} title={show(d)+(state==='done'&&(onBio?bio?.saved:trip.saved)?.[d]?' · Saved copy':'')+(state?' · '+label+(onBio&&state==='done'?` · ${(bio?.counts[d]||0).toLocaleString('en-IN')} punches`:'')+(state==='failed'&&why?': '+why:''):'')} className={[weekday(d)==='Su'?'roster-sunday':'',state&&state!=='done'?'roster-day-'+state:''].filter(Boolean).join(' ')||undefined}><span className="roster-heading">{Number(d.slice(8))}<small className="register-sub">{weekday(d)}</small>{state&&state!=='done'&&<i className="roster-day-mark" aria-label={label}/>} {filterInput(filters,setFilters,'date:'+d,show(d))}</span></th>;})}
     {ROSTER_TOTALS.map(([key,label])=><th key={key} className={'roster-total'+(key==='paidDays'?' roster-paid':'')}><span className="roster-heading">{label}{filterInput(filters,setFilters,'total:'+key,label)}</span></th>)}{monthly&&<th className="roster-total"><span className="roster-heading">Gate pass{filterInput(filters,setFilters,'gate','Gate pass')}</span></th>}{hoursCol&&<th className="roster-total"><span className="roster-heading">Worked hours{filterInput(filters,setFilters,'hours','Worked hours')}</span></th>}
@@ -251,7 +253,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
    <tbody>{shown.length?shown.map((g,i)=>{const picked=g.key===open,diff=diffText(g,tripsLoaded),rows=lines.length;return <Fragment key={g.key}>
     {lines.map((line,j)=><tr key={line} className={(line==='trip'?'roster-trip':'roster-bio')+(rows===1?' roster-single':'')+(picked?' roster-picked':'')+(g.linked?'':' roster-unlinked')}>
      {compare&&<th scope="row" className="roster-fixed roster-src">{line==='trip'?'Trip Card':'Bio Matric'}</th>}
-     {j===0&&<><td rowSpan={rows} className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>{i+1}</td><td rowSpan={rows} className={'roster-fixed roster-id'+(g.linked?'':' roster-unlinked-id')}>{g.linked||manualRoster?g.code:'Not linked'}</td>{manualRoster&&<td rowSpan={rows} className="roster-text">{g.aFormNo||'—'}</td>}
+     {j===0&&<><td rowSpan={rows} className={'roster-fixed roster-sr'+(compare?'':' roster-first')}>{i+1}</td><td rowSpan={rows} className={'roster-fixed roster-id'+(g.linked?'':' roster-unlinked-id')}>{g.linked||manualRoster?g.code:'Not linked'}</td>{aFormColumn&&<td rowSpan={rows} className="roster-text">{g.aFormNo||'—'}</td>}
       <td rowSpan={rows} className="roster-fixed roster-name"><strong>{g.name}</strong>{(g.shift||g.exempt)&&<small className="register-sub">{[g.shift,g.exempt?'Exempt':''].filter(Boolean).join(' · ')}</small>}</td>
       <td rowSpan={rows} className="roster-text">{g.site||'—'}</td><td rowSpan={rows} className="roster-text">{g.department||'—'}</td><td rowSpan={rows} className="roster-text">{g.designation||'—'}</td>{machineCol&&<td rowSpan={rows} className="roster-text roster-machine">{g.machines.length?g.machines.map(m=><span key={m}>{m}</span>):'—'}</td>}</>}
      {lineCells(g,line)}
@@ -639,7 +641,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    {(view==='bio'||manualSelected)&&importNote&&<p className="roster-saved" role="status">{importNote}</p>}
    {editDay&&<ManualDayEdit grant={grant} target={editDay} onClose={()=>setEditDay(null)} onSaved={message=>{setEditDay(null);setImportNote(message);setManualReload(value=>value+1);}}/>}
    {uploading&&<MachineLogUpload grant={grant} site={site} onClose={()=>setUploading('')} onImported={imported} onManageMachines={onManageMachines} importPath={uploading==='manual'?'attendance/manual-biometric/import':undefined} title={uploading==='manual'?(view==='manual2'?'Import Manual Biometric II attendance':'Import manual biometric attendance'):undefined}/>}
-   <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} bio={shownBioState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} loading={bioLoading||(view==='manualMismatch'&&tripState.status==='loading')} error={view!=='trip'?bioError:''}
+   <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} bio={shownBioState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} showAForm={manualUsesAForm(site)} loading={bioLoading||(view==='manualMismatch'&&tripState.status==='loading')} error={view!=='trip'?bioError:''}
     onImport={view==='bio'||(manualSelected&&!dates.every(day=>Boolean(currentManualSaved[day])))?()=>{setImportNote('');setUploading(view==='bio'?'bio':'manual');}:undefined}
     emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):manualSelected?`No ${view==='manual2'?'Manual Biometric II':'manual biometric'} attendance imported for ${site} in these dates.`:undefined}/></>}
  </section>;

@@ -485,6 +485,13 @@ it('In / Out sheet lists every employee and date with In, Out and the punches',a
  expect(io.getRow(3).getCell(12).value).toBe('08:00 Main gate');
 });
 
+it('omits A-Form from WCL Manual Biometric II exports',async()=>{
+ const groups=buildRoster([{...bio,aFormNo:'A-467'}],null,dates,'2026-11-06');
+ const wb=await rosterWorkbook({groups,dates,tripsLoaded:false,monthly:false,from:'2026-11-01',to:'2026-11-05',view:'manual2',showAForm:false});
+ expect(wb.getWorksheet('Roster')!.getRow(4).values).not.toContain('A-Form No.');
+ expect(wb.getWorksheet('In - Out')!.getRow(1).values).not.toContain('A-Form No.');
+});
+
 it('Biometric reads one day per request and joins the days: each person once, punches added up, cuts counted over the month',async()=>{
  const {streamBiometric,joinBiometricDays,setRetryPause}=await import('./rosterData');
  setRetryPause(async()=>{});
