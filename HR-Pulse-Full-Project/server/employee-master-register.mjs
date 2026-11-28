@@ -134,6 +134,42 @@ function parseRow(row, index) {
   return {key:row.key, siteCode:row.siteCode, data};
 }
 
+// Employee Master lists every employee (owner, 28 Nov 2026: a new employee went to "existing employee", not to
+// Employee Master). The imported lines stay as they are; an employee who joined through HR Pulse (the joining form:
+// Active, Approved or Inactive) is listed with them, read from the joining record, never copied. One line per
+// employee number: a joined employee whose number an imported line already holds is that line.
+// The number is read as employeeNumber() does (CMPL123 = CMLL123 = 123), written out here so that the page does not
+// depend on the database function of the change list.
+const numberSql = value => `(CASE WHEN regexp_replace(upper(coalesce(${value},'')),'[[:space:]/-]','','g') ~ '^(CMPL|CMLL)?[0-9]{1,9}$'
+  THEN ltrim(regexp_replace(regexp_replace(upper(coalesce(${value},'')),'[[:space:]/-]','','g'),'^(CMPL|CMLL)',''),'0') ELSE '' END)`;
+const office = key => `e.data->'officeData'->>'${key}'`;
+const joinedData = `jsonb_build_object(
+  'employeeId',e.code,'name',e.name,
+  'department',COALESCE(dep.name,${office('Department *')},${office('Department')},''),
+  'designation',COALESCE(NULLIF(e.data->>'designationTitle',''),des.name,${office('Designation *')},''),
+  'category',COALESCE(NULLIF(${office('Employee Category')},''),e.data->>'category',''),
+  'reportingTo',COALESCE(NULLIF(e.data->>'reportingManagerName',''),${office('Reporting To')},''),
+  'contact',COALESCE(NULLIF(${office('Mobile *')},''),e.data->>'mobile',''),
+  'email',COALESCE(NULLIF(${office('Candidate E-mail *')},''),e.data->>'email',''),
+  'status',CASE WHEN e.status='INACTIVE' THEN 'LEFT' ELSE 'ACTIVE' END,
+  'leavingDate',COALESCE(e.data->>'leavingDate',''),
+  'workingHours',COALESCE(${office('Working Hours *')},''),
+  'aFormNo',COALESCE(${office('A-Form No.')},''),'bankName',COALESCE(${office('Bank Name')},''),'ifscCode',COALESCE(${office('IFSC Code')},''),
+  'accountNo',COALESCE(NULLIF(${office('New Account No')},''),${office('Bank Account No')},''),'branch',COALESCE(${office('Branch Name')},''))`;
+const joinedFrom = `FROM hr_records e
+  LEFT JOIN hr_records s ON s.kind='sites' AND s.id::text=e.data->>'siteId'
+  LEFT JOIN hr_records dep ON dep.kind='departments' AND dep.id::text=e.data->>'departmentId'
+  LEFT JOIN hr_records des ON des.kind='designations' AND des.id::text=e.data->>'designationId'
+  WHERE e.kind='employees' AND e.status IN ('ACTIVE','APPROVED','INACTIVE')`;
+// The numbers the imported lines hold, read once, so that the joined employees are set against them in one pass.
+const heldNumbers = `held AS MATERIALIZED (SELECT DISTINCT n FROM (
+    SELECT ${numberSql("data->>'employeeId'")} AS n FROM hr_employee_master_register WHERE ${isEmployeeEntry}) numbers WHERE n<>'')`;
+const notOnRegister = `NOT EXISTS (SELECT 1 FROM held WHERE held.n=${numberSql('e.code')})`;
+const registerLines = withJoined => `WITH ${withJoined?heldNumbers+', ':''}lines AS (
+  SELECT id,site_id,site_name,site_code,name,data,'register' AS source FROM hr_employee_master_register WHERE ${isEmployeeEntry}${withJoined?`
+  UNION ALL
+  SELECT e.id,s.id,COALESCE(s.name,''),COALESCE(s.code,''),e.name,${joinedData},'joining' ${joinedFrom} AND ${notOnRegister}`:''})`;
+
 export function createEmployeeMasterRegister(pool) {
   return {
     async employeeMasterRegister(profile, params) {
@@ -142,33 +178,51 @@ export function createEmployeeMasterRegister(pool) {
       const search = (params.get('search') || '').trim().slice(0, 150);
       const site = params.get('site') || '';
       const values = [scope, site, search];
+      // joined=0: the imported lines only. The register's own Excel import asks this way, to see what it already holds.
+      const lines = registerLines(params.get('joined') !== '0');
       const filter = `($1::uuid[] IS NULL OR site_id=ANY($1))
         AND ($2='' OR site_code=$2)
-        AND ($3='' OR strpos(lower(concat_ws(' ',name,data->>'employeeId',data->>'department',data->>'designation')),lower($3))>0)
-        AND ${isEmployeeEntry}`;
-      const selectRows = `SELECT id, site_name, site_code, data FROM hr_employee_master_register
+        AND ($3='' OR strpos(lower(concat_ws(' ',name,data->>'employeeId',data->>'department',data->>'designation')),lower($3))>0)`;
+      const selectRows = `${lines} SELECT id, site_name, site_code, data, source FROM lines
         WHERE ${filter} ORDER BY lower(name),id`;
+      const siteLabel = row => row.source==='joining' ? siteNames[row.site_code] || row.site_name : row.site_name;
       const formatRows = ({rows}) => rows.map(row=>{
         const {sources:_,...data}=row.data||{};
-        return {id:row.id,...data,...reportBankDetails(row.data),site:row.site_name,region:row.site_code.split('-')[0]};
+        return {id:row.id,...data,...reportBankDetails(row.data),site:siteLabel(row),region:String(row.site_code||'').split('-')[0],
+          ...(row.source==='joining'?{source:'joining'}:{})};
       });
       if (params.get('export') === '1') {
         return {complete:true,rows:formatRows(await pool.query(selectRows,values))};
       }
       const [count, listing, sites] = await Promise.all([
-        pool.query(`SELECT count(*) AS total FROM hr_employee_master_register WHERE ${filter}`, values),
+        pool.query(`${lines} SELECT count(*) AS total FROM lines WHERE ${filter}`, values),
         pool.query(`${selectRows} LIMIT ${pageSize} OFFSET $4`, [...values,(page-1)*pageSize]),
-        pool.query(`SELECT DISTINCT site_code AS code, site_name AS label FROM hr_employee_master_register
-          WHERE ($1::uuid[] IS NULL OR site_id=ANY($1)) AND ${isEmployeeEntry} ORDER BY label`, [scope]),
+        pool.query(`${lines} SELECT DISTINCT site_code, site_name, source FROM lines
+          WHERE ($1::uuid[] IS NULL OR site_id=ANY($1)) AND site_code<>''`, [scope]),
       ]);
-      return {rows:formatRows(listing), total:Number(count.rows[0].total), page, pageSize, sites:sites.rows, canImport:scope===null};
+      // One entry per site: the register's own name of a site first, then a site only joined employees are at.
+      const siteList = new Map();
+      for (const row of [...sites.rows].sort((a,b)=>String(b.source).localeCompare(String(a.source)))) {
+        if (!siteList.has(row.site_code)) siteList.set(row.site_code,{code:row.site_code,label:siteLabel(row)});
+      }
+      return {rows:formatRows(listing), total:Number(count.rows[0].total), page, pageSize,
+        sites:[...siteList.values()].sort((a,b)=>String(a.label).localeCompare(String(b.label))), canImport:scope===null};
     },
     async employeeMasterRegisterDetails(profile, id, edit=false) {
       const scope = await access(pool, profile);
       const projection = edit ? "name,version,site_code AS \"siteCode\",data-'sources' AS fields" : "name,data->'sources' AS sources, data-'sources' AS fields";
       const result = await pool.query(`SELECT ${projection} FROM hr_employee_master_register
         WHERE id=$1 AND ($2::uuid[] IS NULL OR site_id=ANY($2)) AND ${isEmployeeEntry}`, [id,scope]);
-      if (!result.rowCount) throw fail('Employee entry not found.', 404);
+      if (!result.rowCount) {
+        // An employee who joined through HR Pulse is listed here from the joining record: the work details are shown,
+        // and the record is edited where it is kept (Corporate / HO or OB / COAL › Update Existing Employee).
+        const joined = await pool.query(`SELECT e.name,${joinedData} AS fields ${joinedFrom} AND e.id=$1
+          AND ($2::uuid[] IS NULL OR s.id=ANY($2))`, [id,scope]);
+        if (!joined.rowCount) throw fail('Employee entry not found.', 404);
+        if (edit) throw fail('This employee joined through HR Pulse. Edit the details under Corporate / HO or OB / COAL › Update Existing Employee.', 409);
+        const {aFormNo:_a,bankName:_b,ifscCode:_i,accountNo:_n,branch:_r,...fields} = joined.rows[0].fields;
+        return {name:joined.rows[0].name,fields,sources:[],source:'joining'};
+      }
       const entry = result.rows[0];
       if (edit) {
         const sites = (await availableSites(pool,scope)).map(({code})=>({code,label:siteNames[code]}));

@@ -21,7 +21,7 @@ const registerColumns = [...columns,workingHoursColumn] as const;
 const bankReportColumns = [columns[0],aFormColumn,columns[1],columns[3],...bankColumns] as const;
 const formats = [['excel','Excel'], ['pdf','PDF']] as const;
 type ExportFormat = typeof formats[number][0];
-type Employee = Record<typeof columns[number][0] | typeof bankColumns[number][0] | 'aFormNo' | 'workingHours', string> & {id:string};
+type Employee = Record<typeof columns[number][0] | typeof bankColumns[number][0] | 'aFormNo' | 'workingHours', string> & {id:string;source?:'joining'};
 type RegisterColumn = typeof columns[number];
 type EditableColumn = Exclude<RegisterColumn,readonly ['region'|'site',string,number]>;
 const editableColumns = columns.filter((column):column is EditableColumn=>column[0]!=='region'&&column[0]!=='site');
@@ -41,6 +41,7 @@ type EmployeeDetails = {
   name:string;
   fields?:Partial<Employee>;
   sources:{label:string;fields:[string,string][]}[];
+  source?:'joining';
 };
 type Register = {rows:Employee[];total:number;pageSize:number;sites:{code:string;label:string}[];canImport:boolean};
 type RegisterView='employees'|'bank';
@@ -230,7 +231,7 @@ function EmployeeDetailsDialog({employee,grant,onClose}:{employee:Employee;grant
       <dl>{editableColumns.map(([key,label])=><div key={key}><dt>{label}</dt>
         <dd>{details.fields?.[key] || '—'}</dd></div>)}</dl>
     </details>}
-    {details?.sources.length===0 && <p>No workbook details are available for this entry.</p>}
+    {details?.sources.length===0 && <p>{details.source==='joining'?'Joined through HR Pulse. The full record is under Corporate / HO or OB / COAL › Update Existing Employee.':'No workbook details are available for this entry.'}</p>}
     {details?.sources.map((source,index)=><details key={index} open={!details.fields&&index===0}>
       <summary>{source.label}</summary>
       <dl>{source.fields.map(([label,value],index)=><div key={index}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
@@ -290,7 +291,7 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
       let payload;
       if (/\.xlsx?$/i.test(file.name)) {
         const {employeeWorkbook} = await import('./employeeWorkbook');
-        const existing = await api<{complete:boolean;rows:Employee[]}>(grant,'employee-master-register?export=1');
+        const existing = await api<{complete:boolean;rows:Employee[]}>(grant,'employee-master-register?export=1&joined=0');
         if (!existing.complete || !data) throw new Error('Could not verify the current register. Please retry.');
         const parsed = await employeeWorkbook(await file.arrayBuffer(),data.sites,columns,existing.rows);
         skipped = parsed.skipped;
@@ -460,10 +461,13 @@ export default function EmployeeMasterRegister({grant}:{grant:string}) {
                 dialogButton.current = event.currentTarget;
                 setSelected({employee:row,mode:'view'});
               }}>View</button>
-              <button type="button" aria-label={`Edit details for ${row.name}`} onClick={event=>{
+              {/* An employee who joined through HR Pulse is listed from the joining record and is edited there. */}
+              {row.source==='joining'
+                ? <span className="employee-table-empty-value" title="Joined through HR Pulse. Edit under Corporate / HO or OB / COAL › Update Existing Employee.">Joining form</span>
+                : <button type="button" aria-label={`Edit details for ${row.name}`} onClick={event=>{
                 dialogButton.current = event.currentTarget;
                 setSelected({employee:row,mode:'edit'});
-              }}>Edit</button>
+              }}>Edit</button>}
             </td>}
           </tr>)}</tbody>
         </table>
