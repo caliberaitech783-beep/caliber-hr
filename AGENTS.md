@@ -1,3 +1,14 @@
+# Public holiday (PH): worked is paid twice, absent on both sides is not paid
+
+Owner, 28 Nov 2026 (Pulse II HR deck, slide 10), for the driver / operator attendance roster used for final salary. Leave, OD and the PH HR sets per site already reach the roster from HR records; this adds the PH pay rule.
+
+- Rule 1: present on the PH (trip card, punch, half day or miss punch): the work counts and the PH is credited once more, column "PH worked (extra)". A present PH earns 2.
+- Rule 2: not at work on the PH, but not absent the day before or the day after (present, leave, OD or comp off): the PH is credited (H).
+- Rule 3: absent (A) the day before and the day after: the PH is not credited and shows A.
+- "Before" and "after" skip weekly offs and other holidays. A side not known yet (outside the roster's dates, after today, not read, trip card not verified) never takes the PH away.
+- Both roster lines (Trip Card and Bio Matric) follow it before they are compared; the Excel says it. Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + PH worked + comp off + leave + on duty, so paid days can pass the month's days; Payroll accepts up to twice the month's days.
+- `applyHolidayRule` and `lineTotals` in `HR-Pulse-Full-Project/src/rosterModel.ts` hold it; `src/holidayRule.test.ts` checks it.
+
 # M.B-Trip card Mismatch: a day still being read is not "— / —"
 
 Owner, 28 Nov 2026 (Gauri Pauni OB 2nd, 1 to 20 Nov: days 7 to 20 showed "— / —" after 162 seconds): "why it is showing --".

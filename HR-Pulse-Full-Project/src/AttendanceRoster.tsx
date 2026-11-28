@@ -21,7 +21,7 @@ import {MANUAL_MISMATCH_LEGEND,manualMismatchTone} from './manualMismatchColors'
    The user chooses the site and dates first; each tab fetches only its own source for that site. */
 export type RosterView='trip'|'bio'|'compare'|'manual'|'manual2'|'manualMismatch';
 export const ROSTER_CODES:[string,string][]=[['P','Present'],['HD','Half day'],['A','Absent'],['WO','Weekly off'],['H','Holiday'],['CO','Comp off'],['L','Leave'],['OD','On duty'],['MP','Miss punch'],['IN','In, no Out yet'],['?','Trip card not verified yet']];
-export const ROSTER_TOTALS:[keyof LineTotals,string][]=[['totalDays','Total days'],['present','Present'],['half','Half day'],['absent','Absent'],['weeklyOff','Weekly off'],['holiday','Holiday'],['compOff','Comp off'],['leave','Leave'],['onDuty','On duty'],['missPunch','Miss punch'],['lateEarly','Late / early'],['cuts','Half duty cuts'],['paidDays','Paid days']];
+export const ROSTER_TOTALS:[keyof LineTotals,string][]=[['totalDays','Total days'],['present','Present'],['half','Half day'],['absent','Absent'],['weeklyOff','Weekly off'],['holiday','Holiday'],['holidayWorked','PH worked (extra)'],['compOff','Comp off'],['leave','Leave'],['onDuty','On duty'],['missPunch','Miss punch'],['lateEarly','Late / early'],['cuts','Half duty cuts'],['paidDays','Paid days']];
 export const DIFF_HEADING='Diff. of Trip Card and Bio-matric';
 export const VIEW_TABS:[RosterView,string][]=[['trip','Trip card (VLB · ELB · LMV)'],['bio','Biometric'],['compare','Trip card vs Biometric'],['manual','Manual Biometric'],['manual2','Manual Biometric II'],['manualMismatch','M.B-Trip card Mismatch']];
 const WEEKDAY=['Su','Mo','Tu','We','Th','Fr','Sa'];
@@ -46,9 +46,9 @@ export const outText=(out?:string)=>out?out.replace(' (+1)',' +1'):'—';
 export const workedHours=(g:RosterGroup)=>{const m=(g.bio?.days||[]).reduce((s,d)=>s+(d.workedMinutes||0),0);return m?`${Math.floor(m/60)}:${String(m%60).padStart(2,'0')}`:'—';};
 export function bioTotals(group:RosterGroup,dates:string[]){
  const days=group.bio?.days||[];
- return lineTotals(group.bioCodes,dates,{lateEarly:days.filter(d=>d.late||d.early).length,cuts:group.bio?.summary.halfDutyCuts||0});
+ return lineTotals(group.bioCodes,dates,{lateEarly:days.filter(d=>d.late||d.early).length,cuts:group.bio?.summary.halfDutyCuts||0,holidays:group.holidays});
 }
-export const tripTotals=(group:RosterGroup,dates:string[])=>lineTotals(group.tripCodes,dates);
+export const tripTotals=(group:RosterGroup,dates:string[])=>lineTotals(group.tripCodes,dates,{holidays:group.holidays});
 export const diffText=(group:RosterGroup,tripsLoaded:boolean)=>!tripsLoaded?'—':!group.hasTripCards?'No trip card':String(group.mismatches.length);
 /** The groups a view lists: trip card people, biometric people, or everyone. */
 export const isManualRosterView=(view:RosterView)=>view==='manual'||view==='manual2';
@@ -272,7 +272,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
    </table></div>
   </div>}
   <p className="help-text">{view==='bio'?'Biometric: every punch on this site’s machines (Biometric machines), rated with the attendance policy: In is the first punch of the shift, Out the last; +1 is the next morning. Orange In is late come, red Out is early going. Hover a day for every punch and its machine. Machine IDs not linked to an employee show the name on the machine; link them in Machine punches. ':manualRoster?`${view==='manual2'?'Manual Biometric II':'Manual Biometric'}: attendance calculated only from the Text, CSV or DAT log imported in this tab. ${view==='manual2'?'Driver and Operator departments/designations are excluded. ':''}`:'Trip card: MIS VLB trip cards, ELB job cards and LMV vehicle log books, rated with the attendance policy hours rule (? until the MIS batch is closed). '}
-   {compare?'Bio Matric: every punch on this site’s machines (Biometric machines). ':''}Weekly off, holiday, leave, comp off and OD come from HR records{compare?' and show on both lines':''}. Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + comp off + leave + on duty.</p>
+   {compare?'Bio Matric: every punch on this site’s machines (Biometric machines). ':''}Weekly off, holiday, leave, comp off and OD come from HR records{compare?' and show on both lines':''}. Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + PH worked + comp off + leave + on duty. Public holiday: worked = paid twice; absent the day before and the day after = A, not paid.</p>
  </>;
 }
 
