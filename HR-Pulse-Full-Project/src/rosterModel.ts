@@ -48,7 +48,8 @@ export type RosterGroup = {
 };
 
 const CALENDAR = new Set(['WO', 'H', 'L', 'CO', 'OD']);
-const WORKED = new Set(['P', 'HD', 'IN', 'MP']);
+// SH (short hours) and HM (working hours missing): working-hours rules, the person came; HR decides the pay.
+const WORKED = new Set(['P', 'HD', 'IN', 'MP', 'SH', 'HM']);
 const RANK: Record<string, number> = {P: 3, HD: 2, A: 1};
 const normal = (value?: string) => String(value || '').trim().toUpperCase();
 const identityNumber = (value?: string) => {
@@ -202,7 +203,7 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
 }
 
 /** A day's mark that means the person came to work (a trip card, a punch, a half day). */
-const CAME = new Set(['P', 'IN', 'HD', 'MP']);
+const CAME = new Set(['P', 'IN', 'HD', 'MP', 'SH', 'HM']);
 /**
  * Public holiday (PH) rule, owner 28 Nov 2026 (Pulse II HR deck, slide 10), on the PH dates HR set for the site:
  *  1. Works on the PH (present, half day or miss punch): the work counts and the PH is credited too, so a present PH is paid twice.

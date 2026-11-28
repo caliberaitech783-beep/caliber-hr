@@ -21,7 +21,9 @@ import OtherStaffComparison from './OtherStaffComparison';
    Manual mismatch breakdowns stay closed until the user selects a drill option.
    The user chooses the site and dates first; each tab fetches only its own source for that site. */
 export type RosterView='trip'|'bio'|'compare'|'manual'|'manual2'|'manualMismatch';
-export const ROSTER_CODES:[string,string][]=[['P','Present'],['HD','Half day'],['A','Absent'],['WO','Weekly off'],['H','Holiday'],['CO','Comp off'],['L','Leave'],['OD','On duty'],['MP','Miss punch'],['IN','In, no Out yet'],['?','Trip card not verified yet']];
+export const ROSTER_CODES:[string,string][]=[['P','Present'],['HD','Half day'],['A','Absent'],['WO','Weekly off'],['H','Holiday'],['CO','Comp off'],['L','Leave'],['OD','On duty'],['MP','Miss punch'],['IN','In, no Out yet'],['?','Trip card not verified yet'],
+ // Working-hours rules of a switched-on Manual Biometric site (owner, 28 Nov 2026).
+ ['SH','Short hours, HR to check'],['HM','Working hours missing'],['DO','Device offline'],['LF','Left']];
 export const ROSTER_TOTALS:[keyof LineTotals,string][]=[['totalDays','Total days'],['present','Present'],['half','Half day'],['absent','Absent'],['weeklyOff','Weekly off'],['holiday','Holiday'],['holidayWorked','PH worked (extra)'],['compOff','Comp off'],['leave','Leave'],['onDuty','On duty'],['missPunch','Miss punch'],['lateEarly','Late / early'],['cuts','Half duty cuts'],['paidDays','Paid days']];
 export const DIFF_HEADING='Diff. of Trip Card and Bio-matric';
 export const VIEW_TABS:[RosterView,string][]=[['trip','Trip card (VLB · ELB · LMV)'],['bio','Biometric'],['compare','Trip card vs Biometric'],['manual','Manual Biometric'],['manual2','Other Staff Biometric'],['manualMismatch','M.B-Trip card Mismatch']];

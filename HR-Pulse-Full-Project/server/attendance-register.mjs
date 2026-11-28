@@ -3,8 +3,10 @@
    shift, then each day is rated with the attendance HR policy
    (attendance-policy.mjs). Holidays, approved leave / OD and completed gate
    passes are added from the HR records. */
-import {DEFAULT_POLICY, validatePolicy, clockMinutes, evaluateDay, isExempt, summarizeMonth} from './attendance-policy.mjs';
+import {DEFAULT_POLICY, validatePolicy, clockMinutes, evaluateDay, isExempt, summarizeMonth,
+  workingHoursRuleSite, isDriverOrOperator, standardHours, workingHoursStatus} from './attendance-policy.mjs';
 import {exceptionRanges, rangesFor, exemptOn} from './biometric-exceptions.mjs';
+import {workingHoursNumber} from './working-hours.mjs';
 
 const DAY_MS = 86_400_000;
 // Punches from 2 h before shift start until the same time next day belong to that duty.
@@ -41,6 +43,53 @@ export function gatePassMinutes(pass) {
   return planned != null && expected != null && expected > planned ? expected - planned : 0;
 }
 
+/* ---------- Working-hours rules (owner, 28 Nov 2026; Manual Biometric of a switched-on site) ----------
+   The machine's In/Out key decides the duty, not the clock: an In (0, or 4 = OT In) is paired with the next Out
+   (1, or 5 = OT Out) at most 16 h later, at any time of day, and the whole duty counts on the In date. Out → In is the
+   rest between two duties and is never a duty. The same key twice (In, In or Out, Out) is a wrong key: the pair is
+   still a duty when the first punch is within 3 h of the person's usual In hour; otherwise each punch is a miss punch. */
+export const MAX_DUTY_MINUTES = 16 * 60;
+const isInKey = type => type === '0' || type === '4';
+const isOutKey = type => type === '1' || type === '5';
+const hourGap = (a, b) => { const d = Math.abs(a - b) % 24; return Math.min(d, 24 - d); };
+
+/** punches [{minute,type,where}] of one person → Map(day number → {inMinute,outMinute,worked,complete,guessed,places}). */
+export function pairByKey(punches, usualInHour = null) {
+  const list = [];
+  for (const punch of [...punches].sort((a, b) => a.minute - b.minute)) {
+    const last = list[list.length - 1];
+    // A double press is one punch. When the two presses have different keys (In, then Out at once), the person
+    // corrected the key: the last press counts.
+    if (last && punch.minute - last.minute <= DOUBLE_PRESS) { if (punch.type !== last.type) list[list.length - 1] = punch; continue; }
+    list.push(punch);
+  }
+  const duties = new Map();
+  const entry = day => duties.get(day) || duties.set(day, {inMinute: null, outMinute: null, worked: 0, complete: false, guessed: false, places: []}).get(day);
+  const place = (duty, day, punch) => { if (punch.where) duty.places.push(clock(punch.minute - day * 1440) + ' ' + punch.where); };
+  for (let i = 0; i < list.length;) {
+    const a = list[i], b = list[i + 1], gap = b ? b.minute - a.minute : Infinity;
+    const keyPair = !!b && isInKey(a.type) && isOutKey(b.type);
+    const guessPair = !!b && !keyPair && a.type === b.type && usualInHour != null && hourGap(Math.floor((a.minute % 1440) / 60), usualInHour) <= 3;
+    const day = Math.floor(a.minute / 1440), duty = entry(day);
+    if (b && gap <= MAX_DUTY_MINUTES && (keyPair || guessPair)) {
+      const start = a.minute - day * 1440, end = b.minute - day * 1440;
+      if (!duty.complete) { duty.inMinute = start; duty.outMinute = end; }
+      else { duty.inMinute = Math.min(duty.inMinute, start); duty.outMinute = Math.max(duty.outMinute, end); }
+      duty.worked += gap; duty.complete = true; duty.guessed = duty.guessed || guessPair;
+      place(duty, day, a); place(duty, day, b);
+      i += 2;
+    } else {
+      // A single punch: a miss punch on its own date, unless that date already has a full duty.
+      if (!duty.complete && duty.inMinute == null && duty.outMinute == null) {
+        if (isOutKey(a.type)) duty.outMinute = a.minute - day * 1440; else duty.inMinute = a.minute - day * 1440;
+      }
+      place(duty, day, a);
+      i += 1;
+    }
+  }
+  return duties;
+}
+
 /**
  * Pure register builder. Inputs are plain rows (see loadRegister):
  * employees {id,code,name,siteId,site,siteCode,siteType,department,shift,starts,ends,designation,dailyWage,monthlyPay}
@@ -48,13 +97,17 @@ export function gatePassMinutes(pass) {
  * leaves {employeeId,from,to,compOff} (compOff: a leave of a comp off leave type, shown as CO)
  * ods {employeeId,from,to} · gatePasses {employeeId,date,minutes}
  */
-export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employees = [], punches = [], holidays = [], leaves = [], ods = [], gatePasses = []}) {
+export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employees = [], punches = [], holidays = [], leaves = [], ods = [], gatePasses = [],
+  workingHoursSite = '', offline = []}) {
   const first = dayNumber(from), last = dayNumber(to), now = today ? dayNumber(today) : Infinity;
+  // workingHoursSite: the Manual Biometric site being read; its switch decides the working-hours rules.
+  // offline: 'employeeId|YYYY-MM-DD' for days on which every machine the person uses recorded nothing.
+  const ruleSite = workingHoursRuleSite(policy, workingHoursSite), offlineDays = new Set(offline);
   const byEmployee = new Map();
   for (const punch of punches) {
     const minute = stampMinutes(punch.at);
     if (minute == null) continue;
-    byEmployee.set(punch.employeeId, [...(byEmployee.get(punch.employeeId) || []), {minute, where: punch.where || ''}]);
+    byEmployee.set(punch.employeeId, [...(byEmployee.get(punch.employeeId) || []), {minute, where: punch.where || '', type: String(punch.type ?? '')}]);
   }
   const passMinutes = new Map();
   for (const pass of gatePasses) {
@@ -66,11 +119,16 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
     const ends = starts != null && rawEnd != null ? (rawEnd <= starts ? rawEnd + 1440 : rawEnd) : null;
     const anchor = starts == null ? 0 : starts - EARLY_WINDOW;
     const duties = new Map(), places = new Map(), nightDuties = new Set();
+    // Working-hours rules: a switched-on Manual Biometric site, a linked person who is not a driver, operator or exempt role.
+    const ruled = ruleSite && employee.linked !== false && employee.siteType !== 'Office' && !isDriverOrOperator(employee.designation) &&
+      !isExempt(employee.designation, policy);
+    const keyed = ruled ? pairByKey(byEmployee.get(employee.id) || [], employee.usualInHour ?? null) : null;
+    const hours = ruled ? (employee.workingHours > 0 ? employee.workingHours : null) : null;
     // Drivers/operators rotate A/B/C; a fixed Employee Master shift cannot split their actual C duty.
     // With no shift (manual imports and unlinked IDs), use the same chronological pairing.
     const rotating = starts == null || (employee.siteType !== 'Office' && /\b(?:drivers?|operators?)\b/i.test(employee.designation || ''));
     let night = null;
-    for (const {minute, where} of (byEmployee.get(employee.id) || []).sort((a, b) => a.minute - b.minute)) {
+    for (const {minute, where} of ruled ? [] : (byEmployee.get(employee.id) || []).sort((a, b) => a.minute - b.minute)) {
       const calendar = Math.floor(minute / 1440), time = minute - calendar * 1440;
       let duty = Math.floor((minute - anchor) / 1440);
       if (rotating) {
@@ -102,15 +160,23 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
     const holidayFor = date => holidays.find(h => h.date === date && (!h.siteId || [employee.siteId, employee.siteCode, employee.site].includes(h.siteId)));
     const days = [];
     for (let number = first; number <= last && number <= now; number++) {
-      const date = dateOf(number), times = duties.get(number) || [];
-      const inMinute = times.length ? times[0] : null;
-      const outMinute = times.length && times[times.length - 1] - times[0] > DOUBLE_PRESS ? times[times.length - 1] : null;
+      const date = dateOf(number), keyedDuty = keyed?.get(number);
+      const times = ruled ? (keyedDuty ? [keyedDuty] : []) : duties.get(number) || [];
+      const inMinute = ruled ? keyedDuty?.inMinute ?? null : times.length ? times[0] : null;
+      const outMinute = ruled ? keyedDuty?.outMinute ?? null : times.length && times[times.length - 1] - times[0] > DOUBLE_PRESS ? times[times.length - 1] : null;
       const gate = passMinutes.get(employee.id + '|' + date) || 0;
       const wage = employee.dailyWage > 0 ? employee.dailyWage : employee.monthlyPay > 0 ? employee.monthlyPay / daysInMonth(date) : 0;
       const inferredNight = nightDuties.has(number);
       const configuredNight = starts != null && rawEnd != null && rawEnd < starts;
       const listed = exemptOn(exceptions, date), exempt = roleExempt || listed;
-      const result = evaluateDay({inMinute, outMinute, shiftStart: inferredNight && !configuredNight ? 1260 : starts, shiftEnd: inferredNight && !configuredNight ? 1740 : ends, designation: employee.designation, site: employee.site,
+      // A day on the Biometric Exception Master is present whatever the rules (evaluateDay with exempt).
+      const result = ruled && !listed ? (() => {
+        // Working-hours rules: no lunch deduction, no late come / early going; the gate pass deduction is unchanged.
+        const base = evaluateDay({designation: employee.designation, site: employee.site, gatePassMinutes: gate, dailyWage: wage}, policy);
+        const complete = !!keyedDuty?.complete;
+        return {...base, status: complete ? workingHoursStatus(keyedDuty.worked, hours) : 'MP', missPunch: !complete,
+          workedMinutes: complete ? keyedDuty.worked : null, late: false, early: false};
+      })() : evaluateDay({inMinute, outMinute, shiftStart: inferredNight && !configuredNight ? 1260 : starts, shiftEnd: inferredNight && !configuredNight ? 1740 : ends, designation: employee.designation, site: employee.site,
         gatePassMinutes: gate, dailyWage: wage, exempt: listed}, policy);
       const holiday = holidayFor(date);
       const leave = leaves.find(l => l.employeeId === employee.id && between(date, l.from, l.to));
@@ -120,25 +186,37 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       const weeklyOff = employee.siteType === 'Office' && new Date(number * DAY_MS).getUTCDay() === 0;
       // The HR calendar for the day (whatever the punches say): the roster's trip card line shows it too.
       const calendar = holiday ? 'H' : onLeave ? leaveCode : onDuty ? 'OD' : weeklyOff ? 'WO' : '';
+      const left = ruled && !!employee.leavingDate && date > employee.leavingDate;
       if (!times.length) {
-        status = holiday ? 'H' : onLeave ? leaveCode : onDuty ? 'OD' : weeklyOff ? 'WO' : exempt ? 'P' : 'A';
+        status = holiday ? 'H' : onLeave ? leaveCode : onDuty ? 'OD' : weeklyOff ? 'WO' : exempt ? 'P' :
+          left ? 'LF' : ruled && offlineDays.has(employee.id + '|' + date) ? 'DO' : 'A';
         if (holiday) note = holiday.name || 'Holiday';
         else if (status === 'P' && listed) note = 'Biometric exception: marked present, no punch needed';
+        if (status === 'LF') note = `Left on ${employee.leavingDate}`;
+        if (status === 'DO') note = 'Device offline — the machine recorded no punch this day; regularize';
       } else if (status !== 'P' && (onLeave || onDuty)) {
         status = onDuty ? 'OD' : leaveCode;
       } else if (holiday) note = `Worked on ${holiday.name || 'holiday'}`;
-      if (status === 'MP' && number === now) {
+      if (status === 'MP' && number === now && (!ruled || inMinute != null)) {
         status = 'IN';
         note = 'On duty — no Out punch yet';
       }
       if (status === 'MP') note = 'Only one punch — regularize the missing punch';
-      const counts = ['P', 'HD', 'A', 'MP'].includes(status);
+      if (ruled && times.length) {
+        if (status === 'SH') note = `Short hours: under half of ${hours} h — HR to check`;
+        if (status === 'HM') note = 'Working hours missing in Employee Master — HR to decide';
+        if (keyedDuty?.guessed) note = [note, 'In/Out key pressed wrong — paired by the usual In time'].filter(Boolean).join(' · ');
+        if (hours && employee.hoursSource && employee.hoursSource !== 'master' && ['P', 'HD', 'SH'].includes(status)) {
+          note = [note, `Working hours ${hours} h taken from ${employee.hoursSource === 'designation' ? 'the same designation at the site' : 'own punches'} — HR to confirm`].filter(Boolean).join(' · ');
+        }
+      }
+      const counts = ['P', 'HD', 'A', 'MP', 'SH', 'HM'].includes(status);
       days.push({
         date, status, calendar, note, ...(inferredNight ? {shift: 'C'} : {}), in: clock(inMinute), out: clock(outMinute), workedMinutes: counts ? result.workedMinutes : null,
         late: counts && result.late, early: counts && result.early, missPunch: status === 'MP',
         gatePassMinutes: gate, gatePassDeduction: result.gatePassDeduction, exempt, ...(listed ? {biometricException: true} : {}),
         // Site roster: every punch of the day with the machine it came from ("05:52 Main gate").
-        ...(places.has(number) ? {punches: places.get(number)} : {})
+        ...(ruled ? (keyedDuty?.places.length ? {punches: keyedDuty.places} : {}) : places.has(number) ? {punches: places.get(number)} : {})
       });
     }
     const months = {};
@@ -149,12 +227,13 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       for (const [key, value] of Object.entries(month)) sum[key] = Math.round(((sum[key] || 0) + value) * 100) / 100;
       return sum;
     }, {});
-    for (const status of ['H', 'L', 'CO', 'OD', 'WO', 'IN']) total[status] = days.filter(day => day.status === status).length;
+    for (const status of ['H', 'L', 'CO', 'OD', 'WO', 'IN', 'DO', 'LF']) total[status] = days.filter(day => day.status === status).length;
     return {
       id: employee.id, code: employee.code, aFormNo: employee.aFormNo || '', name: employee.name, siteId: employee.siteId || '', site: employee.site || '',
       siteType: employee.siteType || '', department: employee.department || '', shift: employee.shift || '', designation: employee.designation || '',
       exempt: roleExempt || days.some(day => day.biometricException), ...(days.some(day => day.biometricException) ? {biometricException: true} : {}),
-      shiftStart: clock(starts), shiftEnd: clock(ends), days, months, summary: total
+      shiftStart: clock(starts), shiftEnd: clock(ends), days, months, summary: total,
+      ...(ruled ? {rule: 'working-hours', workingHours: hours, hoursSource: hours ? employee.hoursSource || 'master' : 'missing'} : {})
     };
   });
   return {from, to, policy, rows, dutyVersion: BIOMETRIC_DUTY_VERSION};
@@ -216,9 +295,72 @@ export async function inTurns(tasks, limit = LOOKUPS_AT_ONCE) {
 const HOLIDAYS = `SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
      WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`;
 
+const designationKey = text => String(text || '').replace(/\s+/g, ' ').trim().toUpperCase();
+
+/**
+ * Working-hours rules of a Manual Biometric read (null when the site is not switched on). For each person under the rules:
+ * working hours from Employee Master, else the one standard of the same designation at their site, else their own duties of
+ * the last 30 days (at least 5 In → Out, rounded to 8 / 11 / 12 h); their usual In hour (for a wrong In/Out key); and the
+ * days on which every machine they use recorded no punch at all (device offline).
+ */
+export async function loadWorkingHoursRules(db, {policy, workingHoursSite, employees, manualMatches, punchTable, devices, from, to}) {
+  if (!workingHoursRuleSite(policy, workingHoursSite)) return null;
+  const ruled = employees.filter(e => !isDriverOrOperator(e.designation) && !isExempt(e.designation, policy));
+  const ruledIds = new Set(ruled.map(e => String(e.id)));
+  const matches = manualMatches.filter(m => ruledIds.has(String(m.employee_id)));
+  const people = new Map();
+  if (!matches.length) return {people, offline: []};
+  const siteIds = [...new Set(ruled.map(e => e.site_id).filter(Boolean))];
+  const [profiles, standards, deviceDays] = await inTurns([
+    () => db.query(`WITH m AS (SELECT * FROM unnest($1::text[],$2::text[],$3::uuid[]) AS m(device_serial,biometric_id,employee_id)),
+      p AS (SELECT m.employee_id,p.device_serial,p.punched_at AS t,p.punch_type AS k FROM m
+       JOIN ${punchTable} p ON p.device_serial=m.device_serial AND p.biometric_id=m.biometric_id
+        AND p.punched_at>=$4::date-30 AND p.punched_at<$5::date+2),
+      q AS (SELECT employee_id,device_serial,t,k,lead(t) OVER w AS nt,lead(k) OVER w AS nk FROM p WINDOW w AS (PARTITION BY employee_id ORDER BY t))
+     SELECT employee_id,
+      mode() WITHIN GROUP (ORDER BY extract(hour FROM t)::int) FILTER (WHERE k IN ('0','4')) AS usual_in,
+      (count(*) FILTER (WHERE k IN ('0','4') AND nk IN ('1','5') AND nt-t BETWEEN interval '3 hours' AND interval '16 hours'))::int AS duties,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM nt-t)/3600)
+       FILTER (WHERE k IN ('0','4') AND nk IN ('1','5') AND nt-t BETWEEN interval '3 hours' AND interval '16 hours') AS median_hours,
+      array_agg(DISTINCT device_serial) AS devices
+     FROM q GROUP BY employee_id`,
+    [matches.map(m => m.device_serial), matches.map(m => m.biometric_id), matches.map(m => m.employee_id), from, to]),
+    () => siteIds.length ? db.query(`SELECT site_id::text AS site_id,coalesce(data->>'designation','') AS designation,array_agg(DISTINCT data->>'workingHours') AS hours
+     FROM hr_employee_master_register WHERE site_id::text=ANY($1::text[]) AND coalesce(data->>'workingHours','')<>'' GROUP BY 1,2`, [siteIds]) : {rows: []},
+    () => devices?.length ? db.query(`SELECT device_serial,to_char(punched_at,'YYYY-MM-DD') AS day,count(*)::int AS punches FROM ${punchTable}
+     WHERE device_serial=ANY($1::text[]) AND punched_at>=$2::date AND punched_at<$3::date+1 GROUP BY 1,2`, [devices, from, to]) : {rows: []}
+  ]);
+  // One clear standard per designation at a site: every line with hours says the same number of hours.
+  const standard = new Map();
+  for (const row of standards.rows) {
+    const values = [...new Set((row.hours || []).map(workingHoursNumber).filter(Boolean))];
+    const key = row.site_id + '|' + designationKey(row.designation);
+    standard.set(key, values.length === 1 ? values[0] : null);
+  }
+  const profile = new Map(profiles.rows.map(row => [String(row.employee_id), row]));
+  const recorded = new Set(deviceDays.rows.filter(row => Number(row.punches) > 0).map(row => row.device_serial + '|' + row.day));
+  const offline = [];
+  for (const e of ruled) {
+    const id = String(e.id), own = profile.get(id);
+    const master = workingHoursNumber(e.working_hours);
+    const byDesignation = standard.get(String(e.site_id || '') + '|' + designationKey(e.designation)) || null;
+    const byPunches = own && Number(own.duties) >= 5 ? standardHours(Number(own.median_hours)) : null;
+    const [workingHours, hoursSource] = master ? [master, 'master'] : byDesignation ? [byDesignation, 'designation'] : byPunches ? [byPunches, 'punches'] : [null, 'missing'];
+    people.set(id, {workingHours, hoursSource, usualInHour: own?.usual_in == null ? null : Number(own.usual_in), leavingDate: String(e.leaving_date || '').slice(0, 10)});
+    const used = Array.isArray(own?.devices) ? own.devices.filter(Boolean) : [];
+    if (!used.length) continue;
+    for (let number = dayNumber(from); number <= dayNumber(to); number++) {
+      const date = dateOf(number);
+      if (used.every(serial => !recorded.has(serial + '|' + date))) offline.push(id + '|' + date);
+    }
+  }
+  return {people, offline};
+}
+
 /** options.policy / options.holidays: already read by the caller (the site roster reads them once for its two halves). */
 export async function loadRegister(db, sites, from, to, today, options = {}) {
-  const {devices = null, employeeIds = null, manual = false, matchAForm = false, manualMatches = [], manualSource = 'manual1'} = options;
+  const {devices = null, employeeIds = null, manual = false, matchAForm = false, manualMatches = [], manualSource = 'manual1', workingHoursSite = '',
+    historyOnly = new Set()} = options;
   const punchTable=manual?(manualSource==='manual2'?'hr_manual_biometric_ii_punches':'hr_manual_biometric_punches'):'hr_attendance_punches';
   const policy = options.policy || (await readPolicy(db)).policy;
   const employeeQuery=manual?`
@@ -229,7 +371,8 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
      WHERE jsonb_typeof(field)='array' AND regexp_replace(upper(coalesce(field->>0,'')),'[^A-Z0-9]','','g') IN ('AFORMNO','AFORMNUMBER','FORMANO','FORMANUMBER')
       AND nullif(trim(field->>1),'') IS NOT NULL LIMIT 1),'') AS a_form_no,
     '' AS shift,NULL AS starts,NULL AS ends,coalesce(e.data->>'designation','') AS designation,
-    coalesce(e.data->>'department','') AS department,'0' AS daily_wage
+    coalesce(e.data->>'department','') AS department,'0' AS daily_wage,
+    coalesce(e.data->>'workingHours','') AS working_hours,coalesce(e.data->>'leavingDate','') AS leaving_date
    FROM hr_employee_master_register e
    WHERE e.id=ANY($1::uuid[])
    ORDER BY e.name,e.data->>'employeeId'`:`
@@ -246,7 +389,9 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
    LEFT JOIN hr_records des ON des.id::text=e.data->>'designationId' AND des.kind='designations'
    WHERE CASE WHEN $2::uuid[] IS NULL THEN ($1::text[] IS NULL OR e.data->>'siteId'=ANY($1)) ELSE e.id=ANY($2::uuid[]) END
    ORDER BY e.name,e.code`;
-  const employees = (await db.query(employeeQuery, manual?[employeeIds]:[employeeIds ? null : sites, employeeIds])).rows;
+  // historyOnly (working-hours rules): people read only for their days without a punch; keep the staff under the rules.
+  const employees = (await db.query(employeeQuery, manual?[employeeIds]:[employeeIds ? null : sites, employeeIds])).rows
+    .filter(e => !historyOnly.has(String(e.id)) || (!isDriverOrOperator(e.designation) && !isExempt(e.designation, policy)));
   const ids = employees.map(e => e.id);
   if (!ids.length) return buildRegister({from, to, today, policy});
   // Biometric Exception Master: who is exempt from punching in these dates (read once by the site roster).
@@ -255,7 +400,7 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
     () => db.query(manual?`WITH identity_map AS (
       SELECT * FROM unnest($3::text[],$4::text[],$5::uuid[]) AS m(device_serial,biometric_id,employee_id)
      )
-     SELECT m.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
+     SELECT m.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,p.punch_type AS type,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM identity_map m
      JOIN ${punchTable} p ON p.device_serial=m.device_serial AND p.biometric_id=m.biometric_id
       AND p.punched_at>=$1::date-1 AND p.punched_at<$2::date+2
@@ -280,12 +425,14 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   ]);
   const monthly = new Map(pay.rows.map(row => [String(row.employee_id),
     ['basic', 'hra', 'fixedAllowance'].reduce((sum, key) => sum + (Number(row.amounts?.[key]) || 0), 0)]));
+  const rules = manual ? await loadWorkingHoursRules(db, {policy, workingHoursSite, employees, manualMatches, punchTable, devices, from, to}) : null;
   return buildRegister({
-    from, to, today, policy,
+    from, to, today, policy, workingHoursSite: rules ? workingHoursSite : '', offline: rules?.offline || [],
     employees: employees.map(e => ({id: String(e.id), code: e.code, aFormNo: e.a_form_no || '', name: e.name, siteId: e.site_id || '', siteCode: e.site_code || '',
       site: e.site || '', siteType: e.site_type || '', department: e.department || '', shift: e.shift || '', starts: e.starts, ends: e.ends, designation: e.designation || '',
-      dailyWage: Number(e.daily_wage) || 0, monthlyPay: monthly.get(String(e.id)) || 0, exceptions: rangesFor(exceptions, e.code)})),
-    punches: punches.rows.map(p => ({employeeId: String(p.employee_id), at: p.at, where: devices ? p.place : ''})),
+      dailyWage: Number(e.daily_wage) || 0, monthlyPay: monthly.get(String(e.id)) || 0, exceptions: rangesFor(exceptions, e.code),
+      ...(rules?.people.get(String(e.id)) || {})})),
+    punches: punches.rows.map(p => ({employeeId: String(p.employee_id), at: p.at, where: devices ? p.place : '', type: p.type ?? ''})),
     holidays: holidays.rows.map(h => ({date: h.date, siteId: h.site_id, name: h.name})),
     leaves: leaves.rows.map(l => ({employeeId: l.employee_id, from: l.from_date, to: l.to_date, compOff: isCompOff(l.leave_type)})),
     ods: ods.rows.map(o => ({employeeId: o.employee_id, from: o.from_date, to: o.to_date})),
@@ -357,6 +504,18 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
    GROUP BY 1,2,3,4`;
   const {rows: ids} = await db.query(idQuery, manual&&matchAForm?[serials, from, to, site.id]:[serials, from, to]);
   const isUniqueMatch = r => Boolean(r.employee_id) && (!manual || Number(r.match_count) === 1);
+  // Working-hours rules: people who punched on these machines in the 30 days before, but not in these dates, are read
+  // too, so that a day without a punch shows A, DO (device offline) or LF instead of nothing. Only staff under the rules
+  // are kept from them (loadRegister drops drivers, operators and exempt roles: their blank days stay as they were).
+  let historyOnly = new Set();
+  if (manual && workingHoursRuleSite(policy, site.name)) {
+    const before = dateOf(dayNumber(from) - 30), dayBefore = dateOf(dayNumber(from) - 1);
+    const {rows: earlier} = await db.query(idQuery, matchAForm ? [serials, before, dayBefore, site.id] : [serials, before, dayBefore]);
+    const known = new Set(ids.filter(isUniqueMatch).map(r => String(r.employee_id)));
+    const extra = earlier.filter(r => isUniqueMatch(r) && !known.has(String(r.employee_id)));
+    historyOnly = new Set(extra.map(r => String(r.employee_id)));
+    ids.push(...extra);
+  }
   const used = new Map();
   for (const r of ids) {
     const key = isUniqueMatch(r) ? String(r.employee_id) : `u:${r.device_serial}|${r.biometric_id}`;
@@ -366,7 +525,8 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   const manualMatches=manual?ids.filter(isUniqueMatch).map(r=>({device_serial:String(r.device_serial),biometric_id:String(r.biometric_id),employee_id:String(r.employee_id)})):[];
   // The policy and the holidays are the same for the linked and the unlinked half: read once, not once for each.
   const holidays = ids.length ? (await db.query(HOLIDAYS, [from, to])).rows : [];
-  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm, manualMatches, manualSource, policy, holidays, exceptions})).rows : [];
+  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm, manualMatches, manualSource, policy, holidays, exceptions,
+    workingHoursSite: manual ? site.name : '', historyOnly})).rows : [];
   const unlinked = [...new Map(ids.filter(r => !isUniqueMatch(r))
     .map(r => [`${r.device_serial}|${r.biometric_id}`, r])).values()];
   const unlinkedKeys=new Set(unlinked.map(r=>`${r.device_serial}|${r.biometric_id}`));

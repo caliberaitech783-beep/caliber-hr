@@ -11,7 +11,9 @@ export const DEFAULT_POLICY = Object.freeze({
   graceMinutes: 15,          // In punch up to this many minutes after shift start is on time
   lateEarlyPerHalfCut: 3,    // every N late comings / early goings in a month = one half duty cut
   gatePassFreeMinutes: 60,   // gate pass time in a day up to this is free
-  exemptRoles: Object.freeze(['CMD', 'Director', 'VP', 'CFO', 'CA'])
+  exemptRoles: Object.freeze(['CMD', 'Director', 'VP', 'CFO', 'CA']),
+  // Sites where Manual Biometric uses the working-hours rules (owner, 28 Nov 2026). Switched on site by site.
+  workingHoursSites: Object.freeze([])
 });
 
 // Daily wage / 8 = hourly rate for the gate pass deduction (fixed by the policy).
@@ -52,7 +54,41 @@ export function validatePolicy(input = {}) {
   if (list.length > 20 || list.some(role => role.length > 40)) fail('List up to 20 exempt roles of 40 characters or fewer.');
   if (list.some(role => /driver/i.test(role))) fail('Drivers are not exempt: their attendance comes from the trip card and logbook.');
   out.exemptRoles = [...new Set(list)];
+  const sites = input.workingHoursSites ?? DEFAULT_POLICY.workingHoursSites;
+  const siteList = (Array.isArray(sites) ? sites : String(sites).split(','))
+    .map(site => String(site).replace(/[\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (siteList.length > 50 || siteList.some(site => site.length > 100)) fail('List up to 50 working-hours rule sites of 100 characters or fewer.');
+  out.workingHoursSites = siteList.filter((site, index) => siteList.findIndex(other => other.toLowerCase() === site.toLowerCase()) === index);
   return out;
+}
+
+/* ---------- Working-hours rules for Manual Biometric (owner, 28 Nov 2026) ----------
+   On a switched-on site, staff other than drivers and operators are rated by their own Employee Master working hours:
+   In punch paired with the next Out punch by the machine's In/Out key (any time of day, at most 16 h), the duty
+   credited to the In date, no lunch deduction, no late come / early going.
+   Present = working hours - 1 h · Half day = half the working hours · less = SH (short hours, HR to check). */
+
+/** True when the site is switched on for the working-hours rules (name compared without case or extra spaces). */
+export function workingHoursRuleSite(policy, site) {
+  const key = String(site || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return !!key && (policy?.workingHoursSites || []).some(name => String(name).replace(/\s+/g, ' ').trim().toLowerCase() === key);
+}
+
+/** Drivers and operators keep their own rules (trip card, C shift, OB no half day): never the working-hours rules. */
+export const isDriverOrOperator = designation => /\b(?:drivers?|operators?|opr|op)\b/i.test(String(designation || ''));
+
+/** The working hours that a duty is rated against: 8, 11 or 12 (from an employee's usual duty length). */
+export function standardHours(hours) {
+  if (!(hours > 0)) return null;
+  return [8, 11, 12].reduce((best, value) => Math.abs(value - hours) < Math.abs(best - hours) ? value : best, 8);
+}
+
+/** One duty by working hours: P from (hours - 1 h), HD from half the hours, else SH. No working hours: HM. */
+export function workingHoursStatus(workedMinutes, hours) {
+  if (!(hours > 0)) return 'HM';
+  if (workedMinutes >= (hours - 1) * 60) return 'P';
+  if (workedMinutes >= hours * 30) return 'HD';
+  return 'SH';
 }
 
 /** "08:15" or "08:15:59" → minutes after midnight (seconds are ignored). */
@@ -161,7 +197,8 @@ export function summarizeMonth(days, policy = DEFAULT_POLICY) {
   const gatePassDeduction = Math.round(days.reduce((sum, day) => sum + (day.gatePassDeduction || 0), 0) * 100) / 100;
   return {
     full, half, absent: count('A'), missPunch: count('MP'), late, early, lateEarly: late + early, halfDutyCuts: cuts,
-    duties: Math.max(0, full + half / 2 - cuts / 2), gatePassDeduction
+    duties: Math.max(0, full + half / 2 - cuts / 2), gatePassDeduction,
+    shortHours: count('SH'), hoursMissing: count('HM')
   };
 }
 
@@ -178,6 +215,12 @@ export function policyRules(policy = DEFAULT_POLICY) {
     ['Early going', 'Out punch before shift end is early going. There is no grace.'],
     ['Half duty cut', `Every ${policy.lateEarlyPerHalfCut} late comings or early goings in a month, counted together, cut one half duty (${policy.lateEarlyPerHalfCut * 2} = two). The count starts again each month.`],
     ['Gate pass', `Up to ${policy.gatePassFreeMinutes} min of gate pass in a day is free. Above that, the full gate pass time is deducted at daily wage ÷ ${GATE_PASS_HOURS_PER_DAY} per hour (wage 800, 2 h 15 m → 225).`],
-    ['Exempt roles', `${policy.exemptRoles.join(', ') || 'None'}: marked present, no late, early or cut. Drivers are not exempt; their attendance comes from the trip card and logbook.`]
+    ['Exempt roles', `${policy.exemptRoles.join(', ') || 'None'}: marked present, no late, early or cut. Drivers are not exempt; their attendance comes from the trip card and logbook.`],
+    ['Working-hours rules (Manual Biometric)', `${(policy.workingHoursSites || []).length ? 'On for ' + policy.workingHoursSites.join(', ') : 'Not switched on for any site yet'}. ` +
+      'For staff other than drivers and operators: the In punch is paired with the next Out punch by the machine\'s In/Out key, at any time of day (at most 16 h), ' +
+      'and the duty counts on the In date. No lunch deduction and no late come / early going. Present from working hours - 1 h, half day from half the working hours, ' +
+      'less is SH (short hours, HR to check). Working hours come from Employee Master; when blank, from the same designation at the site, then from the person\'s own ' +
+      'duties (at least 5, rounded to 8, 11 or 12 h), else HM (hours missing). A day with no punch while the person\'s machine recorded nothing is DO (device offline); ' +
+      'after the leaving date it is LF.']
   ];
 }

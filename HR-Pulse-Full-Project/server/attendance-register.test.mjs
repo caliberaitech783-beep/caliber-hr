@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {buildRegister, gatePassMinutes, readPolicy, savePolicy} from './attendance-register.mjs';
+import {buildRegister, gatePassMinutes, readPolicy, savePolicy, pairByKey} from './attendance-register.mjs';
 import {createAttendance} from './attendance.mjs';
-import {DEFAULT_POLICY} from './attendance-policy.mjs';
+import {DEFAULT_POLICY, validatePolicy, workingHoursStatus, standardHours, workingHoursRuleSite, isDriverOrOperator} from './attendance-policy.mjs';
 
 const staff = {id: 'e1', code: 'C001', name: 'Ravi', siteId: 's1', siteCode: 'NGP', site: 'Nagpur', siteType: 'Office', shift: 'General', starts: '08:00', ends: '17:00', designation: 'Accountant', dailyWage: 800};
 const punches = (date, ...times) => times.map(time => ({employeeId: 'e1', at: `${date} ${time}`}));
@@ -158,4 +158,82 @@ test('roster: comp off leave shows as CO, department is carried on the line', as
   assert.equal(row.department, 'Accounts');
   assert.deepEqual(row.days.map(d => d.status), ['CO', 'L', 'A']);
   assert.deepEqual([row.summary.CO, row.summary.L], [1, 1]);
+});
+
+/* ---------- Working-hours rules for Manual Biometric (owner, 28 Nov 2026) ---------- */
+const GP = 'Gauri Pauni OB 2nd';
+const rulePolicy = validatePolicy({workingHoursSites: [GP]});
+const helper = {id: 'w1', code: 'CMLL19971', name: 'AAKASH KUMAR', siteId: 'gp', site: GP, siteType: '', designation: 'ASST MECHANIC PC', workingHours: 12, hoursSource: 'master'};
+const keyed = (id, list) => list.map(([at, type]) => ({employeeId: id, at, type}));
+const ruled = (extra = {}) => buildRegister({from: '2026-11-01', to: '2026-11-04', today: '2026-11-28', policy: rulePolicy, workingHoursSite: GP, employees: [helper], ...extra});
+const byDate = result => Object.fromEntries(result.rows[0].days.map(day => [day.date.slice(8), day]));
+
+test('working-hours rules: In/Out key pairs day duties on their own date (Gauri Pauni DAT, AAKASH KUMAR)', () => {
+  const days = byDate(ruled({punches: keyed('w1', [
+    ['2026-11-01 07:27', '0'], ['2026-11-01 19:01', '1'], ['2026-11-02 07:00', '0'], ['2026-11-02 19:14', '1'],
+    ['2026-11-03 07:45', '0'], ['2026-11-04 07:29', '0'], ['2026-11-04 18:48', '1']])}));
+  assert.deepEqual([days['01'].status, days['01'].in, days['01'].out, days['01'].workedMinutes], ['P', '07:27', '19:01', 694], '11 h 34 m ≥ 12 - 1 h: P, no lunch deducted');
+  assert.deepEqual([days['02'].status, days['02'].in, days['02'].out], ['P', '07:00', '19:14'], 'evening Out is not paired with the next morning In');
+  assert.deepEqual([days['03'].status, days['03'].in, days['03'].out], ['MP', '07:45', ''], 'a lone In is a miss punch, not absent');
+  assert.equal(days['04'].status, 'P');
+  assert.ok(Object.values(days).every(day => !day.late && !day.early), 'no late come / early going under the rules');
+});
+
+test('working-hours rules: a night duty counts on the In date (AMAN HAIBURU, 19:11 → 07:08 next day)', () => {
+  const days = byDate(ruled({punches: keyed('w1', [['2026-11-02 19:11', '0'], ['2026-11-03 07:08', '1'], ['2026-11-03 19:03', '0'], ['2026-11-04 07:05', '1']])}));
+  assert.deepEqual([days['02'].status, days['02'].in, days['02'].out], ['P', '19:11', '07:08 (+1)']);
+  assert.deepEqual([days['03'].status, days['03'].in, days['03'].out], ['P', '19:03', '07:05 (+1)'], 'the 07:08 Out is not the 3rd\'s In');
+  assert.equal(days['04'].status, 'A', 'the 4th has no duty of its own');
+  assert.equal(days['01'].status, 'A');
+});
+
+test('working-hours rules: P from hours - 1 h, HD from half, else SH; blank hours HM', () => {
+  assert.deepEqual([660, 659, 360, 359].map(m => workingHoursStatus(m, 12)), ['P', 'HD', 'HD', 'SH']);
+  assert.deepEqual([420, 419, 240, 239].map(m => workingHoursStatus(m, 8)), ['P', 'HD', 'HD', 'SH']);
+  assert.equal(workingHoursStatus(700, null), 'HM');
+  assert.deepEqual([11.6, 10.4, 8.6, 9.4].map(standardHours), [12, 11, 8, 8]);
+  const short = byDate(ruled({punches: keyed('w1', [['2026-11-01 07:00', '0'], ['2026-11-01 11:00', '1']])}))['01'];
+  assert.deepEqual([short.status, short.workedMinutes], ['SH', 240]);
+  assert.match(short.note, /Short hours/);
+  const missing = byDate(ruled({employees: [{...helper, workingHours: null, hoursSource: 'missing'}], punches: keyed('w1', [['2026-11-01 07:00', '0'], ['2026-11-01 19:00', '1']])}));
+  assert.equal(missing['01'].status, 'HM');
+  const assumed = byDate(ruled({employees: [{...helper, hoursSource: 'designation'}], punches: keyed('w1', [['2026-11-01 07:00', '0'], ['2026-11-01 19:00', '1']])}));
+  assert.match(assumed['01'].note, /taken from the same designation at the site — HR to confirm/);
+});
+
+test('working-hours rules: Out → In is rest, a wrong key pairs only near the usual In hour, double presses merge', () => {
+  const rest = pairByKey([{minute: 19 * 60, type: '1'}, {minute: 31 * 60, type: '0'}]);
+  assert.ok([...rest.values()].every(duty => !duty.complete), '19:00 Out → 07:00 In is never a duty');
+  const guessed = pairByKey([{minute: 7 * 60, type: '0'}, {minute: 19 * 60, type: '0'}], 7);
+  assert.deepEqual([guessed.get(0).complete, guessed.get(0).guessed, guessed.get(0).worked], [true, true, 720]);
+  assert.ok(![...pairByKey([{minute: 13 * 60, type: '0'}, {minute: 19 * 60, type: '0'}], 7).values()].some(duty => duty.complete), 'far from the usual In: not guessed');
+  const pressed = pairByKey([{minute: 420, type: '0'}, {minute: 422, type: '0'}, {minute: 1140, type: '1'}]);
+  assert.deepEqual([pressed.get(0).inMinute, pressed.get(0).outMinute, pressed.get(0).complete], [420, 1140, true]);
+  // AAKASH, 14 Nov: 07:18 In, 19:08 In, 19:08 Out — the key was corrected at once, so the Out counts.
+  const corrected = pairByKey([{minute: 438, type: '0'}, {minute: 1148, type: '0'}, {minute: 1148, type: '1'}]);
+  assert.deepEqual([corrected.get(0).complete, corrected.get(0).outMinute], [true, 1148]);
+  assert.equal(pairByKey([{minute: 0, type: '0'}, {minute: 17 * 60, type: '1'}]).get(0).complete, false, 'more than 16 h is not one duty');
+});
+
+test('working-hours rules: device offline is DO, after the leaving date LF; switched off and drivers keep the old rules', () => {
+  const days = byDate(ruled({employees: [{...helper, leavingDate: '2026-11-03'}], offline: ['w1|2026-11-02'], punches: keyed('w1', [['2026-11-01 07:00', '0'], ['2026-11-01 19:00', '1']])}));
+  assert.deepEqual(['01', '02', '03', '04'].map(d => days[d].status), ['P', 'DO', 'A', 'LF']);
+  const list = keyed('w1', [['2026-11-01 07:27', '0'], ['2026-11-01 19:01', '1']]);
+  const off = buildRegister({from: '2026-11-01', to: '2026-11-04', today: '2026-11-28', policy: rulePolicy, employees: [helper], punches: list});
+  const before = buildRegister({from: '2026-11-01', to: '2026-11-04', today: '2026-11-28', employees: [helper], punches: list});
+  assert.deepEqual(off.rows[0].days, before.rows[0].days, 'no workingHoursSite: exactly the old calculation');
+  assert.equal(off.rows[0].rule, undefined);
+  const driver = {...helper, designation: 'VOLVO DRIVER'};
+  assert.deepEqual(ruled({employees: [driver], punches: list}).rows[0].days,
+    buildRegister({from: '2026-11-01', to: '2026-11-04', today: '2026-11-28', employees: [driver], punches: list}).rows[0].days, 'drivers keep their rules');
+  assert.ok(['PC OPERATOR', 'EXCAVATOR/OP', 'TIPPER DRIVER'].every(isDriverOrOperator) && !isDriverOrOperator('ASST MECHANIC PC'));
+  const excepted = byDate(ruled({employees: [{...helper, exceptions: [{from: '2026-11-02', to: ''}]}], punches: keyed('w1', [['2026-11-03 07:00', '0'], ['2026-11-03 10:00', '1']])}));
+  assert.deepEqual([excepted['01'].status, excepted['02'].status, excepted['03'].status], ['A', 'P', 'P'], 'a Biometric Exception Master day stays present under the rules');
+});
+
+test('working-hours rule sites are cleaned and matched without case or extra spaces', () => {
+  assert.deepEqual(validatePolicy({workingHoursSites: ' Gauri  Pauni OB 2nd , gauri pauni ob 2nd, Sasti OB '}).workingHoursSites, ['Gauri Pauni OB 2nd', 'Sasti OB']);
+  assert.equal(workingHoursRuleSite(rulePolicy, 'gauri pauni  OB 2nd'), true);
+  assert.equal(workingHoursRuleSite(rulePolicy, 'Sasti OB'), false);
+  assert.deepEqual(validatePolicy({}).workingHoursSites, []);
 });

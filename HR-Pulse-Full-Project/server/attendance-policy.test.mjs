@@ -8,9 +8,9 @@ const span = (hours, minutes) => hours * 60 + minutes;   // worked time after lu
 const day = (inClock, worked) => ({inMinute: at(inClock), outMinute: at(inClock) + worked + 60});
 
 test('defaults are the approved policy numbers', () => {
-  assert.deepEqual({...DEFAULT_POLICY, exemptRoles: [...DEFAULT_POLICY.exemptRoles]}, {
+  assert.deepEqual({...DEFAULT_POLICY, exemptRoles: [...DEFAULT_POLICY.exemptRoles], workingHoursSites: [...DEFAULT_POLICY.workingHoursSites]}, {
     lunchMinutes: 60, absentBelowHours: 4, fullDutyHours: 7, graceMinutes: 15, lateEarlyPerHalfCut: 3,
-    gatePassFreeMinutes: 60, exemptRoles: ['CMD', 'Director', 'VP', 'CFO', 'CA']
+    gatePassFreeMinutes: 60, exemptRoles: ['CMD', 'Director', 'VP', 'CFO', 'CA'], workingHoursSites: []
   });
   assert.deepEqual(validatePolicy({}), validatePolicy(DEFAULT_POLICY));
 });
@@ -128,7 +128,7 @@ test('miss punch and absent days', () => {
 
 test('settings are editable, validated and keep drivers out of the exempt list', () => {
   const custom = validatePolicy({lunchMinutes: '30', absentBelowHours: 3.5, fullDutyHours: 8, graceMinutes: 10, lateEarlyPerHalfCut: 4, gatePassFreeMinutes: 90, exemptRoles: 'CMD, VP'});
-  assert.deepEqual(custom, {lunchMinutes: 30, absentBelowHours: 3.5, fullDutyHours: 8, graceMinutes: 10, lateEarlyPerHalfCut: 4, gatePassFreeMinutes: 90, exemptRoles: ['CMD', 'VP']});
+  assert.deepEqual(custom, {lunchMinutes: 30, absentBelowHours: 3.5, fullDutyHours: 8, graceMinutes: 10, lateEarlyPerHalfCut: 4, gatePassFreeMinutes: 90, exemptRoles: ['CMD', 'VP'], workingHoursSites: []});
   assert.equal(dutyStatus(span(7, 59), custom), 'HD');
   assert.equal(isLate(at('08:11'), at('08:00'), custom), true);
   assert.equal(halfDutyCuts(3, custom), 0);

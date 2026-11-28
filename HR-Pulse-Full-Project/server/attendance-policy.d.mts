@@ -1,6 +1,6 @@
 export type AttendancePolicy = {
   lunchMinutes: number; absentBelowHours: number; fullDutyHours: number; graceMinutes: number;
-  lateEarlyPerHalfCut: number; gatePassFreeMinutes: number; exemptRoles: string[];
+  lateEarlyPerHalfCut: number; gatePassFreeMinutes: number; exemptRoles: string[]; workingHoursSites: string[];
 };
 export type DutyCode = 'A' | 'HD' | 'P';
 export type DayResult = {
@@ -24,6 +24,10 @@ export function evaluateDay(day?: {inMinute?: number | null; outMinute?: number 
   designation?: string; site?: string; gatePassMinutes?: number; dailyWage?: number}, policy?: AttendancePolicy): DayResult;
 export function summarizeMonth(days: Partial<DayResult>[], policy?: AttendancePolicy): {
   full: number; half: number; absent: number; missPunch: number; late: number; early: number; lateEarly: number;
-  halfDutyCuts: number; duties: number; gatePassDeduction: number;
+  halfDutyCuts: number; duties: number; gatePassDeduction: number; shortHours: number; hoursMissing: number;
 };
+export function workingHoursRuleSite(policy: AttendancePolicy | null | undefined, site: string): boolean;
+export function isDriverOrOperator(designation: string): boolean;
+export function standardHours(hours: number): number | null;
+export function workingHoursStatus(workedMinutes: number, hours: number | null): 'P' | 'HD' | 'SH' | 'HM';
 export function policyRules(policy?: AttendancePolicy): [string, string][];

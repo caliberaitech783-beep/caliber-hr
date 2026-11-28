@@ -114,7 +114,7 @@ export type ComparisonResult={site:string;from:string;to:string;compared:string[
 
 /** Drivers and Operators belong to Manual Biometric, not to Other Staff Biometric (same rule as that tab). */
 export const isDriverOrOperator=(department:string,designation:string)=>/(driver|operator)/i.test(`${department||''} ${designation||''}`);
-const WORKED=new Set(['P','HD','MP','IN']);
+const WORKED=new Set(['P','HD','MP','IN','SH','HM']);
 const BIO_LABEL:Record<string,string>={P:'P (full day)',HD:'HD (half day)',A:'A (no punch)',MP:'MP (miss punch)',IN:'IN (no Out yet)',WO:'WO (weekly off)',H:'H (holiday)',L:'L (leave)',CO:'CO (comp off)',OD:'OD (on duty)'};
 const bioText=(code:string)=>code?BIO_LABEL[code]||code:'No punch';
 const upper=(value?:string)=>text(value).toUpperCase();

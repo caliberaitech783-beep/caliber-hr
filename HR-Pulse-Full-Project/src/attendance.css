@@ -59,6 +59,11 @@ span.register-cell{display:inline-block;padding:3px 8px}
 .code-L{background:#fbeaf0;color:#72243e}
 .code-OD{background:#e6f1fb;color:#0c447c}
 .code-MP{background:#faece7;color:#712b13}
+/* Working-hours rules (Manual Biometric of a switched-on site) */
+.code-SH{background:#fdf3d6;color:#7a4b00;outline:1px dashed #c08a1a}
+.code-HM{background:#f1f1f4;color:#4a4a5a;outline:1px dashed #8a8aa0}
+.code-DO{background:#e9eef3;color:#334e68}
+.code-LF{background:#ecebe9;color:#57534e}
 .roster-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:4px 0 10px;font-size:12.5px;color:#5c4d6e}
 .roster-legend b.register-cell{display:inline-block;min-width:28px;padding:2px 4px;text-align:center}
 .roster-sup{font-size:9px;color:#b45309;font-weight:700}

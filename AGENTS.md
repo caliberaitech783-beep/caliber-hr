@@ -1,3 +1,14 @@
+# Manual Biometric: working-hours rules, switched on site by site
+
+Set by the owner on 28 November 2026 (plan "Accurate Attendance from Biometric DAT Files", Gauri Pauni OB 2nd, 1 to 20 Nov): the DAT pairing put a day-shift person's evening Out with the next morning's In, so correct days showed A or MP. Chosen: the same rules for every site, switched on one site at a time from HR policy › attendance ("Working-hours rules: Manual Biometric sites switched on"), Gauri Pauni first. A site not on the list, drivers, operators, exempt roles and unlinked IDs keep the old calculation exactly.
+
+- The machine's In/Out key decides the duty: In (0, or 4) with the next Out (1, or 5), at any time of day, at most 16 h; the whole duty counts on the In date (In 20:00, Out 05:00 next day = the first day). Out → In is rest, never a duty. The same key twice is paired only when the first punch is within 3 h of the person's usual In hour (last 30 days); else miss punch. A double press within 5 min is one punch; when its two keys differ, the last press counts.
+- Rated by the person's Employee Master working hours: P from hours − 1 h, HD from half, less = SH (short hours, HR to check). Owner's answers: no lunch deduction (the 1 h grace covers it), no late come / early going for site staff (only HO / Corporate G shift keeps them), under half is SH not A.
+- Blank working hours, in this order: the one standard of the same designation at the person's site; their own In → Out duties of the last 30 days (at least 5, rounded to 8, 11 or 12 h); else HM (hours missing). Assumed hours are noted on the day "HR to confirm".
+- A day without a punch: DO when every machine the person used recorded nothing that day (device offline, regularize); LF after the Employee Master leaving date; else A. So that these show, a day's read also lists the staff under the rules who punched on the site's machines in the 30 days before.
+- A day on the Biometric Exception Master stays Present under these rules too (the exception is applied first).
+- `pairByKey`, `loadWorkingHoursRules` and the `ruled` branch of `buildRegister` in `HR-Pulse-Full-Project/server/attendance-register.mjs`, `workingHoursStatus` / `workingHoursRuleSite` in `server/attendance-policy.mjs`; `server/attendance-register.test.mjs` checks them with Gauri Pauni punches.
+
 # Biometric Exception Master
 
 Set by the owner on 28 November 2026: a Biometric Exception Master under Master Configuration to add or remove employees, fetched from Employee Master by Employee ID; "employees added to this list should be exempted from mandatory biometric punching, and their attendance should be generated automatically by the system. Employees not added to this list should continue following the existing biometric attendance process."
