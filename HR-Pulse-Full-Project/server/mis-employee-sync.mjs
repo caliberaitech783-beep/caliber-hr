@@ -14,6 +14,7 @@
 import {keyMatches} from './attendance.mjs';
 import {isEmployeeEntry} from './employee-master-register.mjs';
 import {employeeNumber,samePerson} from './employee-number.mjs';
+import {workingHoursNumber} from './working-hours.mjs';
 
 const fail=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const text=value=>value===null||value===undefined?'':String(value).trim();
@@ -21,7 +22,7 @@ export {employeeNumber};
 
 const REGISTER_COLUMNS=`data->>'employeeId' AS "employeeId",name,site_name AS site,split_part(site_code,'-',1) AS region,
  data->>'department' AS department,data->>'designation' AS designation,data->>'category' AS category,data->>'status' AS status,
- data->>'reportingTo' AS "reportingTo",data->>'contact' AS contact,data->>'leavingDate' AS "leavingDate"`;
+ data->>'reportingTo' AS "reportingTo",data->>'contact' AS contact,data->>'leavingDate' AS "leavingDate",data->>'workingHours' AS "workingHours"`;
 // A transfer sets designationTitle, so it comes before the designation picked at joining.
 const JOINED_COLUMNS=`e.code AS "employeeId",e.name,s.name AS site,split_part(COALESCE(s.code,''),'-',1) AS region,
  COALESCE(dep.name,e.data->'officeData'->>'Department *',e.data->'officeData'->>'Department','') AS department,
@@ -30,7 +31,8 @@ const JOINED_COLUMNS=`e.code AS "employeeId",e.name,s.name AS site,split_part(CO
  CASE WHEN e.status='INACTIVE' THEN 'LEFT' ELSE '' END AS status,
  COALESCE(NULLIF(e.data->>'reportingManagerName',''),e.data->'officeData'->>'Reporting To','') AS "reportingTo",
  COALESCE(e.data->'officeData'->>'Mobile *',e.data->'officeData'->>'Mobile','') AS contact,
- COALESCE(e.data->>'leavingDate','') AS "leavingDate"`;
+ COALESCE(e.data->>'leavingDate','') AS "leavingDate",
+ COALESCE(e.data->'officeData'->>'Working Hours *','') AS "workingHours"`;
 const JOINED_FROM=`FROM hr_records e
  LEFT JOIN hr_records s ON s.kind='sites' AND s.id::text=e.data->>'siteId'
  LEFT JOIN hr_records dep ON dep.kind='departments' AND dep.id::text=e.data->>'departmentId'
@@ -64,7 +66,9 @@ export const TRANSFERS_SQL=`SELECT t.id,t.code,t.data->>'transferDate' AS "trans
 
 const line=(row,source)=>({employeeId:text(row.employeeId),name:text(row.name),region:text(row.region),site:text(row.site),
  department:text(row.department),designation:text(row.designation),category:text(row.category),status:text(row.status).toUpperCase(),
- reportingTo:text(row.reportingTo),contact:text(row.contact),leavingDate:text(row.leavingDate).slice(0,10),source});
+ reportingTo:text(row.reportingTo),contact:text(row.contact),leavingDate:text(row.leavingDate).slice(0,10),
+ // Working Hours of Job & Posting Details (owner, 28 Nov 2026): 8, 9, 10 or 12, null while HR has not set it.
+ workingHours:workingHoursNumber(row.workingHours),source});
 
 // The register's lines, with the line of every number that the same person also holds as a joined employee replaced
 // by that employee. A joining form on somebody else's number stays beside the register line (two lines, one number).

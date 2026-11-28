@@ -1,3 +1,13 @@
+# Working Hours of every employee
+
+Set by the owner on 28 November 2026: an extra field for working hours for every employee of Employee Master, Corporate / HO and OB / COAL.
+
+- **Working Hours** sits in Job & Posting Details right after Shift: in the employee table of both groups, the joining form (asked for, a choice of 8, 9, 10 or 12 hours), Edit employee details, the local review form and both Excel formats. It is saved as `Working Hours *` ("12 hours").
+- Every new joining must have it. Employees saved before it existed keep it blank until HR fills it in on Edit; the dashboard does not list them as missing it. Corporate / HO workbooks without the column are still imported.
+- The save and the import refuse anything but 8, 9, 10 or 12 hours ("12", "12 hrs" and the Excel number 12 are taken as 12 hours).
+- Pulse-II's minute copy gets it as `workingHours` (12, or null when not set) and shows it read only. It only records the hours: attendance, OT and the Shift Master do not use it.
+- `HR-Pulse-Full-Project/server/working-hours.mjs` holds the rule; `server/working-hours.test.mjs` (run by the API deploy) checks it.
+
 # Trip card drivers with no biometric line get leave, OD, PH and absent days
 
 Owner, 28 Nov 2026: "fix the blank days for drivers with no biometric line".
@@ -60,7 +70,7 @@ Set by the owner on 23 November 2026: "Pulse HR is now the final authority for e
 
 - Every change of a register line or of a joined employee (Active, Approved or Inactive) gets a running number in `hr_employee_changes`. Two database triggers write it (`HR-Pulse-Full-Project/server/employee-changes-schema.sql`), so no screen, import or later code can change an employee without a line. A trigger never blocks HR's own save, and HR Pulse starts even when the list cannot be made.
 - Pulse-II asks `GET /api/integrations/mis/employee-changes?after=N` (its own key, read only) and gets the numbers that changed, the highest number read, and every line those people have now; no line left means the person was removed. The people changed in the last ten minutes are given again, because a change saved late can carry an earlier number.
-- The copy carries work details only: Employee ID, name, region, site, department, designation, category, status, reporting to, contact and leaving date. Aadhaar, bank, salary and documents are never sent.
+- The copy carries work details only: Employee ID, name, region, site, department, designation, category, status, reporting to, contact, leaving date and working hours. Aadhaar, bank, salary and documents are never sent.
 - A joining form replaces the register line of the same number only when it is the same person; a form on somebody else's number is sent beside that line, and Pulse-II then changes nobody.
 - `server/mis-employee-sync.mjs` holds the feed; `server/mis-employee-sync.test.mjs` checks it. Do not change an employee by a path that the two triggers do not see (another table), and do not drop `hr_employee_changes`.
 

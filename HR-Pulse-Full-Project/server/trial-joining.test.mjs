@@ -12,7 +12,7 @@ const employee={code:'EMP-1',name:'Sample Candidate',joiningDate:'2026-11-12',ca
   'Father / Spouse Name *':'Sample Parent','Mobile *':'9876543210','Aadhaar No. *':trial.aadhaar,
   'Marital Status':'Single','Identification mark':'Mole on left hand','PAN No.':'ABCDE1234F','Present Address':'Sample Address','Reference Type':'Supervisor','Reference Name':'Sample Referrer',
   'Emergency Contact Name':'Sample Contact','Emergency Contact Number':'9876543211','Department *':'Driver','Sub-department *':'Heavy Vehicles',
-  'Designation *':'Tipper Driver','Employee Category':'Driver','Reporting To':'Site Manager','Joining Date *':'2026-11-12','Shift *':'General',
+  'Designation *':'Tipper Driver','Employee Category':'Driver','Reporting To':'Site Manager','Joining Date *':'2026-11-12','Shift *':'General','Working Hours *':'12 hours',
   'Employment Type':'Permanent','Salary Type':'HPC','Site / Project':'Jayant OB East','PT State':'Madhya Pradesh','Skill Category':'1341',
   'A-Form No.':'A-1','Driving Licence No.':'DL123','DL Issue Date':'2020-01-01','DL Valid Upto':'2030-01-01','Mess Plan':'NO',
   'Trial Form No.':trial.formNo,'Candidate photo':'photo.jpg','Aadhaar (masked display)':'aadhaar.pdf','Driving licence':'licence.pdf',

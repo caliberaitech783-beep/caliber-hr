@@ -21,7 +21,7 @@ test('one line per employee number: the same person who joined through HR replac
   ['CMPL123','Sample Kumar Driver','Majri OB','','HR joining'],['CMLL555','Register Only','Majri OB','LEFT','HR register'],['CMLL900','Joined Only','Jayant OB','LEFT','HR joining']]);
  assert.deepEqual(counts,{register:2,joined:2,replaced:1,clashes:0,lines:3});
  // The work details Pulse-II takes; nothing personal (no Aadhaar, bank or salary) is in a line.
- assert.deepEqual(Object.keys(employees[1]),['employeeId','name','region','site','department','designation','category','status','reportingTo','contact','leavingDate','source']);
+ assert.deepEqual(Object.keys(employees[1]),['employeeId','name','region','site','department','designation','category','status','reportingTo','contact','leavingDate','workingHours','source']);
  assert.equal(employees[1].leavingDate,'2026-11-20');
 });
 
