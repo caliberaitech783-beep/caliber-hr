@@ -229,7 +229,8 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   // How long the attendance reads took and how large they were (read-times.mjs): for an HR administrator, to trace a slow report.
   if(route==='read-times'&&method==='GET'){
    if(!attendanceAdmin(profile))fail('Only an HR administrator can see the attendance read times.',403);
-   return recentReads();
+   // misReads: the MIS busy limit of this server process (mis-read-limit.mjs).
+   return {...recentReads(),misReads:misAttendance.readLimit()};
   }
   if(route==='biometric-days')return biometricDays(profile,method,input,params,sites);
   // Deleting saved Manual Biometric logs (and their imported punches) is for an HR administrator only (owner, 25 Nov 2026),

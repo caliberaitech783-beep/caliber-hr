@@ -16,6 +16,8 @@ export const daysBetween = (from: string, to: string) => {const out: string[] = 
 export const tripDays = (from: string, to: string) => {const start = from < FIRST_TRIP_DATE ? FIRST_TRIP_DATE : from; return start > to ? [] : daysBetween(start, to);};
 export type DayState = 'queued' | 'loading' | 'retrying' | 'done' | 'failed';
 export type DayUpdate = {day: string; state: DayState; rows?: AttendanceRow[]; sites?: string[]; error?: string; attempt?: number;
+  /** retrying because HR Pulse told the roster "MIS is busy": the day is waiting its turn, nothing is wrong with it. */
+  busy?: boolean;
   /** What Pulse-II signed for this site and day ('' while Pulse-II does not sign yet). */
   signature?: string};
 /* Pulse-II is the master of trip card attendance (owner, 27 Nov 2026). It signs every site-day it sends; HR Pulse shows a
@@ -30,12 +32,22 @@ export function misDaySignature(days: MisDay[] | undefined, site: string, day: s
 }
 export type TripFetch = {rows: AttendanceRow[]; failed: string[]; error: string; misSites: string[]};
 const NO_ACCESS = /outside your assigned access|permission|not allowed|sign in|session/i;
+/* The MIS busy limit (owner, 28 Nov 2026; server/mis-read-limit.mjs). HR Pulse keeps at most two reads open at Pulse-II.
+   Beyond that, and a short line, the server answers "MIS is busy. Try again in a minute." at once. The roster then waits
+   BUSY_WAIT_MS and asks again by itself, up to BUSY_TRIES times for a day; that is not one of the day's three tries.
+   When a day has waited that long, MIS is not coming free: the days still to be read are not sent at all, and the
+   roster says so, instead of asking for every day in turn. */
+export const MIS_BUSY = /^MIS is busy\b/i;
+export const BUSY_WAIT_MS = 8_000, BUSY_TRIES = 8;
+export const MIS_BUSY_GAVE_UP = 'MIS is busy. Try again in a few minutes.';
+type BusyRun = {gaveUp: boolean};
 let pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /** Tests replace the wait between tries. */
 export const setRetryPause = (fn: typeof pause) => {pause = fn;};
 
 /** One day of MIS trip cards for the site, tried `attempts` times with a growing wait. */
-async function readDay(grant: string, day: string, site: string, attempts: number, onRetry: (attempt: number, error: string) => void, refresh = false) {
+async function readDay(grant: string, day: string, site: string, attempts: number, onRetry: (attempt: number, error: string, busy?: boolean) => void, refresh = false, run: BusyRun = {gaveUp: false}) {
+  let busyTries = 0;
   for (let attempt = 1; ; attempt++) {
     try {
       const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day, ...(site ? {site, trim: '1'} : {}), ...(refresh ? {refresh: '1'} : {})}));
@@ -54,6 +66,16 @@ async function readDay(grant: string, day: string, site: string, attempts: numbe
         signature: signed?.signed === false ? '' : misDaySignature(signed?.days, site, day, isSite)};
     } catch (e) {
       const message = (e as Error).message || 'MIS did not answer';
+      if (MIS_BUSY.test(message)) {
+        if (run.gaveUp || busyTries >= BUSY_TRIES) {run.gaveUp = true; throw new Error(MIS_BUSY_GAVE_UP);}
+        busyTries++;
+        onRetry(attempt, message, true);
+        await pause(BUSY_WAIT_MS);
+        // Another reader of the same roster may have given up while this day waited.
+        if (run.gaveUp) throw new Error(MIS_BUSY_GAVE_UP);
+        attempt--;
+        continue;
+      }
       if (attempt >= attempts || NO_ACCESS.test(message)) throw new Error(message);
       onRetry(attempt + 1, message);
       await pause(1500 * attempt);
@@ -68,13 +90,16 @@ async function readDay(grant: string, day: string, site: string, attempts: numbe
  */
 export async function streamTripCards(grant: string, days: string[], site: string, onDay: (update: DayUpdate) => void, live: () => boolean = () => true, refresh = false) {
   const failed = new Set<string>();
+  // MIS busy limit: once one day has waited its whole time for MIS, the days left are not asked for (see MIS_BUSY).
+  const busyRun: BusyRun = {gaveUp: false};
   let next = 0;
   for (const day of days) onDay({day, state: 'queued'});
   async function run(day: string, attempts: number) {
     if (!live()) return;
+    if (busyRun.gaveUp) {failed.add(day); if (live()) onDay({day, state: 'failed', error: MIS_BUSY_GAVE_UP}); return;}
     onDay({day, state: 'loading'});
     try {
-      const result = await readDay(grant, day, site, attempts, (attempt, error) => {if (live()) onDay({day, state: 'retrying', attempt, error});}, refresh);
+      const result = await readDay(grant, day, site, attempts, (attempt, error, busy) => {if (live()) onDay({day, state: 'retrying', attempt, error, ...(busy ? {busy: true} : {})});}, refresh, busyRun);
       failed.delete(day);
       if (live()) onDay({day, state: 'done', rows: result.rows, sites: result.sites, signature: result.signature});
     } catch (e) {
@@ -86,7 +111,7 @@ export async function streamTripCards(grant: string, days: string[], site: strin
   await Promise.all(Array.from({length: Math.min(TRIP_PARALLEL, days.length)}, worker));
   // Second pass: the failed days again, one at a time, when MIS is less busy.
   for (const day of [...failed].sort()) {
-    if (!live()) break;
+    if (!live() || busyRun.gaveUp) break;
     await pause(1000);
     await run(day, TRIP_ATTEMPTS);
   }

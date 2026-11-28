@@ -668,3 +668,62 @@ it('every mine name on the screen is exactly one MIS site',async()=>{
  // The names as stored (before the screen renames them) give the same sites, so a list that is not renamed is right too.
  for(const name of stored){const isSite=siteMatcher(name,known);expect(mis.filter(([site,key])=>isSite(site)||isSite(key)).map(([site])=>site),name).toEqual(taken[siteDisplayName(name)]);}
 });
+
+// The MIS busy limit (owner, 28 Nov 2026: "plz build the MIS busy limit in HR Pulse also"). When HR Pulse already has
+// its two reads open at Pulse-II the server answers "MIS is busy. Try again in a minute." at once. The roster waits and
+// asks again by itself; that is not one of the day's three tries, because nothing was wrong with the day.
+const busyAnswer=()=>Response.json({error:'MIS is busy. Try again in a minute.'},{status:503});
+const emptyStream=()=>({key:'k',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null,signatures:{},stale:[],unsigned:[],unchecked:false});
+
+it('a day told "MIS is busy" waits its turn and is read, without using up its three tries',async()=>{
+ const {streamTripCards,setRetryPause,BUSY_WAIT_MS}=await import('./rosterData');
+ const {applyDay}=await import('./AttendanceRoster');
+ const waits:number[]=[];
+ setRetryPause(async ms=>{waits.push(ms);});
+ let told=0;
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const day=new URL(url,'https://x').searchParams.get('from')!;
+  // Seven times in a row: more than the six tries a day has in all (three, and three in the second pass).
+  if(day==='2026-11-03'&&told<7){told++;return busyAnswer();}
+  return Response.json(misReport());}));
+ let stream:Parameters<typeof applyDay>[0]=emptyStream();const waiting:string[][]=[];
+ const failed=await streamTripCards('a'.repeat(43),['2026-11-02','2026-11-03'],'Gevra',u=>{stream=applyDay(stream,u);waiting.push([...(stream.busy||[])]);});
+ expect(failed).toEqual([]);
+ expect(stream.days).toEqual({'2026-11-02':'done','2026-11-03':'done'});
+ expect(waits.filter(ms=>ms===BUSY_WAIT_MS)).toHaveLength(7);
+ // While it waited the roster knew why, and forgot it once the day was read.
+ expect(waiting).toContainEqual(['2026-11-03']);
+ expect(stream.busy).toEqual([]);
+});
+
+it('when MIS stays busy the roster stops asking: the days left are not sent to MIS at all',async()=>{
+ const {streamTripCards,setRetryPause,BUSY_TRIES,MIS_BUSY_GAVE_UP}=await import('./rosterData');
+ setRetryPause(async()=>{});
+ const asked:string[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{asked.push(new URL(url,'https://x').searchParams.get('from')!);return busyAnswer();}));
+ const days=['2026-11-02','2026-11-03','2026-11-04','2026-11-05','2026-11-06','2026-11-07'];
+ const errors:Record<string,string>={};
+ const failed=await streamTripCards('a'.repeat(43),days,'Gevra',u=>{if(u.state==='failed')errors[u.day]=u.error||'';});
+ expect(failed).toEqual(days);
+ expect(Object.values(errors).every(e=>e===MIS_BUSY_GAVE_UP)).toBe(true);
+ // Only the two days being read when MIS stayed busy were asked (each once, and once more after each wait); the
+ // other four days and the second pass asked nothing. Before, six days were asked 36 times.
+ expect([...new Set(asked)].sort()).toEqual(['2026-11-02','2026-11-03']);
+ expect(asked.length).toBeLessThanOrEqual(2*(BUSY_TRIES+1));
+});
+
+it('another failure of MIS is still tried three times and then again, as before',async()=>{
+ const {streamTripCards,setRetryPause,TRIP_ATTEMPTS}=await import('./rosterData');
+ setRetryPause(async()=>{});
+ let asked=0;
+ vi.stubGlobal('fetch',vi.fn(async()=>{asked++;return Response.json({error:'The MIS attendance feed is temporarily unavailable.'},{status:503});}));
+ const failed=await streamTripCards('a'.repeat(43),['2026-11-02'],'Gevra',()=>{});
+ expect(failed).toEqual(['2026-11-02']);
+ expect(asked).toBe(2*TRIP_ATTEMPTS);
+});
+
+it('the reading line says when MIS is busy and how many days are waiting their turn',async()=>{
+ const {tripReadingMessage}=await import('./AttendanceRoster');
+ expect(tripReadingMessage(8,28,0,0,0)).toBe('Reading trip cards from MIS · 8 of 28 days');
+ expect(tripReadingMessage(8,28,2,0,0)).toBe('Reading trip cards from MIS · 8 of 28 days · MIS is busy, 2 days waiting their turn');
+ expect(tripReadingMessage(8,28,1,1,3)).toBe('Reading trip cards from MIS · 8 of 28 days · MIS is busy, 1 day waiting its turn · 1 retrying · 3 not read');
+});

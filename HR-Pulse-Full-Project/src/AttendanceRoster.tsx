@@ -330,13 +330,19 @@ type TripStream={key:string;days:Record<string,DayState>;rows:Record<string,Atte
  /** signatures: what Pulse-II signed for each day read from it; stale: saved days that were no longer what Pulse-II holds
      (read again from MIS); unsigned: days saved before Pulse-II signed days, shown as saved and not compared;
      unchecked: Pulse-II could not be asked, so the signed days are shown as they were saved. */
- signatures:Record<string,string>;stale:string[];unsigned:string[];unchecked:boolean};
+ signatures:Record<string,string>;stale:string[];unsigned:string[];unchecked:boolean;
+ /** busy: days waiting their turn because HR Pulse said "MIS is busy" (the MIS busy limit, 28 Nov 2026). */
+ busy?:string[]};
 const noStream:TripStream={key:'',days:{},rows:{},errors:{},sites:[],runs:0,saved:{},fresh:[],save:null,signatures:{},stale:[],unsigned:[],unchecked:false};
+/** The line shown while trip cards are read. busy: days waiting their turn under the MIS busy limit; retrying: days tried again after a failure. */
+export const tripReadingMessage=(finished:number,total:number,busy:number,retrying:number,failed:number)=>
+ `Reading trip cards from MIS · ${finished} of ${total||'…'} days${busy?` · MIS is busy, ${busy} day${busy===1?'':'s'} waiting ${busy===1?'its':'their'} turn`:''}${retrying>0?` · ${retrying} retrying`:''}${failed?` · ${failed} not read`:''}`;
 export function applyDay(stream:TripStream,u:DayUpdate):TripStream{
  const days={...stream.days,[u.day]:u.state},errors={...stream.errors},rows=u.state==='done'?{...stream.rows,[u.day]:u.rows||[]}:stream.rows;
  if(u.state==='failed')errors[u.day]=u.error||'MIS did not answer';else if(u.state==='done')delete errors[u.day];
  const done=u.state==='done',saved=done?Object.fromEntries(Object.entries(stream.saved).filter(([d])=>d!==u.day)):stream.saved;
- return {...stream,days,rows,errors,saved,signatures:done&&u.signature!==undefined?{...stream.signatures,[u.day]:u.signature}:stream.signatures,fresh:done&&!stream.fresh.includes(u.day)?[...stream.fresh,u.day]:stream.fresh,
+ const busy=[...(stream.busy||[]).filter(d=>d!==u.day),...(u.state==='retrying'&&u.busy?[u.day]:[])].sort();
+ return {...stream,days,rows,errors,saved,busy,signatures:done&&u.signature!==undefined?{...stream.signatures,[u.day]:u.signature}:stream.signatures,fresh:done&&!stream.fresh.includes(u.day)?[...stream.fresh,u.day]:stream.fresh,
   sites:u.sites?[...new Set([...stream.sites,...u.sites])].sort():stream.sites};
 }
 const idle={key:'',status:'idle' as const,message:'',data:null};
@@ -546,10 +552,11 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const designationOptions=[...new Set(people.filter(g=>!departmentsSelected.length||departmentsSelected.includes(g.department)).map(g=>g.designation).filter(Boolean))].sort();
  const shown=people.filter(g=>(!departmentsSelected.length||departmentsSelected.includes(g.department))&&(!designationsSelected.length||designationsSelected.includes(g.designation))&&(!employee||g.key===employee));
  const dayList=trip.key===key?Object.entries(trip.days):[],total=dayList.length,finished=dayList.filter(([,st])=>st==='done'||st==='failed').length;
- const failedDays=dayList.filter(([,st])=>st==='failed').map(([d])=>d).sort(),retrying=dayList.filter(([,st])=>st==='retrying').length;
+ const busyDays=trip.key===key?(trip.busy||[]).filter(d=>trip.days[d]==='retrying').length:0;
+ const failedDays=dayList.filter(([,st])=>st==='failed').map(([d])=>d).sort(),retrying=dayList.filter(([,st])=>st==='retrying').length-busyDays;
  const running=wantTrip&&(trip.key!==key||trip.runs>0);
  const tripState:TripState={status:running?'loading':total&&failedDays.length===total?'error':trip.key===key?'ready':'idle',
-  message:`Reading trip cards from MIS · ${finished} of ${total||'…'} days${retrying?` · ${retrying} retrying`:''}${failedDays.length?` · ${failedDays.length} not read`:''}`,
+  message:tripReadingMessage(finished,total,busyDays,retrying,failedDays.length),
   rows:tripRows,failed:failedDays,misSites:trip.key===key?trip.sites:[],days:trip.key===key?trip.days:undefined,errors:trip.key===key?trip.errors:undefined,
   onRetry:list=>readTrip(list,true)};
  const savedDays=trip.key===key?Object.entries(trip.saved):[],freshDone=trip.key===key?trip.fresh.filter(d=>trip.days[d]==='done'):[],save=trip.key===key?trip.save:null;
