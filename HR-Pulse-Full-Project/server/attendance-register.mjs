@@ -167,10 +167,26 @@ const nclAFormRows = employeeFilter => `
  * options.employeeIds: these linked employees instead of the employees of `sites`. With devices, every punch carries the
  * machine it came from (day.punches).
  */
+/* One attendance read used to start its six lookups together, and the server has five database connections: two days
+   read side by side asked for twelve, and everybody else's request waited behind them (28 Nov 2026). The lookups now
+   run at most two at a time, results in the order asked. */
+export const LOOKUPS_AT_ONCE = 2;
+export async function inTurns(tasks, limit = LOOKUPS_AT_ONCE) {
+  const results = new Array(tasks.length);
+  let next = 0;
+  await Promise.all(Array.from({length: Math.min(limit, tasks.length)}, async () => {
+    while (next < tasks.length) { const index = next++; results[index] = await tasks[index](); }
+  }));
+  return results;
+}
+const HOLIDAYS = `SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
+     WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`;
+
+/** options.policy / options.holidays: already read by the caller (the site roster reads them once for its two halves). */
 export async function loadRegister(db, sites, from, to, today, options = {}) {
   const {devices = null, employeeIds = null, manual = false, matchAForm = false, manualMatches = []} = options;
   const punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
-  const {policy} = await readPolicy(db);
+  const policy = options.policy || (await readPolicy(db)).policy;
   const employeeQuery=manual?`
    SELECT e.id,e.data->>'employeeId' AS code,e.name,e.site_id,e.site_code,e.site_name AS site,'' AS site_type,
     coalesce(nullif(e.data->>'aFormNo',''),(SELECT field->>1
@@ -199,8 +215,8 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   const employees = (await db.query(employeeQuery, manual?[employeeIds]:[employeeIds ? null : sites, employeeIds])).rows;
   const ids = employees.map(e => e.id);
   if (!ids.length) return buildRegister({from, to, today, policy});
-  const [punches, holidays, leaves, ods, passes, pay] = await Promise.all([
-    db.query(manual?`WITH identity_map AS (
+  const [punches, holidays, leaves, ods, passes, pay] = await inTurns([
+    () => db.query(manual?`WITH identity_map AS (
       SELECT * FROM unnest($3::text[],$4::text[],$5::uuid[]) AS m(device_serial,biometric_id,employee_id)
      )
      SELECT m.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
@@ -213,18 +229,17 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
      WHERE l.employee_id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
       AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`, manual?[from,to,manualMatches.map(m=>m.device_serial),manualMatches.map(m=>m.biometric_id),manualMatches.map(m=>m.employee_id)]:[ids, from, to, devices]),
-    db.query(`SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
-     WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to]),
-    db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'fromDate' AS from_date,coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate') AS to_date,
+    () => options.holidays ? {rows: options.holidays} : db.query(HOLIDAYS, [from, to]),
+    () => db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'fromDate' AS from_date,coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate') AS to_date,
       concat_ws(' ',t.code,t.name) AS leave_type FROM hr_records r
      LEFT JOIN hr_records t ON t.id::text=r.data->>'leaveTypeId' AND t.kind='leaveTypes'
      WHERE r.kind='leaveRequests' AND r.status='APPROVED' AND r.data->>'employeeId'=ANY($1::text[]) AND r.data->>'fromDate'<=$3 AND coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate')>=$2`, [ids, from, to]),
-    db.query(`SELECT data->>'employeeId' AS employee_id,data->>'outDutyDate' AS from_date,coalesce(nullif(data->>'toDate',''),data->>'outDutyDate') AS to_date FROM hr_records
+    () => db.query(`SELECT data->>'employeeId' AS employee_id,data->>'outDutyDate' AS from_date,coalesce(nullif(data->>'toDate',''),data->>'outDutyDate') AS to_date FROM hr_records
      WHERE kind='outDutyRequests' AND status='APPROVED' AND data->>'employeeId'=ANY($1::text[]) AND data->>'outDutyDate'<=$3 AND coalesce(nullif(data->>'toDate',''),data->>'outDutyDate')>=$2`, [ids, from, to]),
-    db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'passDate' AS date,r.data->>'outTime' AS out_time,r.data->>'returnTime' AS return_time,a.history
+    () => db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'passDate' AS date,r.data->>'outTime' AS out_time,r.data->>'returnTime' AS return_time,a.history
      FROM hr_records r LEFT JOIN LATERAL (SELECT history FROM hr_approvals WHERE record_id=r.id ORDER BY created_at DESC LIMIT 1) a ON true
      WHERE r.kind='gatePasses' AND r.status='APPROVED' AND r.data->>'employeeId'=ANY($1::text[]) AND r.data->>'passDate' BETWEEN $2 AND $3`, [ids, from, to]),
-    db.query(`SELECT DISTINCT ON (employee_id) employee_id,amounts FROM hr_salary_structure
+    () => db.query(`SELECT DISTINCT ON (employee_id) employee_id,amounts FROM hr_salary_structure
      WHERE employee_id=ANY($1::uuid[]) AND month<=$2 ORDER BY employee_id,month DESC`, [ids, to.slice(0, 7)])
   ]);
   const monthly = new Map(pay.rows.map(row => [String(row.employee_id),
@@ -303,22 +318,20 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   }
   const linkedIds = [...new Set(ids.filter(isUniqueMatch).map(r => String(r.employee_id)))];
   const manualMatches=manual?ids.filter(isUniqueMatch).map(r=>({device_serial:String(r.device_serial),biometric_id:String(r.biometric_id),employee_id:String(r.employee_id)})):[];
-  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm, manualMatches})).rows : [];
+  // The policy and the holidays are the same for the linked and the unlinked half: read once, not once for each.
+  const holidays = ids.length ? (await db.query(HOLIDAYS, [from, to])).rows : [];
+  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm, manualMatches, policy, holidays})).rows : [];
   const unlinked = [...new Map(ids.filter(r => !isUniqueMatch(r))
     .map(r => [`${r.device_serial}|${r.biometric_id}`, r])).values()];
   const unlinkedKeys=new Set(unlinked.map(r=>`${r.device_serial}|${r.biometric_id}`));
   let others = [];
   if (unlinked.length) {
     const unlinkedBiometricIds=[...new Set(unlinked.map(r=>String(r.biometric_id)))];
-    const [{rows: punches}, {rows: holidays}] = await Promise.all([
-      db.query(manual?`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM ${punchTable} p
+    const {rows: punches} = await db.query(manual?`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM ${punchTable} p
        WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
         AND p.biometric_id=ANY($4::text[])`:`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM ${punchTable} p
        LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
-       WHERE l.employee_id IS NULL AND p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, manual?[serials, from, to, unlinkedBiometricIds]:[serials, from, to]),
-      db.query(`SELECT name,data->>'date' AS date,coalesce(data->>'siteId','') AS site_id FROM hr_records
-       WHERE kind='holidays' AND status IN ('ACTIVE','APPROVED') AND data->>'date' BETWEEN $1 AND $2`, [from, to])
-    ]);
+       WHERE l.employee_id IS NULL AND p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, manual?[serials, from, to, unlinkedBiometricIds]:[serials, from, to]);
     others = buildRegister({from, to, today, policy,
       employees: unlinked.map(r => ({id: `u:${r.device_serial}|${r.biometric_id}`, code: manual?r.biometric_id:'', aFormNo: manual&&matchAForm?r.biometric_id:'', name: manual?(Number(r.match_count)>1?`Duplicate ${matchAForm?'A-Form Number':'Employee ID'}`:'Employee not found'):r.machine_name || `Machine ID ${r.biometric_id}`,
         siteId: String(site.id), site: site.name, siteType: site.siteType || '', designation: ''})),

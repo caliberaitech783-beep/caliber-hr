@@ -95,3 +95,61 @@ it('a corrected day is marked, says who changed it, and can be undone',async()=>
  await waitFor(()=>expect(sent.length).toBe(1));
  expect(sent[0]).toEqual({url:expect.stringContaining('attendance/manual-biometric/corrections/undo'),method:'POST',body:{site:'Dhoptala OB 2nd',day:'2026-11-01',employeeCode:'CMLL20611'}});
 });
+
+/* Day by day (owner, 28 Nov 2026): a long range used to show nothing until its last day had been read. */
+function heldDayApi(){
+ let release=()=>{};const held=new Promise<void>(resolve=>{release=resolve;});
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams;
+  if(url.includes('/lookups'))return Response.json([{id:'s1',kind:'sites',code:'DH',name:'Dhoptala OB 2nd'}]);
+  if(url.includes('manual-biometric-days'))return Response.json({site:'Dhoptala OB 2nd',days:[]});
+  if(url.includes('attendance/manual-biometric')){
+   const date=q.get('from')!;if(date==='2026-11-02')await held;
+   return Response.json({from:date,to:date,policy:DEFAULT_POLICY,site:'Dhoptala OB 2nd',canCorrect:true,machines:[{serial:'CEXJ230861482',name:'',location:'',online:false,lastContact:null,lastPunch:'',punches:date==='2026-11-01'?2:1}],
+    rows:[{...row([day(date,date==='2026-11-01'?'P':'MP')]),linked:true,machinesUsed:['CEXJ230861482']}]});
+  }
+  if(url.includes('attendance/mis'))return Response.json({attendanceEquipment:[],attendanceShifts:[],otDuties:[],ot:[],performance:[],details:[],exceptions:[],corrections:[],canEdit:true});
+  return Response.json({});}));
+ return release;
+}
+async function openRange(tab:string){
+ const {AttendanceRosterPage}=await import('./AttendanceRoster');
+ render(<AttendanceRosterPage grant={'a'.repeat(43)}/>);
+ const site=screen.getByLabelText('Site');
+ await waitFor(()=>expect(within(site).getByRole('option',{name:'Dhoptala OB 2nd'})).toBeTruthy());
+ fireEvent.change(site,{target:{value:'Dhoptala OB 2nd'}});
+ fireEvent.change(screen.getByLabelText('From'),{target:{value:'2026-11-01'}});
+ fireEvent.change(screen.getByLabelText('To'),{target:{value:'2026-11-02'}});
+ fireEvent.click(screen.getByRole('button',{name:tab}));
+}
+
+it('Manual Biometric shows the days that have arrived while the others are still being read',async()=>{
+ const release=heldDayApi();
+ await openRange('Manual Biometric');
+ const table=await screen.findByRole('table',{name:'Attendance roster'});
+ await waitFor(()=>expect(within(table).getByText('AADIL KHAN')).toBeTruthy());
+ expect(screen.getByText(/Reading imported biometric attendance… 1 of 2 days read · 1 employee so far/)).toBeTruthy();
+ expect(within(table).getByLabelText('Reading punches…'),'the day still being read is marked in its heading').toBeTruthy();
+ expect(screen.getByText('Loading data…')).toBeTruthy();
+ // Half a roster is not printed, corrected or deleted.
+ expect((screen.getByRole('button',{name:/Print\/Export/}) as HTMLButtonElement).disabled).toBe(true);
+ expect(screen.queryByRole('button',{name:'Delete All'})).toBeNull();
+ expect(screen.queryByRole('button',{name:/^Correct AADIL KHAN/})).toBeNull();
+ expect((screen.getByRole('button',{name:/Save manual biometric|Checking saved days/}) as HTMLButtonElement).disabled).toBe(true);
+ release();
+ await screen.findByText('Data loaded.');
+ expect(screen.getByText(/1 employee · Imported biometric attendance/)).toBeTruthy();
+ expect(within(table).queryByLabelText('Reading punches…')).toBeNull();
+ expect(screen.getByRole('button',{name:'Delete All'})).toBeTruthy();
+ expect((screen.getByRole('button',{name:/Print\/Export/}) as HTMLButtonElement).disabled).toBe(false);
+ expect(screen.getAllByRole('button',{name:/^Correct AADIL KHAN/}).length).toBe(2);
+});
+
+it('M.B-Trip card Mismatch says how many days are read and counts only those days meanwhile',async()=>{
+ const release=heldDayApi();
+ await openRange('M.B-Trip card Mismatch');
+ expect(await screen.findByText(/Reading… Manual Biometric 1 of 2 days · Trip cards \d of 2\. The figures below are for the \d days? read on both sides so far\./)).toBeTruthy();
+ expect(screen.queryByText(/Biometric punches unavailable/)).toBeNull();
+ release();
+ await screen.findByText('Data loaded.',undefined,{timeout:8000});
+ expect(screen.queryByText(/^Reading… Manual Biometric/)).toBeNull();
+});

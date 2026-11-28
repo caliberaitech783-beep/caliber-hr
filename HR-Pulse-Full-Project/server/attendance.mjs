@@ -13,6 +13,7 @@ import {createBiometricDayStore} from './biometric-day-store.mjs';
 import {createBridges,looksLikeSiteKey} from './attendance-bridges.mjs';
 import {createDirectMachines} from './attendance-direct.mjs';
 import {loadRegister,loadSiteRegister,readPolicy,savePolicy} from './attendance-register.mjs';
+import {recentReads} from './read-times.mjs';
 import {removeMachine} from './machine-delete.mjs';
 import {applyCorrections,cleanCorrection,correctionCode,createCorrections} from './manual-attendance-corrections.mjs';
 
@@ -222,6 +223,11 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    return view((await pool.query('SELECT * FROM hr_attendance_fetch_requests WHERE id=$1',[fetchId])).rows[0])||fail('Fetch request not found',404);
   }
   const sites=await siteIds(pool,profile); // null = all sites
+  // How long the attendance reads took and how large they were (read-times.mjs): for an HR administrator, to trace a slow report.
+  if(route==='read-times'&&method==='GET'){
+   if(!attendanceAdmin(profile))fail('Only an HR administrator can see the attendance read times.',403);
+   return recentReads();
+  }
   if(route==='biometric-days')return biometricDays(profile,method,input,params,sites);
   // Deleting saved Manual Biometric logs (and their imported punches) is for an HR administrator only (owner, 25 Nov 2026),
   // by either route (the browser sends it as a POST to …/delete).

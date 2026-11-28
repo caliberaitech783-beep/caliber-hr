@@ -3,7 +3,7 @@ import {ArrowDown,ArrowUp,ChevronDown,Download,Filter,Lock,Printer,RefreshCw,Sav
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
 import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,checkSavedTripCards,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,deleteManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo,type SavedManualDay} from './rosterData';
+import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,checkSavedTripCards,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,deleteManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo,type SavedManualDay} from './rosterData'; // fetchManualBiometric reports each day as it arrives (ManualProgress)
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 import MachineLogUpload from './MachineLogUpload';
@@ -95,21 +95,27 @@ export function RosterTable(props:TableProps){
  return props.view==='manualMismatch'?<ManualMismatchTable {...props}/>:<StandardRosterTable {...props}/>;
 }
 
-function ManualMismatchTable({groups,dates,trip,from,to,loading=false,error=''}:TableProps){
+function ManualMismatchTable({groups,dates,trip,bio,from,to,loading=false,error=''}:TableProps){
  const [employeeTab,setEmployeeTab]=useState<'affected'|'ok'>('affected'),[employeeTabDrill,setEmployeeTabDrill]=useState(false),[category,setCategory]=useState<'both'|'tripOnly'|'bioOnly'|'empty'|''>(''),[pair,setPair]=useState(''),[exporting,setExporting]=useState(false),[exportOpen,setExportOpen]=useState(false),[drillExportOpen,setDrillExportOpen]=useState(false),[filters,setFilters]=useState<ColumnFilters>({}),[sort,setSort]=useState<ColumnSort>(null),[employeeDrill,setEmployeeDrill]=useState('');
  const table=useRef<HTMLTableElement>(null),tripsLoaded=trip.rows!==null;
  const all=viewGroups(groups,'manualMismatch').filter(isManualMismatchEmployee),affectedGroups=all.filter(g=>g.mismatches.length>0),okayGroups=all.filter(g=>g.mismatches.length===0);
  const selectedGroups=category||pair?all:employeeTab==='affected'?affectedGroups:okayGroups,shown=sortGroups(selectedGroups.filter((g,i)=>groupMatches(g,filters,dates,'manualMismatch',i)),sort,dates,'manualMismatch');
  const filterInput=(_filters:ColumnFilters,_setter:Dispatch<SetStateAction<ColumnFilters>>,key:string,label:string)=><ColumnFilter filters={filters} setFilters={setFilters} sort={sort} setSort={setSort} keyName={key} label={label} values={columnValues(all,key,dates,'manualMismatch')}/>;
  const miss=(g:RosterGroup,date:string)=>g.mismatches.find(m=>m.date===date);
- const categoryDates=(g:RosterGroup)=>dates.filter(date=>{const bioCode=g.bioCodes[date]||'',tripCode=g.tripCodes[date]||'',bio=Boolean(bioCode),tripCard=Boolean(tripCode);return pair?`${bioCode} / ${tripCode}`===pair:category==='both'?bio&&tripCard:category==='tripOnly'?!bio&&tripCard:category==='bioOnly'?bio&&!tripCard:category==='empty'?!bio&&!tripCard:employeeTab==='affected'?Boolean(miss(g,date)):bio&&tripCard&&!miss(g,date);});
+ /* The days arrive one by one (28 Nov 2026). While they do, a day counts only once both its Manual Biometric and its
+    trip cards have been read: a day read on one side only would look like "Trip Card only" or "Biometric only". */
+ const bioDays=dates.filter(date=>!bio?.running||bio.days[date]==='done'),tripDays=dates.filter(date=>trip.days?.[date]?trip.days[date]==='done':trip.status!=='loading');
+ const counted=loading?dates.filter(date=>bioDays.includes(date)&&tripDays.includes(date)):dates;
+ const readingNote=loading?`Reading… Manual Biometric ${bioDays.length} of ${dates.length} day${dates.length===1?'':'s'} · Trip cards ${tripDays.length} of ${dates.length}. The figures below are for the ${counted.length} day${counted.length===1?'':'s'} read on both sides so far.`:'';
+ const unreadDays=!loading&&bio?bio.failed:[];
+ const categoryDates=(g:RosterGroup)=>counted.filter(date=>{const bioCode=g.bioCodes[date]||'',tripCode=g.tripCodes[date]||'',bio=Boolean(bioCode),tripCard=Boolean(tripCode);return pair?`${bioCode} / ${tripCode}`===pair:category==='both'?bio&&tripCard:category==='tripOnly'?!bio&&tripCard:category==='bioOnly'?bio&&!tripCard:category==='empty'?!bio&&!tripCard:employeeTab==='affected'?Boolean(miss(g,date)):bio&&tripCard&&!miss(g,date);});
  const drillRows=shown.map(g=>({group:g,dates:categoryDates(g)})).filter(row=>row.dates.length);
  const drillLabel=pair?`${pair} records`:category==='both'?'Both present':category==='tripOnly'?'Trip Card only':category==='bioOnly'?'Manual Biometric only':category==='empty'?'No record':employeeTab==='affected'?'Affected':'All OK';
  const drillVisible=Boolean(pair||category||employeeTabDrill);
- const employeePercent=(count:number)=>dates.length?`${(count*100/dates.length).toFixed(1)}%`:'0.0%';
- const compared=all.length*dates.length,bothCells=all.reduce((sum,g)=>sum+dates.filter(date=>g.bioCodes[date]&&g.tripCodes[date]).length,0),tripOnlyCells=all.reduce((sum,g)=>sum+dates.filter(date=>!g.bioCodes[date]&&g.tripCodes[date]).length,0),bioOnlyCells=all.reduce((sum,g)=>sum+dates.filter(date=>g.bioCodes[date]&&!g.tripCodes[date]).length,0),emptyCells=Math.max(0,compared-bothCells-tripOnlyCells-bioOnlyCells);
+ const employeePercent=(count:number)=>counted.length?`${(count*100/counted.length).toFixed(1)}%`:'0.0%';
+ const compared=all.length*counted.length,bothCells=all.reduce((sum,g)=>sum+counted.filter(date=>g.bioCodes[date]&&g.tripCodes[date]).length,0),tripOnlyCells=all.reduce((sum,g)=>sum+counted.filter(date=>!g.bioCodes[date]&&g.tripCodes[date]).length,0),bioOnlyCells=all.reduce((sum,g)=>sum+counted.filter(date=>g.bioCodes[date]&&!g.tripCodes[date]).length,0),emptyCells=Math.max(0,compared-bothCells-tripOnlyCells-bioOnlyCells);
  const percent=(count:number)=>compared?`${(count*100/compared).toFixed(1)}%`:'0.0%';
- const pairCount=(value:string)=>all.reduce((sum,g)=>sum+dates.filter(date=>`${g.bioCodes[date]||''} / ${g.tripCodes[date]||''}`===value).length,0);
+ const pairCount=(value:string)=>all.reduce((sum,g)=>sum+counted.filter(date=>`${g.bioCodes[date]||''} / ${g.tripCodes[date]||''}`===value).length,0);
  const sourceDetail=(g:RosterGroup,date:string)=>{const bio=g.bioCodes[date]||'',tripCard=g.tripCodes[date]||'',difference=miss(g,date);if(bio&&tripCard)return `Both records present · Manual Biometric: ${bio} (${codeLabel(bio)}) · Trip Card: ${tripCard} (${codeLabel(tripCard)})${difference?' · '+difference.reason:''}`;if(tripCard)return `Trip Card present: ${tripCard} (${codeLabel(tripCard)}) · Manual Biometric record missing`;if(bio)return `Manual Biometric present: ${bio} (${codeLabel(bio)}) · Trip Card record missing`;return 'No Manual Biometric or Trip Card record';};
  const cell=(g:RosterGroup,date:string)=>{const bio=g.bioCodes[date]||'',tripCode=g.tripCodes[date]||'',tone=manualMismatchTone(bio,tripCode);
   const cls=' manual-compare-'+tone;
@@ -124,8 +130,11 @@ function ManualMismatchTable({groups,dates,trip,from,to,loading=false,error=''}:
  function printRoster(){if(!table.current)return;const popup=window.open('','_blank');if(!popup){window.alert('The print window was blocked. Allow pop-ups for this site, then try Print/Export again.');return;}
   const title=`M.B-Trip card Mismatch · ${show(from)} to ${show(to)}`;popup.document.open();popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A3 landscape;margin:8mm}body{font:9px Arial;color:#18122b}button{padding:8px 14px}table{border-collapse:collapse;width:100%;font-size:8px}th,td{border:1px solid #cfc5db;padding:3px;text-align:center;white-space:nowrap}th{background:#f2eaf8}td:nth-child(-n+4),th:nth-child(-n+4){text-align:left}.manual-compare-match>span{background:#eaf3de;color:#27500a}.manual-compare-absent-present>span,.manual-compare-trip-only>span{background:#faeeda;color:#633806}.manual-compare-present-absent>span,.manual-compare-bio-only>span{background:#fcebeb;color:#791f1f}.manual-compare-miss-present>span{background:#eeedfe;color:#3c3489}.manual-compare-half-present>span{background:#fff3cd;color:#664d03}.manual-compare-miss-absent>span{background:#ffd6f1;color:#8a075e}.manual-compare-half-absent>span{background:#e6f1fb;color:#0c447c}.manual-compare-other-difference>span{background:#f3e8ff;color:#5b216b}.manual-compare-empty>span{background:#f3f0f7;color:#6b5a80}small{display:block}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print / Save as PDF</button><h1>${title}</h1>${table.current.outerHTML}</body></html>`);popup.document.close();popup.focus();setExportOpen(false);}
  const empty=<tr><td colSpan={dates.length+5} className="attendance-empty">{loading?'Loading Manual Biometric and Trip Card attendance…':error?'Attendance is unavailable.':employeeTab==='affected'?'No affected employee found for this selection.':'No employee has fully matching attendance for this selection.'}</td></tr>;
- return <><div className="roster-bar manual-compare-bar"><span className="manual-employee-tabs" role="tablist" aria-label="Employee comparison status"><button type="button" role="tab" aria-selected={employeeTab==='affected'&&!category&&!pair} onClick={()=>{setEmployeeTab('affected');setEmployeeTabDrill(true);setCategory('');setPair('');setEmployeeDrill('');}}>Affected Employees <b>{affectedGroups.length}</b><small>Drill down →</small></button><button type="button" role="tab" aria-selected={employeeTab==='ok'&&!category&&!pair} onClick={()=>{setEmployeeTab('ok');setEmployeeTabDrill(true);setCategory('');setPair('');setEmployeeDrill('');}}>All OK <b>{okayGroups.length}</b><small>Both attendance match →</small></button></span><span className="roster-grow"/>
-  <div className="roster-export"><button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!shown.length||exporting} onClick={()=>setExportOpen(v=>!v)}><Download/>{exporting?'Preparing…':'Print/Export'}<ChevronDown/></button>{exportOpen&&<div className="roster-export-menu" role="menu"><button type="button" role="menuitem" onClick={printRoster}><Printer/>Smart Print / PDF</button><button type="button" role="menuitem" onClick={()=>void exportExcel()}><Download/>Download as Excel</button></div>}</div></div>
+ return <>{readingNote&&<p className="roster-saved" role="status">{readingNote}</p>}
+  {unreadDays.length>0&&<div className="roster-warn" role="alert">Manual Biometric could not be read for {unreadDays.map(show).join(', ')}, even after trying each day again ({[...new Set(unreadDays.map(d=>bio!.errors[d]).filter(Boolean))].join('; ')}). Those days are blank here.
+   {bio!.onRetry&&<button type="button" className="roster-retry" onClick={()=>bio!.onRetry!(unreadDays)}><RefreshCw/>Read again</button>}</div>}
+  <div className="roster-bar manual-compare-bar"><span className="manual-employee-tabs" role="tablist" aria-label="Employee comparison status"><button type="button" role="tab" aria-selected={employeeTab==='affected'&&!category&&!pair} onClick={()=>{setEmployeeTab('affected');setEmployeeTabDrill(true);setCategory('');setPair('');setEmployeeDrill('');}}>Affected Employees <b>{affectedGroups.length}</b><small>Drill down →</small></button><button type="button" role="tab" aria-selected={employeeTab==='ok'&&!category&&!pair} onClick={()=>{setEmployeeTab('ok');setEmployeeTabDrill(true);setCategory('');setPair('');setEmployeeDrill('');}}>All OK <b>{okayGroups.length}</b><small>Both attendance match →</small></button></span><span className="roster-grow"/>
+  <div className="roster-export"><button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!shown.length||exporting||loading} onClick={()=>setExportOpen(v=>!v)}><Download/>{exporting?'Preparing…':'Print/Export'}<ChevronDown/></button>{exportOpen&&<div className="roster-export-menu" role="menu"><button type="button" role="menuitem" onClick={printRoster}><Printer/>Smart Print / PDF</button><button type="button" role="menuitem" onClick={()=>void exportExcel()}><Download/>Download as Excel</button></div>}</div></div>
   <div className="manual-compare-key" aria-label="Comparison percentages"><button type="button" className="manual-key-card match" aria-pressed={category==='both'} onClick={()=>{setCategory(old=>old==='both'?'':'both');setEmployeeTabDrill(false);setPair('');setEmployeeDrill('');}}><i/>Both present <b>{percent(bothCells)}</b><small>{bothCells.toLocaleString('en-IN')} cells · drill down</small></button><button type="button" className="manual-key-card trip-only" aria-pressed={category==='tripOnly'} onClick={()=>{setCategory(old=>old==='tripOnly'?'':'tripOnly');setEmployeeTabDrill(false);setPair('');setEmployeeDrill('');}}><i/>Trip Card only <b>{percent(tripOnlyCells)}</b><small>{tripOnlyCells.toLocaleString('en-IN')} cells · biometric missing</small></button><button type="button" className="manual-key-card bio-only" aria-pressed={category==='bioOnly'} onClick={()=>{setCategory(old=>old==='bioOnly'?'':'bioOnly');setEmployeeTabDrill(false);setPair('');setEmployeeDrill('');}}><i/>Biometric only <b>{percent(bioOnlyCells)}</b><small>{bioOnlyCells.toLocaleString('en-IN')} cells · trip card missing</small></button><button type="button" className="manual-key-card empty" aria-pressed={category==='empty'} onClick={()=>{setCategory(old=>old==='empty'?'':'empty');setEmployeeTabDrill(false);setPair('');setEmployeeDrill('');}}><i/>No record <b>{percent(emptyCells)}</b><small>{emptyCells.toLocaleString('en-IN')} cells</small></button></div>
   <div className="manual-status-legend" aria-label="Attendance colour guide">{MANUAL_MISMATCH_LEGEND.map(([code,label,tone])=>{const count=pairCount(code);return <button type="button" key={code} className={'manual-legend-'+tone} aria-pressed={pair===code} onClick={()=>{setPair(old=>old===code?'':code);setEmployeeTabDrill(false);setCategory('');setEmployeeDrill('');}}><b>{code}</b><small>{label}</small><em>{count.toLocaleString('en-IN')} · drill down</em></button>;})}</div>
   <div className="manual-report-order">
@@ -215,7 +224,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
     <button type="button" onClick={onImport}><Upload/>{view==='manual'?'Import attendance log':'Upload machine log'}</button>
    </div>}
    <div className="roster-export">
-    <button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!shown.length||exporting} onClick={()=>setExportOpen(value=>!value)}><Download/>{exporting?'Preparing…':'Print/Export'}<ChevronDown/></button>
+    <button type="button" aria-haspopup="menu" aria-expanded={exportOpen} disabled={!shown.length||exporting||(view==='manual'&&Boolean(bio?.running))} onClick={()=>setExportOpen(value=>!value)}><Download/>{exporting?'Preparing…':'Print/Export'}<ChevronDown/></button>
     {exportOpen&&<div className="roster-export-menu" role="menu">
      <button type="button" role="menuitem" onClick={printRoster}><Download/>Download as PDF</button>
      <button type="button" role="menuitem" onClick={printRoster}><Printer/>Smart Print</button>
@@ -346,6 +355,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const bioRef=useRef('');
  const [pull,setPull]=useState<{running:boolean;message:string;error:string}|null>(null),[bioReload,setBioReload]=useState(0);
  const [editDay,setEditDay]=useState<DayEditTarget|null>(null);
+ const [manualDays,setManualDays]=useState<{key:string;days:Record<string,DayState>;counts:Record<string,number>;errors:Record<string,string>}>({key:'',days:{},counts:{},errors:{}});
  const [uploading,setUploading]=useState<''|'bio'|'manual'>(''),[importNote,setImportNote]=useState(''),[manualReload,setManualReload]=useState(0);
  const keyRef=useRef(''),forceMis=useRef(false),forceBio=useRef(false);
  const [reload,setReload]=useState(0);
@@ -430,7 +440,13 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  useEffect(()=>{if(!ready||(view!=='manual'&&view!=='manualMismatch')||manual.key===manualKey)return;let live=true;setManual({key:manualKey,status:'loading',message:'Reading imported biometric attendance…',data:null});
   // The punches and the list of saved days are read side by side but apart (27 Nov 2026): a slow or failed saved-day
   // list used to throw the punches away too ("Biometric punches unavailable: signal timed out", every count 0).
-  fetchManualBiometric(grant,from,to,site).then(data=>{if(live){setManual({key:manualKey,status:'ready',message:'Manual biometric attendance',data});setManualSave(null);}}).catch(e=>{if(live)setManual({key:manualKey,status:'error',message:(e as Error).message,data:null});});
+  // The roster fills in as each day arrives (28 Nov 2026): a month used to show nothing until its last day was read.
+  setManualDays({key:manualKey,days:{},counts:{},errors:{}});
+  fetchManualBiometric(grant,from,to,site,progress=>{
+   if(!live)return;
+   setManualDays({key:manualKey,days:progress.days,counts:progress.counts,errors:progress.errors});
+   if(progress.partial)setManual(current=>current.key===manualKey&&current.status==='loading'?{...current,data:progress.partial!}:current);
+  }).then(data=>{if(live){setManual({key:manualKey,status:'ready',message:'Manual biometric attendance',data});setManualSave(null);}}).catch(e=>{if(live)setManual({key:manualKey,status:'error',message:(e as Error).message,data:null});});
   setManualSavedError({key:'',message:''});
   readSavedManualBiometric(grant,site,from,to).then(saved=>{if(live)setManualSaved({key:manualSaveKey,days:Object.fromEntries(saved.map(day=>[day.day,day]))});}).catch(e=>{if(live)setManualSavedError({key:manualSaveKey,message:(e as Error).message});});
   return()=>{live=false;};
@@ -563,14 +579,19 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const canCorrect=Boolean(manual.data?.canCorrect);
  // Until the saved-day list has arrived nobody can tell which days are still unsaved, so Save waits for it.
  const manualSavedKnown=manualSaved.key===manualSaveKey,manualSavedListError=!manualSavedKnown&&manualSavedError.key===manualSaveKey?manualSavedError.message:'';
- const manualState:BioState={running:manual.status==='loading',message:manual.status==='ready'?'Imported biometric attendance':'Reading imported biometric attendance…',days:{},counts:{},errors:manual.data?.dayErrors||{},failed:manual.data?.failedDays||[],onSave:saveManual,
+ // Day by day (28 Nov 2026): each day's state, and how many of the days have arrived while the rest are still being read.
+ const manualProgress=manualDays.key===manualKey?manualDays:{key:'',days:{},counts:{},errors:{}},manualReading=manual.status==='loading';
+ const manualDone=dates.filter(day=>manualProgress.days[day]==='done').length,manualFailed=manualReading?dates.filter(day=>manualProgress.days[day]==='failed'):manual.data?.failedDays||[];
+ const manualState:BioState={running:manualReading,message:manual.status==='ready'?'Imported biometric attendance':`Reading imported biometric attendance… ${manualDone} of ${dates.length} day${dates.length===1?'':'s'} read`,
+  days:manualProgress.days,counts:manualProgress.counts,errors:manualReading?manualProgress.errors:manual.data?.dayErrors||{},failed:manualFailed,onRetry:()=>setManualReload(value=>value+1),onSave:saveManual,
   saved:currentManualSaved,canSave:manual.status==='ready'&&manualSavedKnown&&!manualSave?.running&&manualUnsaved.length>0,
   saveLabel:manualSave?.running?`Saving ${manualSave.done} of ${manualSave.total} days…`:!manualSavedKnown?(manualSavedListError?'Save manual biometric':'Checking saved days…'):manualUnsaved.length?`Save manual biometric (${manualUnsaved.length} day${manualUnsaved.length===1?'':'s'})`:manualSavedDays.length?'Saved':'Save manual biometric',
   savedNote:manualSavedDays.length?`Saved and locked: ${manualSavedDays.length} day${manualSavedDays.length===1?'':'s'} for ${site} (last saved ${manualLatest?when(manualLatest.savedAt):''}${manualLatest?.savedBy?' by '+manualLatest.savedBy:''}). `+
    (canCorrect?'As HR administrator you can correct a past day: press its box.':'Saved logs cannot be replaced; only an HR administrator can correct a day.'):canCorrect&&manual.data?.rows.length?'As HR administrator you can correct a past day: press its box.':'',
   saveError:manualSavedListError?`Could not read which days are already saved (${manualSavedListError}). The attendance below is complete; Save stays off until Fetch again reads the saved days.`:manualSave&&!manualSave.running&&manualSave.failed.length?`Could not save ${manualSave.failed.map(show).join(', ')}: ${manualSave.error}`:'',savedCount:manualSavedDays.length,onViewSaved:()=>setShowSavedLogs(true)};
  // HR administrator only (owner, 25 Nov 2026): correct a day, and delete saved logs. The server refuses everyone else too.
- if(canCorrect){
+ // Not while the days are still arriving: a correction or a delete then would be made on half a roster.
+ if(canCorrect&&!manualReading){
   manualState.onDeleteSaved=manual.data?.rows.length?()=>void deleteManualLogs(dates,true):undefined;
   manualState.onEditDay=(group,date)=>setEditDay({site,employeeCode:group.code,name:group.name,date,day:group.bio?.days.find(d=>d.date===date)});
  }

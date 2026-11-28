@@ -112,3 +112,18 @@ test('an HR administrator undoes a correction with a POST to …/undo', async ()
   assert.ok(!pool.calls.some(([sql]) => sql.startsWith('INSERT INTO hr_manual_attendance_corrections')), 'an undo saves nothing');
   assert.ok(pool.calls.some(([sql, params]) => sql.includes('INSERT INTO hr_audit') && params[1] === 'UNDO_MANUAL_ATTENDANCE_CORRECTION'));
 });
+
+test('only an HR administrator sees the attendance read times', async () => {
+  const {clearReads, recordRead} = await import('./read-times.mjs');
+  clearReads();
+  recordRead({at: '2026-11-28T04:00:00.000Z', route: 'manual-biometric', method: 'GET', status: 200, ms: 1200, bytes: 340000, sent: 9000, site: 'Majri OC', from: '2026-11-01', to: '2026-11-01', days: 1, by: 'stupal'});
+  recordRead({at: '2026-11-28T04:00:02.000Z', route: 'manual-biometric', method: 'GET', status: 200, ms: 400, bytes: 300000, sent: 8000, site: 'Majri OC', from: '2026-11-02', to: '2026-11-02', days: 1, by: 'stupal'});
+  const service = createAttendance(sitePool(), {bridgeKey: 'k'.repeat(40)});
+  await assert.rejects(service.attendanceApi(siteHr, 'read-times', 'GET', {}, new URLSearchParams()), e => e.status === 403 && /HR administrator/.test(e.message));
+  const times = await service.attendanceApi(admin, 'read-times', 'GET', {}, new URLSearchParams());
+  assert.equal(times.kept, 2);
+  assert.deepEqual(times.routes, [{route: 'manual-biometric', requests: 2, failed: 0, usualMs: 400, worstMs: 1200, usualKb: 293, worstKb: 332, usualSentKb: 8}]);
+  assert.equal(times.slowest[0].ms, 1200);
+  assert.equal(times.latest[0].from, '2026-11-02', 'newest first');
+  clearReads();
+});

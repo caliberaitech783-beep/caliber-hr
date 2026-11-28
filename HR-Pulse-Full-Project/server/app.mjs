@@ -3,7 +3,12 @@ import { problem } from './service.mjs';
 import {sendMail} from './mail.mjs';
 import {createAadhaarReader} from './aadhaar-ocr.mjs';
 import {workflowChatIds} from './telegram.mjs';
+import {gzip} from 'node:zlib';
+import {recordRead} from './read-times.mjs';
 const MACHINE_BODY_LIMIT=2_000_000; // biometric machine uploads (attendance-direct.mjs)
+/* Answers of 1 KB or more are sent compressed when the caller accepts it (owner, 28 Nov 2026). A month of a site's
+   attendance is about 3 MB of JSON and a twentieth of that compressed; on a site's slow line the size was most of the wait. */
+export const COMPRESS_FROM_BYTES=1024;
 async function body(req,limit=2_000_000) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw problem('JSON content type required',415);
   let size=0; const chunks=[];
@@ -35,9 +40,27 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const host=String(req.headers.host||'').replace(/[^A-Za-z0-9.:-]/g,'');
       return res.writeHead(301,{Location:`https://${host}${req.url}`}).end();
     }
-    const send=(status,data)=>res.writeHead(status).end(JSON.stringify(data));
+    const startedAt=performance.now(),acceptsGzip=/\bgzip\b/i.test(String(req.headers['accept-encoding']||''));
+    // timed: an attendance request whose time and size are kept (read-times.mjs); by: who asked, once signed in.
+    let timed=null,by='';
+    const send=(status,data)=>{
+      const text=JSON.stringify(data)??'',bytes=Buffer.byteLength(text);
+      const finish=(payload,compressed)=>{
+        const ms=Math.round(performance.now()-startedAt),sent=Buffer.byteLength(payload);
+        if(timed)recordRead({at:new Date().toISOString(),...timed,method:req.method,status,ms,bytes,sent,by});
+        if(res.destroyed||res.writableEnded)return;
+        res.setHeader('Server-Timing',`app;dur=${ms}`);
+        if(compressed)res.setHeader('Content-Encoding','gzip');
+        res.setHeader('Content-Length',sent);
+        res.writeHead(status).end(payload);
+      };
+      if(!acceptsGzip||bytes<COMPRESS_FROM_BYTES)return finish(text,false);
+      // Compressed off the main thread; if that fails the answer goes plain, never lost.
+      gzip(text,{level:6},(error,zipped)=>{try{finish(error?text:zipped,!error);}catch(failure){console.error('answer could not be sent',failure?.message);res.destroy();}});
+    };
     res.setHeader('Cache-Control','no-store'); res.setHeader('Content-Type','application/json');
-    res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Vary','Origin');
+    res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Vary','Origin, Accept-Encoding');
+    res.setHeader('Timing-Allow-Origin',allowedOrigin);
     if(req.headers.origin&&req.headers.origin!==allowedOrigin)return send(403,{error:'Origin not allowed'});
     if(req.headers.origin)res.setHeader('Access-Control-Allow-Origin',allowedOrigin);
     if(req.method==='OPTIONS'){
@@ -63,6 +86,12 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         if(workflowBot)return send(200,await service.telegramWebhook(req.headers['x-telegram-bot-api-secret-token'],await body(req),workflowBot));
       }
       const attendanceRoute=path.startsWith('/api/attendance/')?path.slice('/api/attendance/'.length):null;
+      // The bridge PCs call every few seconds and would push every report out of the list; the list is not timed either.
+      if(attendanceRoute&&!attendanceRoute.startsWith('bridge/')&&attendanceRoute!=='read-times'){
+        const from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'',span=(Date.parse(to)-Date.parse(from))/86_400_000+1;
+        timed={route:attendanceRoute.replace(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/gi,':id').slice(0,80),site:(url.searchParams.get('site')||'').slice(0,80),
+          from:from.slice(0,10),to:to.slice(0,10),days:Number.isFinite(span)&&span>0?span:0};
+      }
       // The site bridge PC is not a Pulse user; it authenticates with its own key.
       if(attendanceRoute?.startsWith('bridge/')){
         if(!service)throw problem('Service unavailable',503);
@@ -108,6 +137,7 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
       const token=req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
       const profile=token&&await authenticate(token);
       if(!profile)return send(401,{error:'Sign in with your Caliber Pulse account to continue'});
+      by=String(profile.actor||'').slice(0,80);
       if(path==='/api/aadhaar/scan'){
         if(req.method!=='POST')throw problem('Method not allowed',405);
         return send(200,await readAadhaar(profile,await body(req)));
