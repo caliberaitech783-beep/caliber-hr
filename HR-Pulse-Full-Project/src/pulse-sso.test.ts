@@ -17,7 +17,8 @@ describe('when HR Pulse asks Pulse',()=>{
   expect(ssoStep(place('',{inPulseII:true}),store)).toEqual({kind:'form'});
   store.setItem('hrPulseSsoTriedAt','1000');
   expect(ssoStep(place(),store,30_000)).toEqual({kind:'form'});
-  expect(ssoStep(place(),store,70_000)).toEqual({kind:'start'});
+  expect(ssoStep(place(),store,70_000)).toEqual({kind:'form'}); // not again within 10 minutes
+  expect(ssoStep(place(),store,1000+10*60_000+1)).toEqual({kind:'start'});
  });
  it('reads what Pulse sent back',()=>{
   const store=memory();
@@ -53,6 +54,7 @@ describe('the one-time code',()=>{
   expect(sent).toEqual({code,state,verifier:pending.verifier});
   expect(session.grant).toBe('g'.repeat(43));
   expect(store.getItem('hrPulseSsoPending')).toBeNull();
+  expect(ssoStep(place(),store,6)).toEqual({kind:'form'}); // a sign-in that worked still counts for the 10 minutes, so no loop
  });
  it('refuses a code this page did not ask for, and a profile without HR',async()=>{
   const store=memory();
@@ -76,4 +78,5 @@ it('the app asks Pulse before the form and signs out on the Caliber One message'
  expect(appSource).toMatch(/if\(!session\?\.grant&&!leaveOnly&&sso\.kind!=='form'\)return <div className="loading-screen" role="status">Signing in through Pulse…<\/div>;/);
  expect(appSource).toMatch(/const receive=\(event:MessageEvent\)=>\{if\(isCaliberOneSignOut\(event\)\)logout\(\);\};/);
  expect(appSource).toMatch(/clearSession\(\);\r?\n\s+markSignedOut\(sessionStorage\);/);
+ expect(appSource).toMatch(/const expired=\(\)=>\{setConfig\(undefined\);setSession\(null\);setSso\(\{kind:'form'\}\);\};/); // an ended HR sign-in never signs in again by itself
 });

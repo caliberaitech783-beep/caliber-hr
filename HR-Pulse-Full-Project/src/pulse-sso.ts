@@ -11,7 +11,9 @@ export const SIGN_OUT_MESSAGE = 'caliber-one:sign-out';
 const PENDING = 'hrPulseSsoPending';
 const TRIED = 'hrPulseSsoTriedAt';
 const SIGNED_OUT = 'hrPulseSsoSignedOut';
-const RETRY_AFTER_MS = 60_000;
+// At most one silent sign-in per tab in 10 minutes, whatever happens after it (28 Nov 2026: two HR
+// screens once signed each other out round and round).
+const RETRY_AFTER_MS = 10 * 60_000;
 const proof = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
 
 export type SsoStep =
@@ -70,7 +72,6 @@ export async function finishPulseSignIn(code: string, state: string, store: Stor
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Pulse could not open HR Pulse. Sign in below.');
   if (!proof(result.grant) || result.profile?.permissions?.application !== 'HR') throw new Error('HR access is not assigned to this account.');
-  store.removeItem(TRIED);
   return {grant: result.grant, profile: result.profile};
 }
 

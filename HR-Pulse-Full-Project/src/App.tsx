@@ -41,8 +41,9 @@ export default function App(){
   }, [session?.grant]);
 
   useEffect(()=>{
-    // An expired HR sign-in asks Pulse again (at most once a minute) before showing the form.
-    const expired=()=>{setConfig(undefined);setSession(null);setSso(ssoStep(ssoPlace(),sessionStorage));};
+    // An ended HR sign-in shows the form (with Continue with my Pulse sign-in); it never signs in again by
+    // itself, so two HR screens cannot keep signing each other out (28 Nov 2026).
+    const expired=()=>{setConfig(undefined);setSession(null);setSso({kind:'form'});};
     window.addEventListener('hr-session-expired',expired);
     return()=>window.removeEventListener('hr-session-expired',expired);
   },[]);
