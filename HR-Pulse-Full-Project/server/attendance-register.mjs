@@ -4,6 +4,7 @@
    (attendance-policy.mjs). Holidays, approved leave / OD and completed gate
    passes are added from the HR records. */
 import {DEFAULT_POLICY, validatePolicy, clockMinutes, evaluateDay, isExempt, summarizeMonth} from './attendance-policy.mjs';
+import {exceptionRanges, rangesFor, exemptOn} from './biometric-exceptions.mjs';
 
 const DAY_MS = 86_400_000;
 // Punches from 2 h before shift start until the same time next day belong to that duty.
@@ -96,7 +97,8 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       duties.set(duty, [...(duties.get(duty) || []), minute - duty * 1440]);
       if (where) places.set(duty, [...(places.get(duty) || []), clock(minute - duty * 1440) + ' ' + where]);
     }
-    const exempt = isExempt(employee.designation, policy);
+    // Exempt by designation (Attendance Policy), or for the day by the Biometric Exception Master (employee.exceptions).
+    const roleExempt = isExempt(employee.designation, policy), exceptions = employee.exceptions || [];
     const holidayFor = date => holidays.find(h => h.date === date && (!h.siteId || [employee.siteId, employee.siteCode, employee.site].includes(h.siteId)));
     const days = [];
     for (let number = first; number <= last && number <= now; number++) {
@@ -107,8 +109,9 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       const wage = employee.dailyWage > 0 ? employee.dailyWage : employee.monthlyPay > 0 ? employee.monthlyPay / daysInMonth(date) : 0;
       const inferredNight = nightDuties.has(number);
       const configuredNight = starts != null && rawEnd != null && rawEnd < starts;
+      const listed = exemptOn(exceptions, date), exempt = roleExempt || listed;
       const result = evaluateDay({inMinute, outMinute, shiftStart: inferredNight && !configuredNight ? 1260 : starts, shiftEnd: inferredNight && !configuredNight ? 1740 : ends, designation: employee.designation, site: employee.site,
-        gatePassMinutes: gate, dailyWage: wage}, policy);
+        gatePassMinutes: gate, dailyWage: wage, exempt: listed}, policy);
       const holiday = holidayFor(date);
       const leave = leaves.find(l => l.employeeId === employee.id && between(date, l.from, l.to));
       const onLeave = !!leave, leaveCode = leave?.compOff ? 'CO' : 'L';
@@ -120,6 +123,7 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       if (!times.length) {
         status = holiday ? 'H' : onLeave ? leaveCode : onDuty ? 'OD' : weeklyOff ? 'WO' : exempt ? 'P' : 'A';
         if (holiday) note = holiday.name || 'Holiday';
+        else if (status === 'P' && listed) note = 'Biometric exception: marked present, no punch needed';
       } else if (status !== 'P' && (onLeave || onDuty)) {
         status = onDuty ? 'OD' : leaveCode;
       } else if (holiday) note = `Worked on ${holiday.name || 'holiday'}`;
@@ -132,7 +136,7 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       days.push({
         date, status, calendar, note, ...(inferredNight ? {shift: 'C'} : {}), in: clock(inMinute), out: clock(outMinute), workedMinutes: counts ? result.workedMinutes : null,
         late: counts && result.late, early: counts && result.early, missPunch: status === 'MP',
-        gatePassMinutes: gate, gatePassDeduction: result.gatePassDeduction, exempt,
+        gatePassMinutes: gate, gatePassDeduction: result.gatePassDeduction, exempt, ...(listed ? {biometricException: true} : {}),
         // Site roster: every punch of the day with the machine it came from ("05:52 Main gate").
         ...(places.has(number) ? {punches: places.get(number)} : {})
       });
@@ -148,7 +152,8 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
     for (const status of ['H', 'L', 'CO', 'OD', 'WO', 'IN']) total[status] = days.filter(day => day.status === status).length;
     return {
       id: employee.id, code: employee.code, aFormNo: employee.aFormNo || '', name: employee.name, siteId: employee.siteId || '', site: employee.site || '',
-      siteType: employee.siteType || '', department: employee.department || '', shift: employee.shift || '', designation: employee.designation || '', exempt,
+      siteType: employee.siteType || '', department: employee.department || '', shift: employee.shift || '', designation: employee.designation || '',
+      exempt: roleExempt || days.some(day => day.biometricException), ...(days.some(day => day.biometricException) ? {biometricException: true} : {}),
       shiftStart: clock(starts), shiftEnd: clock(ends), days, months, summary: total
     };
   });
@@ -244,6 +249,8 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
   const employees = (await db.query(employeeQuery, manual?[employeeIds]:[employeeIds ? null : sites, employeeIds])).rows;
   const ids = employees.map(e => e.id);
   if (!ids.length) return buildRegister({from, to, today, policy});
+  // Biometric Exception Master: who is exempt from punching in these dates (read once by the site roster).
+  const exceptions = options.exceptions || await exceptionRanges(db, from, to);
   const [punches, holidays, leaves, ods, passes, pay] = await inTurns([
     () => db.query(manual?`WITH identity_map AS (
       SELECT * FROM unnest($3::text[],$4::text[],$5::uuid[]) AS m(device_serial,biometric_id,employee_id)
@@ -277,7 +284,7 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
     from, to, today, policy,
     employees: employees.map(e => ({id: String(e.id), code: e.code, aFormNo: e.a_form_no || '', name: e.name, siteId: e.site_id || '', siteCode: e.site_code || '',
       site: e.site || '', siteType: e.site_type || '', department: e.department || '', shift: e.shift || '', starts: e.starts, ends: e.ends, designation: e.designation || '',
-      dailyWage: Number(e.daily_wage) || 0, monthlyPay: monthly.get(String(e.id)) || 0})),
+      dailyWage: Number(e.daily_wage) || 0, monthlyPay: monthly.get(String(e.id)) || 0, exceptions: rangesFor(exceptions, e.code)})),
     punches: punches.rows.map(p => ({employeeId: String(p.employee_id), at: p.at, where: devices ? p.place : ''})),
     holidays: holidays.rows.map(h => ({date: h.date, siteId: h.site_id, name: h.name})),
     leaves: leaves.rows.map(l => ({employeeId: l.employee_id, from: l.from_date, to: l.to_date, compOff: isCompOff(l.leave_type)})),
@@ -309,7 +316,17 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   const machineList = machines.map(m => ({serial: m.serial, name: m.name || '', location: m.location || '', ipAddress: m.ip_address || '', bridgeName: m.bridge_name || '', online: Boolean(m.online),
     lastContact: m.last_contact || null, lastPunch: m.last_punch || '', punches: Number(m.punches) || 0}));
   const {policy} = await readPolicy(db);
-  if (!machines.length) return {from, to, policy, site: site.name, machines: machineList, rows: []};
+  // Biometric Exception Master: an exempt employee of this site is on the roster although nobody punched for them.
+  const exceptions = await exceptionRanges(db, from, to);
+  const exemptRows = async present => {
+    const have = new Set(present.map(row => employeeNumber(row.code)).filter(Boolean));
+    const numbers = [...exceptions.keys()].filter(number => !have.has(number));
+    if (!numbers.length) return [];
+    const {register, people} = await calendarRegister(db, numbers, from, to, today, {policy, exceptions});
+    const here = new Set(people.filter(p => String(p.site_id || '') === String(site.id)).map(p => p.id));
+    return register.rows.filter(row => here.has(row.id)).map(row => ({...row, linked: true, machinesUsed: []}));
+  };
+  if (!machines.length) return {from, to, policy, site: site.name, machines: machineList, rows: await exemptRows([]), dutyVersion: BIOMETRIC_DUTY_VERSION};
   const serials = machines.map(m => m.serial);
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
   const idQuery=manual?(matchAForm?`WITH employee_aforms AS (${nclAFormRows('AND e.site_id=$4')}), punch_ids AS (
@@ -349,7 +366,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   const manualMatches=manual?ids.filter(isUniqueMatch).map(r=>({device_serial:String(r.device_serial),biometric_id:String(r.biometric_id),employee_id:String(r.employee_id)})):[];
   // The policy and the holidays are the same for the linked and the unlinked half: read once, not once for each.
   const holidays = ids.length ? (await db.query(HOLIDAYS, [from, to])).rows : [];
-  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm, manualMatches, manualSource, policy, holidays})).rows : [];
+  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm, manualMatches, manualSource, policy, holidays, exceptions})).rows : [];
   const unlinked = [...new Map(ids.filter(r => !isUniqueMatch(r))
     .map(r => [`${r.device_serial}|${r.biometric_id}`, r])).values()];
   const unlinkedKeys=new Set(unlinked.map(r=>`${r.device_serial}|${r.biometric_id}`));
@@ -372,6 +389,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   // logs even though the punches came from Dudhichua's machine.
   const rows = [...linked.map(r => ({...r, ...(manual?{siteId:String(site.id),site:site.name}:{}), linked: true})), ...others.map(r => ({...r, linked: false}))]
     .map(r => ({...r, machinesUsed: [...new Set(used.get(r.id) || [])]}));
+  rows.push(...await exemptRows(rows));
   return {from, to, policy, site: site.name, machines: machineList, rows, dutyVersion: BIOMETRIC_DUTY_VERSION};
 }
 
@@ -392,7 +410,19 @@ export const employeeNumber = value => {
 export async function loadHrCalendar(db, codes, from, to, today) {
   const numbers = [...new Set((codes || []).map(employeeNumber).filter(Boolean))].slice(0, 3000);
   if (!numbers.length) return {from, to, rows: []};
-  const policy = (await readPolicy(db)).policy;
+  const {register} = await calendarRegister(db, numbers, from, to, today);
+  // Only what the roster needs: who the person is, and each day's HR calendar mark (no punches, no pay).
+  return {from, to, rows: register.rows.map(r => ({code: r.code, name: r.name, site: r.site, department: r.department || '', designation: r.designation || '',
+    days: r.days.map(d => ({date: d.date, calendar: d.calendar || '', note: d.note || ''}))}))};
+}
+
+/**
+ * The register of people found by employee number, with no punches read: each day is the HR calendar day, P for a
+ * day the Biometric Exception Master exempts (options.exceptions), else A. Returns the register and the people found.
+ */
+async function calendarRegister(db, numbers, from, to, today, options = {}) {
+  const none = {register: {from, to, rows: []}, people: []};
+  const policy = options.policy || (await readPolicy(db)).policy;
   const {rows: found} = await db.query(`
    SELECT 'joined' AS source,e.id::text AS id,e.code,e.name,e.data->>'siteId' AS site_id,site.code AS site_code,site.name AS site,coalesce(site.data->>'siteType','') AS site_type,
     coalesce(nullif(des.name,''),e.data->>'designation',e.data#>>'{fields,Designation}',e.data#>>'{officeData,Designation}','') AS designation,
@@ -414,7 +444,7 @@ export async function loadHrCalendar(db, codes, from, to, today) {
     const person = joined.length === 1 ? joined[0] : !joined.length && lines.length === 1 ? lines[0] : null;
     if (person) people.push(person);
   }
-  if (!people.length) return {from, to, rows: []};
+  if (!people.length) return none;
   const ids = people.filter(p => p.source === 'joined').map(p => p.id);
   const [holidays, leaves, ods] = await Promise.all([
     db.query(HOLIDAYS, [from, to]),
@@ -427,11 +457,9 @@ export async function loadHrCalendar(db, codes, from, to, today) {
   ]);
   const register = buildRegister({from, to, today, policy,
     employees: people.map(p => ({id: p.id, code: p.code || '', name: p.name || '', siteId: p.site_id || '', siteCode: p.site_code || '', site: p.site || '', siteType: p.site_type || '',
-      department: p.department || '', designation: p.designation || '', shift: ''})),
+      department: p.department || '', designation: p.designation || '', shift: '', exceptions: rangesFor(options.exceptions, p.code)})),
     holidays: holidays.rows.map(h => ({date: h.date, siteId: h.site_id, name: h.name})),
     leaves: leaves.rows.map(l => ({employeeId: l.employee_id, from: l.from_date, to: l.to_date, compOff: isCompOff(l.leave_type)})),
     ods: ods.rows.map(o => ({employeeId: o.employee_id, from: o.from_date, to: o.to_date}))});
-  // Only what the roster needs: who the person is, and each day's HR calendar mark (no punches, no pay).
-  return {from, to, rows: register.rows.map(r => ({code: r.code, name: r.name, site: r.site, department: r.department || '', designation: r.designation || '',
-    days: r.days.map(d => ({date: d.date, calendar: d.calendar || '', note: d.note || ''}))}))};
+  return {register, people};
 }

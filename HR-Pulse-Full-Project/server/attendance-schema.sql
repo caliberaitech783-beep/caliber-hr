@@ -237,3 +237,15 @@ ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS direct_contact timest
 ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS machine_no text NOT NULL DEFAULT '';
 ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS make text NOT NULL DEFAULT '';
 ALTER TABLE hr_attendance_devices ADD COLUMN IF NOT EXISTS model text NOT NULL DEFAULT '';
+
+-- Biometric Exception Master (owner, 28 Nov 2026): employees exempt from biometric punching, by employee number,
+-- from a date. Removing an entry sets to_date (the last exempt day) and keeps the line. biometric-exceptions.mjs.
+CREATE TABLE IF NOT EXISTS hr_biometric_exceptions(
+ id uuid PRIMARY KEY, employee_number text NOT NULL, employee_id text NOT NULL, name text NOT NULL DEFAULT '',
+ site_id uuid, site text NOT NULL DEFAULT '', department text NOT NULL DEFAULT '', designation text NOT NULL DEFAULT '',
+ from_date date NOT NULL, to_date date, reason text NOT NULL DEFAULT '',
+ added_by text NOT NULL, added_at timestamptz NOT NULL DEFAULT now(),
+ removed_by text, removed_at timestamptz, remove_reason text
+);
+CREATE UNIQUE INDEX IF NOT EXISTS hr_biometric_exceptions_active ON hr_biometric_exceptions(employee_number) WHERE removed_at IS NULL;
+CREATE INDEX IF NOT EXISTS hr_biometric_exceptions_dates ON hr_biometric_exceptions(from_date,to_date);
