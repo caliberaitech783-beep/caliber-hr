@@ -136,6 +136,11 @@ CREATE TABLE IF NOT EXISTS hr_trip_card_days(
 -- Owner, 27 Nov 2026: Pulse-II is the master of trip card attendance. What Pulse-II signed for the site's day when the
 -- rows were read; the roster shows a saved day only while Pulse-II still gives this signature (NULL: saved before).
 ALTER TABLE hr_trip_card_days ADD COLUMN IF NOT EXISTS mis_signature text;
+-- Owner, 28 Nov 2026: Pulse-II tells HR Pulse which site-days changed after they were saved, and checks every saved day
+-- once a night (mis-trip-card-days.mjs). A day with mis_changed_at is not handed to the roster, which then reads it from
+-- Pulse-II; "Save trip cards" stores the new copy and clears the mark. mis_changed_note: why Pulse-II named the day.
+ALTER TABLE hr_trip_card_days ADD COLUMN IF NOT EXISTS mis_changed_at timestamptz;
+ALTER TABLE hr_trip_card_days ADD COLUMN IF NOT EXISTS mis_changed_note text;
 
 -- Attendance roster › Biometric (owner, 23 Nov 2026): one site's biometric roster for one day (every punch on the site's
 -- machines, rated with the attendance policy), saved by "Save biometric" (biometric-day-store.mjs). register: the site
