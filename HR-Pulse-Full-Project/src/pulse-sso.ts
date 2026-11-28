@@ -35,6 +35,9 @@ export function ssoStep(place: Place, store: Store, now = Date.now()): SsoStep {
   const query = new URLSearchParams(place.search);
   const code = query.get('hrCode'), state = query.get('hrState'), back = query.get('hrSso');
   if (proof(code) && proof(state)) return {kind: 'exchange', code, state};
+  // Caliber One opens this tab with ?hrSso=start once Pulse is signed in: sign in through Pulse now,
+  // also right after a sign-out. Pulse's answer never carries "start", so it cannot go round.
+  if (back === 'start') return {kind: 'start'};
   if (back === 'noaccess') return {kind: 'form', reason: 'noaccess'};
   if (back) return {kind: 'form', reason: 'signin'};
   if (store.getItem(SIGNED_OUT) === '1') return {kind: 'form'};
@@ -73,6 +76,11 @@ export async function finishPulseSignIn(code: string, state: string, store: Stor
   if (!response.ok) throw new Error(result.error || 'Pulse could not open HR Pulse. Sign in below.');
   if (!proof(result.grant) || result.profile?.permissions?.application !== 'HR') throw new Error('HR access is not assigned to this account.');
   return {grant: result.grant, profile: result.profile};
+}
+
+// True when Caliber One asked this page load to sign in through Pulse (?hrSso=start).
+export function startAsked(place: Place) {
+  return ssoAllowed(place) && new URLSearchParams(place.search).get('hrSso') === 'start';
 }
 
 // Takes hrCode / hrState / hrSso out of the address once read.
