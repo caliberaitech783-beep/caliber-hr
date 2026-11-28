@@ -2,7 +2,7 @@ import {lazy,Suspense,useEffect,useRef,useState} from 'react';
 import {api,pulse,clearSession,savedSession,type Session,type HRConfig} from './api';
 import HrLogin from './HrLogin';
 import {inPulseII} from './hr-paths';
-import {cleanSsoAddress,finishPulseSignIn,isCaliberOneSignOut,markSignedOut,pulseSignInUrl,ssoAllowed,ssoStep,type SsoStep} from './pulse-sso';
+import {cleanSsoAddress,finishPulseSignIn,isCaliberOneSignOut,markSignedOut,pulseSignInUrl,ssoAllowed,ssoStep,startAsked,type SsoStep} from './pulse-sso';
 
 const loadWorkspace=()=>import('./Workspace');
 const Workspace=lazy(loadWorkspace);
@@ -13,6 +13,9 @@ const leaveOnly = embedded && new URLSearchParams(window.location.search).get('m
 // Caliber One, one sign-in: with no saved HR sign-in, HR Pulse first asks Pulse (pulse-sso.ts).
 const ssoPlace=()=>({origin:window.location.origin,search:window.location.search,embedded,inPulseII});
 const goToPulse=()=>void pulseSignInUrl(sessionStorage).then(url=>window.location.replace(url));
+// Caliber One asked this page load to sign in through Pulse. Used once: when a sign-in kept from before
+// turns out to have ended (Pulse was signed out meanwhile), the page asks Pulse instead of showing the form.
+let startPending=startAsked(ssoPlace())&&Boolean(savedSession()?.grant);
 
 export default function App(){
   const[session,setSession]=useState(savedSession);
@@ -43,7 +46,7 @@ export default function App(){
   useEffect(()=>{
     // An ended HR sign-in shows the form (with Continue with my Pulse sign-in); it never signs in again by
     // itself, so two HR screens cannot keep signing each other out (28 Nov 2026).
-    const expired=()=>{setConfig(undefined);setSession(null);setSso({kind:'form'});};
+    const expired=()=>{setConfig(undefined);setSession(null);const viaPulse=startPending;startPending=false;setSso(viaPulse?{kind:'start'}:{kind:'form'});};
     window.addEventListener('hr-session-expired',expired);
     return()=>window.removeEventListener('hr-session-expired',expired);
   },[]);

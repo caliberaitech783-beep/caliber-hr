@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import appSource from './App.tsx?raw';
-import {cleanSsoAddress,finishPulseSignIn,isCaliberOneSignOut,markSignedOut,pulseSignInUrl,ssoStep,HR_SITE_ORIGIN,PULSE_ORIGIN,SIGN_OUT_MESSAGE} from './pulse-sso';
+import {cleanSsoAddress,finishPulseSignIn,isCaliberOneSignOut,markSignedOut,pulseSignInUrl,ssoStep,startAsked,HR_SITE_ORIGIN,PULSE_ORIGIN,SIGN_OUT_MESSAGE} from './pulse-sso';
 
 // Caliber One, one sign-in (owner, 28 Nov 2026): HR Pulse opens with the Pulse sign-in already on
 // the computer, still needing HR access; HR Pulse's own form stays for everyone else.
@@ -26,6 +26,18 @@ describe('when HR Pulse asks Pulse',()=>{
   expect(ssoStep(place('?hrSso=noaccess'),store)).toEqual({kind:'form',reason:'noaccess'});
   expect(ssoStep(place('?hrSso=signin'),store)).toEqual({kind:'form',reason:'signin'});
   expect(cleanSsoAddress(`${HR_SITE_ORIGIN}/?hrCode=${code}&hrState=x&keep=1#Dashboard`)).toBe('/?keep=1#Dashboard');
+ });
+ // Owner, 28 Nov 2026: after a sign-out and a new sign-in, every Caliber One tab opens again, HR Pulse too.
+ it('Caliber One opening the tab with ?hrSso=start signs in through Pulse, also right after a sign-out or a recent try',()=>{
+  const store=memory();
+  markSignedOut(store);
+  store.setItem('hrPulseSsoTriedAt',String(Date.now()));
+  expect(ssoStep(place('?hrSso=start'),store)).toEqual({kind:'start'});
+  expect(startAsked(place('?hrSso=start'))).toBe(true);
+  expect(startAsked(place('?hrSso=signin'))).toBe(false);
+  expect(ssoStep(place('?hrSso=start',{embedded:true}),store)).toEqual({kind:'form'});
+  expect(startAsked(place('?hrSso=start',{origin:'http://localhost:5173'}))).toBe(false);
+  expect(ssoStep(place('?hrSso=signin'),store)).toEqual({kind:'form',reason:'signin'}); // Pulse's answer never starts again
  });
  it('after Sign out it waits for the person instead of signing straight back in',()=>{
   const store=memory();
@@ -78,5 +90,7 @@ it('the app asks Pulse before the form and signs out on the Caliber One message'
  expect(appSource).toMatch(/if\(!session\?\.grant&&!leaveOnly&&sso\.kind!=='form'\)return <div className="loading-screen" role="status">Signing in through Pulse…<\/div>;/);
  expect(appSource).toMatch(/const receive=\(event:MessageEvent\)=>\{if\(isCaliberOneSignOut\(event\)\)logout\(\);\};/);
  expect(appSource).toMatch(/clearSession\(\);\r?\n\s+markSignedOut\(sessionStorage\);/);
- expect(appSource).toMatch(/const expired=\(\)=>\{setConfig\(undefined\);setSession\(null\);setSso\(\{kind:'form'\}\);\};/); // an ended HR sign-in never signs in again by itself
+ // An ended HR sign-in shows the form; it asks Pulse instead only once, when Caliber One opened this page load with ?hrSso=start.
+ expect(appSource).toMatch(/const expired=\(\)=>\{setConfig\(undefined\);setSession\(null\);const viaPulse=startPending;startPending=false;setSso\(viaPulse\?\{kind:'start'\}:\{kind:'form'\}\);\};/);
+ expect(appSource).toMatch(/let startPending=startAsked\(ssoPlace\(\)\)&&Boolean\(savedSession\(\)\?\.grant\);/);
 });
