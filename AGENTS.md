@@ -1,3 +1,12 @@
+# M.B-Trip card Mismatch: a day still being read is not "— / —"
+
+Owner, 28 Nov 2026 (Gauri Pauni OB 2nd, 1 to 20 Nov: days 7 to 20 showed "— / —" after 162 seconds): "why it is showing --".
+
+- While the days arrive, a day not read on either side says "Reading…" in grey and its heading says "reading"; a side not read yet shows "…". "— / —" means only that both sides were read and neither has a record. The figures count only the days read on both sides, as before.
+- The roster's trip card day read (`sharedRead` in `server/mis-attendance.mjs`) no longer holds a database connection while it waits for Pulse-II: it held one of the server's five for up to 22 seconds, under an advisory lock, and the Manual Biometric reads beside it ran out of connections (5 second limit) and read again. The copy is read and written with two short queries; PCs asking the same day on one server share one read. Never hold a pooled connection across a call to another server.
+- The day read asks Pulse-II for the one site only (`cut=site`, Pulse-II PR 582). It is still one day per request, two at a time: asking for more at once filled Pulse-II's report queue on 28 Nov 2026 (PR 158). HR Pulse still trims the answer with its own site rule; the other sites of the day come from `misSiteDays`.
+- `server/mis-attendance.test.mjs` and `src/ManualDayEdit.test.tsx` check this.
+
 # C-shift biometric OUT belongs to the shift's start date
 
 Owner, 28 November 2026: drivers/operators rotate through three shifts. A C-shift evening IN and next morning OUT are one duty on the IN date; the OUT must not become a separate miss punch in either biometric roster or trip-card comparison. Applies to existing punches too.
