@@ -84,7 +84,11 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     if (status === 403) fail('MIS attendance is outside your assigned access.', 403);
     if (!ok || !result) fail('The MIS attendance feed is temporarily unavailable.', 503);
     const supported = Array.isArray(result.days) && !Array.isArray(result.otDuties);
-    return {supported, days: supported ? result.days : []};
+    // knownSites (28 Nov 2026): the site keys Pulse-II lists, signed or still open, so the roster can tell
+    // "Dudhichua OB East" from "Dudhichua OC" when it compares a saved day (site-match.mjs).
+    const all = supported ? result.days : [];
+    const knownSites = [...new Set([...all, ...(Array.isArray(result.pendingDays) ? result.pendingDays : [])].map(day => day?.siteKey).filter(name => typeof name === 'string' && name))].sort();
+    return {supported, days: all, knownSites};
   }
   // A change of attendance is made in Pulse-II, never kept here: ask (the OTP goes to RHR), then the OTP.
   async function change(profile, grant, path, input, action) {

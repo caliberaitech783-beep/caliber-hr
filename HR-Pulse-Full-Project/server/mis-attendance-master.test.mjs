@@ -74,11 +74,11 @@ test('duty times go to Pulse-II with the OTP, and an older Pulse-II is named', a
 test('the signatures of the days are asked without the cards, and an older Pulse-II is recognised', async () => {
   const days = [{siteKey: 'jayant ob', date: '2026-11-16', signature: 'abc', lines: 4}];
   const signed = setup(() => Response.json({days, pendingDays: [], generatedAt: 'now'}));
-  assert.deepEqual(await signed.api(hr, grant, 'mis/days', 'GET', null, new URLSearchParams({from: '2026-11-01', to: '2026-11-20'})), {supported: true, days});
+  assert.deepEqual(await signed.api(hr, grant, 'mis/days', 'GET', null, new URLSearchParams({from: '2026-11-01', to: '2026-11-20'})), {supported: true, days, knownSites: ['jayant ob']});
   assert.deepEqual(signed.sent[0], {path: '/api/integrations/hr/attendance', query: {from: '2026-11-01', to: '2026-11-20', only: 'days'}, method: 'GET', auth: 'Bearer ' + grant, body: undefined});
   // Before its release Pulse-II ignores only=days and sends the whole report: the saved days are then shown as before.
   const old = setup(() => Response.json({...report, days: undefined}));
-  assert.deepEqual(await old.api(hr, grant, 'mis/days', 'GET', null, new URLSearchParams({from: '2026-11-01', to: '2026-11-20'})), {supported: false, days: []});
+  assert.deepEqual(await old.api(hr, grant, 'mis/days', 'GET', null, new URLSearchParams({from: '2026-11-01', to: '2026-11-20'})), {supported: false, days: [], knownSites: []});
   await assert.rejects(signed.api(hr, grant, 'mis/days', 'GET', null, new URLSearchParams({from: '2026-10-01', to: '2026-11-20'})), {status: 400});
 });
 

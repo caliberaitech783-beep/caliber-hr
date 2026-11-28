@@ -13,16 +13,26 @@
    The site is matched with the roster's own rule (site-match.mjs), so a name written differently in MIS is kept exactly
    when the roster would have kept it. misSites lists the sites MIS had cards for in the dates asked: the roster shows
    them when it finds none for the chosen site. */
-import {sameSite} from './site-match.mjs';
+import {siteMatcher} from './site-match.mjs';
 
 const list = value => Array.isArray(value) ? value : [];
+/* Every MIS site name and site key the answer holds (28 Nov 2026, site-match.mjs): its lines, its shift list (which
+   names every site on every date, also one with no card) and its signed days. With them "Dudhichua OB East" is known
+   to have a site of exactly its own name in MIS, so "Dudhichua OC" is not taken for it. */
+function knownSites(report) {
+  const names = new Set(list(report.knownSites).filter(name => typeof name === 'string' && name));
+  const add = value => { if (typeof value === 'string' && value) names.add(value); };
+  for (const key of ['otDuties', 'attendanceEquipment', 'hrChanges', 'attendanceShifts', 'days', 'ot']) for (const entry of list(report[key])) { add(entry?.site); add(entry?.siteKey); }
+  return [...names].sort();
+}
 const siteKey = site => String(site || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 // The same two keys as the roster's reading: a duty, and a person's shift whatever the site.
 const dutyKey = entry => JSON.stringify([siteKey(entry.siteKey || entry.site), entry.date, entry.shift, String(entry.employeeId || '').trim().toUpperCase()]);
 const slotKey = (employeeKey, entry) => JSON.stringify([employeeKey, entry.date, entry.shift]);
 
 export function trimMisReport(report, site, from, to) {
-  const mine = entry => Boolean(entry) && (sameSite(site, entry.site) || sameSite(site, entry.siteKey));
+  const known = knownSites(report), isSite = siteMatcher(site, known);
+  const mine = entry => Boolean(entry) && (isSite(entry.site) || isSite(entry.siteKey));
   const duties = list(report.otDuties), lines = list(report.attendanceEquipment), changes = list(report.hrChanges);
   const inDates = entry => entry.date >= from && entry.date <= to;
   const misSites = [...new Set([...duties, ...lines, ...changes.filter(c => c?.mark === 'absent')].filter(e => e && inDates(e)).map(e => e.site).filter(Boolean))].sort();
@@ -45,10 +55,11 @@ export function trimMisReport(report, site, from, to) {
     performance: list(report.performance).filter(whole),
     details: list(report.details).filter(whole),
     exceptions: list(report.exceptions).filter(whole),
-    attendanceShifts: list(report.attendanceShifts).filter(row => row && sameSite(site, row.siteKey)),
+    attendanceShifts: list(report.attendanceShifts).filter(row => row && isSite(row.siteKey)),
     ot: list(report.ot).filter(mine),
     ...(Array.isArray(report.hrChanges) ? {hrChanges: changes.filter(keepChange)} : {}),
-    ...(Array.isArray(report.days) ? {days: report.days.filter(day => day && sameSite(site, day.siteKey))} : {}),
-    misSites
+    ...(Array.isArray(report.days) ? {days: report.days.filter(day => day && isSite(day.siteKey))} : {}),
+    // knownSites goes along, so the browser decides by the same names.
+    misSites, knownSites: known
   };
 }
