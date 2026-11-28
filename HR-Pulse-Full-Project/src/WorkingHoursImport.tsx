@@ -5,10 +5,12 @@ import {readWorkingHoursSheets, type WorkingHoursEntry, type WorkingHoursProblem
 /* Working Hours from the sites' hour-wise Excel (owner, 28 Nov 2026): matched by Employee ID, and only Working Hours
    is written. Nothing is saved until the user has seen what will change and pressed Update. */
 type HeldLine = {employeeId:string;name:string;sheet:string;row:number;hours:string;detail:string};
-type HeldKey = 'notFound'|'twoLines'|'otherName'|'twoHours';
+type HeldKey = 'notFound'|'twoLines'|'twoHours';
 type Result = {
   applied:boolean;rows:number;people:number;updated:number;same:number;registerLines:number;joinedEmployees:number;
   held:Record<HeldKey,number>;lists:Record<HeldKey,HeldLine[]>;listLimit:number;
+  /* Updated by Employee ID although the name is written differently: shown for information, never held. */
+  nameDiffers?:number;nameDiffersList?:HeldLine[];
 };
 type Sheet = {sheet:string;rows:number;read:number;idColumn?:string;hoursColumn?:string;note?:string};
 type Preview = {file:string;entries:WorkingHoursEntry[];problems:WorkingHoursProblem[];sheets:Sheet[];result:Result};
@@ -16,7 +18,6 @@ type Preview = {file:string;entries:WorkingHoursEntry[];problems:WorkingHoursPro
 const heldTitles:Record<HeldKey,string> = {
   notFound:'Employee ID not in Employee Master',
   twoLines:'Employee ID on two lines of Employee Master',
-  otherName:'A different name on this Employee ID',
   twoHours:'Two different hours for one Employee ID in the file',
 };
 const count = (value:number) => value.toLocaleString('en-IN');
@@ -79,7 +80,7 @@ export default function WorkingHoursImport({grant,disabled,onDone}:{grant:string
         <h2 id="working-hours-import-title">Update Working Hours</h2>
         <button type="button" disabled={busy} onClick={close}>Cancel</button>
       </div>
-      <p>{preview.file}: only Working Hours is written, matched by Employee ID. No employee is added, removed or moved and no other detail is changed.</p>
+      <p>{preview.file}: only Working Hours is written, matched by Employee ID only. No employee is added, removed or moved and no other detail is changed.</p>
       <dl>
         <div><dt>Rows read from the file</dt><dd>{count(preview.entries.length)}</dd></div>
         <div><dt>Working Hours will be updated</dt><dd><strong>{count(result.updated)}</strong></dd></div>
@@ -96,6 +97,12 @@ export default function WorkingHoursImport({grant,disabled,onDone}:{grant:string
         <ul>{result.lists[key].map((line,index)=><li key={index}>{line.employeeId} {line.name} ({line.sheet} row {line.row}, {line.hours}){line.detail?` · ${line.detail}`:''}</li>)}</ul>
         {result.held[key]>result.lists[key].length && <p>The first {count(result.listLimit)} are shown.</p>}
       </details>)}
+      {Boolean(result.nameDiffers) && <details>
+        <summary>Updated by Employee ID, name written differently: {count(result.nameDiffers||0)}</summary>
+        <p>These are updated. Check that each Employee ID belongs to the person named in the sheet.</p>
+        <ul>{(result.nameDiffersList||[]).map((line,index)=><li key={index}>{line.employeeId} {line.name} ({line.sheet} row {line.row}, {line.hours}) · {line.detail}</li>)}</ul>
+        {(result.nameDiffers||0)>(result.nameDiffersList||[]).length && <p>The first {count(result.listLimit)} are shown.</p>}
+      </details>}
       {preview.problems.length>0 && <details>
         <summary>Rows of the file left out: {count(preview.problems.length)}</summary>
         <ul>{preview.problems.slice(0,300).map((line,index)=><li key={index}>{line.sheet} row {line.row}: {line.reason}{line.employeeId?` (${line.employeeId})`:''}</li>)}</ul>

@@ -8,7 +8,10 @@
 //
 // The update writes Working Hours and nothing else: no line is added, removed or moved, and no other field of a
 // line is touched. A row is held (nothing changes for it) when its Employee ID is not in Employee Master, is on two
-// lines, belongs to a completely different name, or the file gives the same ID two different hours.
+// lines, or the file gives the same ID two different hours.
+// It goes by Employee ID only (owner, 28 Nov 2026: "Yes, go by ID"). The first version also held a row whose name
+// was not the name on that ID, and held 141 people whose names the sites merely spell differently (AJAYA SAHU /
+// AJAY SAHU, HEERA LAL KOL / HEERALAL KOL). A name that differs is now listed for information and still updated.
 import {employeeNumber,samePerson} from './employee-number.mjs';
 import {WORKING_HOURS_FIELD,normalizeWorkingHours} from './working-hours.mjs';
 export {readWorkingHoursSheets} from './working-hours-sheet.mjs';
@@ -57,7 +60,8 @@ export function createWorkingHoursImport(pool) {
         // One answer per person in the file: the same hours twice is one row, two different hours is held.
         const byNumber = new Map();
         for (const row of rows) (byNumber.get(row.number) || byNumber.set(row.number,[]).get(row.number)).push(row);
-        const held = {notFound:[],twoLines:[],otherName:[],twoHours:[]};
+        const held = {notFound:[],twoLines:[],twoHours:[]};
+        const nameDiffers = [];
         const registerWrites = [], joinedWrites = [];
         let people = 0, updated = 0, same = 0;
         const line = (row,detail) => ({employeeId:row.employeeId,name:row.name,sheet:row.sheet,row:row.row,hours:row.hours,detail});
@@ -70,7 +74,7 @@ export function createWorkingHoursImport(pool) {
           if (inRegister.length > 1 || inJoined.length > 1) { held.twoLines.push(line(row,[...inRegister,...inJoined].map(item=>`${item.name}${item.site?', '+item.site:''}`).join(' / '))); continue; }
           const targets = [...inRegister,...inJoined];
           const other = row.name && targets.find(target=>text(target.name) && !samePerson(target.name,row.name));
-          if (other) { held.otherName.push(line(row,`Employee Master: ${other.name}`)); continue; }
+          if (other) nameDiffers.push(line(row,`Employee Master: ${other.name}`));
           let changed = false;
           for (const target of inRegister) if (normalizeWorkingHours(target.hours) !== row.hours) { registerWrites.push({id:target.id,hours:row.hours}); changed = true; }
           for (const target of inJoined) if (normalizeWorkingHours(target.hours) !== row.hours) { joinedWrites.push({id:target.id,hours:row.hours}); changed = true; }
@@ -91,13 +95,14 @@ export function createWorkingHoursImport(pool) {
           if (registerWrites.length || joinedWrites.length) {
             await db.query("INSERT INTO hr_audit (actor,action,kind,detail) VALUES ($1,'WORKING_HOURS_IMPORT','employeeMasterRegister',$2)",
               [profile.actor,{fields:['workingHours'],people:updated,registerLines:registerWrites.length,joinedEmployees:joinedWrites.length,
-                same,notFound:held.notFound.length,twoLines:held.twoLines.length,otherName:held.otherName.length,twoHours:held.twoHours.length}]);
+                same,notFound:held.notFound.length,twoLines:held.twoLines.length,twoHours:held.twoHours.length,nameDiffers:nameDiffers.length}]);
           }
           await db.query('COMMIT');
         } else await db.query('ROLLBACK');
         const counts = Object.fromEntries(Object.entries(held).map(([key,list])=>[key,list.length]));
         return {applied:apply,rows:rows.length,people,updated,same,registerLines:registerWrites.length,joinedEmployees:joinedWrites.length,
-          held:counts,lists:Object.fromEntries(Object.entries(held).map(([key,list])=>[key,list.slice(0,LIST_LIMIT)])),listLimit:LIST_LIMIT};
+          held:counts,lists:Object.fromEntries(Object.entries(held).map(([key,list])=>[key,list.slice(0,LIST_LIMIT)])),
+          nameDiffers:nameDiffers.length,nameDiffersList:nameDiffers.slice(0,LIST_LIMIT),listLimit:LIST_LIMIT};
       } catch (error) {
         await db.query('ROLLBACK').catch(()=>{});
         throw error;
