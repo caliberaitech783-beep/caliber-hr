@@ -191,6 +191,38 @@ test('the roster\'s day read keeps the chosen site only, in the answer and in th
   assert.equal(stored.size, 2);
 });
 
+// Owner, 28 Nov 2026: "plz do this and all other such mine names". HR "Dudhichua OB East" was read as both MIS
+// "Dudhichua East OC" and "Dudhichua OC" (the looser rule finds no word in "Dudhichua OC" that East lacks), so the East
+// roster also took the other site's trip cards. The site names below are the ones live sent on 28 Nov 2026.
+test('a site of almost another site\'s name is given only its own trip cards and signed days', async () => {
+  const line = (site, siteKey, employeeId) => ({date: '2026-11-16', site, siteKey, shift: 'S1', employeeId, employeeKey: employeeId, employeeName: employeeId});
+  // East saved no card of its own on this day; MIS still names it in the shift list of every date.
+  const whole = {
+    attendanceEquipment: [], ot: [], performance: [], details: [], exceptions: [],
+    attendanceShifts: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shift: 'S1', state: 'none', batch: ''}, {siteKey: 'dudhichua ob', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'B'}],
+    otDuties: [line('Dudhichua OC', 'dudhichua ob', 'W1'), line('Dudhichua OC', 'dudhichua ob', 'W2')],
+    days: [{siteKey: 'dudhichua ob', date: '2026-11-16', lines: 2, signature: 'w'}],
+    pendingDays: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shifts: []}]
+  };
+  let asked = 0;
+  const db = {async query() { return {rows: []}; }, release() {}};
+  const pool = {connect: async () => db, async query(sql) { return {rows: sql.includes("kind='sites'") ? [{name: 'Dudhichua OB East'}] : []}; }};
+  const api = createMisAttendance(pool, {fetchMis: async url => { asked++; return Response.json(url.searchParams.get('only') === 'days' ? {days: whole.days, pendingDays: whole.pendingDays} : whole); }});
+  const day = site => api({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site, trim: '1'}));
+  const east = await day('Dudhichua OB East'), west = await day('Dudhichua OB West');
+  assert.deepEqual([east.otDuties.length, east.days.length, east.attendanceShifts.map(s => s.siteKey)], [0, 0, ['dudhichua east ob']]);
+  assert.deepEqual(east.misSites, ['Dudhichua OC'], 'the roster can still say where MIS had cards');
+  assert.deepEqual(east.knownSites, ['Dudhichua OC', 'dudhichua east ob', 'dudhichua ob']);
+  assert.deepEqual([west.otDuties.map(d => d.employeeId), west.days.map(d => d.signature), west.attendanceShifts.map(s => s.siteKey)], [['W1', 'W2'], ['w'], ['dudhichua ob']]);
+  // The same two requests to Pulse-II as before the rule changed: the rule asks for nothing more.
+  assert.equal(asked, 2);
+
+  // The check of saved days also says which sites Pulse-II lists (signed, or still open), for the same rule in the roster.
+  const signed = await api({actor: 'hr', permissions: {}}, grant, 'mis/days', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16'}));
+  assert.deepEqual(signed.days.map(d => d.signature), ['w']);
+  assert.deepEqual(signed.knownSites, ['dudhichua east ob', 'dudhichua ob']);
+});
+
 // 28 Nov 2026 (roster 162 seconds for 4 of 20 days): waiting on Pulse-II held one of the server's five database
 // connections, so the Manual Biometric reads beside it ran out of connections. No connection is held while waiting now,
 // two PCs asking the same day at the same moment share one read, and the roster's day read asks Pulse-II for its site only.
@@ -234,4 +266,27 @@ test('a screen that wants every site does not ask Pulse-II for the cut', async (
   const api = createMisAttendance(pool, {fetchMis: async url => {requestedUrl = url; return Response.json(report);}});
   await api({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site: 'Majri OC'}));
   assert.equal(requestedUrl.searchParams.get('cut'), null);
+});
+
+// The same site when Pulse-II has already cut its answer (cut=site). Pulse-II's cut uses the looser rule, so for
+// "Dudhichua OB East" it still sends "Dudhichua OC"; HR Pulse leaves that site out, also on a day East has no card.
+test('an answer Pulse-II already cut to a site of almost another site\'s name is still given only its own cards', async () => {
+  const line = (site, siteKey, employeeId) => ({date: '2026-11-16', site, siteKey, shift: 'S1', employeeId, employeeKey: employeeId, employeeName: employeeId});
+  const cut = {
+    attendanceEquipment: [], ot: [], performance: [], details: [], exceptions: [], hrChanges: [], cut: 'site',
+    attendanceShifts: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'E'}, {siteKey: 'dudhichua ob', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'B'}],
+    otDuties: [line('Dudhichua East OC', 'dudhichua east ob', 'E1'), line('Dudhichua OC', 'dudhichua ob', 'W1')],
+    days: [{siteKey: 'dudhichua east ob', date: '2026-11-16', lines: 1, signature: 'e'}, {siteKey: 'dudhichua ob', date: '2026-11-16', lines: 1, signature: 'w'}],
+    misSiteDays: {'2026-11-16': ['Dudhichua East OC', 'Dudhichua OC', 'Jayant OC']}
+  };
+  const noCard = {...cut, otDuties: [line('Dudhichua OC', 'dudhichua ob', 'W1')], days: [cut.days[1]], misSiteDays: {'2026-11-16': ['Dudhichua OC']},
+    attendanceShifts: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shift: 'S1', state: 'none', batch: ''}, cut.attendanceShifts[1]]};
+  const pool = {async query(sql) { return {rows: sql.includes("kind='sites'") ? [{name: 'Dudhichua OB East'}] : []}; }};
+  const read = async answer => createMisAttendance(pool, {fetchMis: async () => Response.json(answer)})({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {},
+    new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site: 'Dudhichua OB East', trim: '1'}));
+  const east = await read(cut);
+  assert.deepEqual([east.otDuties.map(d => d.employeeId), east.days.map(d => d.signature), east.attendanceShifts.map(s => s.siteKey)], [['E1'], ['e'], ['dudhichua east ob']]);
+  assert.deepEqual(east.misSites, ['Dudhichua East OC', 'Dudhichua OC', 'Jayant OC']);
+  const empty = await read(noCard);
+  assert.deepEqual([empty.otDuties.length, empty.days.length, empty.attendanceShifts.map(s => s.siteKey)], [0, 0, ['dudhichua east ob']]);
 });

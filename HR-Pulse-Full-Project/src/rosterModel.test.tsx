@@ -598,3 +598,73 @@ it('Manual Biometric reports every day as it arrives, with the days still to com
  expect(result.failedDays).toEqual(['2026-11-04']);
  expect(result.rows[0].days.map(d=>d.date)).toEqual(['2026-11-02','2026-11-03']);
 });
+
+// Owner, 28 Nov 2026: "plz do this and all other such mine names". HR "Dudhichua OB East" was read as both MIS
+// "Dudhichua East OC" and "Dudhichua OC", so the East roster also took the other site's trip cards.
+const siteDuty=(site:string,siteKey:string,employeeId:string,date='2026-11-02')=>({date,site,siteKey,shift:'S1',employeeId,employeeKey:employeeId,employeeName:employeeId,caliberCode:employeeId,doors:'D1',equipment:'Dumper',category:'Dumper',logBooks:['VLB'],books:'',trips:3});
+const dudhichua=(extra={})=>({attendanceEquipment:[],attendanceShifts:[],ot:[],performance:[],details:[],exceptions:[],corrections:[],canEdit:true,signed:true,
+ // The server leaves the other site out, but keeps its duty by the same person in the same shift (to mark both).
+ otDuties:[siteDuty('Dudhichua East OC','dudhichua east ob','E1'),siteDuty('Dudhichua OC','dudhichua ob','E1')],
+ days:[{siteKey:'dudhichua east ob',date:'2026-11-02',signature:'east'},{siteKey:'dudhichua ob',date:'2026-11-02',signature:'west'}],
+ knownSites:['Dudhichua East OC','Dudhichua OC','dudhichua east ob','dudhichua ob'],...extra});
+
+it('a site of almost another site\'s name shows only its own trip cards and is signed alone',async()=>{
+ const {streamTripCards,setRetryPause}=await import('./rosterData');
+ setRetryPause(async()=>{});
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json(dudhichua())));
+ const read=async(site:string)=>{const got:{sites:string[];signature?:string}[]=[];await streamTripCards('a'.repeat(43),['2026-11-02'],site,u=>{if(u.state==='done')got.push({sites:(u.rows||[]).map(r=>r.site),signature:u.signature});});return got[0];};
+ expect(await read('Dudhichua OB East')).toEqual({sites:['Dudhichua East OC'],signature:'dudhichua east ob:east'});
+ // West has no MIS site of exactly its name: "Dudhichua OC" is West, as before.
+ expect(await read('Dudhichua OB West')).toEqual({sites:['Dudhichua OC'],signature:'dudhichua ob:west'});
+ // A server from before this change names no sites: the names on the lines decide, with the same result here.
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json(dudhichua({knownSites:undefined}))));
+ expect((await read('Dudhichua OB East')).sites).toEqual(['Dudhichua East OC']);
+});
+
+it('saved days of such a site are shown without the other site\'s cards, and none is sent back to MIS by the new rule',async()=>{
+ const {readSavedTripCards,checkSavedTripCards}=await import('./rosterData');
+ const row=(site:string,date:string)=>({id:site+date,date,site,siteKey:site.toLowerCase(),shift:'S1',employeeId:'E1',employeeKey:'E1',employeeName:'E1',caliberCode:'E1',designation:'',sources:['Trip card'],equipment:[],references:'',note:'',output:'',status:'Present',verification:'MIS batch closed',verified:true,otHours:null,otNote:''});
+ const misDays=[{siteKey:'dudhichua east ob',date:'2026-11-03',signature:'e3'},{siteKey:'dudhichua ob',date:'2026-11-03',signature:'w3'},
+  {siteKey:'dudhichua east ob',date:'2026-11-04',signature:'e4'},{siteKey:'dudhichua ob',date:'2026-11-04',signature:'w4'},
+  {siteKey:'dudhichua east ob',date:'2026-11-05',signature:'e5-new'},{siteKey:'dudhichua ob',date:'2026-11-05',signature:'w5'}];
+ let checks=0;
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{
+  if(url.includes('attendance/trip-cards'))return Response.json({days:[
+   {day:'2026-11-02',rows:[row('Dudhichua East OC','2026-11-02'),row('Dudhichua OC','2026-11-02')],duties:2,savedBy:'hr',savedAt:'2026-11-22T10:00:00Z'},
+   // Saved on 27 Nov under the old rule: signed with the days of both MIS sites, and holding the cards of both.
+   {day:'2026-11-03',rows:[row('Dudhichua East OC','2026-11-03'),row('Dudhichua OC','2026-11-03')],duties:2,savedBy:'hr',savedAt:'2026-11-27T10:00:00Z',signature:'dudhichua east ob:e3,dudhichua ob:w3'},
+   // Saved under the new rule: signed with East's own day.
+   {day:'2026-11-04',rows:[row('Dudhichua East OC','2026-11-04')],duties:1,savedBy:'hr',savedAt:'2026-11-28T10:00:00Z',signature:'dudhichua east ob:e4'},
+   // East's own cards changed in MIS after this day was saved.
+   {day:'2026-11-05',rows:[row('Dudhichua East OC','2026-11-05')],duties:1,savedBy:'hr',savedAt:'2026-11-28T10:00:00Z',signature:'dudhichua east ob:e5'}]});
+  checks++;return Response.json({supported:true,days:misDays,knownSites:['dudhichua east ob','dudhichua ob']});}));
+ const east=await readSavedTripCards('a'.repeat(43),'Dudhichua OB East','2026-11-02','2026-11-05');
+ expect(east.map(d=>d.rows.map(r=>r.site))).toEqual([['Dudhichua East OC'],['Dudhichua East OC'],['Dudhichua East OC'],['Dudhichua East OC']]);
+ const check=await checkSavedTripCards('a'.repeat(43),'Dudhichua OB East',east);
+ expect(checks).toBe(1);
+ // Only the day whose own cards changed is read from MIS again; the day signed the old way is still current.
+ expect(check.stale).toEqual(['2026-11-05']);
+ expect(check.unsigned).toEqual(['2026-11-02']);
+});
+
+// Every site name HR Pulse shows, against every site MIS had on live on 28 Nov 2026: each mine takes exactly one MIS
+// site, no two names take the same one, and an office takes none. (For Lalpeth live showed only the key "lalpeth ob",
+// with no cards; its name here is assumed.)
+it('every mine name on the screen is exactly one MIS site',async()=>{
+ const {siteMatcher}=await import('../server/site-match.mjs');
+ const {siteDisplayName}=await import('./siteNames');
+ const stored=['CHADDA TRADING CO.','Chandrapur HO','CMPL SCR JV','Corporate','Dhoptala OC','Dudhichua OB East','Dudhichua OB West','Gauri Pauni OB','Gauri Pauni OC','Hindustan Lalpeth OC','Jayant OB','KSR FREIGHT CARRIERS','Majri OC','Nagpur CO','Sasti OC','WCL-HQ-NGP','WCL-SITE-NGP'];
+ const mis:[string,string][]=[['Dhoptala OC (2nd)','dhoptala ob 2nd'],['Dudhichua East OC','dudhichua east ob'],['Dudhichua OC','dudhichua ob'],['Gauri Pauni OC (2nd)','gauri pauni ob 2nd'],['Jayant OC','jayant ob'],['Majri OC','majri ob'],['Sasti OC','sasti ob'],['Lalpeth OC','lalpeth ob']];
+ const known=mis.flat();
+ const shown=[...new Set(stored.map(name=>siteDisplayName(name)))].sort();
+ const taken=Object.fromEntries(shown.map(name=>{const isSite=siteMatcher(name,known);return [name,mis.filter(([site,key])=>isSite(site)||isSite(key)).map(([site])=>site)];}));
+ expect(taken).toEqual({
+  'CHADDA TRADING CO.':[],'CMPL SCR JV':[],'Chandrapur Head Office':[],'Corporate':[],'KSR FREIGHT CARRIERS':[],'Nagpur Corporate Office':[],'WCL-HQ-NGP':[],'WCL-SITE-NGP':[],
+  'Dhoptala OB 2nd':['Dhoptala OC (2nd)'],'Dudhichua OB East':['Dudhichua East OC'],'Dudhichua OB West':['Dudhichua OC'],'Gauri Pauni OB 2nd':['Gauri Pauni OC (2nd)'],
+  'Jayant OB':['Jayant OC'],'Lalpeth OB':['Lalpeth OC'],'Majri OC':['Majri OC'],'Sasti OC':['Sasti OC']});
+ // No MIS site is shown under two names.
+ const owners=mis.map(([site])=>shown.filter(name=>taken[name].includes(site)));
+ expect(owners.every(list=>list.length===1)).toBe(true);
+ // The names as stored (before the screen renames them) give the same sites, so a list that is not renamed is right too.
+ for(const name of stored){const isSite=siteMatcher(name,known);expect(mis.filter(([site,key])=>isSite(site)||isSite(key)).map(([site])=>site),name).toEqual(taken[siteDisplayName(name)]);}
+});

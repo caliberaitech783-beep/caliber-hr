@@ -1,6 +1,7 @@
 import {api} from './api';
 import {mapMisAttendance, type AttendanceRow} from './misAttendanceModel';
 import {sameSite} from './rosterModel';
+import {siteMatcher} from '../server/site-match.mjs';
 import type {Register} from './AttendanceRegister';
 
 /* Fetching for the attendance roster (owner, 22 Nov 2026): the Trip card tab reads MIS, the Biometric tab reads the
@@ -22,9 +23,9 @@ export type DayUpdate = {day: string; state: DayState; rows?: AttendanceRow[]; s
 export type MisDay = {siteKey: string; date: string; signature: string; lines?: number};
 /** The signature of the site's day: every MIS site that is this site, in a fixed order. 'none': Pulse-II holds no
     closed day for it. '': Pulse-II did not sign (an older Pulse-II). */
-export function misDaySignature(days: MisDay[] | undefined, site: string, day: string) {
+export function misDaySignature(days: MisDay[] | undefined, site: string, day: string, isSite: (misSite: string) => boolean = name => sameSite(site, name)) {
   if (!Array.isArray(days)) return '';
-  const mine = days.filter(d => d && d.date === day && typeof d.siteKey === 'string' && typeof d.signature === 'string' && (!site || sameSite(site, d.siteKey)));
+  const mine = days.filter(d => d && d.date === day && typeof d.siteKey === 'string' && typeof d.signature === 'string' && (!site || isSite(d.siteKey)));
   return mine.map(d => d.siteKey + ':' + d.signature).sort().join(',').slice(0, 400) || 'none';
 }
 export type TripFetch = {rows: AttendanceRow[]; failed: string[]; error: string; misSites: string[]};
@@ -44,8 +45,13 @@ async function readDay(grant: string, day: string, site: string, attempts: numbe
       // names in misSites the sites MIS had cards for. A server from before 28 Nov 2026 sends every site, as before.
       const signed = data as {days?: MisDay[]; signed?: boolean; misSites?: unknown};
       const misSites = Array.isArray(signed?.misSites) ? signed.misSites.filter((s): s is string => typeof s === 'string') : [...new Set(all.map(r => r.site).filter(Boolean))];
-      return {rows: all.filter(r => !site || sameSite(site, r.site)), sites: misSites,
-        signature: signed?.signed === false ? '' : misDaySignature(signed?.days, site, day)};
+      // Two sites of almost one name (28 Nov 2026, server/site-match.mjs): "Dudhichua OB East" is not also "Dudhichua OC".
+      // The server names every MIS site it knows (knownSites); the same test is used here for the lines and the signature.
+      const named = (data as {knownSites?: unknown}).knownSites;
+      const known = Array.isArray(named) ? named.filter((s): s is string => typeof s === 'string') : all.flatMap(r => [r.site, r.siteKey || '']).filter(Boolean);
+      const isSite = siteMatcher(site, known);
+      return {rows: all.filter(r => !site || isSite(r.site)), sites: misSites,
+        signature: signed?.signed === false ? '' : misDaySignature(signed?.days, site, day, isSite)};
     } catch (e) {
       const message = (e as Error).message || 'MIS did not answer';
       if (attempt >= attempts || NO_ACCESS.test(message)) throw new Error(message);
@@ -167,7 +173,12 @@ export type SavedInfo = {savedBy: string; savedAt: string};
 export type SavedDay = SavedInfo & {day: string; rows: AttendanceRow[]; duties: number; signature?: string};
 export async function readSavedTripCards(grant: string, site: string, from: string, to: string) {
   const result = await api<{days?: SavedDay[]}>(grant, 'attendance/trip-cards?' + new URLSearchParams({site, from, to}));
-  return Array.isArray(result?.days) ? result.days : [];
+  const days = Array.isArray(result?.days) ? result.days : [];
+  // Days saved before 28 Nov 2026 for a site of almost another site's name ("Dudhichua OB East") also hold the other
+  // site's cards ("Dudhichua OC"). They are left out when shown, by the site names of all the saved days together; the
+  // stored copy is put right the next time the day is read from MIS and saved.
+  const isSite = siteMatcher(site, days.flatMap(d => (Array.isArray(d.rows) ? d.rows : []).flatMap(r => [r.site, r.siteKey || ''])).filter(Boolean));
+  return days.map(d => Array.isArray(d.rows) ? {...d, rows: d.rows.filter(r => isSite(r.site))} : d);
 }
 /** How long the roster waits for Pulse-II's signatures before it shows the saved days unchecked. Asked once, never retried. */
 export const SAVED_CHECK_TIMEOUT_MS = 15_000;
@@ -186,7 +197,13 @@ export async function checkSavedTripCards(grant: string, site: string, saved: Sa
   try {
     const answer = await api<{supported?: boolean; days?: MisDay[]}>(grant, 'attendance/mis/days?' + new URLSearchParams({from: days[0], to: days[days.length - 1]}), 'GET', undefined, SAVED_CHECK_TIMEOUT_MS);
     if (!answer?.supported || !Array.isArray(answer.days)) return {fresh: saved, stale: [], unsigned, checked: false};
-    const stale = signed.filter(d => d.signature !== misDaySignature(answer.days, site, d.day)).map(d => d.day).sort();
+    // A day is still current when its signature is the site's own days (the names MIS lists decide which those are),
+    // or, for a day saved before 28 Nov 2026, the days of every MIS site the old looser rule took for this site. So
+    // the stricter rule sends no saved day back to MIS by itself.
+    const named = (answer as {knownSites?: unknown}).knownSites;
+    const known = Array.isArray(named) ? named.filter((s): s is string => typeof s === 'string') : answer.days.map(d => d?.siteKey).filter((s): s is string => typeof s === 'string');
+    const isSite = siteMatcher(site, known);
+    const stale = signed.filter(d => d.signature !== misDaySignature(answer.days, site, d.day, isSite) && d.signature !== misDaySignature(answer.days, site, d.day)).map(d => d.day).sort();
     return {fresh: saved.filter(d => !stale.includes(d.day)), stale, unsigned, checked: true};
   } catch {
     return {fresh: saved, stale: [], unsigned, checked: false};
