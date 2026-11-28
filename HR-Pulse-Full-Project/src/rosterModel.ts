@@ -26,6 +26,8 @@ export function weekPieces(from: string, to: string) {
   return pieces;
 }
 export type TripDay = {date: string; code: string; duties: TripDuty[]};
+/** One trip card person's HR calendar (server loadHrCalendar): each day's H, L, CO, OD, WO or '' (A when past). */
+export type HrCalendarRow = {code: string; name: string; site: string; department: string; designation: string; days: {date: string; calendar: string; note: string}[]};
 export type Mismatch = {date: string; trip: string; bio: string; reason: string; tripDetail: string; bioDetail: string};
 export type RosterGroup = {
   key: string; code: string; aFormNo?: string; name: string; site: string; department: string; designation: string; shift: string; exempt: boolean;
@@ -116,8 +118,15 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
   /** While MIS is still being read: only these days have trip cards; the others stay blank and are not compared. */
   tripRead?: Set<string>,
   /** While the Biometric tab is still being read: only these days have punches; the others stay blank and are not compared. */
-  bioRead?: Set<string>): RosterGroup[] {
+  bioRead?: Set<string>,
+  /** HR calendar of trip card people (POST attendance/trip-calendar): used for a person with no biometric line here. */
+  calendars: HrCalendarRow[] = []): RosterGroup[] {
   const tripPeople = trips ? tripCardDays(trips) : new Map();
+  const calendarOf = new Map<string, HrCalendarRow | null>();
+  for (const row of calendars) {
+    const number = identityNumber(row.code);
+    if (number) calendarOf.set(number, calendarOf.has(number) ? null : row);   // a number on two lines: neither is used
+  }
   const groups: RosterGroup[] = register.map(row => ({
     key: row.id, code: row.code, aFormNo: row.aFormNo || '', name: row.name, site: row.site, department: row.department || '', designation: row.designation, shift: row.shift, exempt: row.exempt,
     bio: row, bioCodes: {}, tripCodes: {}, tripDays: {}, hasTripCards: false, mismatches: [], pending: 0,
@@ -152,8 +161,14 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
   }
   for (const group of groups) {
     const days = new Map((group.bio?.days || []).map(d => [d.date, d]));
+    // No biometric line here (owner, 28 Nov 2026): the HR calendar read for the trip card people gives leave, OD,
+    // holidays and the absent days, so those days are no longer blank.
+    const hr = group.bio ? undefined : calendarOf.get(identityNumber(group.code)) || undefined;
+    const hrDays = new Map((hr?.days || []).map(d => [d.date, d.calendar]));
+    if (hr) {group.department = group.department || hr.department; group.designation = group.designation || hr.designation;}
+    const calendarDay = (date: string) => days.get(date)?.calendar || hrDays.get(date) || '';
     // The PH rule is for drivers and operators only (owner, 28 Nov 2026): everyone else keeps a holiday paid once.
-    group.holidays = isDriverOperator(group) ? dates.filter(date => days.get(date)?.calendar === 'H') : [];
+    group.holidays = isDriverOperator(group) ? dates.filter(date => calendarDay(date) === 'H') : [];
     for (const date of dates) {
       if (date > today) continue;
       const day = days.get(date);
@@ -161,10 +176,10 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
       const bio = bioUnread ? '' : day?.status || '';
       if (!bioUnread) group.bioCodes[date] = bio;
       if (!trips || !group.hasTripCards || (tripRead && !tripRead.has(date))) continue;
-      if (bioUnread) {const read = group.tripDays[date]?.code || ''; if (read) group.tripCodes[date] = read; continue;}
-      const calendar = day?.calendar || (CALENDAR.has(bio) ? bio : '');
-      // Without a biometric line there is no HR calendar to tell a weekly off from an absence: leave such days blank.
-      group.tripCodes[date] = group.tripDays[date]?.code || calendar || (group.bio && date < today ? 'A' : '');
+      if (bioUnread && group.bio) {const read = group.tripDays[date]?.code || ''; if (read) group.tripCodes[date] = read; continue;}
+      const calendar = calendarDay(date) || (CALENDAR.has(bio) ? bio : '');
+      // With neither a biometric line nor an HR calendar there is nothing to tell a weekly off from an absence: blank.
+      group.tripCodes[date] = group.tripDays[date]?.code || calendar || ((group.bio || hr) && date < today ? 'A' : '');
     }
     // Public holiday rule (owner, 28 Nov 2026) on both lines, before they are compared.
     const holidays = new Set(group.holidays);
@@ -177,6 +192,8 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
       if (trip === '?') group.pending++;
       const bio = group.bioCodes[date] || '';
       if (!trip && !bio) continue;
+      // No biometric line: only a day on duty is a difference ("no biometric record"), not leave, OD, holiday or A.
+      if (!group.bio && !WORKED.has(trip) && trip !== '?') continue;
       const reason = difference(trip, bio);
       if (reason) group.mismatches.push({date, trip, bio, reason, tripDetail: tripText(group.tripDays[date]), bioDetail: bioText(days.get(date))});
     }

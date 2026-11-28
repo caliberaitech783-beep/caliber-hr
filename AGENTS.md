@@ -1,3 +1,12 @@
+# Trip card drivers with no biometric line get leave, OD, PH and absent days
+
+Owner, 28 Nov 2026: "fix the blank days for drivers with no biometric line".
+
+- The roster's HR calendar came only from the Biometric site register, which lists the people who punched on the site's machines. A driver or operator with trip cards and no punch there had blank days: no leave, OD, holiday or A, so no paid days for them.
+- Once the trip cards of the dates are read, the roster asks `POST /api/attendance/trip-calendar` ({site, from, to, codes}, a site of the login) for the codes on them. `loadHrCalendar` (`server/attendance-register.mjs`) finds each person by number (CMPL / CMLL / 0 prefixes are one person; a joined employee first, else the Employee Master line; a number two people hold is left out) and gives each day's mark only: H (site holiday), L / CO (approved leave), OD (approved OD), WO (office) or nothing. No punches, no pay.
+- `buildRoster` (`src/rosterModel.ts`) uses it only for a person with no biometric line: a day with no trip card takes that mark, else A. The PH rule applies to them as to everyone (drivers and operators). Leave, OD, holiday and A of such a person are not listed as "no biometric record"; a day on duty still is.
+- `server/trip-calendar.test.mjs` (run by the API deploy) and `src/holidayRule.test.ts` check it.
+
 # Public holiday (PH): worked is paid twice, absent on both sides is not paid
 
 Owner, 28 Nov 2026 (Pulse II HR deck, slide 10), for the driver / operator attendance roster used for final salary. Drivers and operators only (owner, 28 Nov 2026: "make it only for driver and operator"), by department or designation (`isDriverOperator`); everyone else keeps a holiday paid once, whatever the days around it. Leave, OD and the PH HR sets per site already reach the roster from HR records; this adds the PH pay rule.

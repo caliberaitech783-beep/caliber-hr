@@ -374,3 +374,64 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
     .map(r => ({...r, machinesUsed: [...new Set(used.get(r.id) || [])]}));
   return {from, to, policy, site: site.name, machines: machineList, rows, dutyVersion: BIOMETRIC_DUTY_VERSION};
 }
+
+/** "CMPL8812", "CMLL08812", "8812" → "8812" (the database's hr_employee_number): one person whatever the prefix. */
+export const employeeNumber = value => {
+  const text = String(value || '').toUpperCase().replace(/[\s/-]/g, '');
+  return /^(CMPL|CMLL)?\d{1,9}$/.test(text) ? text.replace(/^(CMPL|CMLL)/, '').replace(/^0+/, '') : '';
+};
+
+/**
+ * HR calendar of trip card people (owner, 28 Nov 2026): the drivers and operators on a site's trip cards who have no
+ * biometric line there still get their approved leave / comp off, approved OD, their site's public holidays and the
+ * absent days in the roster. `codes`: the employee codes on the trip cards. The person is found by number, a joined
+ * employee first (leave and OD are kept against a joined employee), else the Employee Master register line; a number
+ * that two joined employees, or two register lines, hold is left out. No punches are read: every day is the calendar
+ * day (H, L, CO, OD, WO for an office) or A.
+ */
+export async function loadHrCalendar(db, codes, from, to, today) {
+  const numbers = [...new Set((codes || []).map(employeeNumber).filter(Boolean))].slice(0, 3000);
+  if (!numbers.length) return {from, to, rows: []};
+  const policy = (await readPolicy(db)).policy;
+  const {rows: found} = await db.query(`
+   SELECT 'joined' AS source,e.id::text AS id,e.code,e.name,e.data->>'siteId' AS site_id,site.code AS site_code,site.name AS site,coalesce(site.data->>'siteType','') AS site_type,
+    coalesce(nullif(des.name,''),e.data->>'designation',e.data#>>'{fields,Designation}',e.data#>>'{officeData,Designation}','') AS designation,
+    coalesce(nullif(dep.name,''),e.data->>'department',e.data#>>'{fields,Department}',e.data#>>'{officeData,Department}','') AS department,
+    hr_employee_number(e.code) AS number
+   FROM hr_records e
+   LEFT JOIN hr_records site ON site.id::text=e.data->>'siteId' AND site.kind='sites'
+   LEFT JOIN hr_records dep ON dep.id::text=e.data->>'departmentId' AND dep.kind='departments'
+   LEFT JOIN hr_records des ON des.id::text=e.data->>'designationId' AND des.kind='designations'
+   WHERE e.kind='employees' AND hr_employee_number(e.code)=ANY($1::text[])
+   UNION ALL
+   SELECT 'register',r.id::text,r.data->>'employeeId',r.name,r.site_id::text,r.site_code,r.site_name,'',
+    coalesce(r.data->>'designation',''),coalesce(r.data->>'department',''),hr_employee_number(r.data->>'employeeId')
+   FROM hr_employee_master_register r WHERE hr_employee_number(r.data->>'employeeId')=ANY($1::text[])`, [numbers]);
+  const people = [];
+  for (const number of numbers) {
+    const joined = found.filter(row => row.number === number && row.source === 'joined');
+    const lines = found.filter(row => row.number === number && row.source === 'register');
+    const person = joined.length === 1 ? joined[0] : !joined.length && lines.length === 1 ? lines[0] : null;
+    if (person) people.push(person);
+  }
+  if (!people.length) return {from, to, rows: []};
+  const ids = people.filter(p => p.source === 'joined').map(p => p.id);
+  const [holidays, leaves, ods] = await Promise.all([
+    db.query(HOLIDAYS, [from, to]),
+    ids.length ? db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'fromDate' AS from_date,coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate') AS to_date,
+      concat_ws(' ',t.code,t.name) AS leave_type FROM hr_records r
+     LEFT JOIN hr_records t ON t.id::text=r.data->>'leaveTypeId' AND t.kind='leaveTypes'
+     WHERE r.kind='leaveRequests' AND r.status='APPROVED' AND r.data->>'employeeId'=ANY($1::text[]) AND r.data->>'fromDate'<=$3 AND coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate')>=$2`, [ids, from, to]) : {rows: []},
+    ids.length ? db.query(`SELECT data->>'employeeId' AS employee_id,data->>'outDutyDate' AS from_date,coalesce(nullif(data->>'toDate',''),data->>'outDutyDate') AS to_date FROM hr_records
+     WHERE kind='outDutyRequests' AND status='APPROVED' AND data->>'employeeId'=ANY($1::text[]) AND data->>'outDutyDate'<=$3 AND coalesce(nullif(data->>'toDate',''),data->>'outDutyDate')>=$2`, [ids, from, to]) : {rows: []}
+  ]);
+  const register = buildRegister({from, to, today, policy,
+    employees: people.map(p => ({id: p.id, code: p.code || '', name: p.name || '', siteId: p.site_id || '', siteCode: p.site_code || '', site: p.site || '', siteType: p.site_type || '',
+      department: p.department || '', designation: p.designation || '', shift: ''})),
+    holidays: holidays.rows.map(h => ({date: h.date, siteId: h.site_id, name: h.name})),
+    leaves: leaves.rows.map(l => ({employeeId: l.employee_id, from: l.from_date, to: l.to_date, compOff: isCompOff(l.leave_type)})),
+    ods: ods.rows.map(o => ({employeeId: o.employee_id, from: o.from_date, to: o.to_date}))});
+  // Only what the roster needs: who the person is, and each day's HR calendar mark (no punches, no pay).
+  return {from, to, rows: register.rows.map(r => ({code: r.code, name: r.name, site: r.site, department: r.department || '', designation: r.designation || '',
+    days: r.days.map(d => ({date: d.date, calendar: d.calendar || '', note: d.note || ''}))}))};
+}

@@ -1,6 +1,6 @@
 import {api} from './api';
 import {mapMisAttendance, type AttendanceRow} from './misAttendanceModel';
-import {sameSite} from './rosterModel';
+import {sameSite, type HrCalendarRow} from './rosterModel';
 import {siteMatcher} from '../server/site-match.mjs';
 import type {Register} from './AttendanceRegister';
 
@@ -196,6 +196,11 @@ export async function fetchFromMachines(grant: string, serials: string[], onStep
    (server/trip-card-store.mjs), and the Trip card tab opens the saved days at once, reading MIS only for the rest. */
 export type SavedInfo = {savedBy: string; savedAt: string};
 export type SavedDay = SavedInfo & {day: string; rows: AttendanceRow[]; duties: number; signature?: string};
+/** HR calendar (leave, OD, holidays, absent days) of the trip card people of a site, by their codes (owner, 28 Nov 2026). */
+export async function fetchTripCalendar(grant: string, site: string, from: string, to: string, codes: string[]) {
+  const result = await api<{rows?: HrCalendarRow[]}>(grant, 'attendance/trip-calendar', 'POST', {site, from, to, codes}, 60000);
+  return {rows: Array.isArray(result?.rows) ? result.rows : []};
+}
 export async function readSavedTripCards(grant: string, site: string, from: string, to: string) {
   const result = await api<{days?: SavedDay[]}>(grant, 'attendance/trip-cards?' + new URLSearchParams({site, from, to}));
   const days = Array.isArray(result?.days) ? result.days : [];

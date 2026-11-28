@@ -2,8 +2,8 @@ import {Fragment,useEffect,useMemo,useRef,useState,type Dispatch,type SetStateAc
 import {ArrowDown,ArrowUp,ChevronDown,Download,Filter,Lock,Printer,RefreshCw,Save,Search,Trash2,X,Upload} from 'lucide-react';
 import {api,type Lookup} from './api';
 import type {AttendanceRow} from './misAttendanceModel';
-import {buildRoster,cardSummary,codeLabel,lineTotals,type LineTotals,type RosterGroup} from './rosterModel';
-import {FIRST_TRIP_DATE,streamBiometric,joinBiometricDays,checkSavedTripCards,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,deleteManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo,type SavedManualDay} from './rosterData'; // fetchManualBiometric reports each day as it arrives (ManualProgress)
+import {buildRoster,cardSummary,codeLabel,lineTotals,type HrCalendarRow,type LineTotals,type RosterGroup} from './rosterModel';
+import {FIRST_TRIP_DATE,fetchTripCalendar,streamBiometric,joinBiometricDays,checkSavedTripCards,type BioDayUpdate,fetchFromMachines,fetchManualBiometric,type SiteRegister,type SiteMachine,fetchTripCards,readSavedTripCards,saveTripCards,readSavedBiometric,saveBiometricDays,readSavedManualBiometric,saveManualBiometricDays,deleteManualBiometricDays,streamTripCards,tripDays,type DayState,type DayUpdate,type SavedInfo,type SavedManualDay} from './rosterData'; // fetchManualBiometric reports each day as it arrives (ManualProgress)
 import type {Register,RegisterRow} from './AttendanceRegister';
 import {DEFAULT_POLICY,type AttendancePolicy} from '../server/attendance-policy.mjs';
 import MachineLogUpload from './MachineLogUpload';
@@ -371,6 +371,7 @@ export function AttendanceRosterPage({grant,onManageMachines,only,title='Attenda
  const [departmentsSelected,setDepartmentsSelected]=useState<string[]>([]),[designationsSelected,setDesignationsSelected]=useState<string[]>([]),[employee,setEmployee]=useState('');
  const [view,setView]=useState<RosterView|''>(only||'');
  const viewTabs=only?VIEW_TABS.filter(([id])=>id===only):VIEW_TABS;
+ const [hrCalendar,setHrCalendar]=useState<{key:string;codes:string;rows:HrCalendarRow[]}>({key:'',codes:'',rows:[]});
  const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<BioStream>(noBio),[manual,setManual]=useState<Source<SiteRegister>>(idle);
  const [manualSaved,setManualSaved]=useState<{key:string;days:Record<string,SavedManualDay>}>({key:'',days:{}}),[manualSavedError,setManualSavedError]=useState({key:'',message:''}),[manualSave,setManualSave]=useState<{running:boolean;done:number;total:number;failed:string[];error:string}|null>(null),[showSavedLogs,setShowSavedLogs]=useState(false),[deletingSaved,setDeletingSaved]=useState(false);
  const bioRef=useRef('');
@@ -551,12 +552,22 @@ export function AttendanceRosterPage({grant,onManageMachines,only,title='Attenda
  const tripRows=trip.key===key&&tripRead.size?tripList:null;
  const policy=bioData?.policy||DEFAULT_POLICY;
  const manualRead=useMemo(()=>new Set(manualView&&manual.data?dates.filter(day=>!manual.data?.failedDays?.includes(day)):[]),[manualView,manual.data,dates]);
- const groups=useMemo(()=>buildRoster(bioData?.rows||[],view==='bio'||manualSelected?null:tripRows,dates,today,policy,tripRead,manualView?manualRead:bioRead).map(g=>({...g,site:g.site||site})),[bioData,tripRows,dates,today,policy,view,site,tripRead,bioRead,manualRead,manualView,manualSelected]);
+ const groups=useMemo(()=>buildRoster(bioData?.rows||[],view==='bio'||manualSelected?null:tripRows,dates,today,policy,tripRead,manualView?manualRead:bioRead,hrCalendar.key===key?hrCalendar.rows:[]).map(g=>({...g,site:g.site||site})),[bioData,tripRows,dates,today,policy,view,site,tripRead,bioRead,manualRead,manualView,manualSelected,hrCalendar,key]);
  const people=groups.filter(g=>view&&viewGroups([g],view).length>0&&(view!=='manual2'||isManualBiometricIIEmployee(g)));
  const departmentOptions=[...new Set([...departments,...people.map(g=>g.department)].filter(Boolean))].sort();
  const designationOptions=[...new Set(people.filter(g=>!departmentsSelected.length||departmentsSelected.includes(g.department)).map(g=>g.designation).filter(Boolean))].sort();
  const shown=people.filter(g=>(!departmentsSelected.length||departmentsSelected.includes(g.department))&&(!designationsSelected.length||designationsSelected.includes(g.designation))&&(!employee||g.key===employee));
  const dayList=trip.key===key?Object.entries(trip.days):[],total=dayList.length,finished=dayList.filter(([,st])=>st==='done'||st==='failed').length;
+ // Trip card people with no biometric line here: their leave, OD, holidays and absent days come from HR (owner, 28 Nov 2026).
+ const tripCodes=useMemo(()=>[...new Set(tripList.map(r=>String(r.caliberCode||r.employeeId||'').trim().toUpperCase()).filter(Boolean))].sort().join(','),[tripList]);
+ const tripDone=total>0&&finished===total;
+ useEffect(()=>{
+  if(!wantTrip||!tripDone||!tripCodes||(hrCalendar.key===key&&hrCalendar.codes===tripCodes))return;
+  let live=true;
+  fetchTripCalendar(grant,site,from,to,tripCodes.split(',')).then(result=>{if(live)setHrCalendar({key,codes:tripCodes,rows:result.rows});})
+   .catch(()=>{if(live)setHrCalendar({key,codes:tripCodes,rows:[]});});
+  return()=>{live=false;};
+ },[wantTrip,tripDone,tripCodes,key,grant,site,from,to,hrCalendar.key,hrCalendar.codes]);
  const busyDays=trip.key===key?(trip.busy||[]).filter(d=>trip.days[d]==='retrying').length:0;
  const failedDays=dayList.filter(([,st])=>st==='failed').map(([d])=>d).sort(),retrying=dayList.filter(([,st])=>st==='retrying').length-busyDays;
  const running=wantTrip&&(trip.key!==key||trip.runs>0);

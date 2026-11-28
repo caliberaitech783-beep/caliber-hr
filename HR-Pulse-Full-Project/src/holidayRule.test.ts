@@ -2,7 +2,7 @@
 // presence the day before or after is paid, a PH with absence on both sides is not.
 import {expect, it} from 'vitest';
 import type {RegisterRow} from './AttendanceRegister';
-import {applyHolidayRule, buildRoster, lineTotals} from './rosterModel';
+import {applyHolidayRule, buildRoster, lineTotals, type HrCalendarRow} from './rosterModel';
 import type {AttendanceRow} from './misAttendanceModel';
 import {DEFAULT_POLICY} from '../server/attendance-policy.mjs';
 
@@ -82,3 +82,29 @@ it('only drivers and operators: office staff keep a holiday paid once, never twi
   expect(driver.bioCodes[PH]).toBe('A');
 });
 const bioLine = (group: ReturnType<typeof buildRoster>[number]) => lineTotals(group.bioCodes, days, {holidays: group.holidays});
+
+// A driver with trip cards and no biometric line at the site (owner, 28 Nov 2026): days used to stay blank.
+const hrCalendar = (code: string): HrCalendarRow => ({code, name: 'Anoop Paul', site: 'Majri OC', department: 'Operations', designation: 'Driver',
+  days: days.map(date => ({date, calendar: calendarOf(date), note: ''}))});
+
+it('no biometric line: leave, OD, Republic Day and absent days come from the HR calendar', () => {
+  const worked = (date: string) => !calendarOf(date) && date !== '2027-01-13';
+  const [group] = buildRoster([], days.filter(worked).map(card), days, '2027-02-01', DEFAULT_POLICY, undefined, undefined, [hrCalendar('CMPL83111')]);
+  expect(group.bio).toBeUndefined();
+  expect(['2027-01-06', '2027-01-21', PH, '2027-01-13'].map(d => group.tripCodes[d])).toEqual(['L', 'OD', 'H', 'A']);
+  expect(lineTotals(group.tripCodes, days, {holidays: group.holidays})).toMatchObject({present: 23, leave: 2, onDuty: 4, holiday: 1, absent: 1, paidDays: 30});
+  expect(group.mismatches.map(m => m.date), 'leave, OD, holiday and A are not "no biometric record"').not.toContain('2027-01-06');
+  expect(group.mismatches.every(m => m.trip === 'P')).toBe(true);
+});
+
+it('no biometric line: the PH rule applies to the driver from the HR calendar', () => {
+  const worked = (date: string) => !calendarOf(date) && !['2027-01-25', '2027-01-27'].includes(date);
+  const [group] = buildRoster([], days.filter(worked).map(card), days, '2027-02-01', DEFAULT_POLICY, undefined, undefined, [hrCalendar('CMLL83111')]);
+  expect(group.tripCodes[PH], 'absent on 25 and 27').toBe('A');
+});
+
+it('no biometric line and no HR calendar: the days stay blank, as before', () => {
+  const [group] = buildRoster([], [card('2027-01-02')], days, '2027-02-01', DEFAULT_POLICY);
+  expect(group.tripCodes['2027-01-02']).toBe('P');
+  expect(group.tripCodes['2027-01-03']).toBe('');
+});
