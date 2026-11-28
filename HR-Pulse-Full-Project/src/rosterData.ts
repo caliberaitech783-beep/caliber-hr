@@ -1,6 +1,7 @@
 import {api} from './api';
 import {mapMisAttendance, type AttendanceRow} from './misAttendanceModel';
 import {sameSite} from './rosterModel';
+import {siteMatcher} from '../server/site-match.mjs';
 import type {Register} from './AttendanceRegister';
 
 /* Fetching for the attendance roster (owner, 22 Nov 2026): the Trip card tab reads MIS, the Biometric tab reads the
@@ -15,6 +16,8 @@ export const daysBetween = (from: string, to: string) => {const out: string[] = 
 export const tripDays = (from: string, to: string) => {const start = from < FIRST_TRIP_DATE ? FIRST_TRIP_DATE : from; return start > to ? [] : daysBetween(start, to);};
 export type DayState = 'queued' | 'loading' | 'retrying' | 'done' | 'failed';
 export type DayUpdate = {day: string; state: DayState; rows?: AttendanceRow[]; sites?: string[]; error?: string; attempt?: number;
+  /** retrying because HR Pulse told the roster "MIS is busy": the day is waiting its turn, nothing is wrong with it. */
+  busy?: boolean;
   /** What Pulse-II signed for this site and day ('' while Pulse-II does not sign yet). */
   signature?: string};
 /* Pulse-II is the master of trip card attendance (owner, 27 Nov 2026). It signs every site-day it sends; HR Pulse shows a
@@ -22,19 +25,29 @@ export type DayUpdate = {day: string; state: DayState; rows?: AttendanceRow[]; s
 export type MisDay = {siteKey: string; date: string; signature: string; lines?: number};
 /** The signature of the site's day: every MIS site that is this site, in a fixed order. 'none': Pulse-II holds no
     closed day for it. '': Pulse-II did not sign (an older Pulse-II). */
-export function misDaySignature(days: MisDay[] | undefined, site: string, day: string) {
+export function misDaySignature(days: MisDay[] | undefined, site: string, day: string, isSite: (misSite: string) => boolean = name => sameSite(site, name)) {
   if (!Array.isArray(days)) return '';
-  const mine = days.filter(d => d && d.date === day && typeof d.siteKey === 'string' && typeof d.signature === 'string' && (!site || sameSite(site, d.siteKey)));
+  const mine = days.filter(d => d && d.date === day && typeof d.siteKey === 'string' && typeof d.signature === 'string' && (!site || isSite(d.siteKey)));
   return mine.map(d => d.siteKey + ':' + d.signature).sort().join(',').slice(0, 400) || 'none';
 }
 export type TripFetch = {rows: AttendanceRow[]; failed: string[]; error: string; misSites: string[]};
 const NO_ACCESS = /outside your assigned access|permission|not allowed|sign in|session/i;
+/* The MIS busy limit (owner, 28 Nov 2026; server/mis-read-limit.mjs). HR Pulse keeps at most two reads open at Pulse-II.
+   Beyond that, and a short line, the server answers "MIS is busy. Try again in a minute." at once. The roster then waits
+   BUSY_WAIT_MS and asks again by itself, up to BUSY_TRIES times for a day; that is not one of the day's three tries.
+   When a day has waited that long, MIS is not coming free: the days still to be read are not sent at all, and the
+   roster says so, instead of asking for every day in turn. */
+export const MIS_BUSY = /^MIS is busy\b/i;
+export const BUSY_WAIT_MS = 8_000, BUSY_TRIES = 8;
+export const MIS_BUSY_GAVE_UP = 'MIS is busy. Try again in a few minutes.';
+type BusyRun = {gaveUp: boolean};
 let pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /** Tests replace the wait between tries. */
 export const setRetryPause = (fn: typeof pause) => {pause = fn;};
 
 /** One day of MIS trip cards for the site, tried `attempts` times with a growing wait. */
-async function readDay(grant: string, day: string, site: string, attempts: number, onRetry: (attempt: number, error: string) => void, refresh = false) {
+async function readDay(grant: string, day: string, site: string, attempts: number, onRetry: (attempt: number, error: string, busy?: boolean) => void, refresh = false, run: BusyRun = {gaveUp: false}) {
+  let busyTries = 0;
   for (let attempt = 1; ; attempt++) {
     try {
       const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day, ...(site ? {site, trim: '1'} : {}), ...(refresh ? {refresh: '1'} : {})}));
@@ -44,10 +57,25 @@ async function readDay(grant: string, day: string, site: string, attempts: numbe
       // names in misSites the sites MIS had cards for. A server from before 28 Nov 2026 sends every site, as before.
       const signed = data as {days?: MisDay[]; signed?: boolean; misSites?: unknown};
       const misSites = Array.isArray(signed?.misSites) ? signed.misSites.filter((s): s is string => typeof s === 'string') : [...new Set(all.map(r => r.site).filter(Boolean))];
-      return {rows: all.filter(r => !site || sameSite(site, r.site)), sites: misSites,
-        signature: signed?.signed === false ? '' : misDaySignature(signed?.days, site, day)};
+      // Two sites of almost one name (28 Nov 2026, server/site-match.mjs): "Dudhichua OB East" is not also "Dudhichua OC".
+      // The server names every MIS site it knows (knownSites); the same test is used here for the lines and the signature.
+      const named = (data as {knownSites?: unknown}).knownSites;
+      const known = Array.isArray(named) ? named.filter((s): s is string => typeof s === 'string') : all.flatMap(r => [r.site, r.siteKey || '']).filter(Boolean);
+      const isSite = siteMatcher(site, known);
+      return {rows: all.filter(r => !site || isSite(r.site)), sites: misSites,
+        signature: signed?.signed === false ? '' : misDaySignature(signed?.days, site, day, isSite)};
     } catch (e) {
       const message = (e as Error).message || 'MIS did not answer';
+      if (MIS_BUSY.test(message)) {
+        if (run.gaveUp || busyTries >= BUSY_TRIES) {run.gaveUp = true; throw new Error(MIS_BUSY_GAVE_UP);}
+        busyTries++;
+        onRetry(attempt, message, true);
+        await pause(BUSY_WAIT_MS);
+        // Another reader of the same roster may have given up while this day waited.
+        if (run.gaveUp) throw new Error(MIS_BUSY_GAVE_UP);
+        attempt--;
+        continue;
+      }
       if (attempt >= attempts || NO_ACCESS.test(message)) throw new Error(message);
       onRetry(attempt + 1, message);
       await pause(1500 * attempt);
@@ -62,13 +90,16 @@ async function readDay(grant: string, day: string, site: string, attempts: numbe
  */
 export async function streamTripCards(grant: string, days: string[], site: string, onDay: (update: DayUpdate) => void, live: () => boolean = () => true, refresh = false) {
   const failed = new Set<string>();
+  // MIS busy limit: once one day has waited its whole time for MIS, the days left are not asked for (see MIS_BUSY).
+  const busyRun: BusyRun = {gaveUp: false};
   let next = 0;
   for (const day of days) onDay({day, state: 'queued'});
   async function run(day: string, attempts: number) {
     if (!live()) return;
+    if (busyRun.gaveUp) {failed.add(day); if (live()) onDay({day, state: 'failed', error: MIS_BUSY_GAVE_UP}); return;}
     onDay({day, state: 'loading'});
     try {
-      const result = await readDay(grant, day, site, attempts, (attempt, error) => {if (live()) onDay({day, state: 'retrying', attempt, error});}, refresh);
+      const result = await readDay(grant, day, site, attempts, (attempt, error, busy) => {if (live()) onDay({day, state: 'retrying', attempt, error, ...(busy ? {busy: true} : {})});}, refresh, busyRun);
       failed.delete(day);
       if (live()) onDay({day, state: 'done', rows: result.rows, sites: result.sites, signature: result.signature});
     } catch (e) {
@@ -80,7 +111,7 @@ export async function streamTripCards(grant: string, days: string[], site: strin
   await Promise.all(Array.from({length: Math.min(TRIP_PARALLEL, days.length)}, worker));
   // Second pass: the failed days again, one at a time, when MIS is less busy.
   for (const day of [...failed].sort()) {
-    if (!live()) break;
+    if (!live() || busyRun.gaveUp) break;
     await pause(1000);
     await run(day, TRIP_ATTEMPTS);
   }
@@ -167,7 +198,12 @@ export type SavedInfo = {savedBy: string; savedAt: string};
 export type SavedDay = SavedInfo & {day: string; rows: AttendanceRow[]; duties: number; signature?: string};
 export async function readSavedTripCards(grant: string, site: string, from: string, to: string) {
   const result = await api<{days?: SavedDay[]}>(grant, 'attendance/trip-cards?' + new URLSearchParams({site, from, to}));
-  return Array.isArray(result?.days) ? result.days : [];
+  const days = Array.isArray(result?.days) ? result.days : [];
+  // Days saved before 28 Nov 2026 for a site of almost another site's name ("Dudhichua OB East") also hold the other
+  // site's cards ("Dudhichua OC"). They are left out when shown, by the site names of all the saved days together; the
+  // stored copy is put right the next time the day is read from MIS and saved.
+  const isSite = siteMatcher(site, days.flatMap(d => (Array.isArray(d.rows) ? d.rows : []).flatMap(r => [r.site, r.siteKey || ''])).filter(Boolean));
+  return days.map(d => Array.isArray(d.rows) ? {...d, rows: d.rows.filter(r => isSite(r.site))} : d);
 }
 /** How long the roster waits for Pulse-II's signatures before it shows the saved days unchecked. Asked once, never retried. */
 export const SAVED_CHECK_TIMEOUT_MS = 15_000;
@@ -186,7 +222,13 @@ export async function checkSavedTripCards(grant: string, site: string, saved: Sa
   try {
     const answer = await api<{supported?: boolean; days?: MisDay[]}>(grant, 'attendance/mis/days?' + new URLSearchParams({from: days[0], to: days[days.length - 1]}), 'GET', undefined, SAVED_CHECK_TIMEOUT_MS);
     if (!answer?.supported || !Array.isArray(answer.days)) return {fresh: saved, stale: [], unsigned, checked: false};
-    const stale = signed.filter(d => d.signature !== misDaySignature(answer.days, site, d.day)).map(d => d.day).sort();
+    // A day is still current when its signature is the site's own days (the names MIS lists decide which those are),
+    // or, for a day saved before 28 Nov 2026, the days of every MIS site the old looser rule took for this site. So
+    // the stricter rule sends no saved day back to MIS by itself.
+    const named = (answer as {knownSites?: unknown}).knownSites;
+    const known = Array.isArray(named) ? named.filter((s): s is string => typeof s === 'string') : answer.days.map(d => d?.siteKey).filter((s): s is string => typeof s === 'string');
+    const isSite = siteMatcher(site, known);
+    const stale = signed.filter(d => d.signature !== misDaySignature(answer.days, site, d.day, isSite) && d.signature !== misDaySignature(answer.days, site, d.day)).map(d => d.day).sort();
     return {fresh: saved.filter(d => !stale.includes(d.day)), stale, unsigned, checked: true};
   } catch {
     return {fresh: saved, stale: [], unsigned, checked: false};
@@ -254,26 +296,27 @@ export async function saveBiometricDays(grant: string, site: string, days: strin
  *  sheets stay on the server (brief=1, 27 Nov 2026): a 20-day answer with every sheet took more than 30 seconds to
  *  arrive and the page showed "Biometric punches unavailable: signal timed out". */
 export type SavedManualDay = SavedInfo & {day: string; punches: number; people: number};
-export async function readSavedManualBiometric(grant: string, site: string, from: string, to: string): Promise<SavedManualDay[]> {
-  const result = await api<{days?: SavedManualDay[]}>(grant, 'attendance/manual-biometric-days?' + new URLSearchParams({site, from, to, brief: '1'}));
+export async function readSavedManualBiometric(grant: string, site: string, from: string, to: string, source:'manual1'|'manual2'='manual1'): Promise<SavedManualDay[]> {
+  const route=source==='manual2'?'attendance/manual-biometric-ii-days':'attendance/manual-biometric-days';
+  const result = await api<{days?: SavedManualDay[]}>(grant, route+'?' + new URLSearchParams({site, from, to, brief: '1'}));
   return (Array.isArray(result?.days) ? result.days : []).filter(d => typeof d?.day === 'string')
     .map(d => ({day: d.day, punches: Number(d.punches) || 0, people: Number(d.people) || 0, savedBy: d.savedBy, savedAt: d.savedAt}));
 }
-export async function saveManualBiometricDays(grant: string, site: string, days: string[], onDay: (day: string, info: (SavedInfo & {punches: number; people: number}) | null, error?: string) => void) {
+export async function saveManualBiometricDays(grant: string, site: string, days: string[], onDay: (day: string, info: (SavedInfo & {punches: number; people: number}) | null, error?: string) => void, source:'manual1'|'manual2'='manual1') {
   let next = 0;
   const failed: string[] = [];
   async function worker() {
     while (next < days.length) {
       const day = days[next++];
-      try { onDay(day, await api<SavedInfo & {day: string; punches: number; people: number}>(grant, 'attendance/manual-biometric-days', 'POST', {site, day})); }
+      try { onDay(day, await api<SavedInfo & {day: string; punches: number; people: number}>(grant, source==='manual2'?'attendance/manual-biometric-ii-days':'attendance/manual-biometric-days', 'POST', {site, day})); }
       catch (e) { failed.push(day); onDay(day, null, (e as Error).message); }
     }
   }
   await Promise.all(Array.from({length: Math.min(2, days.length)}, worker));
   return failed.sort();
 }
-export async function deleteManualBiometricDays(grant: string, site: string, days: string[]) {
-  return api<{deleted:number;punches:number;days:string[]}>(grant, 'attendance/manual-biometric-days/delete', 'POST', {site, days});
+export async function deleteManualBiometricDays(grant: string, site: string, days: string[], source:'manual1'|'manual2'='manual1') {
+  return api<{deleted:number;punches:number;days:string[]}>(grant, source==='manual2'?'attendance/manual-biometric-ii-days/delete':'attendance/manual-biometric-days/delete', 'POST', {site, days});
 }
 
 /* Biometric tab, day by day (owner, 22 Nov 2026: "the same way as the trip card"): the site's machines are read one day

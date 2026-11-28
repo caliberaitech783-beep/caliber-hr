@@ -26,7 +26,19 @@ export const ATTENDANCE_MENU=[
  {group:'Settings',items:['HR policy · attendance']},
 ] as const;
 export type AttendanceView=typeof ATTENDANCE_MENU[number]['items'][number];
+/** The regularization screens are tabs on one page (owner, 28 Nov 2026). OD, Miss punch, Gate pass, Overtime and
+    Weekly off and holiday are not in the sidebar; they open from the tab row of Late come / early going. */
+export const REGULARIZATION_TABS=['Late come / early going','OD (on duty)','Miss punch','Gate pass','Overtime','Weekly off and holiday'] as const;
+/** Shift roster shows two rosters on tabs (owner, 28 Nov 2026): trip card duties from MIS, and the other staff
+    (every department except Drivers and Operators) from the imported biometric. */
+export const SHIFT_ROSTER_TABS=[['trip','Trip card roster'],['staff','Other staff roster']] as const;
+const TAB_ONLY:readonly string[]=REGULARIZATION_TABS.slice(1);
+const TAB_LABEL:Record<string,string>={'OD (on duty)':'OD'};
 export const attendanceViews:string[]=ATTENDANCE_MENU.flatMap(g=>[...g.items]);
+/** The sub menus listed in the sidebar. */
+export const attendanceSidebarViews:string[]=attendanceViews.filter(v=>!TAB_ONLY.includes(v));
+/** The sidebar entry that stays highlighted while a view is open. */
+export const attendanceSidebarView=(view:string)=>TAB_ONLY.includes(view)?REGULARIZATION_TABS[0]:view;
 export const attendanceGroup=(view:string)=>ATTENDANCE_MENU.find(g=>(g.items as readonly string[]).includes(view))?.group||'';
 /** The legacy sheet-upload module opened on one view, rating days with the saved policy. */
 export const legacyModuleUrl=(view:string,policy?:AttendancePolicy)=>hrAsset('attendance-module.html')+'?'+new URLSearchParams({view,...(policy?{grace:String(policy.graceMinutes),full:String(policy.fullDutyHours),absent:String(policy.absentBelowHours),lunch:String(policy.lunchMinutes),perCut:String(policy.lateEarlyPerHalfCut)}:{})});
@@ -67,11 +79,19 @@ export default function AttendanceManagement({grant,view='Biometric integration'
  const [policyState]=usePolicy(grant);
  const policy=policyState?.policy;
  const [shiftView,setShiftView]=useState<'duties'|'settings'>('duties');
- const current=(attendanceViews.includes(view)?view:'Biometric integration') as AttendanceView;
+ const [rosterTab,setRosterTab]=useState<'trip'|'staff'>('trip');
+ const [picked,setPicked]=useState(view);
+ useEffect(()=>setPicked(view),[view]);
+ const current=(attendanceViews.includes(picked)?picked:'Biometric integration') as AttendanceView;
+ const open=(next:AttendanceView)=>{setPicked(next);onNavigate?.(next);};
+ const tabbed=(REGULARIZATION_TABS as readonly string[]).includes(current);
  return <section className="attendance-module attendance" aria-label="Attendance Management">
   <div className="attendance-head">
    <div><h1>Attendance Management</h1>{current!=='Biometric integration'&&<p className="attendance-crumb">{attendanceGroup(current)} › {current}</p>}</div>
   </div>
+  {tabbed&&<div className="module-tabs attendance-reg-tabs" role="tablist" aria-label="Attendance regularization">
+   {REGULARIZATION_TABS.map(tab=><button key={tab} type="button" role="tab" aria-selected={current===tab} className={current===tab?'selected':''} onClick={()=>open(tab)}>{TAB_LABEL[tab]||tab}</button>)}
+  </div>}
   {current==='Biometric integration'&&<BiometricIntegration grant={grant} policy={policy} onNavigate={onNavigate}/>}
   {current==='Trip card and logbook'&&<MisAttendance grant={grant} policy={policy}/>}
   {current==='Late come / early going'&&<PunctualitySummary grant={grant} initialMonth={indiaToday().slice(0,7)}/>}
@@ -81,11 +101,18 @@ export default function AttendanceManagement({grant,view='Biometric integration'
   {current==='Overtime'&&<MisAttendance grant={grant} overtimeOnly policy={policy}/>}
   {current==='Weekly off and holiday'&&<><p className="help-text">Weekly off: offices take Sunday off; sites run all 7 days on shift rotation. Holidays come from the holiday list of each site below and show as H in the attendance register.</p><HRCalendar grant={grant} config={config}/></>}
   {current==='Shift roster'&&<>
+   {/* Owner, 28 Nov 2026: both rosters on Shift roster, each on its own tab. */}
+   <div className="module-tabs attendance-reg-tabs" role="tablist" aria-label="Roster">
+    {SHIFT_ROSTER_TABS.map(([id,label])=><button key={id} type="button" role="tab" aria-selected={rosterTab===id} className={rosterTab===id?'selected':''} onClick={()=>setRosterTab(id)}>{label}</button>)}
+   </div>
+   {rosterTab==='staff'&&<AttendanceRosterPage grant={grant} only="manual2" title="Other staff roster"/>}
+   {rosterTab==='trip'&&<>
    {shiftModule&&<div className="module-tabs" aria-label="Shift views">
     <button aria-pressed={shiftView==='duties'} className={shiftView==='duties'?'selected':''} onClick={()=>setShiftView('duties')}>Shift attendance</button>
     <button aria-pressed={shiftView==='settings'} className={shiftView==='settings'?'selected':''} onClick={()=>setShiftView('settings')}>Shift settings</button>
    </div>}
    {shiftView==='settings'&&shiftModule?<ShiftMaster grant={grant} module={shiftModule}/>:<MisAttendance grant={grant} shiftManagement policy={policy}/>}
+   </>}
   </>}
   {current==='Monthly attendance register'&&<AttendanceRegister grant={grant} mode="month"/>}
   {current==='Weekly and daily attendance register'&&<AttendanceRegister grant={grant} mode="week-day"/>}

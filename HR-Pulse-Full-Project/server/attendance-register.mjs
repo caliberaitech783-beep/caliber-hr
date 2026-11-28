@@ -214,7 +214,7 @@ const HOLIDAYS = `SELECT name,data->>'date' AS date,coalesce(data->>'siteId','')
 /** options.policy / options.holidays: already read by the caller (the site roster reads them once for its two halves). */
 export async function loadRegister(db, sites, from, to, today, options = {}) {
   const {devices = null, employeeIds = null, manual = false, matchAForm = false, manualMatches = [], manualSource = 'manual1'} = options;
-  const punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
+  const punchTable=manual?(manualSource==='manual2'?'hr_manual_biometric_ii_punches':'hr_manual_biometric_punches'):'hr_attendance_punches';
   const policy = options.policy || (await readPolicy(db)).policy;
   const employeeQuery=manual?`
    SELECT e.id,e.data->>'employeeId' AS code,e.name,e.site_id,e.site_code,e.site_name AS site,'' AS site_type,
@@ -251,13 +251,13 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
      SELECT m.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM identity_map m
      JOIN ${punchTable} p ON p.device_serial=m.device_serial AND p.biometric_id=m.biometric_id
-      AND p.punched_at>=$1::date-1 AND p.punched_at<$2::date+2 AND p.source=$6
+      AND p.punched_at>=$1::date-1 AND p.punched_at<$2::date+2
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial`:`SELECT l.employee_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at,
       coalesce(nullif(d.location,''),nullif(d.name,''),p.device_serial) AS place FROM ${punchTable} p
      JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
      LEFT JOIN hr_attendance_devices d ON d.serial=p.device_serial
      WHERE l.employee_id=ANY($1::uuid[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
-      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`, manual?[from,to,manualMatches.map(m=>m.device_serial),manualMatches.map(m=>m.biometric_id),manualMatches.map(m=>m.employee_id),manualSource]:[ids, from, to, devices]),
+      AND ($4::text[] IS NULL OR p.device_serial=ANY($4::text[]))`, manual?[from,to,manualMatches.map(m=>m.device_serial),manualMatches.map(m=>m.biometric_id),manualMatches.map(m=>m.employee_id)]:[ids, from, to, devices]),
     () => options.holidays ? {rows: options.holidays} : db.query(HOLIDAYS, [from, to]),
     () => db.query(`SELECT r.data->>'employeeId' AS employee_id,r.data->>'fromDate' AS from_date,coalesce(nullif(r.data->>'toDate',''),r.data->>'fromDate') AS to_date,
       concat_ws(' ',t.code,t.name) AS leave_type FROM hr_records r
@@ -294,14 +294,13 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
  * site {id,name,siteType}. Returns the register plus the site's machines (status, last punch, punches in these dates).
  */
 export async function loadSiteRegister(db, site, from, to, today, options = {}) {
-  const manual=options.manual===true,manualSource=options.manualSource||'manual1',punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
-  const sourceFilter=manual?` AND p.source='${manualSource}'`:'';
+  const manual=options.manual===true,manualSource=options.manualSource||'manual1',punchTable=manual?(manualSource==='manual2'?'hr_manual_biometric_ii_punches':'hr_manual_biometric_punches'):'hr_attendance_punches';
   // NCL's exported log identifies a person by A-Form No.; WCL exports the Employee ID.
   const matchAForm=manual&&/^(?:jayant|dudhichua)\b/i.test(String(site.name||'').trim());
   const {rows: machines} = await db.query(`SELECT d.serial,d.name,d.location,d.ip_address,d.last_contact,coalesce(d.last_contact>now()-interval '2 minutes',false) AS online,
     coalesce(max(b.name),CASE WHEN d.bridge_id IS NULL AND (d.last_contact IS NOT NULL OR d.last_seen IS NOT NULL) THEN 'Main bridge PC' ELSE '' END) AS bridge_name,
-    (SELECT to_char(max(p.punched_at),'YYYY-MM-DD HH24:MI') FROM ${punchTable} p WHERE p.device_serial=d.serial AND p.punched_at<$3::date+2${sourceFilter}) AS last_punch,
-    (SELECT count(*) FROM ${punchTable} p WHERE p.device_serial=d.serial AND p.punched_at>=$2::date AND p.punched_at<$3::date+1${sourceFilter})::int AS punches
+    (SELECT to_char(max(p.punched_at),'YYYY-MM-DD HH24:MI') FROM ${punchTable} p WHERE p.device_serial=d.serial AND p.punched_at<$3::date+2) AS last_punch,
+    (SELECT count(*) FROM ${punchTable} p WHERE p.device_serial=d.serial AND p.punched_at>=$2::date AND p.punched_at<$3::date+1)::int AS punches
    FROM hr_attendance_devices d LEFT JOIN hr_attendance_bridges b ON b.id=d.bridge_id AND b.removed_at IS NULL
    WHERE d.site_id=$1 GROUP BY d.serial ORDER BY d.location,d.name,d.serial`, [site.id, from, to]);
   // Owner, 23 Nov 2026 ("signal timed out" on Attendance roster › Biometric): this runs once for every day asked and used
@@ -315,7 +314,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   const place = new Map(machineList.map(m => [m.serial, m.location || m.name || m.serial]));
   const idQuery=manual?(matchAForm?`WITH employee_aforms AS (${nclAFormRows('AND e.site_id=$4')}), punch_ids AS (
     SELECT p.device_serial,p.biometric_id FROM ${punchTable} p
-    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date AND p.punched_at<$3::date+1${sourceFilter}
+    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date AND p.punched_at<$3::date+1
     GROUP BY 1,2
    )
    SELECT p.device_serial,p.biometric_id,e.employee_id,coalesce(u.name,'') AS machine_name,
@@ -325,7 +324,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
    LEFT JOIN hr_attendance_device_users u ON u.device_serial=p.device_serial AND u.biometric_id=p.biometric_id
    GROUP BY 1,2,3,4`:`WITH punch_ids AS (
     SELECT p.device_serial,p.biometric_id FROM ${punchTable} p
-    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date AND p.punched_at<$3::date+1${sourceFilter}
+    WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date AND p.punched_at<$3::date+1
     GROUP BY 1,2
    )
    SELECT p.device_serial,p.biometric_id,e.id AS employee_id,coalesce(u.name,'') AS machine_name,
@@ -358,7 +357,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   if (unlinked.length) {
     const unlinkedBiometricIds=[...new Set(unlinked.map(r=>String(r.biometric_id)))];
     const {rows: punches} = await db.query(manual?`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM ${punchTable} p
-       WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2${sourceFilter}
+       WHERE p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2
         AND p.biometric_id=ANY($4::text[])`:`SELECT p.device_serial,p.biometric_id,to_char(p.punched_at,'YYYY-MM-DD HH24:MI') AS at FROM ${punchTable} p
        LEFT JOIN hr_attendance_links l ON l.device_serial=p.device_serial AND l.biometric_id=p.biometric_id
        WHERE l.employee_id IS NULL AND p.device_serial=ANY($1::text[]) AND p.punched_at>=$2::date-1 AND p.punched_at<$3::date+2`, manual?[serials, from, to, unlinkedBiometricIds]:[serials, from, to]);

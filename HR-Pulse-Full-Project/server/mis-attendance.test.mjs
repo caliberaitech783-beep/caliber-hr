@@ -191,6 +191,38 @@ test('the roster\'s day read keeps the chosen site only, in the answer and in th
   assert.equal(stored.size, 2);
 });
 
+// Owner, 28 Nov 2026: "plz do this and all other such mine names". HR "Dudhichua OB East" was read as both MIS
+// "Dudhichua East OC" and "Dudhichua OC" (the looser rule finds no word in "Dudhichua OC" that East lacks), so the East
+// roster also took the other site's trip cards. The site names below are the ones live sent on 28 Nov 2026.
+test('a site of almost another site\'s name is given only its own trip cards and signed days', async () => {
+  const line = (site, siteKey, employeeId) => ({date: '2026-11-16', site, siteKey, shift: 'S1', employeeId, employeeKey: employeeId, employeeName: employeeId});
+  // East saved no card of its own on this day; MIS still names it in the shift list of every date.
+  const whole = {
+    attendanceEquipment: [], ot: [], performance: [], details: [], exceptions: [],
+    attendanceShifts: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shift: 'S1', state: 'none', batch: ''}, {siteKey: 'dudhichua ob', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'B'}],
+    otDuties: [line('Dudhichua OC', 'dudhichua ob', 'W1'), line('Dudhichua OC', 'dudhichua ob', 'W2')],
+    days: [{siteKey: 'dudhichua ob', date: '2026-11-16', lines: 2, signature: 'w'}],
+    pendingDays: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shifts: []}]
+  };
+  let asked = 0;
+  const db = {async query() { return {rows: []}; }, release() {}};
+  const pool = {connect: async () => db, async query(sql) { return {rows: sql.includes("kind='sites'") ? [{name: 'Dudhichua OB East'}] : []}; }};
+  const api = createMisAttendance(pool, {fetchMis: async url => { asked++; return Response.json(url.searchParams.get('only') === 'days' ? {days: whole.days, pendingDays: whole.pendingDays} : whole); }});
+  const day = site => api({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site, trim: '1'}));
+  const east = await day('Dudhichua OB East'), west = await day('Dudhichua OB West');
+  assert.deepEqual([east.otDuties.length, east.days.length, east.attendanceShifts.map(s => s.siteKey)], [0, 0, ['dudhichua east ob']]);
+  assert.deepEqual(east.misSites, ['Dudhichua OC'], 'the roster can still say where MIS had cards');
+  assert.deepEqual(east.knownSites, ['Dudhichua OC', 'dudhichua east ob', 'dudhichua ob']);
+  assert.deepEqual([west.otDuties.map(d => d.employeeId), west.days.map(d => d.signature), west.attendanceShifts.map(s => s.siteKey)], [['W1', 'W2'], ['w'], ['dudhichua ob']]);
+  // The same two requests to Pulse-II as before the rule changed: the rule asks for nothing more.
+  assert.equal(asked, 2);
+
+  // The check of saved days also says which sites Pulse-II lists (signed, or still open), for the same rule in the roster.
+  const signed = await api({actor: 'hr', permissions: {}}, grant, 'mis/days', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16'}));
+  assert.deepEqual(signed.days.map(d => d.signature), ['w']);
+  assert.deepEqual(signed.knownSites, ['dudhichua east ob', 'dudhichua ob']);
+});
+
 // 28 Nov 2026 (roster 162 seconds for 4 of 20 days): waiting on Pulse-II held one of the server's five database
 // connections, so the Manual Biometric reads beside it ran out of connections. No connection is held while waiting now,
 // two PCs asking the same day at the same moment share one read, and the roster's day read asks Pulse-II for its site only.
@@ -234,4 +266,128 @@ test('a screen that wants every site does not ask Pulse-II for the cut', async (
   const api = createMisAttendance(pool, {fetchMis: async url => {requestedUrl = url; return Response.json(report);}});
   await api({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site: 'Majri OC'}));
   assert.equal(requestedUrl.searchParams.get('cut'), null);
+});
+
+// The same site when Pulse-II has already cut its answer (cut=site). Pulse-II's cut uses the looser rule, so for
+// "Dudhichua OB East" it still sends "Dudhichua OC"; HR Pulse leaves that site out, also on a day East has no card.
+test('an answer Pulse-II already cut to a site of almost another site\'s name is still given only its own cards', async () => {
+  const line = (site, siteKey, employeeId) => ({date: '2026-11-16', site, siteKey, shift: 'S1', employeeId, employeeKey: employeeId, employeeName: employeeId});
+  const cut = {
+    attendanceEquipment: [], ot: [], performance: [], details: [], exceptions: [], hrChanges: [], cut: 'site',
+    attendanceShifts: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'E'}, {siteKey: 'dudhichua ob', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'B'}],
+    otDuties: [line('Dudhichua East OC', 'dudhichua east ob', 'E1'), line('Dudhichua OC', 'dudhichua ob', 'W1')],
+    days: [{siteKey: 'dudhichua east ob', date: '2026-11-16', lines: 1, signature: 'e'}, {siteKey: 'dudhichua ob', date: '2026-11-16', lines: 1, signature: 'w'}],
+    misSiteDays: {'2026-11-16': ['Dudhichua East OC', 'Dudhichua OC', 'Jayant OC']}
+  };
+  const noCard = {...cut, otDuties: [line('Dudhichua OC', 'dudhichua ob', 'W1')], days: [cut.days[1]], misSiteDays: {'2026-11-16': ['Dudhichua OC']},
+    attendanceShifts: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shift: 'S1', state: 'none', batch: ''}, cut.attendanceShifts[1]]};
+  const pool = {async query(sql) { return {rows: sql.includes("kind='sites'") ? [{name: 'Dudhichua OB East'}] : []}; }};
+  const read = async answer => createMisAttendance(pool, {fetchMis: async () => Response.json(answer)})({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {},
+    new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site: 'Dudhichua OB East', trim: '1'}));
+  const east = await read(cut);
+  assert.deepEqual([east.otDuties.map(d => d.employeeId), east.days.map(d => d.signature), east.attendanceShifts.map(s => s.siteKey)], [['E1'], ['e'], ['dudhichua east ob']]);
+  assert.deepEqual(east.misSites, ['Dudhichua East OC', 'Dudhichua OC', 'Jayant OC']);
+  const empty = await read(noCard);
+  assert.deepEqual([empty.otDuties.length, empty.days.length, empty.attendanceShifts.map(s => s.siteKey)], [0, 0, ['dudhichua east ob']]);
+});
+
+// The MIS busy limit (owner, 28 Nov 2026: "plz build the MIS busy limit in HR Pulse also"). That morning HR Pulse gave
+// up on a read after 22 seconds while Pulse-II went on building it, and the roster asked again: Pulse-II's three report
+// places stayed full of reads nobody waited for, and 47 of 47 trip card reads failed in six minutes. HR Pulse now keeps
+// at most two reads open at Pulse-II; the next few wait in a short line here; beyond that the answer is "MIS is busy"
+// at once, without asking Pulse-II.
+const busyPool = () => ({async query(sql) { return {rows: sql.includes("kind='sites'") ? [{name: 'Majri OC'}] : []}; }});
+const askDay = (api, day) => api({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: day, to: day, site: 'Majri OC', trim: '1'}));
+const gate = () => {let open; const wait = new Promise(resolve => {open = resolve;}); return {wait, open};};
+const until = async check => {for (let i = 0; i < 400 && !check(); i++) await new Promise(resolve => setTimeout(resolve, 5)); assert.ok(check(), 'waited for: ' + check);};
+const isBusy = error => error.status === 503 && error.message === 'MIS is busy. Try again in a minute.';
+// Pulse-II holding every read until the test lets it answer.
+function heldMis() {
+  const gates = [], asked = [];
+  return {gates, asked, fetchMis: async url => {const g = gate(); gates.push(g); asked.push(url.searchParams.get('only') || url.searchParams.get('from')); await g.wait; return Response.json(report);}};
+}
+
+test('no more than two reads are open at Pulse-II; the next waits in line and is read when one ends', async () => {
+  const pulse = heldMis();
+  const api = createMisAttendance(busyPool(), {fetchMis: pulse.fetchMis, readLimit: {lineWaitMs: 5000}});
+  const reads = ['2026-11-10', '2026-11-11', '2026-11-12'].map(day => askDay(api, day));
+  await until(() => api.readLimit().waiting === 1);
+  assert.equal(pulse.asked.length, 2, 'the third read has not been sent to Pulse-II');
+  assert.deepEqual(api.readLimit(), {limit: 2, open: 2, cooling: 0, waiting: 1, asked: 3, waited: 1, busy: 0, timedOut: 0});
+  pulse.gates[0].open();
+  await until(() => pulse.asked.length === 3);
+  assert.equal(api.readLimit().open, 2);
+  pulse.gates[1].open(); pulse.gates[2].open();
+  assert.equal((await Promise.all(reads)).length, 3);
+  assert.deepEqual([api.readLimit().open, api.readLimit().waiting], [0, 0]);
+});
+
+test('when the line is full, or the wait in it is over, the answer is "MIS is busy" and Pulse-II is not asked', async () => {
+  const pulse = heldMis();
+  const api = createMisAttendance(busyPool(), {fetchMis: pulse.fetchMis, readLimit: {lineWaitMs: 60, lineMax: 1}});
+  const open = [askDay(api, '2026-11-10'), askDay(api, '2026-11-11')];
+  await until(() => pulse.asked.length === 2);
+  const inLine = askDay(api, '2026-11-12');
+  await until(() => api.readLimit().waiting === 1);
+  // The line holds one: the next is told at once.
+  await assert.rejects(askDay(api, '2026-11-13'), isBusy);
+  assert.equal(api.readLimit().waiting, 1, 'the read in the line is still waiting');
+  // The read in the line is told after its wait.
+  await assert.rejects(inLine, isBusy);
+  assert.equal(pulse.asked.length, 2, 'neither refused read reached Pulse-II');
+  assert.equal(api.readLimit().busy, 2);
+  for (const g of pulse.gates) g.open();
+  await Promise.all(open);
+});
+
+test('a read Pulse-II did not answer in time keeps its place for a while, because Pulse-II is still building it', async () => {
+  let asked = 0;
+  const fetchMis = async () => {asked++; if (asked <= 2) throw new DOMException('The operation timed out', 'TimeoutError'); return Response.json(report);};
+  const api = createMisAttendance(busyPool(), {fetchMis, readLimit: {lineWaitMs: 0, coolMs: 80}});
+  const unavailable = error => error.status === 503 && error.message === 'The MIS attendance feed is temporarily unavailable.';
+  await assert.rejects(askDay(api, '2026-11-10'), unavailable);
+  await assert.rejects(askDay(api, '2026-11-11'), unavailable);
+  assert.deepEqual([api.readLimit().open, api.readLimit().cooling, api.readLimit().timedOut], [0, 2, 2]);
+  // Both places are still taken: the roster's next try is not passed on to Pulse-II.
+  await assert.rejects(askDay(api, '2026-11-12'), isBusy);
+  assert.equal(asked, 2);
+  await until(() => api.readLimit().cooling === 0);
+  await askDay(api, '2026-11-12');
+  assert.equal(asked, 3);
+});
+
+test('a read Pulse-II refused or answered badly gives its place back at once', async () => {
+  let asked = 0;
+  const api = createMisAttendance(busyPool(), {fetchMis: async () => {asked++; return asked <= 2 ? Response.json({error: 'no'}, {status: 500}) : Response.json(report);}, readLimit: {lineWaitMs: 0}});
+  await assert.rejects(askDay(api, '2026-11-10'), /temporarily unavailable/);
+  await assert.rejects(askDay(api, '2026-11-11'), /temporarily unavailable/);
+  assert.deepEqual([api.readLimit().open, api.readLimit().cooling], [0, 0]);
+  await askDay(api, '2026-11-12');
+  assert.equal(asked, 3);
+});
+
+test('the check of saved days never waits in the line, and an attendance change with an OTP is never held back', async () => {
+  const pulse = heldMis();
+  const changes = [];
+  const fetchMis = async (url, options) => {
+    if (url.pathname.endsWith('/change')) {changes.push(JSON.parse(options.body).mark); return Response.json({id: 'c1', site: 'Majri OC', date: duty.date, shift: 'S1', employeeId: 'DEMO-1', mark: 'absent', reason: 'r', status: 'asked', sentTo: 'RHR'});}
+    return pulse.fetchMis(url);
+  };
+  const api = createMisAttendance(busyPool(), {fetchMis, readLimit: {lineWaitMs: 5000}});
+  const open = [askDay(api, '2026-11-10'), askDay(api, '2026-11-11')];
+  await until(() => pulse.asked.length === 2);
+  // The roster shows its saved days unchecked rather than wait: told at once.
+  await assert.rejects(api({actor: 'hr', permissions: {}}, grant, 'mis/days', 'GET', null, new URLSearchParams({from: '2026-11-01', to: '2026-11-20'})), isBusy);
+  assert.equal(pulse.asked.length, 2);
+  const asked = await api({actor: 'hr', permissions: {}}, grant, 'mis/change', 'POST', {...duty, mark: 'absent', reason: 'Roster checked'}, new URLSearchParams());
+  assert.equal(asked.id, 'c1');
+  assert.deepEqual(changes, ['absent']);
+  for (const g of pulse.gates) g.open();
+  await Promise.all(open);
+  // With a place free the check goes to Pulse-II as before.
+  const check = api({actor: 'hr', permissions: {}}, grant, 'mis/days', 'GET', null, new URLSearchParams({from: '2026-11-01', to: '2026-11-20'}));
+  await until(() => pulse.asked.length === 3);
+  assert.equal(pulse.asked[2], 'days');
+  pulse.gates[2].open();
+  await check.catch(() => {});
 });

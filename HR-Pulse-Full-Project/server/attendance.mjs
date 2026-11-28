@@ -119,6 +119,9 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
  // a saved copy is made from the same.
  const loadManual=async(site,from,to,manualSource='manual1')=>applyCorrections(await loadSiteRegister(pool,site,from,to,indiaDay(),{manual:true,manualSource}),await corrections.read(site.name,from,to));
  const manualBiometricDays=createBiometricDayStore(pool,{load:loadManual,today:indiaDay,manual:true,siteKey:attendanceSiteKey});
+ // Manual Biometric II is a filtered view of the same DAT punches imported for Manual Biometric I.
+ // Its saved/locked days stay separate, but users must never have to upload the same file twice.
+ const manualBiometricIIDays=createBiometricDayStore(pool,{load:loadManual,today:indiaDay,manual:true,manualSource:'manual2',siteKey:attendanceSiteKey});
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
  const corrections=createCorrections({pool,tx,audit});
@@ -226,15 +229,18 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
   // How long the attendance reads took and how large they were (read-times.mjs): for an HR administrator, to trace a slow report.
   if(route==='read-times'&&method==='GET'){
    if(!attendanceAdmin(profile))fail('Only an HR administrator can see the attendance read times.',403);
-   return recentReads();
+   // misReads: the MIS busy limit of this server process (mis-read-limit.mjs).
+   return {...recentReads(),misReads:misAttendance.readLimit()};
   }
   if(route==='biometric-days')return biometricDays(profile,method,input,params,sites);
   // Deleting saved Manual Biometric logs (and their imported punches) is for an HR administrator only (owner, 25 Nov 2026),
   // by either route (the browser sends it as a POST to …/delete).
-  const deletingManual=(route==='manual-biometric-days'&&method==='DELETE')||(route==='manual-biometric-days/delete'&&method==='POST');
+  const deletingManual=((route==='manual-biometric-days'||route==='manual-biometric-ii-days')&&method==='DELETE')||((route==='manual-biometric-days/delete'||route==='manual-biometric-ii-days/delete')&&method==='POST');
   if(deletingManual&&!attendanceAdmin(profile))fail('Only an HR administrator can delete saved manual biometric logs.',403);
   if(route==='manual-biometric-days/delete'&&method==='POST')return manualBiometricDays(profile,'DELETE',input,params,sites);
   if(route==='manual-biometric-days')return manualBiometricDays(profile,method,input,params,sites);
+  if(route==='manual-biometric-ii-days/delete'&&method==='POST')return manualBiometricIIDays(profile,'DELETE',input,params,sites);
+  if(route==='manual-biometric-ii-days')return manualBiometricIIDays(profile,method,input,params,sites);
   const findSites=async(db,siteName)=>{
    const exact=(await db.query("SELECT id,name,data->>'siteType' AS site_type FROM hr_records WHERE kind='sites' AND status IN ('ACTIVE','APPROVED') AND lower(regexp_replace(btrim(name),'[[:space:]]+',' ','g'))=lower(regexp_replace(btrim($1),'[[:space:]]+',' ','g')) AND ($2::uuid[] IS NULL OR id=ANY($2::uuid[]))",[siteName,sites])).rows;
    if(exact.length)return exact;
@@ -284,20 +290,21 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    return {received:clean.length,added};
   });
   if(['manual-biometric/import','manual-biometric-ii/import'].includes(route)&&method==='POST')return tx(async db=>{
-   const source=route==='manual-biometric-ii/import'?'manual2':'manual1';
+   const source=route==='manual-biometric-ii/import'?'manual2':'manual1',punchTable=source==='manual2'?'hr_manual_biometric_ii_punches':'hr_manual_biometric_punches';
    const siteName=String(input?.site||'').trim(),rows=input?.rows;
    if(!siteName)fail('Choose a site before importing biometric punches.');
    if(!Array.isArray(rows)||!rows.length||rows.length>MAX_PUNCHES_PER_UPLOAD)fail(`Import 1–${MAX_PUNCHES_PER_UPLOAD} biometric punches at a time.`);
    const matchingSites=await findSites(db,siteName),matchingSiteIds=matchingSites.map(site=>site.id),site=matchingSites[0];
    const clean=rows.map(row=>{const serial=String(row?.serial||'').trim();const upload=validateUpload({device:{serial},punches:[{biometricId:row?.biometricId,punchedAt:row?.punchedAt,verify:row?.verify,punchType:row?.punchType}],users:[]});return {serial,punch:upload.punches[0]};});
    const days=[...new Set(clean.map(row=>row.punch.punchedAt.slice(0,10)))];
-   const locked=(await db.query('SELECT to_char(day,\'YYYY-MM-DD\') AS day FROM hr_manual_biometric_days WHERE site=$1 AND day=ANY($2::date[])',[site.name,days])).rows.map(row=>row.day);
+   const dayTable=source==='manual2'?'hr_manual_biometric_ii_days':'hr_manual_biometric_days';
+   const locked=(await db.query(`SELECT to_char(day,'YYYY-MM-DD') AS day FROM ${dayTable} WHERE site=$1 AND day=ANY($2::date[])`,[site.name,days])).rows.map(row=>row.day);
    if(locked.length)fail(`Manual biometric logs are saved and locked for ${locked.join(', ')}. Upload only unsaved dates.`,409);
    const serials=[...new Set(clean.map(row=>row.serial))];
    const devices=(await db.query('SELECT serial FROM hr_attendance_devices WHERE site_id=ANY($1::uuid[]) AND serial=ANY($2::text[])',[matchingSiteIds,serials])).rows.map(row=>row.serial);
    const missing=serials.filter(serial=>!devices.includes(serial));
    if(missing.length)fail(`Machine Serial is not registered at ${siteName}: ${missing.join(', ')}`);
-   const added=(await db.query('INSERT INTO hr_manual_biometric_punches(source,device_serial,biometric_id,punched_at,verify,punch_type,imported_by) SELECT $1,x.s,x.b,x.t::timestamp,x.v,x.p,$7 FROM unnest($2::text[],$3::text[],$4::text[],$5::text[],$6::text[]) AS x(s,b,t,v,p) ON CONFLICT DO NOTHING',[source,clean.map(row=>row.serial),clean.map(row=>row.punch.biometricId),clean.map(row=>row.punch.punchedAt),clean.map(row=>row.punch.verify),clean.map(row=>row.punch.punchType),profile.actor])).rowCount;
+   const added=(await db.query(`INSERT INTO ${punchTable}(device_serial,biometric_id,punched_at,verify,punch_type,imported_by) SELECT x.s,x.b,x.t::timestamp,x.v,x.p,$6 FROM unnest($1::text[],$2::text[],$3::text[],$4::text[],$5::text[]) AS x(s,b,t,v,p) ON CONFLICT DO NOTHING`,[clean.map(row=>row.serial),clean.map(row=>row.punch.biometricId),clean.map(row=>row.punch.punchedAt),clean.map(row=>row.punch.verify),clean.map(row=>row.punch.punchType),profile.actor])).rowCount;
    await audit(db,profile.actor,source==='manual2'?'IMPORT_MANUAL_BIOMETRIC_II_PUNCHES':'IMPORT_MANUAL_BIOMETRIC_PUNCHES',{site:siteName,received:clean.length,added});
    return {received:clean.length,added};
   });
@@ -345,7 +352,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const {from,to}=validateRange(params);
    const site=await findSite(pool,String(params.get('site')||''));
    if(!site)fail(siteAccessMessage(profile),403);
-   return {...await loadManual({id:site.id,name:site.name,siteType:site.site_type||''},from,to,route==='manual-biometric-ii'?'manual2':'manual1'),canCorrect:attendanceAdmin(profile)};
+   return {...await loadManual({id:site.id,name:site.name,siteType:site.site_type||''},from,to),canCorrect:attendanceAdmin(profile)};
   }
   // An HR administrator corrects one person's day, or undoes the correction (owner, 25 Nov 2026). A saved copy of that
   // day is made again, so it shows the day as corrected. Undo is a POST to …/undo (the browser cannot send DELETE here).

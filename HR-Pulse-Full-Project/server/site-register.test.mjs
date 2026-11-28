@@ -92,9 +92,9 @@ test('manual biometric treats the imported value as employee code and shows the 
  const mappedRead=db.calls.findIndex(sql=>/WITH identity_map AS/.test(sql));
  assert.notEqual(mappedRead,-1,'linked manual punches use the already-resolved identity map');
  assert.doesNotMatch(db.calls[mappedRead],/JOIN hr_employee_master_register/);
- assert.deepEqual([...db.calls[mappedRead].matchAll(/\$(\d+)/g)].map(match=>Number(match[1])).sort((a,b)=>a-b),[1,2,3,4,5,6],
+ assert.deepEqual([...db.calls[mappedRead].matchAll(/\$(\d+)/g)].map(match=>Number(match[1])).sort((a,b)=>a-b),[1,2,3,4,5],
   'prepared statement parameters are sequential, so PostgreSQL can infer every type');
- assert.deepEqual(db.parameters[mappedRead],["2026-11-02","2026-11-02",['JNP2242101100'],['17416'],['emp-17416'],'manual1']);
+ assert.deepEqual(db.parameters[mappedRead],["2026-11-02","2026-11-02",['JNP2242101100'],['17416'],['emp-17416']]);
 });
 
 test('WCL manual biometric reads only unmatched IDs when loading a large imported log',async()=>{

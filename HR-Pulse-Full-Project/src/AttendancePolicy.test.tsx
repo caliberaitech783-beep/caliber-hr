@@ -2,7 +2,7 @@ import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import AttendancePolicySettings from './AttendancePolicy';
 import AttendanceRegister,{hoursText,monthRange,siteTotals,weekStart,type RegisterRow} from './AttendanceRegister';
-import AttendanceManagement,{ATTENDANCE_MENU,attendanceGroup,legacyModuleUrl} from './AttendanceManagement';
+import AttendanceManagement,{ATTENDANCE_MENU,attendanceGroup,attendanceSidebarView,attendanceSidebarViews,legacyModuleUrl} from './AttendanceManagement';
 import {DEFAULT_POLICY} from '../server/attendance-policy.mjs';
 
 afterEach(()=>{vi.unstubAllGlobals();});
@@ -101,3 +101,45 @@ it('opens OD and gate pass from the existing leave screens without the leave for
  expect(screen.queryByRole('button',{name:'Gate Pass'})).toBeNull();
 });
 
+
+it('shows OD, Miss punch, Gate pass, Overtime and Weekly off and holiday as tabs',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{const q=new URL(url,'https://x').searchParams;return Response.json(url.includes('register')?{...register,from:q.get('from'),to:q.get('to'),rows:[]}:url.includes('policy')?{policy,version:0,canEdit:false}:url.includes('records/')?{rows:[],total:0}:{});}));
+ const onNavigate=vi.fn();
+ render(<AttendanceManagement grant={'a'.repeat(43)} view="Miss punch" onNavigate={onNavigate}/>);
+ const tabs=screen.getByRole('tablist',{name:'Attendance regularization'});
+ expect(within(tabs).getAllByRole('tab').map(t=>t.textContent)).toEqual(['Late come / early going','OD','Miss punch','Gate pass','Overtime','Weekly off and holiday']);
+ expect(within(tabs).getByRole('tab',{name:'Miss punch'}).getAttribute('aria-selected')).toBe('true');
+ fireEvent.click(within(tabs).getByRole('tab',{name:'OD'}));
+ expect(onNavigate).toHaveBeenCalledWith('OD (on duty)');
+ expect(await screen.findByText('Attendance regularization › OD (on duty)')).toBeTruthy();
+});
+
+it('opens the five tab-only screens from Late come / early going, not from the sidebar',()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json({})));
+ render(<AttendanceManagement grant={'a'.repeat(43)} view="Late come / early going"/>);
+ expect(screen.getByRole('tablist',{name:'Attendance regularization'})).toBeTruthy();
+ expect(attendanceSidebarViews).toEqual(['Biometric integration','Trip card and logbook','Late come / early going','Shift roster','Monthly attendance register','Weekly and daily attendance register','Site-wise attendance','HR policy · attendance']);
+ expect(attendanceSidebarView('Overtime')).toBe('Late come / early going');
+ expect(attendanceSidebarView('Shift roster')).toBe('Shift roster');
+});
+
+// Owner, 28 Nov 2026: Shift roster has both rosters, the trip card roster and the other staff roster, on tabs.
+it('shows the trip card roster and the other staff roster on their own tabs',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>Response.json(url.includes('lookups')?[{kind:'sites',id:'s1',name:'Majri OC'}]:url.includes('policy')?{policy,version:0,canEdit:false}:{rows:[]})));
+ render(<AttendanceManagement grant={'a'.repeat(43)} view="Shift roster"/>);
+ const tabs=screen.getByRole('tablist',{name:'Roster'});
+ expect(within(tabs).getAllByRole('tab').map(t=>t.textContent)).toEqual(['Trip card roster','Other staff roster']);
+ expect(within(tabs).getByRole('tab',{name:'Trip card roster'}).getAttribute('aria-selected')).toBe('true');
+ expect(screen.getByRole('heading',{name:'Shift roster'})).toBeTruthy();
+ fireEvent.click(within(tabs).getByRole('tab',{name:'Other staff roster'}));
+ expect(await screen.findByRole('heading',{name:'Other staff roster'})).toBeTruthy();
+ expect(screen.queryByRole('heading',{name:'Shift roster'})).toBeNull();
+ const source=screen.getByLabelText('Roster source');
+ expect(within(source).getAllByRole('button').map(b=>b.textContent)).toEqual(['Other Staff Biometric','Comparison']);
+});
+
+it('shows no regularization tabs on other attendance screens',()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>Response.json({})));
+ render(<AttendanceManagement grant={'a'.repeat(43)} view="Monthly attendance register"/>);
+ expect(screen.queryByRole('tablist',{name:'Attendance regularization'})).toBeNull();
+});

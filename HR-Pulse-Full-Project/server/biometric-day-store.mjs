@@ -16,8 +16,10 @@ const fail = (message, status = 400) => { throw Object.assign(new Error(message)
 const validDay = value => typeof value === 'string' && DAY.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 
 /** load(site,from,to): the site register for those days (loadSiteRegister); sites: the login's site ids (null = all). today: India date. */
-export function createBiometricDayStore(pool, {load, today, manual=false, siteKey=value=>String(value||'').trim().toLowerCase()}) {
-  const table=manual?'hr_manual_biometric_days':'hr_biometric_days',label=manual?'manual biometric':'biometric';
+export function createBiometricDayStore(pool, {load, today, manual=false, manualSource='manual1', siteKey=value=>String(value||'').trim().toLowerCase()}) {
+  const manual2=manual&&manualSource==='manual2';
+  const table=manual2?'hr_manual_biometric_ii_days':manual?'hr_manual_biometric_days':'hr_biometric_days',label=manual2?'Manual Biometric II':manual?'manual biometric':'biometric';
+  const punchTable=manual2?'hr_manual_biometric_ii_punches':'hr_manual_biometric_punches';
   const conflict=manual?'DO UPDATE SET site=EXCLUDED.site':`DO UPDATE SET register=EXCLUDED.register,punches=EXCLUDED.punches,people=EXCLUDED.people,
           saved_by=EXCLUDED.saved_by,saved_at=now()`;
   async function findSite(name, sites, profile) {
@@ -66,12 +68,12 @@ export function createBiometricDayStore(pool, {load, today, manual=false, siteKe
       if (!days.length || days.length > MAX_BIO_DAYS || days.some(day => !validDay(day))) fail('Choose valid saved log dates.');
       const site = await findSite(input?.site, sites, profile);
       const result = (await pool.query(`WITH removed_days AS (
-          DELETE FROM hr_manual_biometric_days WHERE site=$1 AND day=ANY($2::date[]) RETURNING day
+          DELETE FROM ${table} WHERE site=$1 AND day=ANY($2::date[]) RETURNING day
         ), removed_punches AS (
-          DELETE FROM hr_manual_biometric_punches p USING hr_attendance_devices d
+          DELETE FROM ${punchTable} p USING hr_attendance_devices d
           WHERE p.device_serial=d.serial AND d.site_id=$3 AND p.punched_at::date=ANY($2::date[]) RETURNING p.device_serial
         ) SELECT (SELECT count(*)::int FROM removed_days) AS logs,(SELECT count(*)::int FROM removed_punches) AS punches`, [site.name, days, site.id])).rows[0];
-      await pool.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)", [profile.actor, 'DELETE_MANUAL_BIOMETRIC_LOGS', {site: site.name, days, logs: Number(result?.logs)||0, punches: Number(result?.punches)||0}]);
+      await pool.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)", [profile.actor, manual2?'DELETE_MANUAL_BIOMETRIC_II_LOGS':'DELETE_MANUAL_BIOMETRIC_LOGS', {site: site.name, days, logs: Number(result?.logs)||0, punches: Number(result?.punches)||0}]);
       return {deleted: Number(result?.logs)||0, punches: Number(result?.punches)||0, days};
     }
     fail('Not found', 404);

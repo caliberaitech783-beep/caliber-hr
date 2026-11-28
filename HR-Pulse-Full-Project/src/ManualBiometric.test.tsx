@@ -44,7 +44,7 @@ describe('Manual Biometric attendance roster',()=>{
   expect(manualUsesAForm('Sasti OC')).toBe(false);
  });
  it('is a separate tab with import and no trip-card comparison controls',()=>{
-  expect(VIEW_TABS.map(([,label])=>label)).toEqual(['Trip card (VLB · ELB · LMV)','Biometric','Trip card vs Biometric','Manual Biometric','Manual Biometric II','M.B-Trip card Mismatch']);
+  expect(VIEW_TABS.map(([,label])=>label)).toEqual(['Trip card (VLB · ELB · LMV)','Biometric','Trip card vs Biometric','Manual Biometric','Other Staff Biometric','M.B-Trip card Mismatch']);
   const trip:TripState={status:'idle',message:'',rows:null};
   render(<RosterTable groups={[]} dates={['2026-11-24']} view="manual" trip={trip}
    bio={{running:false,message:'Imported biometric attendance',days:{},counts:{},errors:{},failed:[]}}
@@ -55,12 +55,12 @@ describe('Manual Biometric attendance roster',()=>{
   expect(screen.queryByRole('columnheader',{name:'Diff. of Trip Card and Bio-matric'})).not.toBeInTheDocument();
   expect(screen.getByRole('columnheader',{name:'A-Form No.'})).toBeInTheDocument();
  });
- it('gives Manual Biometric II the DAT import controls',()=>{
+ it('does not ask for a second DAT import in Manual Biometric II',()=>{
   const trip:TripState={status:'idle',message:'',rows:null};
   render(<RosterTable groups={[]} dates={['2026-11-24']} view="manual2" trip={trip}
    bio={{running:false,message:'Imported biometric attendance',days:{},counts:{},errors:{},failed:[]}}
-   monthly={false} from="2026-11-24" to="2026-11-24" onImport={vi.fn()} emptyText="No Manual Biometric II attendance imported."/>);
-  expect(screen.getByRole('button',{name:'Import DAT file'})).toBeInTheDocument();
+   monthly={false} from="2026-11-24" to="2026-11-24" emptyText="No Manual Biometric II attendance imported."/>);
+  expect(screen.queryByRole('button',{name:'Import DAT file'})).not.toBeInTheDocument();
   expect(screen.getByText('No Manual Biometric II attendance imported.')).toBeInTheDocument();
   expect(screen.getByRole('columnheader',{name:'A-Form No.'})).toBeInTheDocument();
  });

@@ -1,0 +1,34 @@
+/* Comparison tab of the attendance roster: the step cards of the site sheet check. */
+.osc{display:grid;gap:14px;margin-top:4px}
+.osc-intro{margin:0;color:#4b4357;font-size:14px;line-height:1.6}
+.osc-step{background:#fff;border:1px solid #e6dcef;border-radius:12px;padding:18px 20px}
+.osc-step h3{margin:0 0 14px;font:600 17px Manrope,sans-serif;color:#241633}
+.osc-upload,.osc-check{display:inline-flex;align-items:center;gap:9px;border:0;border-radius:8px;background:#5b2d9c;color:#fff;font-weight:700;font-size:14px;padding:12px 18px;cursor:pointer}
+.osc-upload input{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.osc-upload.busy,.osc-check:disabled{background:#a993c9;cursor:not-allowed}
+.osc-help{margin:10px 0 0;color:#6b6275;font-size:13px}
+.osc-note{margin:10px 0 0;color:#3d3447;font-size:13px}
+.osc-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.osc-fields label{display:grid;gap:7px;font-weight:700;font-size:14px;color:#241633}
+.osc-fields select,.osc-fields input{border:1px solid #d7cbe4;border-radius:8px;padding:11px 12px;background:#fff;font-size:15px;min-height:46px}
+.osc-fields input:disabled{background:#f6f3f9;color:#9a91a5}
+.osc-result-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.osc-result-head h3{margin:0}
+.osc-result-head button{display:inline-flex;align-items:center;gap:7px;border:1px solid #d7cbe4;border-radius:8px;background:#fff;color:#5b2d9c;font-weight:700;padding:8px 13px}
+.osc-counts{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.osc-kind{display:inline-block;border-radius:6px;padding:3px 8px;font-size:12px;background:#f1edf6;color:#3d3447;white-space:nowrap}
+.osc-bio-not-sheet,.osc-not-in-sheet{background:#faeeda;color:#7a4a05}
+.osc-sheet-no-bio,.osc-half-no-bio{background:#fcebeb;color:#9b1c1c}
+.osc-sheet-half,.osc-sheet-miss,.osc-half-full{background:#fff7d6;color:#6b5300}
+.osc-table{max-height:520px;overflow:auto;border:1px solid #eee7f3;border-radius:8px}
+.osc-table table{width:100%;border-collapse:collapse;font-size:13px}
+.osc-table th{position:sticky;top:0;background:#f6f1fb;color:#4f4160;text-align:left;padding:8px 10px}
+.osc-table td{padding:7px 10px;border-top:1px solid #f0ebf4}
+.osc-tabs{display:flex;gap:8px;margin:4px 0 12px;flex-wrap:wrap}
+.osc-tabs button{border:1px solid #d7cbe4;border-radius:8px;background:#fff;color:#4f4160;font-weight:600;padding:8px 14px}
+.osc-tabs button.selected{background:#5b2d9c;border-color:#5b2d9c;color:#fff}
+.osc-ok{background:#e6f4ea;color:#1e6b34}
+.osc-ok-row td{background:#f6fbf7}
+.osc-apart{margin-top:12px;font-size:13px}
+.osc-apart summary{cursor:pointer;font-weight:700;color:#4f4160}
+@media(max-width:760px){.osc-fields{grid-template-columns:1fr}}
