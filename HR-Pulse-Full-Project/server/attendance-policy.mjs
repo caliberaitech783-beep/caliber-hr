@@ -68,10 +68,20 @@ export function validatePolicy(input = {}) {
    credited to the In date, no lunch deduction, no late come / early going.
    Present = working hours - 1 h · Half day = half the working hours · less = SH (short hours, HR to check). */
 
-/** True when the site is switched on for the working-hours rules (name compared without case or extra spaces). */
+/* A site name as HR types it ("Gauri Pauni OB 2nd") or as Site Master holds it ("Gauri Pauni OC"): OB and OC are the
+   same place and "(2nd)" is "2nd". The same matching as attendanceSiteKey in attendance.mjs (kept here because this
+   module is shared with the website). */
+const ruleSiteKey = value => {
+  const key = String(value || '').trim().toLowerCase().replace(/[()]/g, ' ').replace(/\b(?:ob|oc)\b/g, 'oc').replace(/\s+/g, ' ').trim();
+  if (/^dhoptala oc(?: 2nd)?$/.test(key)) return 'wcl-dhoptala';
+  if (/^gauri pauni oc(?: 2nd)?$/.test(key)) return 'wcl-gauri-pauni';
+  return key;
+};
+
+/** True when the site is switched on for the working-hours rules (OB = OC, case and extra spaces ignored). */
 export function workingHoursRuleSite(policy, site) {
-  const key = String(site || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  return !!key && (policy?.workingHoursSites || []).some(name => String(name).replace(/\s+/g, ' ').trim().toLowerCase() === key);
+  const key = ruleSiteKey(site);
+  return !!key && (policy?.workingHoursSites || []).some(name => ruleSiteKey(name) === key);
 }
 
 /** Drivers and operators keep their own rules (trip card, C shift, OB no half day): never the working-hours rules. */

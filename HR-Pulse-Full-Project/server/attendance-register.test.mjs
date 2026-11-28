@@ -234,6 +234,10 @@ test('working-hours rules: device offline is DO, after the leaving date LF; swit
 test('working-hours rule sites are cleaned and matched without case or extra spaces', () => {
   assert.deepEqual(validatePolicy({workingHoursSites: ' Gauri  Pauni OB 2nd , gauri pauni ob 2nd, Sasti OB '}).workingHoursSites, ['Gauri Pauni OB 2nd', 'Sasti OB']);
   assert.equal(workingHoursRuleSite(rulePolicy, 'gauri pauni  OB 2nd'), true);
+  // Site Master names the site "Gauri Pauni OC" (live, 28 Nov 2026): OB = OC, "(2nd)" = "2nd".
+  assert.equal(workingHoursRuleSite(rulePolicy, 'Gauri Pauni OC'), true);
+  assert.equal(workingHoursRuleSite(rulePolicy, 'Gauri Pauni OC (2nd)'), true);
+  assert.equal(workingHoursRuleSite(validatePolicy({workingHoursSites: ['Majri OB']}), 'Majri OC'), true);
   assert.equal(workingHoursRuleSite(rulePolicy, 'Sasti OB'), false);
   assert.deepEqual(validatePolicy({}).workingHoursSites, []);
 });
