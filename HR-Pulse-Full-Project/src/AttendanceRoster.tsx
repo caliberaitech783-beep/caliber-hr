@@ -363,12 +363,14 @@ function useElapsedLoad(running:boolean,token:string){
 }
 
 /** Attendance roster page: site, dates, department and employee first; then the Trip card, Biometric or comparison tab. */
-export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onManageMachines?:()=>void}){
+/** `only` opens the roster on one view and shows only that tab (Shift roster › Other staff roster, owner 28 Nov 2026). */
+export function AttendanceRosterPage({grant,onManageMachines,only,title='Attendance roster'}:{grant:string;onManageMachines?:()=>void;only?:RosterView;title?:string}){
  const today=india();
  const [sites,setSites]=useState<string[]|null>(null),[departments,setDepartments]=useState<string[]>([]),[lookupError,setLookupError]=useState('');
  const [site,setSite]=useState(''),[from,setFrom]=useState(today.slice(0,8)+'01'),[to,setTo]=useState(today);
  const [departmentsSelected,setDepartmentsSelected]=useState<string[]>([]),[designationsSelected,setDesignationsSelected]=useState<string[]>([]),[employee,setEmployee]=useState('');
- const [view,setView]=useState<RosterView|''>('');
+ const [view,setView]=useState<RosterView|''>(only||'');
+ const viewTabs=only?VIEW_TABS.filter(([id])=>id===only):VIEW_TABS;
  const [trip,setTrip]=useState<TripStream>(noStream),[bio,setBio]=useState<BioStream>(noBio),[manual,setManual]=useState<Source<SiteRegister>>(idle);
  const [manualSaved,setManualSaved]=useState<{key:string;days:Record<string,SavedManualDay>}>({key:'',days:{}}),[manualSavedError,setManualSavedError]=useState({key:'',message:''}),[manualSave,setManualSave]=useState<{running:boolean;done:number;total:number;failed:string[];error:string}|null>(null),[showSavedLogs,setShowSavedLogs]=useState(false),[deletingSaved,setDeletingSaved]=useState(false);
  const bioRef=useRef('');
@@ -629,7 +631,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
 
  return <section className="data-card attendance-register attendance-roster" aria-label="Attendance roster">
   {showSavedLogs&&<div className="modal-backdrop" role="presentation"><section className="modal saved-log-modal" role="dialog" aria-modal="true" aria-label="Saved manual biometric logs"><div className="modal-heading"><h2>Saved Manual Biometric Logs</h2><div className="saved-log-actions">{canCorrect&&<button type="button" className="danger" disabled={deletingSaved} onClick={()=>void deleteManualLogs(manualSavedDays.map(([day])=>day),true)}><Trash2/>{deletingSaved?'Deleting…':'Delete All'}</button>}<button type="button" aria-label="Close saved logs" onClick={()=>setShowSavedLogs(false)}><X/></button></div></div><p>{site} · saved dates in the selected range</p><div className="table-scroll"><table><thead><tr><th>Site</th><th>Date</th><th>Saved by</th><th>Saved time</th><th>Employees</th><th>Punches</th><th>Action</th></tr></thead><tbody>{manualSavedDays.sort(([a],[b])=>b.localeCompare(a)).map(([day,info])=><tr key={day}><td>{site}</td><td>{show(day)}</td><td>{info.savedBy||'—'}</td><td>{when(info.savedAt)}</td><td>{info.people.toLocaleString('en-IN')}</td><td>{info.punches.toLocaleString('en-IN')}</td><td><div className="saved-log-actions"><button type="button" onClick={()=>{setFrom(day);setTo(day);setShowSavedLogs(false);}}>Open Log</button>{canCorrect?<button type="button" className="danger" disabled={deletingSaved} onClick={()=>void deleteManualLogs([day])}><Trash2/>Delete</button>:<span className="help-text">HR administrator only</span>}</div></td></tr>)}</tbody></table></div></section></div>}
-  <h2>Attendance roster</h2>
+  <h2>{title}</h2>
   {!comparing&&<div className="attendance-filters roster-filters">
    <label>Site<select value={site} required aria-invalid={!site} onChange={e=>{setSite(e.target.value);setDepartmentsSelected([]);setDesignationsSelected([]);setEmployee('');}}><option value="">{sites===null?'Loading sites…':'Select a site'}</option>{(sites||[]).map(s=><option key={s} value={s}>{s}</option>)}</select></label>
    <label>From<input type="date" value={from} max={to||today} onChange={e=>setFrom(e.target.value)}/></label>
@@ -642,7 +644,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   {lookupError&&<p className="error" role="alert">Sites could not be loaded: {lookupError}</p>}
   {sites&&!sites.length&&!lookupError&&<p className="error" role="alert">No site is assigned to your login.</p>}
   {!comparing&&rangeError&&<p className="error" role="alert">{rangeError}</p>}
-  <div className="module-tabs roster-tabs" aria-label="Roster source">{VIEW_TABS.map(([id,label])=><Fragment key={id}><button type="button" className={view===id&&!comparing?'selected':''} aria-pressed={view===id&&!comparing} disabled={!site} title={site?undefined:'Select a site first'} onClick={()=>choose(id)}>{label}</button>{id==='manual2'&&<button type="button" className={comparing?'selected':''} aria-pressed={comparing} onClick={()=>{setView('');setEmployee('');setComparing(true);}}>Comparison</button>}</Fragment>)}</div>
+  <div className="module-tabs roster-tabs" aria-label="Roster source">{viewTabs.map(([id,label])=><Fragment key={id}><button type="button" className={view===id&&!comparing?'selected':''} aria-pressed={view===id&&!comparing} disabled={!site} title={site?undefined:'Select a site first'} onClick={()=>choose(id)}>{label}</button>{id==='manual2'&&<button type="button" className={comparing?'selected':''} aria-pressed={comparing} onClick={()=>{setView('');setEmployee('');setComparing(true);}}>Comparison</button>}</Fragment>)}</div>
   {comparing?<OtherStaffComparison grant={grant} sites={sites} today={today} initialSite={site}/>:<>
   {view&&loadTimer.elapsed!==null&&<div className={'roster-load-timer'+(busy?' loading':' complete')} role="status" aria-live="polite"><RefreshCw className={busy?'spin':''}/><strong>{busy?'Loading data…':'Data loaded.'}</strong><span>Time taken: {elapsedSeconds} sec.</span></div>}
   {!site?<p className="roster-hint">Select a site first.</p>:!view?<p className="roster-hint">Press <b>Trip card</b> to fetch from MIS, or <b>Biometric</b> to fetch the machine punches, for {site} · {show(from)} to {show(to)}.</p>:
