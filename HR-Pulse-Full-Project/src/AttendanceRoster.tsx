@@ -11,6 +11,7 @@ import ManualDayEdit,{type DayEditTarget} from './ManualDayEdit';
 import {downloadExcel} from './excelFiles';
 import {assetPrintHtml} from './assetPrint';
 import {MANUAL_MISMATCH_LEGEND,manualMismatchTone} from './manualMismatchColors';
+import OtherStaffComparison from './OtherStaffComparison';
 
 /* Attendance roster (owner, 22 Nov 2026). Three views of the same roster format, built in rosterModel.ts:
    - Trip card (VLB · ELB · LMV): one line per employee from MIS trip cards, job cards and vehicle log books;
@@ -23,7 +24,7 @@ export type RosterView='trip'|'bio'|'compare'|'manual'|'manual2'|'manualMismatch
 export const ROSTER_CODES:[string,string][]=[['P','Present'],['HD','Half day'],['A','Absent'],['WO','Weekly off'],['H','Holiday'],['CO','Comp off'],['L','Leave'],['OD','On duty'],['MP','Miss punch'],['IN','In, no Out yet'],['?','Trip card not verified yet']];
 export const ROSTER_TOTALS:[keyof LineTotals,string][]=[['totalDays','Total days'],['present','Present'],['half','Half day'],['absent','Absent'],['weeklyOff','Weekly off'],['holiday','Holiday'],['compOff','Comp off'],['leave','Leave'],['onDuty','On duty'],['missPunch','Miss punch'],['lateEarly','Late / early'],['cuts','Half duty cuts'],['paidDays','Paid days']];
 export const DIFF_HEADING='Diff. of Trip Card and Bio-matric';
-export const VIEW_TABS:[RosterView,string][]=[['trip','Trip card (VLB · ELB · LMV)'],['bio','Biometric'],['compare','Trip card vs Biometric'],['manual','Manual Biometric'],['manual2','Manual Biometric II'],['manualMismatch','M.B-Trip card Mismatch']];
+export const VIEW_TABS:[RosterView,string][]=[['trip','Trip card (VLB · ELB · LMV)'],['bio','Biometric'],['compare','Trip card vs Biometric'],['manual','Manual Biometric'],['manual2','Other Staff Biometric'],['manualMismatch','M.B-Trip card Mismatch']];
 const WEEKDAY=['Su','Mo','Tu','We','Th','Fr','Sa'];
 export const weekday=(date:string)=>WEEKDAY[new Date(date+'T00:00:00Z').getUTCDay()];
 function MultiRosterFilter({label,allLabel,options,values,change}:{label:string;allLabel:string;options:string[];values:string[];change:(values:string[])=>void}){
@@ -271,7 +272,7 @@ function StandardRosterTable({groups,dates,view,trip,bio,monthly,from,to,loading
      <td><span className={'register-cell roster-code '+codeClass(m.bio)}>{m.bio||'—'}</span></td><td className="roster-detail">{m.bioDetail}</td><td className="roster-reason">{m.reason}</td></tr>)}</tbody>
    </table></div>
   </div>}
-  <p className="help-text">{view==='bio'?'Biometric: every punch on this site’s machines (Biometric machines), rated with the attendance policy: In is the first punch of the shift, Out the last; +1 is the next morning. Orange In is late come, red Out is early going. Hover a day for every punch and its machine. Machine IDs not linked to an employee show the name on the machine; link them in Machine punches. ':manualRoster?`${view==='manual2'?'Manual Biometric II':'Manual Biometric'}: attendance calculated only from the Text, CSV or DAT log imported in this tab. ${view==='manual2'?'Driver and Operator departments/designations are excluded. ':''}`:'Trip card: MIS VLB trip cards, ELB job cards and LMV vehicle log books, rated with the attendance policy hours rule (? until the MIS batch is closed). '}
+  <p className="help-text">{view==='bio'?'Biometric: every punch on this site’s machines (Biometric machines), rated with the attendance policy: In is the first punch of the shift, Out the last; +1 is the next morning. Orange In is late come, red Out is early going. Hover a day for every punch and its machine. Machine IDs not linked to an employee show the name on the machine; link them in Machine punches. ':manualRoster?`${view==='manual2'?'Other Staff Biometric':'Manual Biometric'}: attendance calculated only from the Text, CSV or DAT log imported in this tab. ${view==='manual2'?'Driver and Operator departments/designations are excluded. ':''}`:'Trip card: MIS VLB trip cards, ELB job cards and LMV vehicle log books, rated with the attendance policy hours rule (? until the MIS batch is closed). '}
    {compare?'Bio Matric: every punch on this site’s machines (Biometric machines). ':''}Weekly off, holiday, leave, comp off and OD come from HR records{compare?' and show on both lines':''}. Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + comp off + leave + on duty.</p>
  </>;
 }
@@ -377,6 +378,8 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const [uploading,setUploading]=useState<''|'bio'|'manual'|'manual2'>(''),[importNote,setImportNote]=useState(''),[manualReload,setManualReload]=useState(0);
  const keyRef=useRef(''),forceMis=useRef(false),forceBio=useRef(false);
  const [reload,setReload]=useState(0);
+ // Comparison tab (28 Nov 2026): the site's attendance Excel against Other Staff Biometric, with its own site and dates.
+ const [comparing,setComparing]=useState(false);
  useEffect(()=>{let live=true;
   api<Lookup[]>(grant,'lookups').then(rows=>{if(!live)return;const list=Array.isArray(rows)?rows:[];
    setSites([...new Set(list.filter(r=>r.kind==='sites').map(r=>r.name).filter(Boolean))].sort());
@@ -619,7 +622,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  const shownBioState=manualView?manualState:bioState;
  const bioLoading=manualView?manual.status==='loading':view!=='trip'&&bioRunning&&!bioData;
  const bioError=manualView&&manual.status==='error'?manual.message:!bioRunning&&bioTotal>0&&bioFailed.length===bioTotal?bio.errors[bioFailed[0]]||'HR did not answer':'';
- const choose=(next:RosterView)=>{setView(next);setEmployee('');};
+ const choose=(next:RosterView)=>{setView(next);setEmployee('');setComparing(false);};
  const busy=tripState.status==='loading'||(manualView?manual.status==='loading':view!=='trip'&&bioRunning);
  const loadTimer=useElapsedLoad(busy,[view,site,from,to,reload,bioReload,manualReload].join('|'));
  const elapsedSeconds=loadTimer.elapsed===null?'':(loadTimer.elapsed/1000).toFixed(1);
@@ -627,7 +630,7 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
  return <section className="data-card attendance-register attendance-roster" aria-label="Attendance roster">
   {showSavedLogs&&<div className="modal-backdrop" role="presentation"><section className="modal saved-log-modal" role="dialog" aria-modal="true" aria-label="Saved manual biometric logs"><div className="modal-heading"><h2>Saved Manual Biometric Logs</h2><div className="saved-log-actions">{canCorrect&&<button type="button" className="danger" disabled={deletingSaved} onClick={()=>void deleteManualLogs(manualSavedDays.map(([day])=>day),true)}><Trash2/>{deletingSaved?'Deleting…':'Delete All'}</button>}<button type="button" aria-label="Close saved logs" onClick={()=>setShowSavedLogs(false)}><X/></button></div></div><p>{site} · saved dates in the selected range</p><div className="table-scroll"><table><thead><tr><th>Site</th><th>Date</th><th>Saved by</th><th>Saved time</th><th>Employees</th><th>Punches</th><th>Action</th></tr></thead><tbody>{manualSavedDays.sort(([a],[b])=>b.localeCompare(a)).map(([day,info])=><tr key={day}><td>{site}</td><td>{show(day)}</td><td>{info.savedBy||'—'}</td><td>{when(info.savedAt)}</td><td>{info.people.toLocaleString('en-IN')}</td><td>{info.punches.toLocaleString('en-IN')}</td><td><div className="saved-log-actions"><button type="button" onClick={()=>{setFrom(day);setTo(day);setShowSavedLogs(false);}}>Open Log</button>{canCorrect?<button type="button" className="danger" disabled={deletingSaved} onClick={()=>void deleteManualLogs([day])}><Trash2/>Delete</button>:<span className="help-text">HR administrator only</span>}</div></td></tr>)}</tbody></table></div></section></div>}
   <h2>Attendance roster</h2>
-  <div className="attendance-filters roster-filters">
+  {!comparing&&<div className="attendance-filters roster-filters">
    <label>Site<select value={site} required aria-invalid={!site} onChange={e=>{setSite(e.target.value);setDepartmentsSelected([]);setDesignationsSelected([]);setEmployee('');}}><option value="">{sites===null?'Loading sites…':'Select a site'}</option>{(sites||[]).map(s=><option key={s} value={s}>{s}</option>)}</select></label>
    <label>From<input type="date" value={from} max={to||today} onChange={e=>setFrom(e.target.value)}/></label>
    <label>To<input type="date" value={to} min={from} max={today} onChange={e=>setTo(e.target.value)}/></label>
@@ -635,21 +638,23 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
    <MultiRosterFilter label="Designation" allLabel="All designations" options={designationOptions} values={designationsSelected} change={values=>{setDesignationsSelected(values);setEmployee('');}}/>
    <label>Employee<select value={employee} onChange={e=>setEmployee(e.target.value)} disabled={!people.length}><option value="">All employees</option>{people.filter(g=>(!departmentsSelected.length||departmentsSelected.includes(g.department))&&(!designationsSelected.length||designationsSelected.includes(g.designation))).map(g=><option key={g.key} value={g.key}>{g.linked||manualSelected?g.code:'Not linked'} · {g.name}</option>)}</select></label>
    <button type="button" disabled={!ready||!view||busy} onClick={()=>{if(manualSelected)setManualReload(n=>n+1);else if(view==='manualMismatch'){setManualReload(n=>n+1);forceMis.current=true;setReload(n=>n+1);}else{forceMis.current=view!=='bio';forceBio.current=true;setReload(n=>n+1);}}}><RefreshCw className={busy?'spin':''}/>Fetch again</button>
-  </div>
+  </div>}
   {lookupError&&<p className="error" role="alert">Sites could not be loaded: {lookupError}</p>}
   {sites&&!sites.length&&!lookupError&&<p className="error" role="alert">No site is assigned to your login.</p>}
-  {rangeError&&<p className="error" role="alert">{rangeError}</p>}
-  <div className="module-tabs roster-tabs" aria-label="Roster source">{VIEW_TABS.map(([id,label])=><button key={id} type="button" className={view===id?'selected':''} aria-pressed={view===id} disabled={!site} title={site?undefined:'Select a site first'} onClick={()=>choose(id)}>{label}</button>)}</div>
+  {!comparing&&rangeError&&<p className="error" role="alert">{rangeError}</p>}
+  <div className="module-tabs roster-tabs" aria-label="Roster source">{VIEW_TABS.map(([id,label])=><Fragment key={id}><button type="button" className={view===id&&!comparing?'selected':''} aria-pressed={view===id&&!comparing} disabled={!site} title={site?undefined:'Select a site first'} onClick={()=>choose(id)}>{label}</button>{id==='manual2'&&<button type="button" className={comparing?'selected':''} aria-pressed={comparing} onClick={()=>{setView('');setEmployee('');setComparing(true);}}>Comparison</button>}</Fragment>)}</div>
+  {comparing?<OtherStaffComparison grant={grant} sites={sites} today={today} initialSite={site}/>:<>
   {view&&loadTimer.elapsed!==null&&<div className={'roster-load-timer'+(busy?' loading':' complete')} role="status" aria-live="polite"><RefreshCw className={busy?'spin':''}/><strong>{busy?'Loading data…':'Data loaded.'}</strong><span>Time taken: {elapsedSeconds} sec.</span></div>}
   {!site?<p className="roster-hint">Select a site first.</p>:!view?<p className="roster-hint">Press <b>Trip card</b> to fetch from MIS, or <b>Biometric</b> to fetch the machine punches, for {site} · {show(from)} to {show(to)}.</p>:
    ready&&<>{view!=='trip'&&bioError&&<p className="error" role="alert">Biometric punches unavailable: {bioError}</p>}
    {(view==='bio'||view==='compare')&&liveBioData&&<MachinesPanel site={site} machines={liveBioData.machines} pull={pull} onPull={()=>void pullMachines(liveBioData.machines)} onManage={onManageMachines}/>}
-   {view==='manual2'&&<p className="roster-saved" role="note">Manual Biometric II uses the DAT punches imported in Manual Biometric and includes all departments and designations except Drivers and Operators. No second import is required.</p>}
+   {view==='manual2'&&<p className="roster-saved" role="note">Other Staff Biometric uses the DAT punches imported in Manual Biometric and includes all departments and designations except Drivers and Operators. No second import is required.</p>}
    {(view==='bio'||manualSelected)&&importNote&&<p className="roster-saved" role="status">{importNote}</p>}
    {editDay&&<ManualDayEdit grant={grant} target={editDay} onClose={()=>setEditDay(null)} onSaved={message=>{setEditDay(null);setImportNote(message);setManualReload(value=>value+1);}}/>}
-   {uploading&&<MachineLogUpload grant={grant} site={site} onClose={()=>setUploading('')} onImported={imported} onManageMachines={onManageMachines} importPath={uploading==='manual'?'attendance/manual-biometric/import':uploading==='manual2'?'attendance/manual-biometric-ii/import':undefined} title={uploading==='manual'?'Import Manual Biometric I · Driver & Operator':uploading==='manual2'?'Import Manual Biometric II · Other departments':undefined}/>}
+   {uploading&&<MachineLogUpload grant={grant} site={site} onClose={()=>setUploading('')} onImported={imported} onManageMachines={onManageMachines} importPath={uploading==='manual'?'attendance/manual-biometric/import':uploading==='manual2'?'attendance/manual-biometric-ii/import':undefined} title={uploading==='manual'?'Import Manual Biometric I · Driver & Operator':uploading==='manual2'?'Import Other Staff Biometric · Other departments':undefined}/>}
    <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} bio={shownBioState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} showAForm={manualUsesAForm(site)} loading={bioLoading||(view==='manualMismatch'&&tripState.status==='loading')} error={view!=='trip'?bioError:''}
     onImport={view==='bio'||(view==='manual'&&!dates.every(day=>Boolean(currentManualSaved[day])))?()=>{setImportNote('');setUploading(view==='bio'?'bio':'manual');}:undefined}
-    emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):manualSelected?`No ${view==='manual2'?'Manual Biometric II':'manual biometric'} attendance imported for ${site} in these dates.`:undefined}/></>}
+    emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):manualSelected?`No ${view==='manual2'?'Other Staff Biometric':'manual biometric'} attendance imported for ${site} in these dates.`:undefined}/></>}
+  </>}
  </section>;
 }

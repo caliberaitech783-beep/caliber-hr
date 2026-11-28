@@ -11,7 +11,7 @@ export const CODE_COLOURS:Record<string,[string,string]>={P:['EAF3DE','27500A'],
  CO:['E1F5EE','085041'],L:['FBEAF0','72243E'],OD:['E6F1FB','0C447C'],MP:['FAECE7','712B13'],IN:['E1F5EE','085041'],'?':['F1EFE8','5F5E5A']};
 const fill=(argb:string):ExcelJS.Fill=>({type:'pattern',pattern:'solid',fgColor:{argb:'FF'+argb}});
 const show=(date:string)=>date.split('-').reverse().join('-');
-const TITLE:Record<RosterView,string>={trip:'Trip card (VLB · ELB · LMV)',bio:'Biometric',compare:'Trip Card against Bio Matric',manual:'Manual Biometric',manual2:'Manual Biometric II',manualMismatch:'M.B-Trip card Mismatch'};
+const TITLE:Record<RosterView,string>={trip:'Trip card (VLB · ELB · LMV)',bio:'Biometric',compare:'Trip Card against Bio Matric',manual:'Manual Biometric',manual2:'Other Staff Biometric',manualMismatch:'M.B-Trip card Mismatch'};
 type Input={groups:RosterGroup[];dates:string[];tripsLoaded:boolean;monthly:boolean;from:string;to:string;view?:RosterView;showAForm?:boolean};
 
 export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,view='compare',showAForm=true}:Input){
