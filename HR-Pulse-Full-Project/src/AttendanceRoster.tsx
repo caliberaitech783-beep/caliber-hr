@@ -637,12 +637,12 @@ export function AttendanceRosterPage({grant,onManageMachines}:{grant:string;onMa
   {!site?<p className="roster-hint">Select a site first.</p>:!view?<p className="roster-hint">Press <b>Trip card</b> to fetch from MIS, or <b>Biometric</b> to fetch the machine punches, for {site} · {show(from)} to {show(to)}.</p>:
    ready&&<>{view!=='trip'&&bioError&&<p className="error" role="alert">Biometric punches unavailable: {bioError}</p>}
    {(view==='bio'||view==='compare')&&liveBioData&&<MachinesPanel site={site} machines={liveBioData.machines} pull={pull} onPull={()=>void pullMachines(liveBioData.machines)} onManage={onManageMachines}/>}
-   {view==='manual2'&&<p className="roster-saved" role="note">Manual Biometric II includes all departments and designations except Drivers and Operators.</p>}
+   {view==='manual2'&&<p className="roster-saved" role="note">Manual Biometric II uses the DAT punches imported in Manual Biometric and includes all departments and designations except Drivers and Operators. No second import is required.</p>}
    {(view==='bio'||manualSelected)&&importNote&&<p className="roster-saved" role="status">{importNote}</p>}
    {editDay&&<ManualDayEdit grant={grant} target={editDay} onClose={()=>setEditDay(null)} onSaved={message=>{setEditDay(null);setImportNote(message);setManualReload(value=>value+1);}}/>}
    {uploading&&<MachineLogUpload grant={grant} site={site} onClose={()=>setUploading('')} onImported={imported} onManageMachines={onManageMachines} importPath={uploading==='manual'?'attendance/manual-biometric/import':uploading==='manual2'?'attendance/manual-biometric-ii/import':undefined} title={uploading==='manual'?'Import Manual Biometric I · Driver & Operator':uploading==='manual2'?'Import Manual Biometric II · Other departments':undefined}/>}
    <RosterTable key={view} groups={shown} dates={dates} view={view} trip={tripState} bio={shownBioState} monthly={from.slice(8)==='01'&&days>=28} from={from} to={to} showAForm={manualUsesAForm(site)} loading={bioLoading||(view==='manualMismatch'&&tripState.status==='loading')} error={view!=='trip'?bioError:''}
-    onImport={view==='bio'||(manualSelected&&!dates.every(day=>Boolean(currentManualSaved[day])))?()=>{setImportNote('');setUploading(view==='bio'?'bio':view==='manual2'?'manual2':'manual');}:undefined}
+    onImport={view==='bio'||(view==='manual'&&!dates.every(day=>Boolean(currentManualSaved[day])))?()=>{setImportNote('');setUploading(view==='bio'?'bio':'manual');}:undefined}
     emptyText={view==='trip'?`No VLB, ELB or LMV card at ${site} in these dates.`:view==='bio'?(bioData&&!bioData.machines.length?`No biometric machine is added for ${site} yet.`:`No punch on ${site}’s machines in these dates.`):manualSelected?`No ${view==='manual2'?'Manual Biometric II':'manual biometric'} attendance imported for ${site} in these dates.`:undefined}/></>}
  </section>;
 }

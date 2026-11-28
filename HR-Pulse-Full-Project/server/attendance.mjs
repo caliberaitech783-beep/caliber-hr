@@ -119,7 +119,9 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
  // a saved copy is made from the same.
  const loadManual=async(site,from,to,manualSource='manual1')=>applyCorrections(await loadSiteRegister(pool,site,from,to,indiaDay(),{manual:true,manualSource}),await corrections.read(site.name,from,to));
  const manualBiometricDays=createBiometricDayStore(pool,{load:loadManual,today:indiaDay,manual:true,siteKey:attendanceSiteKey});
- const manualBiometricIIDays=createBiometricDayStore(pool,{load:(site,from,to)=>loadManual(site,from,to,'manual2'),today:indiaDay,manual:true,manualSource:'manual2',siteKey:attendanceSiteKey});
+ // Manual Biometric II is a filtered view of the same DAT punches imported for Manual Biometric I.
+ // Its saved/locked days stay separate, but users must never have to upload the same file twice.
+ const manualBiometricIIDays=createBiometricDayStore(pool,{load:loadManual,today:indiaDay,manual:true,manualSource:'manual2',siteKey:attendanceSiteKey});
  const tx=async fn=>{const db=await pool.connect();try{await db.query('BEGIN');const out=await fn(db);await db.query('COMMIT');return out;}catch(e){await db.query('ROLLBACK');throw e;}finally{db.release();}};
  const audit=(db,actor,action,detail)=>db.query("INSERT INTO hr_audit(actor,action,kind,record_id,detail) VALUES($1,$2,'attendance',NULL,$3)",[actor,action,detail]);
  const corrections=createCorrections({pool,tx,audit});
@@ -349,7 +351,7 @@ export function createAttendance(pool,{bridgeKey=process.env.ATTENDANCE_BRIDGE_K
    const {from,to}=validateRange(params);
    const site=await findSite(pool,String(params.get('site')||''));
    if(!site)fail(siteAccessMessage(profile),403);
-   return {...await loadManual({id:site.id,name:site.name,siteType:site.site_type||''},from,to,route==='manual-biometric-ii'?'manual2':'manual1'),canCorrect:attendanceAdmin(profile)};
+   return {...await loadManual({id:site.id,name:site.name,siteType:site.site_type||''},from,to),canCorrect:attendanceAdmin(profile)};
   }
   // An HR administrator corrects one person's day, or undoes the correction (owner, 25 Nov 2026). A saved copy of that
   // day is made again, so it shows the day as corrected. Undo is a POST to …/undo (the browser cannot send DELETE here).
