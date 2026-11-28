@@ -3,7 +3,7 @@ import {ChevronDown, Download} from 'lucide-react';
 import {api, downloadBlob} from './api';
 import {assetPrintHtml} from './assetPrint';
 import WorkingHoursImport from './WorkingHoursImport';
-import {WORKING_HOURS_OPTIONS} from '../server/working-hours.mjs';
+import {workingHoursOptions} from '../server/working-hours.mjs';
 
 const columns = [
   ['employeeId','Employee ID',18], ['name','Name',28], ['region','Region',12], ['site','Site / Office',27],
@@ -149,8 +149,8 @@ function EmployeeEditDialog({employee,grant,onClose,onSaved,onRemoved}:{
         <label>Working Hours
           <select value={values.workingHours} disabled={saving} onChange={event=>setValues({...values,workingHours:event.target.value})}>
             <option value="">Not set</option>
-            {!WORKING_HOURS_OPTIONS.includes(values.workingHours) && values.workingHours && <option value={values.workingHours}>{values.workingHours}</option>}
-            {WORKING_HOURS_OPTIONS.map(option=><option key={option} value={option}>{option}</option>)}
+            {!workingHoursOptions().includes(values.workingHours) && values.workingHours && <option value={values.workingHours}>{values.workingHours}</option>}
+            {workingHoursOptions().map(option=><option key={option} value={option}>{option}</option>)}
           </select>
         </label>
         <label>Leaving date (when Status is LEFT)
