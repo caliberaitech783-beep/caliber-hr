@@ -8,6 +8,7 @@
         (…&brief=1 leaves out register: the saved day list only)
    POST attendance/biometric-days {site,day}       → {day,punches,people,savedBy,savedAt}  (one day per request) */
 import {siteAccessMessage} from './scope.mjs';
+import {BIOMETRIC_DUTY_VERSION} from './attendance-register.mjs';
 
 export const MAX_BIO_DAYS = 31;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -40,7 +41,10 @@ export function createBiometricDayStore(pool, {load, today, manual=false, siteKe
       const brief = params.get('brief') === '1';
       const {rows} = await pool.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,${brief ? '' : 'register,'}punches,people,saved_by,saved_at FROM ${table}
         WHERE site=$1 AND day BETWEEN $2::date AND $3::date ORDER BY day`, [site.name, from, to]);
-      return {site: site.name, days: rows.map(r => ({day: r.day, ...(brief ? {} : {register: r.register}), punches: r.punches, people: r.people, savedBy: r.saved_by, savedAt: r.saved_at}))};
+      // Old automatic sheets split C at midnight. Leave the saved audit/lock intact;
+      // omitting stale sheets makes the roster fetch those days from the raw punches.
+      const current = brief || manual ? rows : rows.filter(r => r.register?.dutyVersion === BIOMETRIC_DUTY_VERSION);
+      return {site: site.name, days: current.map(r => ({day: r.day, ...(brief ? {} : {register: r.register}), punches: r.punches, people: r.people, savedBy: r.saved_by, savedAt: r.saved_at}))};
     }
     if (method === 'POST') {
       const day = input?.day;

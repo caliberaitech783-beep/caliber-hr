@@ -22,8 +22,18 @@ function fakePool({sites = ['Sasti OC'], manual = false} = {}) {
   }};
 }
 const hr = {actor: 'vinod', permissions: {}};
-const register = day => ({from: day, to: day, policy: {}, rows: [{id: 'e1', name: 'Ram', days: [{date: day, status: 'P'}]}, {id: 'm:77', name: 'RAMU', linked: false, days: []}],
+const register = day => ({from: day, to: day, dutyVersion: 2, policy: {}, rows: [{id: 'e1', name: 'Ram', days: [{date: day, status: 'P'}]}, {id: 'm:77', name: 'RAMU', linked: false, days: []}],
   machines: [{serial: 'JNP1', punches: 5}, {serial: 'JNP2', punches: 3}]});
+
+test('existing automatic snapshots from before overnight pairing are bypassed, without deleting the saved records', async () => {
+  const pool=fakePool();
+  pool.saved.set('Sasti OC|2026-11-02',{day:'2026-11-02',register:{...register('2026-11-02'),dutyVersion:undefined},punches:2,people:1,saved_by:'hr',saved_at:'2026-11-23'});
+  pool.saved.set('Sasti OC|2026-11-03',{day:'2026-11-03',register:register('2026-11-03'),punches:2,people:1,saved_by:'hr',saved_at:'2026-11-23'});
+  const store=createBiometricDayStore(pool,{today:()=> '2026-11-24',load:async (_site,day)=>register(day)});
+  const answer=await store(hr,'GET',{},new URLSearchParams({site:'Sasti OC',from:'2026-11-02',to:'2026-11-03'}),null);
+  assert.deepEqual(answer.days.map(d=>d.day),['2026-11-03']);
+  assert.equal(pool.saved.size,2);
+});
 
 test('saves a day of biometric logs built by the server and reads saved days back', async () => {
   const pool = fakePool(), loads = [];

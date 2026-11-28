@@ -1,3 +1,11 @@
+# C-shift biometric OUT belongs to the shift's start date
+
+Owner, 28 November 2026: drivers/operators rotate through three shifts. A C-shift evening IN and next morning OUT are one duty on the IN date; the OUT must not become a separate miss punch in either biometric roster or trip-card comparison. Applies to existing punches too.
+
+- `server/attendance-register.mjs` pairs rotating and unscheduled overnight duties before rating them; raw timestamps remain unchanged. Day reads include adjacent punches, including across month boundaries. Configured overnight timings remain authoritative for late/early marks.
+- `dutyVersion` identifies saved automatic biometric sheets calculated with this rule. Older sheets are bypassed and read from raw punches; saved manual locks and HR corrections remain intact. Manual roster reads already calculate from raw punches and then apply corrections.
+- `server/attendance-register.test.mjs`, `server/site-register.test.mjs`, `server/biometric-day-store.test.mjs` and `src/nightShiftRoster.test.ts` cover pairing, existing snapshots and comparison. A genuinely missing IN or OUT still needs review.
+
 # Removing a line of Employee Master, and the leaving date
 
 Set by the owner on 23 November 2026: an employee is created, edited and deleted only in HR Pulse.
