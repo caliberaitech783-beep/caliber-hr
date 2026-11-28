@@ -69,3 +69,16 @@ it('January roster: driving on Republic Day pays it twice', () => {
   expect(group.tripCodes[PH]).toBe('P');
   expect(lineTotals(group.tripCodes, days, {holidays: group.holidays})).toMatchObject({present: 25, holidayWorked: 1, paidDays: 32});
 });
+
+it('only drivers and operators: office staff keep a holiday paid once, never twice or lost', () => {
+  const clerk = {...register(() => false), designation: 'Clerk', department: 'Accounts'};
+  clerk.days = clerk.days.map(day => day.date === PH ? {...day, status: 'P'} : day.date === '2027-01-25' || day.date === '2027-01-27' ? {...day, status: 'A'} : day);
+  const [worked] = buildRoster([clerk], null, days, '2027-02-01', DEFAULT_POLICY);
+  expect(worked.holidays).toEqual([]);
+  expect(bioLine(worked)).toMatchObject({holidayWorked: 0});
+  const [absent] = buildRoster([{...clerk, days: clerk.days.map(day => day.date === PH ? {...day, status: 'H'} : day)}], null, days, '2027-02-01', DEFAULT_POLICY);
+  expect(absent.bioCodes[PH], 'absent both sides, still paid').toBe('H');
+  const [driver] = buildRoster([{...clerk, designation: 'Dumper operator', days: clerk.days.map(day => day.date === PH ? {...day, status: 'H'} : day)}], null, days, '2027-02-01', DEFAULT_POLICY);
+  expect(driver.bioCodes[PH]).toBe('A');
+});
+const bioLine = (group: ReturnType<typeof buildRoster>[number]) => lineTotals(group.bioCodes, days, {holidays: group.holidays});

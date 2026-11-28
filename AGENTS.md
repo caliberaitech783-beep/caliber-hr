@@ -1,6 +1,6 @@
 # Public holiday (PH): worked is paid twice, absent on both sides is not paid
 
-Owner, 28 Nov 2026 (Pulse II HR deck, slide 10), for the driver / operator attendance roster used for final salary. Leave, OD and the PH HR sets per site already reach the roster from HR records; this adds the PH pay rule.
+Owner, 28 Nov 2026 (Pulse II HR deck, slide 10), for the driver / operator attendance roster used for final salary. Drivers and operators only (owner, 28 Nov 2026: "make it only for driver and operator"), by department or designation (`isDriverOperator`); everyone else keeps a holiday paid once, whatever the days around it. Leave, OD and the PH HR sets per site already reach the roster from HR records; this adds the PH pay rule.
 
 - Rule 1: present on the PH (trip card, punch, half day or miss punch): the work counts and the PH is credited once more, column "PH worked (extra)". A present PH earns 2.
 - Rule 2: not at work on the PH, but not absent the day before or the day after (present, leave, OD or comp off): the PH is credited (H).
