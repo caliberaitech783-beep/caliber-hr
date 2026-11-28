@@ -36,6 +36,18 @@ it('leaves the VTC tabs out where no VTC module is given (leave-only logins) and
   expect(screen.queryByRole('button',{name:'VTC approvals'})).toBeNull();
 });
 
+/* Owner, 28 Nov 2026 ("move the VTC to in OB/coal"): Workspace gives the VTC module only on the OB / COAL side. */
+it('goes back to the leave form when the side changes to Corporate / HO while a VTC tab is open',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>new Response(JSON.stringify(url.includes('vtc/pending')?{rows:[]}:url.includes('/records/')?{rows:[],total:0,page:1,pageSize:50}:url.endsWith('/lookups')?[]:{}))));
+  const form={title:'Form',menu:'Employee Master',fields:[],canWrite:true};
+  const view=(vtcModule?:typeof vtc)=><LeaveRequests grant="test" module={form} odModule={form} gateModule={form} vtcModule={vtcModule} actor="hr" canApprove={true} notice={()=>{}}/>;
+  const {rerender}=render(view(vtc));
+  fireEvent.click(screen.getByRole('button',{name:'VTC approvals'}));
+  rerender(view(undefined));
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Employee Leave Form'})).toHaveClass('selected'));
+  expect(screen.queryByRole('button',{name:'VTC Form'})).toBeNull();
+});
+
 it('picks the site and a driver / operator from Employee Master, checks the dates, saves the draft and submits',async()=>{
   const posts:{url:string;body:any}[]=[];
   vi.stubGlobal('fetch',vi.fn(async(url:string,options:any)=>{

@@ -113,7 +113,19 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  await screen.findByRole('button',{name:'Attendance Management'});
  const sidebar=screen.getByRole('complementary');
  const smartSearch=within(sidebar).getByLabelText('Smart search navigation');
- expect(within(sidebar).getByRole('button',{name:'VTC Batch Module'})).toBeTruthy();
+ // Owner, 28 Nov 2026 ("move the VTC to in OB/coal"): VTC Batch Module is an OB / COAL item of Employee Master, not a top-level menu.
+ const employeeSubmenu=()=>within(sidebar).getByLabelText('Employee Master submenus');
+ fireEvent.click(within(employeeSubmenu()).getByRole('button',{name:'Corporate / HO'}));
+ expect(within(sidebar).queryByRole('button',{name:'VTC Batch Module'})).toBeNull();
+ fireEvent.click(within(employeeSubmenu()).getByRole('button',{name:'OB / COAL'}));
+ const items=within(employeeSubmenu()).getAllByRole('button').map(b=>b.textContent);
+ expect(items.slice(0,4)).toEqual(['Corporate / HO','OB / COAL','Trial Form','VTC Batch Module']);
+ fireEvent.click(within(employeeSubmenu()).getByRole('button',{name:'VTC Batch Module'}));
+ await waitFor(()=>expect(document.querySelector('iframe[title="VTC Batch Module"]')).toBeTruthy());
+ expect(window.location.hash).toBe('#Employee%20Master');
+ fireEvent.click(within(employeeSubmenu()).getByRole('button',{name:'Corporate / HO'}));
+ await waitFor(()=>expect(document.querySelector('iframe[title="VTC Batch Module"]')).toBeNull());
+ expect(within(sidebar).queryByRole('button',{name:'VTC Batch Module'})).toBeNull();
  fireEvent.keyDown(window,{key:'k',ctrlKey:true});
  await waitFor(()=>expect(document.activeElement).toBe(smartSearch));
  fireEvent.change(smartSearch,{target:{value:'Payroll'}});
@@ -155,6 +167,28 @@ it('shows employee and payroll submenus inside the sidebar',async()=>{
  expect(screen.getByRole('heading',{name:'Asset Management',level:1})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Calendar'}));
  expect(screen.getByRole('heading',{name:'HR Calendar',level:2})).toBeTruthy();
+ window.location.hash='';
+});
+
+it('opens an old VTC Batch Module link inside Employee Master › OB / COAL, and keeps it for a login without Employee Master',async()=>{
+ const profile={name:'HR user',actor:'test',permissions:{application:'HR',hrDesktopAccess:['Employee Master','Leave / OD / Gatepass']}};
+ window.location.hash='VTC%20Batch%20Module';
+ sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile}));
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({profile,modules:{}})));
+ const {unmount}=render(<App/>);
+ await waitFor(()=>expect(document.querySelector('iframe[title="VTC Batch Module"]')).toBeTruthy());
+ await waitFor(()=>expect(window.location.hash).toBe('#Employee%20Master'));
+ const sidebar=screen.getByRole('complementary');
+ expect(within(within(sidebar).getByLabelText('Employee Master submenus')).getByRole('button',{name:'VTC Batch Module'})).toHaveAttribute('aria-pressed','true');
+ expect(within(sidebar).getByRole('button',{name:'OB / COAL'})).toHaveAttribute('aria-pressed','false');
+ unmount();sessionStorage.clear();localStorage.clear();
+ const vtcOnly={...profile,permissions:{application:'HR',hrDesktopAccess:['VTC Batch Module','Calendar']}};
+ window.location.hash='VTC%20Batch%20Module';
+ sessionStorage.setItem('hrPulseSession',JSON.stringify({grant:'a'.repeat(43),profile:vtcOnly}));
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({profile:vtcOnly,modules:{}})));
+ render(<App/>);
+ await waitFor(()=>expect(document.querySelector('iframe[title="VTC Batch Module"]')).toBeTruthy());
+ expect(within(screen.getByRole('complementary')).getByRole('button',{name:'VTC Batch Module'})).toBeTruthy();
  window.location.hash='';
 });
 
