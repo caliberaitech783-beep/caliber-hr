@@ -14,6 +14,10 @@ const dateInIndia = () => new Date(Date.now() + 330 * 60_000).toISOString().slic
 const displayDate = (date: string) => date.split('-').reverse().join('-');
 const columns = ['Date', 'Employee', 'Type', 'Equipment / vehicle', 'Time', 'Output', 'Hours', 'Status', 'Verification', 'OT'];
 const refreshMs = 30_000;
+export const busyRetryMs = 10_000;
+export const isMisBusy = (message: string) => /^MIS is busy\b|attendance feed is temporarily unavailable/i.test(message);
+/** A busy or slow Pulse-II is asked again by the page itself; the user is told so rather than to try later. */
+export const busyText = (message: string) => isMisBusy(message) ? 'MIS is busy. Asking again every 10 seconds by itself…' : message;
 const pageSize = 100;
 
 export default function MisAttendance({grant, shiftManagement=false, overtimeOnly=false, policy=DEFAULT_POLICY}: {grant: string; shiftManagement?: boolean; overtimeOnly?: boolean; policy?: AttendancePolicy}) {
@@ -63,21 +67,26 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
       setLoading(true);
+      // "MIS is busy" is asked again after 10 seconds, not 30 (28 Nov 2026).
+      let next = refreshMs;
       try {
         const query = new URLSearchParams({from: fromDate, to: toDate});
-        const data = await api<{canEdit: boolean; sites?: string[]}>(grant, 'attendance/mis?' + query);
+        const data = await api<{canEdit: boolean; sites?: string[]; stale?: {at: string; reason: string}}>(grant, 'attendance/mis?' + query);
         const rows = mapMisAttendance(data).filter(row => row.date >= fromDate && row.date <= toDate);
         if (lifetime.signal.aborted) return;
-        setResult({range, rows, sites: data.sites || [], updated: new Date(), canEdit: data.canEdit});
-        setFailure(undefined);
+        setResult({range, rows, sites: data.sites || [], updated: data.stale ? new Date(data.stale.at) : new Date(), canEdit: data.canEdit});
+        if (data.stale) { next = busyRetryMs; setFailure({range, message: busyText(data.stale.reason)}); }
+        else setFailure(undefined);
       } catch (error) {
         if (!lifetime.signal.aborted) {
-          setFailure({range, message: (error as Error).message});
+          const message = (error as Error).message;
+          if (isMisBusy(message)) next = busyRetryMs;
+          setFailure({range, message: busyText(message)});
         }
       } finally {
         if (!lifetime.signal.aborted) {
           setLoading(false);
-          timer = setTimeout(load, refreshMs);
+          timer = setTimeout(load, next);
         }
       }
     }
@@ -89,7 +98,7 @@ export default function MisAttendance({grant, shiftManagement=false, overtimeOnl
   }, [fromDate, toDate, range, valid, refresh, grant]);
 
   const current = result?.range === range ? result : undefined;
-  const awaitingResult = valid && !current && !error;
+  const awaitingResult = valid && !current && (!error || isMisBusy(error));
   const all = current?.rows || [];
   const sites = [...new Set([...(current?.sites || []), ...all.map(row => row.site)].filter(Boolean))].sort();
   const activeSite = sites.includes(site) ? site : '';

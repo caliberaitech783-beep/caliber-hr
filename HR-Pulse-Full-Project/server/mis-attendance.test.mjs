@@ -391,3 +391,37 @@ test('the check of saved days never waits in the line, and an attendance change 
   pulse.gates[2].open();
   await check.catch(() => {});
 });
+
+// 28 Nov 2026, "MIS is busy" on Shift roster: the all-sites read is shared between PCs, kept 30 seconds in memory, and
+// its last good answer is given (marked stale) while Pulse-II is busy, instead of an empty page.
+test('the all-sites read is shared, kept for 30 seconds, and the last answer stands in while MIS is busy', async () => {
+  let fetches = 0, answer = 'ok', release;
+  const pool = {async query(sql) { if (sql.includes("kind='sites'")) return {rows: [{name: 'Gevra'}]}; return {rows: []}; }};
+  const api = createMisAttendance(pool, {fetchMis: async url => {
+    fetches++;
+    assert.equal(url.searchParams.get('site'), null);
+    if (answer === 'wait') await new Promise(resolve => { release = resolve; });
+    if (answer === 'down') return new Response('{}', {status: 503});
+    return Response.json(report);
+  }});
+  const ask = actor => api({actor, permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16'}));
+  answer = 'wait';
+  const both = Promise.all([ask('first'), ask('second')]);
+  await new Promise(resolve => setImmediate(resolve));
+  release();
+  const [first, second] = await both;
+  assert.equal(fetches, 1, 'two PCs asking together share one read');
+  assert.deepEqual(second.otDuties, first.otDuties);
+  answer = 'ok';
+  await ask('third');
+  assert.equal(fetches, 1, 'a read within 30 seconds uses the copy');
+  const realNow = Date.now;
+  Date.now = () => realNow() + MIS_ATTENDANCE_CACHE_MS + 1;
+  try {
+    answer = 'down';
+    const stale = await ask('fourth');
+    assert.equal(fetches, 2);
+    assert.deepEqual(stale.otDuties, report.otDuties);
+    assert.match(stale.stale.reason, /temporarily unavailable/);
+  } finally { Date.now = realNow; }
+});
