@@ -485,6 +485,13 @@ it('In / Out sheet lists every employee and date with In, Out and the punches',a
  expect(io.getRow(3).getCell(12).value).toBe('08:00 Main gate');
 });
 
+it('omits A-Form from WCL Manual Biometric II exports',async()=>{
+ const groups=buildRoster([{...bio,aFormNo:'A-467'}],null,dates,'2026-11-06');
+ const wb=await rosterWorkbook({groups,dates,tripsLoaded:false,monthly:false,from:'2026-11-01',to:'2026-11-05',view:'manual2',showAForm:false});
+ expect(wb.getWorksheet('Roster')!.getRow(4).values).not.toContain('A-Form No.');
+ expect(wb.getWorksheet('In - Out')!.getRow(1).values).not.toContain('A-Form No.');
+});
+
 it('Biometric reads one day per request and joins the days: each person once, punches added up, cuts counted over the month',async()=>{
  const {streamBiometric,joinBiometricDays,setRetryPause}=await import('./rosterData');
  setRetryPause(async()=>{});
@@ -515,6 +522,15 @@ it('Manual Biometric reads every site in daily batches and retries only a failed
  expect(result.rows[0].days.map(day=>day.date)).toEqual(['2026-11-02','2026-11-03','2026-11-04']);
  expect(result.failedDays).toEqual([]);expect(result.canCorrect).toBe(true);
  expect(asked.filter(day=>day==='2026-11-03')).toHaveLength(2);
+});
+
+it('Manual Biometric II reads its separate import source',async()=>{
+ const {fetchManualBiometric}=await import('./rosterData');
+ const asked:string[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>{asked.push(url);return Response.json({from:'2026-11-02',to:'2026-11-02',policy:DEFAULT_POLICY,site:'Majri OB',machines:[],rows:[]});}));
+ await fetchManualBiometric('a'.repeat(43),'2026-11-02','2026-11-02','Majri OB',undefined,'manual2');
+ expect(asked).toHaveLength(1);
+ expect(asked[0]).toContain('/attendance/manual-biometric-ii?');
 });
 
 it('Biometric tab shows which days it is reading and how many punches arrived; machines without a bridge PC are not waited for',async()=>{

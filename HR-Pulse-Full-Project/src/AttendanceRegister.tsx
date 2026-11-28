@@ -7,7 +7,7 @@ import type {AttendancePolicy} from '../server/attendance-policy.mjs';
 
 /* Registers built from the server day calculation (GET attendance/register),
    which applies Settings › HR policy · attendance to biometric punches. */
-export type RegisterDay={date:string;status:string;calendar?:string;note:string;in:string;out:string;workedMinutes:number|null;late:boolean;early:boolean;missPunch:boolean;gatePassMinutes:number;gatePassDeduction:number;exempt:boolean;punches?:string[];
+export type RegisterDay={date:string;status:string;calendar?:string;shift?:string;note:string;in:string;out:string;workedMinutes:number|null;late:boolean;early:boolean;missPunch:boolean;gatePassMinutes:number;gatePassDeduction:number;exempt:boolean;punches?:string[];
  /** An HR administrator's correction of the day (Manual Biometric, server/manual-attendance-corrections.mjs). */
  corrected?:{by:string;at:string;reason:string;before:{status:string;in:string;out:string};status:string;in:string;out:string}};
 export type RegisterSummary={full:number;half:number;absent:number;missPunch:number;late:number;early:number;lateEarly:number;halfDutyCuts:number;duties:number;gatePassDeduction:number;H:number;L:number;CO?:number;OD:number;WO:number;IN:number};

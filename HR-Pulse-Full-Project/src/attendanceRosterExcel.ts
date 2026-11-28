@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import {downloadBlob} from './api';
 import {cardSummary,codeLabel,type RosterGroup} from './rosterModel';
-import {DIFF_HEADING,ROSTER_TOTALS,bioTotals,diffText,tripTotals,weekday,type RosterView} from './AttendanceRoster';
+import {DIFF_HEADING,ROSTER_TOTALS,bioTotals,diffText,isManualRosterView,tripTotals,weekday,type RosterView} from './AttendanceRoster';
 import {MANUAL_MISMATCH_COLOURS,manualMismatchTone} from './manualMismatchColors';
 
 /* Roster Excel (owner, 22 Nov 2026): the layout of the owner's sample sheet. Title, legend, weekday row, headings, then
@@ -11,14 +11,14 @@ export const CODE_COLOURS:Record<string,[string,string]>={P:['EAF3DE','27500A'],
  CO:['E1F5EE','085041'],L:['FBEAF0','72243E'],OD:['E6F1FB','0C447C'],MP:['FAECE7','712B13'],IN:['E1F5EE','085041'],'?':['F1EFE8','5F5E5A']};
 const fill=(argb:string):ExcelJS.Fill=>({type:'pattern',pattern:'solid',fgColor:{argb:'FF'+argb}});
 const show=(date:string)=>date.split('-').reverse().join('-');
-const TITLE:Record<RosterView,string>={trip:'Trip card (VLB · ELB · LMV)',bio:'Biometric',compare:'Trip Card against Bio Matric',manual:'Manual Biometric',manualMismatch:'M.B-Trip card Mismatch'};
-type Input={groups:RosterGroup[];dates:string[];tripsLoaded:boolean;monthly:boolean;from:string;to:string;view?:RosterView};
+const TITLE:Record<RosterView,string>={trip:'Trip card (VLB · ELB · LMV)',bio:'Biometric',compare:'Trip Card against Bio Matric',manual:'Manual Biometric',manual2:'Manual Biometric II',manualMismatch:'M.B-Trip card Mismatch'};
+type Input={groups:RosterGroup[];dates:string[];tripsLoaded:boolean;monthly:boolean;from:string;to:string;view?:RosterView;showAForm?:boolean};
 
-export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,view='compare'}:Input){
+export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,view='compare',showAForm=true}:Input){
  if(view==='manualMismatch')return manualMismatchWorkbook(groups,dates,from,to);
- const compare=view==='compare';
+ const compare=view==='compare',manual=isManualRosterView(view),aFormColumn=manual&&showAForm;
  const wb=new ExcelJS.Workbook();
- const fixed=[...(compare?['Source']:[]),'Sr. No.','Employee ID',...(view==='manual'?['A-Form No.']:[]),'Name','Site','Department','Designation'];
+ const fixed=[...(compare?['Source']:[]),'Sr. No.','Employee ID',...(aFormColumn?['A-Form No.']:[]),'Name','Site','Department','Designation'];
  const ws=wb.addWorksheet('Roster',{views:[{state:'frozen',xSplit:compare?4:3,ySplit:4}]});
  const extra=[...(monthly?['Gate pass deduction']:[]),...(view==='trip'?['Cards (days)']:[]),...(compare?[DIFF_HEADING]:[])];
  const heads=[...fixed,...dates.map(d=>Number(d.slice(8))),...ROSTER_TOTALS.map(([,l])=>l),...extra];
@@ -40,7 +40,7 @@ export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,v
   const miss=new Set(compare?g.mismatches.map(m=>m.date):[]);
   lines.forEach(([source,codes,totals,isTrip],j)=>{
    const row=ws.getRow(r+j);
-   [...(compare?[source]:[]),n+1,g.code,...(view==='manual'?[g.aFormNo]:[]),g.name,g.site,g.department,g.designation].forEach((v,i)=>{const c=row.getCell(i+1);c.value=v||(i>=fixed.length-3?'—':'');c.alignment={vertical:'middle',horizontal:i<fixed.length-4?'center':'left'};});
+   [...(compare?[source]:[]),n+1,g.code,...(aFormColumn?[g.aFormNo]:[]),g.name,g.site,g.department,g.designation].forEach((v,i)=>{const c=row.getCell(i+1);c.value=v||(i>=fixed.length-3?'—':'');c.alignment={vertical:'middle',horizontal:i<fixed.length-4?'center':'left'};});
    if(compare)row.getCell(1).font={bold:true,color:{argb:j?'FF0C447C':'FF633806'}};
    row.getCell(fixed.length-3).font={bold:true};
    if(!totals){ws.mergeCells(r+j,first,r+j,afterTotals-1);const c=row.getCell(first);c.value=isTrip?'No trip card or log book in these dates':'Biometric ID not linked in Biometric integration';c.font={italic:true,color:{argb:'FF7A698B'}};}
@@ -67,7 +67,7 @@ export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,v
   for(let c=1;c<=last;c++)ws.getCell(lastRow,c).border={...ws.getCell(lastRow,c).border,bottom:{style:'thin',color:{argb:'FFD8CDE6'}}};
   r+=lines.length;
  });
- const widths=[...(compare?[11]:[]),7,13,...(view==='manual'?[14]:[]),20,11,14,17];
+ const widths=[...(compare?[11]:[]),7,13,...(aFormColumn?[14]:[]),20,11,14,17];
  widths.forEach((w,i)=>{ws.getColumn(i+1).width=w;});
  dates.forEach((_,i)=>{ws.getColumn(first+i).width=4.6;});
  for(let c=totalsAt;c<=last;c++)ws.getColumn(c).width=9;
@@ -78,17 +78,17 @@ export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,v
  // Biometric and comparison: every employee's In, Out, worked hours and punches for each date (owner, 22 Nov 2026).
  if(view!=='trip'){
   const io=wb.addWorksheet('In - Out',{views:[{state:'frozen',ySplit:1}]});
-  const ih=['Employee ID',...(view==='manual'?['A-Form No.']:[]),'Name','Machine · ID','Date','Day','Code','In','Out','Worked hours','Late come','Early going','Every punch (machine)'];
+  const ih=['Employee ID',...(aFormColumn?['A-Form No.']:[]),'Name','Machine · ID','Date','Day','Code','In','Out','Worked hours','Late come','Early going','Every punch (machine)'];
   io.addRow(ih).eachCell(c=>{c.font={bold:true,color:{argb:'FF5C4D6E'}};c.fill=fill('F3F0F7');});
   const hm=(m:number|null)=>m==null?'':`${Math.floor(m/60)}:${String(m%60).padStart(2,'0')}`;
   for(const g of groups)for(const d of g.bio?.days||[]){
    if(!dates.includes(d.date))continue;
-   const row=io.addRow([g.linked?g.code:'Not linked',...(view==='manual'?[g.aFormNo]:[]),g.name,g.machines.join(', '),show(d.date),weekday(d.date),d.status,d.in||'',(d.out||'').replace(' (+1)',' +1'),hm(d.workedMinutes),d.late?'Yes':'',d.early?'Yes':'',(d.punches||[]).join(' · ')]),offset=view==='manual'?1:0;
+   const row=io.addRow([g.linked?g.code:'Not linked',...(aFormColumn?[g.aFormNo]:[]),g.name,g.machines.join(', '),show(d.date),weekday(d.date),d.status,d.in||'',(d.out||'').replace(' (+1)',' +1'),hm(d.workedMinutes),d.late?'Yes':'',d.early?'Yes':'',(d.punches||[]).join(' · ')]),offset=aFormColumn?1:0;
    const c=row.getCell(6+offset);if(CODE_COLOURS[d.status]){c.fill=fill(CODE_COLOURS[d.status][0]);c.font={bold:true,color:{argb:'FF'+CODE_COLOURS[d.status][1]}};c.alignment={horizontal:'center'};}
    if(d.late)row.getCell(7+offset).font={bold:true,color:{argb:'FFB45309'}};
    if(d.early)row.getCell(8+offset).font={bold:true,color:{argb:'FFA12626'}};
   }
-  [13,...(view==='manual'?[14]:[]),24,24,12,6,7,9,10,12,10,11,60].forEach((w,i)=>{io.getColumn(i+1).width=w;});
+  [13,...(aFormColumn?[14]:[]),24,24,12,6,7,9,10,12,10,11,60].forEach((w,i)=>{io.getColumn(i+1).width=w;});
   if(io.rowCount>1)io.autoFilter={from:{row:1,column:1},to:{row:io.rowCount,column:ih.length}};
  }
  if(compare){
@@ -108,7 +108,7 @@ export async function rosterWorkbook({groups,dates,tripsLoaded,monthly,from,to,v
 
 export async function downloadRosterExcel(input:Input){
  const wb=await rosterWorkbook(input);
- const name=input.view==='trip'?'trip-card':input.view==='bio'?'biometric':input.view==='manualMismatch'?'manual-biometric-vs-trip-card':'trip-vs-biometric';
+ const name=input.view==='trip'?'trip-card':input.view==='bio'?'biometric':input.view==='manual2'?'manual-biometric-ii':input.view==='manualMismatch'?'manual-biometric-vs-trip-card':'trip-vs-biometric';
  downloadBlob(`attendance-roster-${name}-${input.from}-to-${input.to}.xlsx`,new Blob([await wb.xlsx.writeBuffer()],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
 }
 

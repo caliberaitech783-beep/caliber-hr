@@ -1,3 +1,20 @@
+# M.B-Trip card Mismatch: a day still being read is not "— / —"
+
+Owner, 28 Nov 2026 (Gauri Pauni OB 2nd, 1 to 20 Nov: days 7 to 20 showed "— / —" after 162 seconds): "why it is showing --".
+
+- While the days arrive, a day not read on either side says "Reading…" in grey and its heading says "reading"; a side not read yet shows "…". "— / —" means only that both sides were read and neither has a record. The figures count only the days read on both sides, as before.
+- The roster's trip card day read (`sharedRead` in `server/mis-attendance.mjs`) no longer holds a database connection while it waits for Pulse-II: it held one of the server's five for up to 22 seconds, under an advisory lock, and the Manual Biometric reads beside it ran out of connections (5 second limit) and read again. The copy is read and written with two short queries; PCs asking the same day on one server share one read. Never hold a pooled connection across a call to another server.
+- The day read asks Pulse-II for the one site only (`cut=site`, Pulse-II PR 582). It is still one day per request, two at a time: asking for more at once filled Pulse-II's report queue on 28 Nov 2026 (PR 158). HR Pulse still trims the answer with its own site rule; the other sites of the day come from `misSiteDays`.
+- `server/mis-attendance.test.mjs` and `src/ManualDayEdit.test.tsx` check this.
+
+# C-shift biometric OUT belongs to the shift's start date
+
+Owner, 28 November 2026: drivers/operators rotate through three shifts. A C-shift evening IN and next morning OUT are one duty on the IN date; the OUT must not become a separate miss punch in either biometric roster or trip-card comparison. Applies to existing punches too.
+
+- `server/attendance-register.mjs` pairs rotating and unscheduled overnight duties before rating them; raw timestamps remain unchanged. Day reads include adjacent punches, including across month boundaries. Configured overnight timings remain authoritative for late/early marks.
+- `dutyVersion` identifies saved automatic biometric sheets calculated with this rule. Older sheets are bypassed and read from raw punches; saved manual locks and HR corrections remain intact. Manual roster reads already calculate from raw punches and then apply corrections.
+- `server/attendance-register.test.mjs`, `server/site-register.test.mjs`, `server/biometric-day-store.test.mjs` and `src/nightShiftRoster.test.ts` cover pairing, existing snapshots and comparison. A genuinely missing IN or OUT still needs review.
+
 # Removing a line of Employee Master, and the leaving date
 
 Set by the owner on 23 November 2026: an employee is created, edited and deleted only in HR Pulse.
@@ -211,6 +228,7 @@ Why: driver CMPL8812 (Majri OC, 8 Nov 2026) stood on a trip card in Pulse-II and
 - Duty times too (owner, 28 Nov 2026, on times corrected only in HR Pulse: "Yes, send to MIS"): **Duty times (OTP)** on a present duty sends mark `times` with `start` / `end` to Pulse-II, and **Take back times (OTP)** sends `card-times`. Pulse-II keeps them and sends the duty on those times (`performance` start / end, `hrTimes` on the duty line, part of the day's signature, `supports` holds `duty-times`). HR Pulse never applies times of its own.
 - `hr_mis_attendance_corrections` is no longer written: the server refuses every new correction (`mis/correction`). An old one, absent, pending or duty times, is shown on the duty ("Earlier HR-only … is not applied") and no longer changes anything; HR sets it again in Pulse-II with an OTP.
 - A trip card code that differs from the register only in its prefix (CMPL8812 / CMLL8812) is the same person when the number, the name and the site agree, and two written forms of one code add their days together instead of the second replacing the first (`buildRoster` in `src/rosterModel.ts`).
+- Pulse-II also names the days that changed (owner, 28 Nov 2026: "either re-read by itself, or any change made by MIS department, then upon update by them should auto update the hr saved days also", then "now build the MIS push and nightly check also"; `server/mis-trip-card-days.mjs`, tested in `server/trip-card-store.test.mjs`). Why: on 28 Nov 2026 the Trip card tab of Majri OC showed 781 employees from a copy saved on 22 Nov and 749 after a fresh read. Every two minutes Pulse-II sends the site-days whose cards, batches, Present entries or OTP changes moved (`POST /api/integrations/mis/trip-card-days/changed`), and once a night it reads the list of saved days (`GET /api/integrations/mis/trip-card-days`, no cards) and names every one that is not what it holds, or was saved before days were signed. Both use Pulse-II's key (`MIS_SYNC_KEY`). A named day gets `mis_changed_at`; `attendance/trip-cards` no longer hands such a day to the roster (it is listed under `changed`), so the roster reads it from Pulse-II like a day never saved, and Save trip cards stores the new copy and clears the mark. Never delete a saved day for this, and never read Pulse-II from these two routes. A signed day is found by the Pulse-II site key inside its signature; an unsigned one by `sameSite`.
 - Works with a Pulse-II that does not sign yet: the saved days are then shown as before and the change buttons say Pulse-II is not ready.
 - Not built yet: a list of the cards Pulse-II could not give to one person (the feed's `exceptions`) and of duties whose person has no line in HR Pulse.
 - `server/mis-attendance-master.test.mjs` (run by the deploy), `src/MisAttendance.test.tsx` and `src/rosterModel.test.tsx` check this.

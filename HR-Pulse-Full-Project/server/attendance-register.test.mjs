@@ -60,6 +60,38 @@ test('night shift punches after midnight stay on the shift start date', () => {
   assert.deepEqual([day.status, day.in, day.out, day.late, day.early], ['P', '20:50', '04:59 (+1)', false, true]);
 });
 
+test('rotating drivers and operators keep repeated C duties together even without a shift assignment', () => {
+  for (const designation of ['Tipper Driver', 'Dumper operator', '']) {
+    const employee = {...staff, designation, siteType: 'Site', site: 'Sasti OC', starts: null, ends: null};
+    const result = buildRegister({from: '2026-11-02', to: '2026-11-04', today: '2026-11-20', employees: [employee],
+      punches: [...punches('2026-11-02', '21:00'), ...punches('2026-11-03', '05:00', '21:00'), ...punches('2026-11-04', '05:00')]});
+    assert.deepEqual(result.rows[0].days.map(d => [d.in,d.out,d.status,d.missPunch]), [
+      ['21:00','05:00 (+1)','P',false], ['21:00','05:00 (+1)','P',false], ['','','A',false]
+    ]);
+    assert.equal(result.rows[0].summary.missPunch, 0);
+  }
+});
+
+test('a rotating operator on an old A assignment works C, including a one-day query across month end', () => {
+  const employee = {...staff, designation: 'Dumper operator', siteType: 'Site', starts: '05:00', ends: '13:00'};
+  const input = {today:'2026-12-02',employees:[employee],punches:[...punches('2026-11-30','05:00','21:00'),...punches('2026-12-01','05:00','21:00'),...punches('2026-12-02','05:00')]};
+  const night = only(buildRegister({...input,from:'2026-11-30',to:'2026-11-30'}));
+  assert.deepEqual([night.in,night.out,night.status,night.shift,night.late],['21:00','05:00 (+1)','P','C',false]);
+  const next = only(buildRegister({...input,from:'2026-12-01',to:'2026-12-01'}));
+  assert.deepEqual([next.in,next.out,next.status],['21:00','05:00 (+1)','P']);
+});
+
+test('day shifts are preserved; a night missing its OUT and a morning missing its IN still need review', () => {
+  const employees = [{...staff,starts:null,ends:null,designation:'Driver',siteType:'Site'}];
+  for (const times of [['05:00','13:00'],['13:00','21:00']]) {
+    const d = only(register({employees,punches:punches('2026-11-02',...times)}));
+    assert.deepEqual([d.in,d.out,d.status],[...times,'P']);
+  }
+  for (const time of ['21:00','05:00']) {
+    assert.equal(only(register({employees,punches:punches('2026-11-02',time)})).status,'MP');
+  }
+});
+
 test('trip card / logbook staff are not exempt and exempt roles are present without late marks', () => {
   const cfo = buildRegister({from: '2026-11-02', to: '2026-11-02', today: '2026-11-20', employees: [{...staff, designation: 'CFO'}], punches: punches('2026-11-02', '09:30', '11:00')});
   assert.deepEqual([cfo.rows[0].exempt, cfo.rows[0].days[0].status, cfo.rows[0].days[0].late], [true, 'P', false]);

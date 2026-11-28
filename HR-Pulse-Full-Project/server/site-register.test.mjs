@@ -25,6 +25,12 @@ function fakeDb({machines = [], punches = [], employeeCodes = {}} = {}) {
       return {rows: params[1].map(id=>id==='emp-1'?{id: 'emp-1', code: 'CMLL1021', name: 'Ramesh Kumar', site_id: 'other-site', site: 'Gevra', site_type: 'Site', shift: 'A', starts: '06:00', ends: '14:00', designation: 'Dumper operator', department: 'Operations', daily_wage: '800'}:
        {...Object.values(employeeCodes).find(e=>e.id===id),site_id:'site-sasti',site:'Sasti OC',site_type:'Site',shift:'A',starts:'06:00',ends:'14:00',daily_wage:'800'})};
     }
+    if (/WITH identity_map AS/.test(sql)) {
+      return {rows:punches.flatMap(p=>{
+        const index=params[2].findIndex((serial,n)=>serial===p.serial&&params[3][n]===p.id);
+        return index<0?[]:[{employee_id:params[4][index],at:p.at,place:p.serial}];
+      })};
+    }
     if (/SELECT (?:l.employee_id|e.id AS employee_id|a.employee_id),to_char/.test(sql)) {
       assert.deepEqual(params[3], machines.map(machine=>machine.serial));
       return {rows: punches.filter(p => links[p.serial + '|' + p.id]||employeeCodes[p.id]).map(p => ({employee_id: links[p.serial + '|' + p.id]||employeeCodes[p.id].id, at: p.at, place: place[p.serial]}))};
@@ -36,6 +42,18 @@ function fakeDb({machines = [], punches = [], employeeCodes = {}} = {}) {
 const site = {id: 'site-sasti', name: 'Sasti OC', siteType: 'Site'};
 const machines = [{serial: 'SST01', name: 'ESSL K90', location: 'Main gate', last_contact: null, online: true, last_punch: '2026-11-02 14:08', punches: 3},
   {serial: 'SST02', name: 'ESSL face', location: 'Workshop', last_contact: null, online: false, last_punch: '2026-11-02 21:55', punches: 1}];
+
+test('live and manual site rosters join the following morning OUT to an existing driver C duty', async()=>{
+  for(const manual of [false,true]){
+    const logs=['2026-11-01 05:00','2026-11-01 21:00','2026-11-02 05:00','2026-11-02 21:00','2026-11-03 05:00'].map(at=>({serial:'SST01',id:'1021',at}));
+    const db=fakeDb({machines,punches:logs,employeeCodes:{1021:{id:'emp-1',code:'CMLL1021',name:'Ramesh Kumar',designation:'Driver'}}});
+    const result=await loadSiteRegister(db,site,'2026-11-02','2026-11-02','2026-11-20',{manual});
+    const day=result.rows[0].days[0];
+    assert.deepEqual([day.in,day.out,day.status,day.missPunch],['21:00','05:00 (+1)','P',false]);
+    assert.equal(day.punches.length,2);
+    assert.match(day.punches[1],/^05:00 \(\+1\)/);
+  }
+});
 
 test('site roster: everyone who punched on the site machines, In / Out, each punch with its machine, unlinked IDs too', async () => {
   const db = fakeDb({machines, punches: [

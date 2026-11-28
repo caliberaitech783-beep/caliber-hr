@@ -34,11 +34,16 @@ function publicCorrection(row) {
 }
 
 export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
-  async function read(grant, from, to, selectedSite = '', refresh = false) {
+  // The reads of Pulse-II now running on this server, by copy key: a second PC asking the same waits for the same answer.
+  const inFlight = new Map();
+  // cut: the roster's day read asks Pulse-II for the one site only (cut=site, Pulse-II PR 582, 28 Nov 2026). Pulse-II
+  // keeps every line HR Pulse's trim keeps (its site rule is the same or looser), so trimMisReport still decides.
+  // A Pulse-II without the cut ignores the word and sends every site, as before.
+  async function read(grant, from, to, selectedSite = '', refresh = false, cut = false) {
     const ranges = reportRanges(from, to);
     const reports = await Promise.all(ranges.map(async ([start, end]) => {
       const url = new URL('/api/integrations/hr/attendance', ORIGIN);
-      url.search = new URLSearchParams({from: dayString(start), to: dayString(end), ...(selectedSite ? {site: selectedSite} : {}), ...(refresh ? {refresh: '1'} : {})});
+      url.search = new URLSearchParams({from: dayString(start), to: dayString(end), ...(selectedSite ? {site: selectedSite} : {}), ...(selectedSite && cut ? {cut: 'site'} : {}), ...(refresh ? {refresh: '1'} : {})});
       let response;
       try {
         response = await fetchMis(url, {
@@ -57,8 +62,15 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     // Pulse-II is the master of trip card attendance (owner, 27 Nov 2026). It signs every site-day it sends (days) and
     // lists what HR Pulse changed there with an OTP (hrChanges). signed: false while Pulse-II does not send them yet.
     const listed = key => reports.flatMap(report => Array.isArray(report[key]) ? report[key] : []);
+    // A cut answer names, per date, the sites that had lines before the cut (misSiteDays); kept only when every part was cut.
+    const isCut = reports.every(report => report.cut === 'site' && report.misSiteDays && typeof report.misSiteDays === 'object');
+    const misSiteDays = {};
+    if (isCut) for (const report of reports) for (const [date, sites] of Object.entries(report.misSiteDays)) {
+      if (Array.isArray(sites)) misSiteDays[date] = [...new Set([...(misSiteDays[date] || []), ...sites.filter(s => typeof s === 'string')])];
+    }
     return {...Object.fromEntries(sections.map(key => [key, reports.flatMap(report => report[key])])),
-      days: listed('days'), hrChanges: listed('hrChanges'), signed: reports.every(report => Array.isArray(report.days))};
+      days: listed('days'), hrChanges: listed('hrChanges'), signed: reports.every(report => Array.isArray(report.days)),
+      ...(isCut ? {cut: 'site', misSiteDays} : {})};
   }
 
   // One call to Pulse-II with the user's own grant. Pulse-II's own words come back when it refuses.
@@ -109,29 +121,40 @@ export function createMisAttendance(pool, {fetchMis = fetch} = {}) {
     const scope = await siteIds(pool, profile);
     // trim: the roster's day read keeps only the chosen site (mis-trim.mjs); its copy is kept apart from the whole answer's.
     const key = JSON.stringify([scope === null ? null : [...scope].map(String).sort(), siteKey(selectedSite), from, to, ...(trim ? ['site only'] : [])]);
-    const requestedAt = new Date();
-    const db = await pool.connect();
-    try {
-      await db.query('SELECT pg_advisory_lock(hashtext($1))', [key]);
-      const cached = (await db.query('SELECT report,fetched_at FROM hr_mis_attendance_cache WHERE cache_key=$1', [key])).rows[0];
-      const fetchedAt = cached ? Date.parse(cached.fetched_at) : NaN;
-      const fresh = Number.isFinite(fetchedAt) && requestedAt.getTime() - fetchedAt <= MIS_ATTENDANCE_CACHE_MS;
-      // A refresh that waited behind another PC uses the snapshot that PC just refreshed.
-      if (cached && (refresh ? fetchedAt >= requestedAt.getTime() : fresh)) return cached.report;
+    const requestedAt = Date.now();
+    // 28 Nov 2026 (roster 162 seconds for 4 of 20 days): this used to hold one of the server's five database connections,
+    // under an advisory lock, for the whole wait on Pulse-II (up to 22 seconds). Two trip card days at a time, on a few
+    // PCs, left the Manual Biometric reads no connection (5 second limit), so they failed, waited and read again. Now the
+    // database is used only for the two short queries on the copy; PCs asking the same key on this server share one read.
+    const joinable = () => {const running = inFlight.get(key); return running && (!refresh || running.startedAt >= requestedAt) ? running : null;};
+    const sharing = joinable();
+    if (sharing) return (await sharing.promise).report;
+    const cached = (await pool.query('SELECT report,fetched_at FROM hr_mis_attendance_cache WHERE cache_key=$1', [key])).rows[0];
+    const fetchedAt = cached ? Date.parse(cached.fetched_at) : NaN;
+    const fresh = Number.isFinite(fetchedAt) && requestedAt - fetchedAt <= MIS_ATTENDANCE_CACHE_MS;
+    // A refresh that came after another PC's refresh uses the snapshot that PC just made.
+    if (cached && (refresh ? fetchedAt >= requestedAt : fresh)) return cached.report;
+    const again = joinable();
+    if (again) return (await again.promise).report;
+    const entry = {startedAt: Date.now(), promise: (async () => {
       // A stale HR snapshot may also be hiding behind Pulse-II's cache. Refresh both layers so newly saved old VLB,
       // ELB and LMV records appear without a special correction for that employee or date.
       const asked = performance.now();
-      const whole = await read(grant, from, to, selectedSite, refresh || Boolean(cached));
+      const whole = await read(grant, from, to, selectedSite, refresh || Boolean(cached), trim);
       const answered = performance.now();
       const report = trim ? trimMisReport(whole, selectedSite, from, to) : whole;
-      await db.query(`INSERT INTO hr_mis_attendance_cache(cache_key,report,fetched_by,fetched_at) VALUES($1,$2,$3,now())
+      await pool.query(`INSERT INTO hr_mis_attendance_cache(cache_key,report,fetched_by,fetched_at) VALUES($1,$2,$3,now())
         ON CONFLICT(cache_key) DO UPDATE SET report=EXCLUDED.report,fetched_by=EXCLUDED.fetched_by,fetched_at=now()`, [key, report, profile.actor]);
+      return {report, misMs: Math.round(answered - asked), storeMs: Math.round(performance.now() - answered)};
+    })()};
+    inFlight.set(key, entry);
+    try {
+      const {report, misMs, storeMs} = await entry.promise;
       // Where the time of a day's read went (28 Nov 2026), so it can be read on live: waiting for Pulse-II's answer, and
-      // storing the copy. Only on the cut answer; it is not stored, so a copy served to a second PC carries none.
-      return trim ? {...report, timing: {misMs: Math.round(answered - asked), storeMs: Math.round(performance.now() - answered)}} : report;
+      // storing the copy. Only on the cut answer of the PC that asked; it is not stored, so a copy served later carries none.
+      return trim ? {...report, timing: {misMs, storeMs}} : report;
     } finally {
-      await db.query('SELECT pg_advisory_unlock(hashtext($1))', [key]).catch(() => {});
-      db.release();
+      if (inFlight.get(key) === entry) inFlight.delete(key);
     }
   }
 

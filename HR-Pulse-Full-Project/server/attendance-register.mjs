@@ -10,6 +10,8 @@ const DAY_MS = 86_400_000;
 const EARLY_WINDOW = 120;
 // Punches this close together count as one (a double press).
 const DOUBLE_PRESS = 5;
+// Change when duty assignment changes: older saved sheets must be read from raw punches again.
+export const BIOMETRIC_DUTY_VERSION = 2;
 
 const dayNumber = date => Date.parse(date + 'T00:00:00Z') / DAY_MS;
 const dateOf = number => new Date(number * DAY_MS).toISOString().slice(0, 10);
@@ -62,10 +64,35 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
     const starts = clockMinutes(employee.starts), rawEnd = clockMinutes(employee.ends);
     const ends = starts != null && rawEnd != null ? (rawEnd <= starts ? rawEnd + 1440 : rawEnd) : null;
     const anchor = starts == null ? 0 : starts - EARLY_WINDOW;
-    const duties = new Map(), places = new Map();
+    const duties = new Map(), places = new Map(), nightDuties = new Set();
+    // Drivers/operators rotate A/B/C; a fixed Employee Master shift cannot split their actual C duty.
+    // With no shift (manual imports and unlinked IDs), use the same chronological pairing.
+    const rotating = starts == null || (employee.siteType !== 'Office' && /\b(?:drivers?|operators?)\b/i.test(employee.designation || ''));
+    let night = null;
     for (const {minute, where} of (byEmployee.get(employee.id) || []).sort((a, b) => a.minute - b.minute)) {
-      const duty = Math.floor((minute - anchor) / 1440);
-      if (duty < first || duty > last) continue;
+      const calendar = Math.floor(minute / 1440), time = minute - calendar * 1440;
+      let duty = Math.floor((minute - anchor) / 1440);
+      if (rotating) {
+        // Up to 11:00 allows a late C OUT, without swallowing the next evening's IN.
+        // An earlier daytime punch prevents treating a B-shift OUT as a C-shift IN.
+        duty = night != null && calendar === night + 1 && time <= 660 ? night : calendar;
+        const earlier = duties.get(calendar) || [];
+        // A one-day read includes only one preceding day. Its first morning OUT may
+        // have no evening IN in the query. Do not let that orphan turn 05:00/21:00
+        // into a fictitious 16-hour daytime duty and break every subsequent C pair.
+        if (duty === calendar && time >= 1140 && earlier.length && earlier.at(-1) <= 660 && earlier.at(-1)-earlier[0] <= DOUBLE_PRESS) {
+          const previous = calendar-1;
+          duties.set(previous,[...(duties.get(previous)||[]),...earlier.map(t=>t+1440)]);
+          duties.delete(calendar);
+          if (places.has(calendar)) {
+            places.set(previous,[...(places.get(previous)||[]),...places.get(calendar).map(text=>text.replace(/^(\d{2}:\d{2}) /,'$1 (+1) '))]);
+            places.delete(calendar);
+          }
+        }
+        if (duty === calendar && !duties.has(duty) && time >= 1140) {
+          night = duty;nightDuties.add(duty);
+        }
+      }
       duties.set(duty, [...(duties.get(duty) || []), minute - duty * 1440]);
       if (where) places.set(duty, [...(places.get(duty) || []), clock(minute - duty * 1440) + ' ' + where]);
     }
@@ -78,7 +105,9 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       const outMinute = times.length && times[times.length - 1] - times[0] > DOUBLE_PRESS ? times[times.length - 1] : null;
       const gate = passMinutes.get(employee.id + '|' + date) || 0;
       const wage = employee.dailyWage > 0 ? employee.dailyWage : employee.monthlyPay > 0 ? employee.monthlyPay / daysInMonth(date) : 0;
-      const result = evaluateDay({inMinute, outMinute, shiftStart: starts, shiftEnd: ends, designation: employee.designation, site: employee.site,
+      const inferredNight = nightDuties.has(number);
+      const configuredNight = starts != null && rawEnd != null && rawEnd < starts;
+      const result = evaluateDay({inMinute, outMinute, shiftStart: inferredNight && !configuredNight ? 1260 : starts, shiftEnd: inferredNight && !configuredNight ? 1740 : ends, designation: employee.designation, site: employee.site,
         gatePassMinutes: gate, dailyWage: wage}, policy);
       const holiday = holidayFor(date);
       const leave = leaves.find(l => l.employeeId === employee.id && between(date, l.from, l.to));
@@ -101,7 +130,7 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       if (status === 'MP') note = 'Only one punch — regularize the missing punch';
       const counts = ['P', 'HD', 'A', 'MP'].includes(status);
       days.push({
-        date, status, calendar, note, in: clock(inMinute), out: clock(outMinute), workedMinutes: counts ? result.workedMinutes : null,
+        date, status, calendar, note, ...(inferredNight ? {shift: 'C'} : {}), in: clock(inMinute), out: clock(outMinute), workedMinutes: counts ? result.workedMinutes : null,
         late: counts && result.late, early: counts && result.early, missPunch: status === 'MP',
         gatePassMinutes: gate, gatePassDeduction: result.gatePassDeduction, exempt,
         // Site roster: every punch of the day with the machine it came from ("05:52 Main gate").
@@ -123,7 +152,7 @@ export function buildRegister({from, to, today, policy = DEFAULT_POLICY, employe
       shiftStart: clock(starts), shiftEnd: clock(ends), days, months, summary: total
     };
   });
-  return {from, to, policy, rows};
+  return {from, to, policy, rows, dutyVersion: BIOMETRIC_DUTY_VERSION};
 }
 
 /* ---------- database ---------- */
@@ -184,8 +213,8 @@ const HOLIDAYS = `SELECT name,data->>'date' AS date,coalesce(data->>'siteId','')
 
 /** options.policy / options.holidays: already read by the caller (the site roster reads them once for its two halves). */
 export async function loadRegister(db, sites, from, to, today, options = {}) {
-  const {devices = null, employeeIds = null, manual = false, matchAForm = false, manualMatches = []} = options;
-  const punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
+  const {devices = null, employeeIds = null, manual = false, matchAForm = false, manualMatches = [], manualSource = 'manual1'} = options;
+  const punchTable=manual?(manualSource==='manual2'?'hr_manual_biometric_ii_punches':'hr_manual_biometric_punches'):'hr_attendance_punches';
   const policy = options.policy || (await readPolicy(db)).policy;
   const employeeQuery=manual?`
    SELECT e.id,e.data->>'employeeId' AS code,e.name,e.site_id,e.site_code,e.site_name AS site,'' AS site_type,
@@ -265,7 +294,7 @@ export async function loadRegister(db, sites, from, to, today, options = {}) {
  * site {id,name,siteType}. Returns the register plus the site's machines (status, last punch, punches in these dates).
  */
 export async function loadSiteRegister(db, site, from, to, today, options = {}) {
-  const manual=options.manual===true,punchTable=manual?'hr_manual_biometric_punches':'hr_attendance_punches';
+  const manual=options.manual===true,manualSource=options.manualSource||'manual1',punchTable=manual?(manualSource==='manual2'?'hr_manual_biometric_ii_punches':'hr_manual_biometric_punches'):'hr_attendance_punches';
   // NCL's exported log identifies a person by A-Form No.; WCL exports the Employee ID.
   const matchAForm=manual&&/^(?:jayant|dudhichua)\b/i.test(String(site.name||'').trim());
   const {rows: machines} = await db.query(`SELECT d.serial,d.name,d.location,d.ip_address,d.last_contact,coalesce(d.last_contact>now()-interval '2 minutes',false) AS online,
@@ -320,7 +349,7 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   const manualMatches=manual?ids.filter(isUniqueMatch).map(r=>({device_serial:String(r.device_serial),biometric_id:String(r.biometric_id),employee_id:String(r.employee_id)})):[];
   // The policy and the holidays are the same for the linked and the unlinked half: read once, not once for each.
   const holidays = ids.length ? (await db.query(HOLIDAYS, [from, to])).rows : [];
-  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm, manualMatches, policy, holidays})).rows : [];
+  const linked = linkedIds.length ? (await loadRegister(db, null, from, to, today, {devices: serials, employeeIds: linkedIds, manual, matchAForm, manualMatches, manualSource, policy, holidays})).rows : [];
   const unlinked = [...new Map(ids.filter(r => !isUniqueMatch(r))
     .map(r => [`${r.device_serial}|${r.biometric_id}`, r])).values()];
   const unlinkedKeys=new Set(unlinked.map(r=>`${r.device_serial}|${r.biometric_id}`));
@@ -343,5 +372,5 @@ export async function loadSiteRegister(db, site, from, to, today, options = {}) 
   // logs even though the punches came from Dudhichua's machine.
   const rows = [...linked.map(r => ({...r, ...(manual?{siteId:String(site.id),site:site.name}:{}), linked: true})), ...others.map(r => ({...r, linked: false}))]
     .map(r => ({...r, machinesUsed: [...new Set(used.get(r.id) || [])]}));
-  return {from, to, policy, site: site.name, machines: machineList, rows};
+  return {from, to, policy, site: site.name, machines: machineList, rows, dutyVersion: BIOMETRIC_DUTY_VERSION};
 }

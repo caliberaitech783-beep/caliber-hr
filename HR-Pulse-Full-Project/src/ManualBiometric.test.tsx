@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import {fireEvent,render,screen} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
-import {isManualMismatchEmployee,RosterTable,VIEW_TABS,type TripState} from './AttendanceRoster';
+import {isManualBiometricIIEmployee,isManualMismatchEmployee,manualUsesAForm,RosterTable,VIEW_TABS,type TripState} from './AttendanceRoster';
 import {MANUAL_MISMATCH_COLOURS,manualMismatchTone} from './manualMismatchColors';
 
 describe('Manual Biometric attendance roster',()=>{
@@ -26,8 +26,25 @@ describe('Manual Biometric attendance roster',()=>{
   expect(MANUAL_MISMATCH_COLOURS['absent-present'].fill).toBe('FAEEDA');
   expect(MANUAL_MISMATCH_COLOURS['present-absent'].fill).toBe('FCEBEB');
  });
+ it('keeps Manual Biometric II to non-Driver and non-Operator staff',()=>{
+  const employee=(department:string,designation:string)=>({department,designation} as never);
+  expect(isManualBiometricIIEmployee(employee('HR','HR Executive'))).toBe(true);
+  expect(isManualBiometricIIEmployee(employee('Maintenance','Fitter'))).toBe(true);
+  expect(isManualBiometricIIEmployee(employee('DRIVERS','Office Staff'))).toBe(false);
+  expect(isManualBiometricIIEmployee(employee('Production','Tipper Driver'))).toBe(false);
+  expect(isManualBiometricIIEmployee(employee('OPERATORS','Helper'))).toBe(false);
+  expect(isManualBiometricIIEmployee(employee('Production','Dozer Operator'))).toBe(false);
+ });
+ it('uses A-Form only for NCL manual logs, not WCL',()=>{
+  expect(manualUsesAForm('Jayant OB East')).toBe(true);
+  expect(manualUsesAForm('Dudhichua East')).toBe(true);
+  expect(manualUsesAForm('Dudhichua West')).toBe(true);
+  expect(manualUsesAForm('Dhoptala OB 2nd')).toBe(false);
+  expect(manualUsesAForm('Gauri Pauni OB 2nd')).toBe(false);
+  expect(manualUsesAForm('Sasti OC')).toBe(false);
+ });
  it('is a separate tab with import and no trip-card comparison controls',()=>{
-  expect(VIEW_TABS.map(([,label])=>label)).toEqual(['Trip card (VLB · ELB · LMV)','Biometric','Trip card vs Biometric','Manual Biometric','M.B-Trip card Mismatch']);
+  expect(VIEW_TABS.map(([,label])=>label)).toEqual(['Trip card (VLB · ELB · LMV)','Biometric','Trip card vs Biometric','Manual Biometric','Manual Biometric II','M.B-Trip card Mismatch']);
   const trip:TripState={status:'idle',message:'',rows:null};
   render(<RosterTable groups={[]} dates={['2026-11-24']} view="manual" trip={trip}
    bio={{running:false,message:'Imported biometric attendance',days:{},counts:{},errors:{},failed:[]}}
@@ -37,6 +54,23 @@ describe('Manual Biometric attendance roster',()=>{
   expect(screen.queryByText('Only employees with a difference')).not.toBeInTheDocument();
   expect(screen.queryByRole('columnheader',{name:'Diff. of Trip Card and Bio-matric'})).not.toBeInTheDocument();
   expect(screen.getByRole('columnheader',{name:'A-Form No.'})).toBeInTheDocument();
+ });
+ it('gives Manual Biometric II the DAT import controls',()=>{
+  const trip:TripState={status:'idle',message:'',rows:null};
+  render(<RosterTable groups={[]} dates={['2026-11-24']} view="manual2" trip={trip}
+   bio={{running:false,message:'Imported biometric attendance',days:{},counts:{},errors:{},failed:[]}}
+   monthly={false} from="2026-11-24" to="2026-11-24" onImport={vi.fn()} emptyText="No Manual Biometric II attendance imported."/>);
+  expect(screen.getByRole('button',{name:'Import DAT file'})).toBeInTheDocument();
+  expect(screen.getByText('No Manual Biometric II attendance imported.')).toBeInTheDocument();
+  expect(screen.getByRole('columnheader',{name:'A-Form No.'})).toBeInTheDocument();
+ });
+ it('hides A-Form No. from WCL Manual Biometric II',()=>{
+  const trip:TripState={status:'idle',message:'',rows:null};
+  render(<RosterTable groups={[]} dates={['2026-11-24']} view="manual2" trip={trip} showAForm={false}
+   bio={{running:false,message:'Imported biometric attendance',days:{},counts:{},errors:{},failed:[]}}
+   monthly={false} from="2026-11-24" to="2026-11-24"/>);
+  expect(screen.queryByRole('columnheader',{name:'A-Form No.'})).not.toBeInTheDocument();
+  expect(screen.getByRole('columnheader',{name:'Employee ID'})).toBeInTheDocument();
  });
  it('places a working Delete All beside the day-box controls',()=>{
   const remove=vi.fn(),trip:TripState={status:'idle',message:'',rows:null};

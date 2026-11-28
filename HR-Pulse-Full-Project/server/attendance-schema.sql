@@ -40,10 +40,27 @@ CREATE TABLE IF NOT EXISTS hr_manual_biometric_punches(
  imported_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(device_serial,biometric_id,punched_at)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS hr_manual_biometric_punches_punch ON hr_manual_biometric_punches(device_serial,biometric_id,punched_at);
 CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_time ON hr_manual_biometric_punches(punched_at);
 CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_device_time ON hr_manual_biometric_punches(device_serial,punched_at);
 -- Manual roster first narrows by machine and day, then reads the biometric ID without returning to the table.
 CREATE INDEX IF NOT EXISTS hr_manual_biometric_punches_device_time_id ON hr_manual_biometric_punches(device_serial,punched_at,biometric_id);
+
+-- Manual Biometric II is deliberately isolated from the original imported log.
+CREATE TABLE IF NOT EXISTS hr_manual_biometric_ii_punches(
+ id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+ device_serial text NOT NULL,
+ biometric_id text NOT NULL,
+ punched_at timestamp NOT NULL,
+ verify text NOT NULL DEFAULT '',
+ punch_type text NOT NULL DEFAULT '',
+ imported_by text NOT NULL DEFAULT '',
+ imported_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(device_serial,biometric_id,punched_at)
+);
+CREATE INDEX IF NOT EXISTS hr_manual_biometric_ii_punches_time ON hr_manual_biometric_ii_punches(punched_at);
+CREATE INDEX IF NOT EXISTS hr_manual_biometric_ii_punches_device_time ON hr_manual_biometric_ii_punches(device_serial,punched_at);
+CREATE INDEX IF NOT EXISTS hr_manual_biometric_ii_punches_device_time_id ON hr_manual_biometric_ii_punches(device_serial,punched_at,biometric_id);
 
 -- Names stored on the machine for each user ID. Shown only as a hint to help
 -- HR link a machine ID to the right employee.
@@ -136,6 +153,11 @@ CREATE TABLE IF NOT EXISTS hr_trip_card_days(
 -- Owner, 27 Nov 2026: Pulse-II is the master of trip card attendance. What Pulse-II signed for the site's day when the
 -- rows were read; the roster shows a saved day only while Pulse-II still gives this signature (NULL: saved before).
 ALTER TABLE hr_trip_card_days ADD COLUMN IF NOT EXISTS mis_signature text;
+-- Owner, 28 Nov 2026: Pulse-II tells HR Pulse which site-days changed after they were saved, and checks every saved day
+-- once a night (mis-trip-card-days.mjs). A day with mis_changed_at is not handed to the roster, which then reads it from
+-- Pulse-II; "Save trip cards" stores the new copy and clears the mark. mis_changed_note: why Pulse-II named the day.
+ALTER TABLE hr_trip_card_days ADD COLUMN IF NOT EXISTS mis_changed_at timestamptz;
+ALTER TABLE hr_trip_card_days ADD COLUMN IF NOT EXISTS mis_changed_note text;
 
 -- Attendance roster › Biometric (owner, 23 Nov 2026): one site's biometric roster for one day (every punch on the site's
 -- machines, rated with the attendance policy), saved by "Save biometric" (biometric-day-store.mjs). register: the site
@@ -153,6 +175,18 @@ CREATE TABLE IF NOT EXISTS hr_biometric_days(
 
 -- Manual Biometric snapshots. A saved site/day is immutable and also blocks any later manual-log import for that day.
 CREATE TABLE IF NOT EXISTS hr_manual_biometric_days(
+ site text NOT NULL,
+ day date NOT NULL,
+ register jsonb NOT NULL,
+ punches integer NOT NULL,
+ people integer NOT NULL,
+ saved_by text NOT NULL,
+ saved_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(site,day)
+);
+
+-- Manual Biometric II saved logs and locks are separate from Manual Biometric I.
+CREATE TABLE IF NOT EXISTS hr_manual_biometric_ii_days(
  site text NOT NULL,
  day date NOT NULL,
  register jsonb NOT NULL,

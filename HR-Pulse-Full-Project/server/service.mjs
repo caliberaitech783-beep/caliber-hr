@@ -15,6 +15,7 @@ import {employeeNumber,heldNumbers,nextEmployeeNumber,otherPersonWithNumber,hold
 import {createMisEmployeeSync} from './mis-employee-sync.mjs';
 import {createMisSiteMove} from './mis-site-move.mjs';
 import {createMisBiometricPunches} from './mis-biometric-punches.mjs';
+import {createMisTripCardDays} from './mis-trip-card-days.mjs';
 import {createReportingManagers} from './reporting-managers.mjs';
 import {createTransferOptions} from './transfer-options.mjs';
 import {validateTrialJoining} from './trial-joining.mjs';
@@ -252,6 +253,7 @@ export function createService(pool,{telegram=createTelegramNotifier()}={}) {
     ...createMisEmployeeSync(pool),
     ...createMisSiteMove(pool),
     ...createMisBiometricPunches(pool),
+    ...createMisTripCardDays(pool),
     ...createReportingManagers(pool),
     ...createTransferOptions(pool),
     async config(profile) { const scoped=assignedSites(profile)!==null;return {profile,modules:Object.fromEntries(Object.entries(modules).filter(([kind])=>canRead(profile,kind)).map(([kind,config])=>[kind,{...config,canWrite:canWrite(profile,kind)&&(!scoped||Object.hasOwn(managementModules,kind)||[...complianceKinds,'employees','sites','shifts','holidays','leaveBlocks','leaveRequests','leaveAllocations','leaveEncashments','outDutyRequests','gatePasses'].includes(kind))}]))}; },

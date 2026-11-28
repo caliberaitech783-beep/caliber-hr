@@ -110,6 +110,14 @@ export function createApi({ query, service, authenticate=async()=>null, allowedO
         if(req.method!=='GET'){res.setHeader('Allow','GET');throw problem('Method not allowed',405);}
         return send(200,await service.misBiometricPunches(req.headers['x-mis-sync-key'],{from:url.searchParams.get('from'),to:url.searchParams.get('to')}));
       }
+      // Pulse-II keeping the saved trip card days in step (mis-trip-card-days.mjs): its own key. GET lists the saved days
+      // without their cards; POST …/changed marks the site-days Pulse-II changed, so the roster reads them again.
+      if(path==='/api/integrations/mis/trip-card-days'||path==='/api/integrations/mis/trip-card-days/changed'){
+        if(!service?.misTripCardDays)throw problem('Service unavailable',503);
+        const wanted=path.endsWith('/changed')?'POST':'GET';
+        if(req.method!==wanted){res.setHeader('Allow',wanted);throw problem('Method not allowed',405);}
+        return send(200,await service.misTripCardDays(req.headers['x-mis-sync-key'],wanted,{from:url.searchParams.get('from'),to:url.searchParams.get('to')},wanted==='POST'?await body(req,200_000):null));
+      }
       // Pulse-II copying the Employee Master, what changed in it, and the approved transfers (mis-employee-sync.mjs): its own key, read only.
       const misSync=path.match(/^\/api\/integrations\/mis\/(employees|employee-changes|transfers)$/);
       if(misSync){

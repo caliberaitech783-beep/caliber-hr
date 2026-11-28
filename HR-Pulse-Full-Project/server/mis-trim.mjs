@@ -23,6 +23,8 @@ function knownSites(report) {
   const names = new Set(list(report.knownSites).filter(name => typeof name === 'string' && name));
   const add = value => { if (typeof value === 'string' && value) names.add(value); };
   for (const key of ['otDuties', 'attendanceEquipment', 'hrChanges', 'attendanceShifts', 'days', 'ot']) for (const entry of list(report[key])) { add(entry?.site); add(entry?.siteKey); }
+  // An answer Pulse-II already cut to the site (cut=site) names the sites that had lines before the cut.
+  if (report.misSiteDays && typeof report.misSiteDays === 'object') for (const sites of Object.values(report.misSiteDays)) for (const name of list(sites)) add(name);
   return [...names].sort();
 }
 const siteKey = site => String(site || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -35,7 +37,10 @@ export function trimMisReport(report, site, from, to) {
   const mine = entry => Boolean(entry) && (isSite(entry.site) || isSite(entry.siteKey));
   const duties = list(report.otDuties), lines = list(report.attendanceEquipment), changes = list(report.hrChanges);
   const inDates = entry => entry.date >= from && entry.date <= to;
-  const misSites = [...new Set([...duties, ...lines, ...changes.filter(c => c?.mark === 'absent')].filter(e => e && inDates(e)).map(e => e.site).filter(Boolean))].sort();
+  // An answer Pulse-II already cut to the site (cut=site) no longer holds the other sites' lines; it names them in misSiteDays.
+  const cutSites = report.cut === 'site' && report.misSiteDays && typeof report.misSiteDays === 'object'
+    ? Object.entries(report.misSiteDays).filter(([date]) => date >= from && date <= to).flatMap(([, sites]) => list(sites)) : [];
+  const misSites = [...new Set([...cutSites, ...[...duties, ...lines, ...changes.filter(c => c?.mark === 'absent')].filter(e => e && inDates(e)).map(e => e.site)].filter(Boolean))].sort();
 
   // A person's shifts at this site, by every key the roster may give the line (the card's, a line's, a change's).
   const slots = new Set();

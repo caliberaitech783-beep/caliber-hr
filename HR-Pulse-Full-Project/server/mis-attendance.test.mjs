@@ -53,8 +53,8 @@ test('two PCs receive the same centrally cached site and day report', async () =
     release() {}
   };
   const pool = {
-    connect: async () => db,
-    async query(sql) {
+    async query(sql, args) {
+      if (sql.startsWith('SELECT report') || sql.startsWith('INSERT INTO hr_mis_attendance_cache')) return db.query(sql, args);
       if (sql.includes('hr_mis_attendance_corrections')) return {rows: []};
       if (sql.includes("kind='sites'")) return {rows: [{name: 'Gevra'}]};
       return {rows: []};
@@ -88,8 +88,8 @@ test('a stale historical snapshot refreshes Pulse-II and returns newly saved tri
     release() {}
   };
   const pool = {
-    connect: async () => db,
-    async query(sql) {
+    async query(sql, args) {
+      if (sql.startsWith('SELECT report') || sql.startsWith('INSERT INTO hr_mis_attendance_cache')) return db.query(sql, args);
       if (sql.includes('hr_mis_attendance_corrections')) return {rows: []};
       if (sql.includes("kind='sites'")) return {rows: [{name: 'Dhoptala OB 2nd'}]};
       return {rows: []};
@@ -111,8 +111,8 @@ test('an explicit refresh forwards the exact selected site and bypass flag to Pu
   let requestedUrl;
   const db = {async query(sql) {if (sql.startsWith('SELECT report')) return {rows: []};return {rows: []};}, release() {}};
   const pool = {
-    connect: async () => db,
-    async query(sql) {
+    async query(sql, args) {
+      if (sql.startsWith('SELECT report') || sql.startsWith('INSERT INTO hr_mis_attendance_cache')) return db.query(sql, args);
       if (sql.includes('hr_mis_attendance_corrections')) return {rows: []};
       if (sql.includes("kind='sites'")) return {rows: [{name: 'Dudhichua OB East'}]};
       return {rows: []};
@@ -150,8 +150,8 @@ test('the roster\'s day read keeps the chosen site only, in the answer and in th
     release() {}
   };
   const pool = {
-    connect: async () => db,
     async query(sql, args) {
+      if (sql.startsWith('SELECT report') || sql.startsWith('INSERT INTO hr_mis_attendance_cache')) return db.query(sql, args);
       if (sql.includes('hr_mis_attendance_corrections')) {correctionIds = args[0]; return {rows: []};}
       if (sql.includes("kind='sites'")) return {rows: [{name: 'Majri OC'}]};
       return {rows: []};
@@ -221,4 +221,72 @@ test('a site of almost another site\'s name is given only its own trip cards and
   const signed = await api({actor: 'hr', permissions: {}}, grant, 'mis/days', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16'}));
   assert.deepEqual(signed.days.map(d => d.signature), ['w']);
   assert.deepEqual(signed.knownSites, ['dudhichua east ob', 'dudhichua ob']);
+});
+
+// 28 Nov 2026 (roster 162 seconds for 4 of 20 days): waiting on Pulse-II held one of the server's five database
+// connections, so the Manual Biometric reads beside it ran out of connections. No connection is held while waiting now,
+// two PCs asking the same day at the same moment share one read, and the roster's day read asks Pulse-II for its site only.
+test('the day read holds no database connection while it waits, shares one read, and asks Pulse-II for the site only', async () => {
+  const stored = new Map();
+  let fetches = 0, requestedUrl, release;
+  const answered = new Promise(resolve => {release = resolve;});
+  const pool = {
+    connect: async () => {throw new Error('no connection may be held while Pulse-II is asked');},
+    async query(sql, args) {
+      if (sql.startsWith('SELECT report')) {const report = stored.get(args[0]); return {rows: report ? [{report, fetched_at: new Date()}] : []};}
+      if (sql.startsWith('INSERT INTO hr_mis_attendance_cache')) stored.set(args[0], args[1]);
+      if (sql.includes("kind='sites'")) return {rows: [{name: 'Gauri Pauni OB 2nd'}]};
+      return {rows: []};
+    }
+  };
+  const line = (site, employeeId) => ({date: '2026-11-07', site, siteKey: site.toLowerCase(), shift: 'S1', employeeId, employeeKey: employeeId, employeeName: employeeId});
+  const cutAnswer = {...report, otDuties: [line('Gauri Pauni OC (2nd)', 'CMLL16436')], days: [], hrChanges: [], cut: 'site',
+    misSiteDays: {'2026-11-06': ['Majri OC'], '2026-11-07': ['Gauri Pauni OC (2nd)', 'Sasti OC'], '2026-11-08': ['Jayant OC']}};
+  const api = createMisAttendance(pool, {fetchMis: async url => {fetches++; requestedUrl = url; await answered; return Response.json(cutAnswer);}});
+  const ask = actor => api({actor, permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: '2026-11-07', to: '2026-11-07', site: 'Gauri Pauni OB 2nd', trim: '1'}));
+  const first = ask('pc-1'), second = ask('pc-2');
+  await new Promise(resolve => setTimeout(resolve, 10));
+  release();
+  const [a, b] = await Promise.all([first, second]);
+  assert.equal(fetches, 1);
+  assert.equal(requestedUrl.searchParams.get('cut'), 'site');
+  assert.equal(requestedUrl.searchParams.get('site'), 'Gauri Pauni OB 2nd');
+  assert.deepEqual(a.otDuties.map(d => d.employeeId), ['CMLL16436']);
+  assert.deepEqual(b.otDuties, a.otDuties);
+  // The other sites of the day come from misSiteDays (only the dates asked), as the roster shows them when none is its own.
+  assert.deepEqual(a.misSites, ['Gauri Pauni OC (2nd)', 'Sasti OC']);
+  assert.equal(stored.size, 1);
+});
+
+test('a screen that wants every site does not ask Pulse-II for the cut', async () => {
+  let requestedUrl;
+  const pool = {
+    async query(sql) {if (sql.includes("kind='sites'")) return {rows: [{name: 'Majri OC'}]}; return {rows: []};}
+  };
+  const api = createMisAttendance(pool, {fetchMis: async url => {requestedUrl = url; return Response.json(report);}});
+  await api({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {}, new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site: 'Majri OC'}));
+  assert.equal(requestedUrl.searchParams.get('cut'), null);
+});
+
+// The same site when Pulse-II has already cut its answer (cut=site). Pulse-II's cut uses the looser rule, so for
+// "Dudhichua OB East" it still sends "Dudhichua OC"; HR Pulse leaves that site out, also on a day East has no card.
+test('an answer Pulse-II already cut to a site of almost another site\'s name is still given only its own cards', async () => {
+  const line = (site, siteKey, employeeId) => ({date: '2026-11-16', site, siteKey, shift: 'S1', employeeId, employeeKey: employeeId, employeeName: employeeId});
+  const cut = {
+    attendanceEquipment: [], ot: [], performance: [], details: [], exceptions: [], hrChanges: [], cut: 'site',
+    attendanceShifts: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'E'}, {siteKey: 'dudhichua ob', date: '2026-11-16', shift: 'S1', state: 'closed', batch: 'B'}],
+    otDuties: [line('Dudhichua East OC', 'dudhichua east ob', 'E1'), line('Dudhichua OC', 'dudhichua ob', 'W1')],
+    days: [{siteKey: 'dudhichua east ob', date: '2026-11-16', lines: 1, signature: 'e'}, {siteKey: 'dudhichua ob', date: '2026-11-16', lines: 1, signature: 'w'}],
+    misSiteDays: {'2026-11-16': ['Dudhichua East OC', 'Dudhichua OC', 'Jayant OC']}
+  };
+  const noCard = {...cut, otDuties: [line('Dudhichua OC', 'dudhichua ob', 'W1')], days: [cut.days[1]], misSiteDays: {'2026-11-16': ['Dudhichua OC']},
+    attendanceShifts: [{siteKey: 'dudhichua east ob', date: '2026-11-16', shift: 'S1', state: 'none', batch: ''}, cut.attendanceShifts[1]]};
+  const pool = {async query(sql) { return {rows: sql.includes("kind='sites'") ? [{name: 'Dudhichua OB East'}] : []}; }};
+  const read = async answer => createMisAttendance(pool, {fetchMis: async () => Response.json(answer)})({actor: 'hr', permissions: {}}, grant, 'mis', 'GET', {},
+    new URLSearchParams({from: '2026-11-16', to: '2026-11-16', site: 'Dudhichua OB East', trim: '1'}));
+  const east = await read(cut);
+  assert.deepEqual([east.otDuties.map(d => d.employeeId), east.days.map(d => d.signature), east.attendanceShifts.map(s => s.siteKey)], [['E1'], ['e'], ['dudhichua east ob']]);
+  assert.deepEqual(east.misSites, ['Dudhichua East OC', 'Dudhichua OC', 'Jayant OC']);
+  const empty = await read(noCard);
+  assert.deepEqual([empty.otDuties.length, empty.days.length, empty.attendanceShifts.map(s => s.siteKey)], [0, 0, ['dudhichua east ob']]);
 });

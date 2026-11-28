@@ -125,7 +125,7 @@ export async function fetchBiometric(grant: string, from: string, to: string, si
    `partial`: the days read so far, joined (sent only when another day has arrived). In `partial` the days still to come
    are listed in failedDays, so the roster leaves them blank instead of calling them absent. */
 export type ManualProgress={days:Record<string,DayState>;counts:Record<string,number>;errors:Record<string,string>;partial?:SiteRegister};
-export async function fetchManualBiometric(grant:string,from:string,to:string,site:string,onProgress?:(progress:ManualProgress)=>void):Promise<SiteRegister>{
+export async function fetchManualBiometric(grant:string,from:string,to:string,site:string,onProgress?:(progress:ManualProgress)=>void,source:'manual1'|'manual2'='manual1'):Promise<SiteRegister>{
  const days=daysBetween(from,to),results:SiteRegister[]=[],dayErrors:Record<string,string>={};let next=0;
  const states:Record<string,DayState>=Object.fromEntries(days.map(day=>[day,'queued' as DayState])),counts:Record<string,number>={};
  const tell=(arrived=false)=>{
@@ -135,7 +135,8 @@ export async function fetchManualBiometric(grant:string,from:string,to:string,si
  };
  tell();
  async function worker(){while(next<days.length){const day=days[next++];states[day]='loading';tell();for(let attempt=1;attempt<=TRIP_ATTEMPTS;attempt++)try{
-   const register=await api<SiteRegister>(grant,'attendance/manual-biometric?'+new URLSearchParams({site,from:day,to:day}),'GET',undefined,BIO_DAY_TIMEOUT_MS);
+   const endpoint=source==='manual2'?'attendance/manual-biometric-ii':'attendance/manual-biometric';
+   const register=await api<SiteRegister>(grant,endpoint+'?'+new URLSearchParams({site,from:day,to:day}),'GET',undefined,BIO_DAY_TIMEOUT_MS);
    const machines=Array.isArray(register?.machines)?register.machines:[];
    results.push({...register,rows:Array.isArray(register?.rows)?register.rows:[],machines});delete dayErrors[day];
    states[day]='done';counts[day]=machines.reduce((sum,machine)=>sum+(Number(machine.punches)||0),0);tell(true);break;
@@ -270,26 +271,27 @@ export async function saveBiometricDays(grant: string, site: string, days: strin
  *  sheets stay on the server (brief=1, 27 Nov 2026): a 20-day answer with every sheet took more than 30 seconds to
  *  arrive and the page showed "Biometric punches unavailable: signal timed out". */
 export type SavedManualDay = SavedInfo & {day: string; punches: number; people: number};
-export async function readSavedManualBiometric(grant: string, site: string, from: string, to: string): Promise<SavedManualDay[]> {
-  const result = await api<{days?: SavedManualDay[]}>(grant, 'attendance/manual-biometric-days?' + new URLSearchParams({site, from, to, brief: '1'}));
+export async function readSavedManualBiometric(grant: string, site: string, from: string, to: string, source:'manual1'|'manual2'='manual1'): Promise<SavedManualDay[]> {
+  const route=source==='manual2'?'attendance/manual-biometric-ii-days':'attendance/manual-biometric-days';
+  const result = await api<{days?: SavedManualDay[]}>(grant, route+'?' + new URLSearchParams({site, from, to, brief: '1'}));
   return (Array.isArray(result?.days) ? result.days : []).filter(d => typeof d?.day === 'string')
     .map(d => ({day: d.day, punches: Number(d.punches) || 0, people: Number(d.people) || 0, savedBy: d.savedBy, savedAt: d.savedAt}));
 }
-export async function saveManualBiometricDays(grant: string, site: string, days: string[], onDay: (day: string, info: (SavedInfo & {punches: number; people: number}) | null, error?: string) => void) {
+export async function saveManualBiometricDays(grant: string, site: string, days: string[], onDay: (day: string, info: (SavedInfo & {punches: number; people: number}) | null, error?: string) => void, source:'manual1'|'manual2'='manual1') {
   let next = 0;
   const failed: string[] = [];
   async function worker() {
     while (next < days.length) {
       const day = days[next++];
-      try { onDay(day, await api<SavedInfo & {day: string; punches: number; people: number}>(grant, 'attendance/manual-biometric-days', 'POST', {site, day})); }
+      try { onDay(day, await api<SavedInfo & {day: string; punches: number; people: number}>(grant, source==='manual2'?'attendance/manual-biometric-ii-days':'attendance/manual-biometric-days', 'POST', {site, day})); }
       catch (e) { failed.push(day); onDay(day, null, (e as Error).message); }
     }
   }
   await Promise.all(Array.from({length: Math.min(2, days.length)}, worker));
   return failed.sort();
 }
-export async function deleteManualBiometricDays(grant: string, site: string, days: string[]) {
-  return api<{deleted:number;punches:number;days:string[]}>(grant, 'attendance/manual-biometric-days/delete', 'POST', {site, days});
+export async function deleteManualBiometricDays(grant: string, site: string, days: string[], source:'manual1'|'manual2'='manual1') {
+  return api<{deleted:number;punches:number;days:string[]}>(grant, source==='manual2'?'attendance/manual-biometric-ii-days/delete':'attendance/manual-biometric-days/delete', 'POST', {site, days});
 }
 
 /* Biometric tab, day by day (owner, 22 Nov 2026: "the same way as the trip card"): the site's machines are read one day

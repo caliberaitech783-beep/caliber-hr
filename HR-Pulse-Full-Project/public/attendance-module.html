@@ -1151,16 +1151,37 @@ const plT=x=>x==='----'?null:(+x.slice(0,2))*60+(+x.slice(2));
 const hm=m=>m==null?'—':`${pad(Math.floor(m/60)%24)}:${pad(m%60)}`;
 function plShift(i){if(i==null)return'—';if(i>=210&&i<420)return'A';if(i>=660&&i<900)return'B';if(i>=1140&&i<1380)return'C';if(i>=390&&i<660)return'G';return'—'}
 const PL_START={A:300,B:780,C:1260};
-function plDay(e,d){const s=e[4].substr((d-1)*9,9);const st=s[0];let i=plT(s.substr(1,4)),o=plT(s.substr(5,4));const same=i!=null&&o!=null&&Math.abs(o-i)<=DEDUP_MIN;if(same)o=null;
+const plDutyCache=new WeakMap();
+function plDuties(e){
+  const cached=plDutyCache.get(e);if(cached&&cached.raw===e[4])return cached.days;
+  const days=[];
+  for(let offset=0;offset<e[4].length;offset+=9){const s=e[4].substr(offset,9);days.push({st:s[0],i:plT(s.substr(1,4)),o:plT(s.substr(5,4))})}
+  // Calendar-day exports can put C's morning OUT on the following date.
+  // Consume that punch once, keeping the next evening's IN on its own duty.
+  for(let n=0;n<days.length-1;n++){
+    const duty=days[n],next=days[n+1];
+    if(plShift(duty.i)!=='C'||(duty.o!=null&&Math.abs(duty.o-duty.i)>DEDUP_MIN))continue;
+    if(next.o!=null&&next.o<660&&plShift(next.i)!=='C'){
+      duty.o=next.o;
+      if(next.i!=null&&Math.abs(next.i-next.o)<=DEDUP_MIN)next.i=null;
+      next.o=null;next.carryOut=true;
+    }else if(next.i!=null&&next.i<660&&(next.o==null||plShift(next.o)==='C'||Math.abs(next.i-next.o)<=DEDUP_MIN)){
+      duty.o=next.i;next.i=plShift(next.o)==='C'?next.o:null;next.o=null;next.carryOut=true;
+    }
+  }
+  plDutyCache.set(e,{raw:e[4],days});return days;
+}
+function plDay(e,d){const duty=plDuties(e)[d-1]||{st:'-',i:null,o:null};const st=duty.st;let {i,o}=duty;const same=i!=null&&o!=null&&Math.abs(o-i)<=DEDUP_MIN;if(same)o=null;
   let h=null,night=false;if(i!=null&&o!=null){h=(o-i)/60;if(h<0){h+=24;night=true}}
   const sh=plShift(i);const late=PL_START[sh]!=null&&i-PL_START[sh]>GRACE&&i-PL_START[sh]<180;
   const dbl=h!=null&&h>=15;const single=(i==null)!==(o==null);const none=i==null&&o==null;
-  let sys=none?'NV':single?'MP':dutyCode(h);const v=PL.ver[e[0]+'|'+d];if(v)sys=v.code;
-  const mism=(st==='P'&&(none||single))||(st==='A'&&!none);
-  return{st,i,o,h,night,sh,late,dbl,single,none,sys,v,mism,same}}
+  const continuation=none&&duty.carryOut;
+  let sys=continuation?'—':none?'NV':single?'MP':dutyCode(h);const v=PL.ver[e[0]+'|'+d];if(v)sys=v.code;
+  const mism=!continuation&&((st==='P'&&(none||single))||(st==='A'&&!none));
+  return{st,i,o,h,night,sh,late,dbl,single,none,sys,v,mism,same,continuation}}
 function plTrip(id,d){if(!RC.data||RC.data.month!==PL.data.month)return null;if(!PL._t){PL._t={};RC.data.emps.forEach(x=>{if(x[5])PL._t[x[0]]=x})}const t=PL._t[id];return t?t[5][d-1]:null}
 function plFlags(x){const f=[];if(x.dbl)f.push('<span class="tag a">Double shift · OT</span>');if(x.night)f.push('<span class="tag v">Night +1</span>');if(x.late)f.push('<span class="tag r">Late</span>');
-  if(x.single)f.push(`<span class="tag o">${x.same?'Same punch twice':x.i==null?'IN missing':'OUT missing'}</span>`);if(x.none&&x.st==='P')f.push('<span class="tag o">Sheet P, no punch</span>');if(x.st==='A'&&!x.none)f.push('<span class="tag o">Sheet A, punch found</span>');if(x.h!=null&&x.h<MIN_P)f.push('<span class="tag r">Short hours</span>');return f.join(' ')}
+  if(x.continuation)f.push('<span class="tag v">OUT linked to previous C shift</span>');if(x.single)f.push(`<span class="tag o">${x.same?'Same punch twice':x.i==null?'IN missing':'OUT missing'}</span>`);if(x.none&&x.st==='P'&&!x.continuation)f.push('<span class="tag o">Sheet P, no punch</span>');if(x.st==='A'&&!x.none)f.push('<span class="tag o">Sheet A, punch found</span>');if(x.h!=null&&x.h<MIN_P)f.push('<span class="tag r">Short hours</span>');return f.join(' ')}
 VIEWS.punch=function(){
   const hasJ=scopeLocs().some(l=>l.id==='JYT');if(!hasJ||S.plSrc==='demo')return VIEWS.punchDemo(hasJ);
   const D=PL.data,N=D.days;if(!PL.day||PL.day>N)PL.day=N;const d=PL.day;const mon=D.month.split('-');const dn=x=>['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(+mon[0],+mon[1]-1,x).getDay()];
