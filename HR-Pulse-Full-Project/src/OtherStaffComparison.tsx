@@ -4,7 +4,8 @@ import {downloadBlob} from './api';
 import {buildRoster} from './rosterModel';
 import {fetchManualBiometric} from './rosterData';
 import {DEFAULT_POLICY} from '../server/attendance-policy.mjs';
-import {MISMATCH_LABELS,compareAttendance,comparisonWorkbook,dmy,readAttendanceExcel,type AttendanceSheet,type ComparisonResult,type MismatchKind} from './staffSheetCheck';
+import {MISMATCH_LABELS,compareAttendance,comparisonWorkbook,dmy,readAttendanceExcel,type AttendanceSheet,type ComparisonResult,type Mismatch,type MismatchKind,type OkDay} from './staffSheetCheck';
+type ResultTab='mismatch'|'ok'|'all';
 import './other-staff-comparison.css';
 
 /* The Comparison tab of the attendance roster (owner, 28 Nov 2026): see staffSheetCheck.ts. */
@@ -18,7 +19,7 @@ export default function OtherStaffComparison({grant,sites,today,initialSite=''}:
  const [sheet,setSheet]=useState<AttendanceSheet|null>(null);
  const [site,setSite]=useState(initialSite),[from,setFrom]=useState(''),[to,setTo]=useState('');
  const [run,setRun]=useState<{busy:boolean;message:string;error:string}>({busy:false,message:'',error:''});
- const [result,setResult]=useState<ComparisonResult|null>(null),[book,setBook]=useState<{name:string;data:ArrayBuffer}|null>(null);
+ const [result,setResult]=useState<ComparisonResult|null>(null),[book,setBook]=useState<{name:string;data:ArrayBuffer}|null>(null),[tab,setTab]=useState<ResultTab>('mismatch');
  async function choose(event:ChangeEvent<HTMLInputElement>){
   const chosen=event.target.files?.[0];event.target.value='';if(!chosen)return;
   setFile({name:chosen.name,busy:true,error:''});setSheet(null);setResult(null);setBook(null);setRun({busy:false,message:'',error:''});
@@ -47,12 +48,15 @@ export default function OtherStaffComparison({grant,sites,today,initialSite=''}:
    const compared=compareAttendance({sheet,groups,site,from,to,read});
    const data=await comparisonWorkbook(compared,file.name);
    const name=`Other-staff-attendance-comparison-${site.replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'')}-${from}-to-${to}.xlsx`;
-   setResult(compared);setBook({name,data});setRun({busy:false,message:'',error:''});
+   setResult(compared);setTab('mismatch');setBook({name,data});setRun({busy:false,message:'',error:''});
    downloadBlob(name,new Blob([data],{type:XLSX_TYPE}));
   }catch(error){setRun({busy:false,message:'',error:(error as Error).message});}
  }
  const kinds=result?(Object.keys(MISMATCH_LABELS) as MismatchKind[]).filter(kind=>result.counts[kind]):[];
  const peopleWith=result?new Set(result.mismatches.map(m=>m.id)).size:0;
+ // Mismatches / OK attendance / All (owner, 28 Nov 2026): the same check, nothing is read again.
+ const lines:(Mismatch|OkDay)[]=!result?[]:tab==='mismatch'?result.mismatches:tab==='ok'?result.ok
+  :[...result.mismatches,...result.ok].sort((a,b)=>(a.row??1e9)-(b.row??1e9)||a.id.localeCompare(b.id,undefined,{numeric:true})||a.date.localeCompare(b.date));
  return <div className="osc">
   <p className="osc-intro">The site's attendance Excel of the other staff is checked against <b>Other Staff Biometric</b>: the DAT punches imported in Manual Biometric, for every department and designation except Drivers and Operators. Upload the sheet (one line per employee with EMP. ID, NAME and DESIGNATION, and one column per date marked P or A), choose the site and dates and press Check. It is compared day by day, both ways: <b>biometric present, sheet not P</b>, and <b>sheet P, no biometric punch</b>. Nothing is changed in HR Pulse.</p>
   <section className="osc-step">
@@ -82,9 +86,13 @@ export default function OtherStaffComparison({grant,sites,today,initialSite=''}:
     {book&&<button type="button" onClick={()=>downloadBlob(book.name,new Blob([book.data],{type:XLSX_TYPE}))}><Download size={15}/>Download Excel again</button>}</div>
    <p className="osc-note">{many(result.compared.length,'date')} compared{result.notInSheet.length?` · no column in the sheet for ${result.notInSheet.map(dmy).join(', ')}`:''}{result.notRead.length?` · biometric not read for ${result.notRead.map(dmy).join(', ')}`:''}{result.apart.length?` · ${many(result.apart.length,'Driver / Operator line')} listed apart`:''}</p>
    {kinds.length>0&&<div className="osc-counts">{kinds.map(kind=><span key={kind} className={'osc-kind osc-'+kind}>{MISMATCH_LABELS[kind]}: <b>{result.counts[kind]}</b></span>)}</div>}
-   {result.mismatches.length?<div className="table-scroll osc-table"><table><thead><tr><th>Row</th><th>EMP. ID</th><th>Name</th><th>Designation</th><th>Date</th><th>Mismatch</th><th>Sheet says</th><th>Biometric says</th><th>In / Out</th></tr></thead>
-    <tbody>{result.mismatches.map((m,index)=><tr key={index}><td>{m.row??''}</td><td>{m.id}</td><td>{m.name}</td><td>{m.designation}</td><td>{dmy(m.date)}</td><td><span className={'osc-kind osc-'+m.kind}>{MISMATCH_LABELS[m.kind]}</span></td><td>{m.sheetSays}</td><td>{m.bioSays}</td><td>{m.inOut}</td></tr>)}</tbody></table></div>
-    :<p className="roster-saved" role="status">The sheet and Other Staff Biometric agree on every compared date.</p>}
+   <div className="module-tabs osc-tabs" role="tablist" aria-label="Comparison result">
+    {([['mismatch',`Mismatches (${result.mismatches.length.toLocaleString('en-IN')})`],['ok',`OK attendance (${result.ok.length.toLocaleString('en-IN')})`],['all',`All (${(result.mismatches.length+result.ok.length).toLocaleString('en-IN')})`]] as [ResultTab,string][]).map(([id,label])=>
+     <button key={id} type="button" role="tab" aria-selected={tab===id} className={tab===id?'selected':''} onClick={()=>setTab(id)}>{label}</button>)}
+   </div>
+   {lines.length?<div className="table-scroll osc-table"><table><thead><tr><th>Row</th><th>EMP. ID</th><th>Name</th><th>Designation</th><th>Date</th><th>{tab==='mismatch'?'Mismatch':'Result'}</th><th>Sheet says</th><th>Biometric says</th><th>In / Out</th></tr></thead>
+    <tbody>{lines.map((m,index)=><tr key={index} className={m.kind==='ok'?'osc-ok-row':undefined}><td>{m.row??''}</td><td>{m.id}</td><td>{m.name}</td><td>{m.designation}</td><td>{dmy(m.date)}</td><td><span className={'osc-kind osc-'+m.kind}>{m.kind==='ok'?'OK':MISMATCH_LABELS[m.kind]}</span></td><td>{m.sheetSays}</td><td>{m.bioSays}</td><td>{m.inOut}</td></tr>)}</tbody></table></div>
+    :<p className="roster-saved" role="status">{tab==='ok'?'No compared day agrees between the sheet and Other Staff Biometric.':'The sheet and Other Staff Biometric agree on every compared date.'}</p>}
    {result.apart.length>0&&<details className="osc-apart"><summary>Listed apart, not compared ({result.apart.length})</summary><ul>{result.apart.map(a=><li key={a.id+(a.row||'')}>{a.id} · {a.name} · {a.designation} — {a.why}</li>)}</ul></details>}
   </section>}
  </div>;

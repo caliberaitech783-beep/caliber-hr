@@ -47,6 +47,8 @@ describe('Other Staff Biometric comparison',()=>{
    'CMLL104 01 sheet-no-bio',
    'CMLL200 02 not-in-sheet',
   ]);
+  // OK: sheet P with biometric P, sheet HD with biometric HD; blank marks are neither OK nor a mismatch.
+  expect(result.ok.map(m=>`${m.id} ${m.date.slice(8)}`)).toEqual(['CMLL101 01','CMPL0102 02']);
   expect(result.apart.map(a=>a.id)).toEqual(['CMLL103']);
   expect(result.people.find(p=>p.id==='CMLL104')?.found).toBe(false);
   expect(result.counts['sheet-no-bio']).toBe(2);
@@ -57,11 +59,15 @@ describe('Other Staff Biometric comparison',()=>{
   expect(result.notRead).toEqual(['2026-11-02','2026-11-03','2026-11-04']);
   expect(result.notInSheet).toEqual(['2026-11-04']);
  });
- it('writes Mismatches, Employee summary and Not compared sheets',async()=>{
+ it('writes Mismatches, OK attendance, Employee summary and Not compared sheets',async()=>{
   const result=compareAttendance({sheet,groups:[group('CMLL101','Asha','Clerk',{'2026-11-01':'A'})],site:'Sasti',from:'2026-11-01',to:'2026-11-01',read:new Set(['2026-11-01'])});
   const book=read(await comparisonWorkbook(result,'sasti.xlsx'),{type:'array'});
-  expect(book.SheetNames).toEqual(['Mismatches','Employee summary','Not compared']);
+  expect(book.SheetNames).toEqual(['Mismatches','OK attendance','Employee summary','Not compared']);
   const lines=utils.sheet_to_json<unknown[]>(book.Sheets.Mismatches,{header:1});
   expect(lines[3]).toEqual([3,'CMLL101','Asha','Clerk','01-11-2026','Sheet P, no biometric punch','P','A (no punch)','09:00 / 18:00']);
+  const agreed=compareAttendance({sheet,groups:[group('CMLL101','Asha','Clerk',{'2026-11-01':'P','2026-11-03':'A'})],site:'Sasti',from:'2026-11-01',to:'2026-11-03',read:new Set(['2026-11-01','2026-11-03'])});
+  const okBook=read(await comparisonWorkbook(agreed,''),{type:'array'});
+  const okLines=utils.sheet_to_json<unknown[]>(okBook.Sheets['OK attendance'],{header:1});
+  expect(okLines.slice(3).map(line=>[line[1],line[4],line[5],line[6]])).toEqual([['CMLL101','01-11-2026','OK','P'],['CMLL101','03-11-2026','OK','A']]);
  });
 });

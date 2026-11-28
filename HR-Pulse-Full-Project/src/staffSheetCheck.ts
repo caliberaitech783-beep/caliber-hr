@@ -103,10 +103,14 @@ export const MISMATCH_LABELS:Record<MismatchKind,string>={
  'not-in-sheet':'Biometric present, not in the sheet',
 };
 export type Mismatch={kind:MismatchKind;id:string;name:string;designation:string;date:string;sheetSays:string;bioSays:string;inOut:string;row?:number};
+/** A day the sheet and biometric agree on (owner, 28 Nov 2026: "OK attendance" tab): sheet P and biometric P, sheet half
+    day and biometric HD, or sheet A / leave / WO and no punch. A blank or unreadable mark is neither OK nor a mismatch. */
+export type OkDay=Omit<Mismatch,'kind'>&{kind:'ok'};
+export const OK_LABEL='OK: sheet and biometric agree';
 export type PersonLine={id:string;name:string;designation:string;row?:number;found:boolean;sheetDays:number;bioDays:number;mismatches:number;remark:string};
 export type ApartLine={id:string;name:string;designation:string;row?:number;why:string};
 export type ComparisonResult={site:string;from:string;to:string;compared:string[];notInSheet:string[];notRead:string[];
- mismatches:Mismatch[];people:PersonLine[];apart:ApartLine[];noId:number[];counts:Record<MismatchKind,number>};
+ mismatches:Mismatch[];ok:OkDay[];people:PersonLine[];apart:ApartLine[];noId:number[];counts:Record<MismatchKind,number>};
 
 /** Drivers and Operators belong to Manual Biometric, not to Other Staff Biometric (same rule as that tab). */
 export const isDriverOrOperator=(department:string,designation:string)=>/(driver|operator)/i.test(`${department||''} ${designation||''}`);
@@ -130,7 +134,7 @@ export function compareAttendance({sheet,groups,site,from,to,read}:{sheet:Attend
   const n=numberOf(g.code);if(n)byNumber.set(n,[...(byNumber.get(n)||[]),g]);
  }
  const find=(id:string)=>{const key=upper(id),n=numberOf(id),same=n?byNumber.get(n)||[]:[];return byCode.get(key)||byAForm.get(key)||(same.length===1?same[0]:undefined);};
- const mismatches:Mismatch[]=[],people:PersonLine[]=[],apart:ApartLine[]=[],seen=new Set<string>();
+ const mismatches:Mismatch[]=[],ok:OkDay[]=[],people:PersonLine[]=[],apart:ApartLine[]=[],seen=new Set<string>();
  const dayOf=(g:RosterGroup|undefined,date:string)=>g?.bio?.days.find(d=>d.date===date);
  const inOut=(g:RosterGroup|undefined,date:string)=>{const d=dayOf(g,date);return d&&(d.in||d.out)?`${d.in||'—'} / ${(d.out||'—').replace(' (+1)',' +1')}`:'';};
  const credit=(kind:MarkKind)=>kind==='present'?1:kind==='half'?0.5:0;
@@ -147,9 +151,11 @@ export function compareAttendance({sheet,groups,site,from,to,read}:{sheet:Attend
    const mark=p.marks[date]||'',kind=markKind(mark),code=g?.bioCodes[date]||'';
    sheetDays+=credit(kind);bioDays+=bioCredit(code);
    const add=(k:MismatchKind)=>{count++;mismatches.push({kind:k,id:p.id,name:p.name||g?.name||'',designation,date,sheetSays:mark||'(blank)',bioSays:bioText(code),inOut:inOut(g,date),row:p.row});};
-   if(kind==='present'){if(code==='HD')add('sheet-half');else if(code==='MP'||code==='IN')add('sheet-miss');else if(code!=='P')add('sheet-no-bio');}
-   else if(kind==='half'){if(code==='P')add('half-full');else if(!WORKED.has(code))add('half-no-bio');}
+   const agree=()=>ok.push({kind:'ok',id:p.id,name:p.name||g?.name||'',designation,date,sheetSays:mark,bioSays:bioText(code),inOut:inOut(g,date),row:p.row});
+   if(kind==='present'){if(code==='P')agree();else if(code==='HD')add('sheet-half');else if(code==='MP'||code==='IN')add('sheet-miss');else add('sheet-no-bio');}
+   else if(kind==='half'){if(code==='HD')agree();else if(code==='P')add('half-full');else if(!WORKED.has(code))add('half-no-bio');}
    else if(WORKED.has(code))add('bio-not-sheet');
+   else if(kind==='absent'||kind==='leave'||kind==='none')agree();
   }
   people.push({id:p.id,name:p.name||g?.name||'',designation,row:p.row,found:Boolean(g),sheetDays,bioDays,mismatches:count,
    remark:g?'':'No punch of this EMP. ID in the imported DAT log for these dates.'});
@@ -162,11 +168,12 @@ export function compareAttendance({sheet,groups,site,from,to,read}:{sheet:Attend
   people.push({id:g.code,name:g.name,designation:g.designation,found:true,sheetDays:0,bioDays:days.reduce((s,d)=>s+bioCredit(g.bioCodes[d]),0),mismatches:days.length,remark:'Has biometric punches but no line in the sheet.'});
  }
  mismatches.sort((a,b)=>(a.row??1e9)-(b.row??1e9)||a.id.localeCompare(b.id,undefined,{numeric:true})||a.date.localeCompare(b.date));
+ ok.sort((a,b)=>(a.row??1e9)-(b.row??1e9)||a.date.localeCompare(b.date));
  const counts=Object.fromEntries(Object.keys(MISMATCH_LABELS).map(k=>[k,mismatches.filter(m=>m.kind===k).length])) as Record<MismatchKind,number>;
- return {site,from,to,compared,notInSheet,notRead,mismatches,people,apart,noId:sheet.noId,counts};
+ return {site,from,to,compared,notInSheet,notRead,mismatches,ok,people,apart,noId:sheet.noId,counts};
 }
 
-/** The result as a workbook: Mismatches, Employee summary and Not compared. */
+/** The result as a workbook: Mismatches, OK attendance, Employee summary and Not compared. */
 export async function comparisonWorkbook(result:ComparisonResult,fileName:string):Promise<ArrayBuffer>{
  const {utils,write}=await import('xlsx');
  const book=utils.book_new();
@@ -174,6 +181,8 @@ export async function comparisonWorkbook(result:ComparisonResult,fileName:string
  const sheet=(rows:unknown[][],widths:number[])=>{const ws=utils.aoa_to_sheet(rows);ws['!cols']=widths.map(wch=>({wch}));return ws;};
  utils.book_append_sheet(book,sheet([[title],[],['Row in sheet','EMP. ID','Name','Designation','Date','Mismatch','Sheet says','Biometric says','In / Out'],
   ...result.mismatches.map(m=>[m.row??'',m.id,m.name,m.designation,dmy(m.date),MISMATCH_LABELS[m.kind],m.sheetSays,m.bioSays,m.inOut])],[12,14,28,22,12,36,16,18,16]),'Mismatches');
+ utils.book_append_sheet(book,sheet([[title],[],['Row in sheet','EMP. ID','Name','Designation','Date','Result','Sheet says','Biometric says','In / Out'],
+  ...result.ok.map(m=>[m.row??'',m.id,m.name,m.designation,dmy(m.date),'OK',m.sheetSays,m.bioSays,m.inOut])],[12,14,28,22,12,10,16,18,16]),'OK attendance');
  utils.book_append_sheet(book,sheet([[title],[],['Row in sheet','EMP. ID','Name','Designation','P days in sheet','P days in biometric','Difference','Mismatches','Remark'],
   ...result.people.map(p=>[p.row??'',p.id,p.name,p.designation,p.sheetDays,p.bioDays,p.sheetDays-p.bioDays,p.mismatches,p.remark])],[12,14,28,22,14,18,12,12,50]),'Employee summary');
  const notes:unknown[][]=[

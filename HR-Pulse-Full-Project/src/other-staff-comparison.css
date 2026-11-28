@@ -24,6 +24,11 @@
 .osc-table table{width:100%;border-collapse:collapse;font-size:13px}
 .osc-table th{position:sticky;top:0;background:#f6f1fb;color:#4f4160;text-align:left;padding:8px 10px}
 .osc-table td{padding:7px 10px;border-top:1px solid #f0ebf4}
+.osc-tabs{display:flex;gap:8px;margin:4px 0 12px;flex-wrap:wrap}
+.osc-tabs button{border:1px solid #d7cbe4;border-radius:8px;background:#fff;color:#4f4160;font-weight:600;padding:8px 14px}
+.osc-tabs button.selected{background:#5b2d9c;border-color:#5b2d9c;color:#fff}
+.osc-ok{background:#e6f4ea;color:#1e6b34}
+.osc-ok-row td{background:#f6fbf7}
 .osc-apart{margin-top:12px;font-size:13px}
 .osc-apart summary{cursor:pointer;font-weight:700;color:#4f4160}
 @media(max-width:760px){.osc-fields{grid-template-columns:1fr}}
