@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { grantedMenus } from './modules.mjs';
 import { siteIds } from './scope.mjs';
 import {employeeNumber,typedIdProblem,numberHolders,holderLine,samePerson} from './employee-number.mjs';
-import {normalizeWorkingHours,workingHoursProblem} from './working-hours.mjs';
+import {loadWorkingHours,normalizeWorkingHours,workingHoursProblem} from './working-hours.mjs';
 
 const kind = 'employeeMasterRegister';
 const pageSize = 50;
@@ -92,7 +92,7 @@ async function availableSites(db, scope) {
   return result.rows;
 }
 
-function parseChanges(input) {
+function parseChanges(input, allowed) {
   if (!Number.isInteger(input.version) || input.version < 1 || !input.changes ||
       typeof input.changes !== 'object' || Array.isArray(input.changes)) throw fail('Invalid employee changes.');
   const changes = {};
@@ -106,8 +106,8 @@ function parseChanges(input) {
   if (changes.name==='') throw fail('Name is required.');
   if (changes.siteCode!==undefined && !Object.hasOwn(siteNames,changes.siteCode)) throw fail('Select a valid site.');
   if (changes.leavingDate && !isDate(changes.leavingDate)) throw fail('Leaving date must be a date.');
-  // Working Hours of a register line (owner, 28 Nov 2026): 8, 9, 10, 11 or 12 hours, or blank.
-  if (changes.workingHours!==undefined) { if (workingHoursProblem(changes.workingHours)) throw fail(workingHoursProblem(changes.workingHours)); changes.workingHours = normalizeWorkingHours(changes.workingHours); }
+  // Working Hours of a register line (owner, 28 Nov 2026): one of Working Hour Master's hours, or blank.
+  if (changes.workingHours!==undefined) { if (workingHoursProblem(changes.workingHours,allowed)) throw fail(workingHoursProblem(changes.workingHours,allowed)); changes.workingHours = normalizeWorkingHours(changes.workingHours,allowed); }
   return changes;
 }
 
@@ -238,7 +238,7 @@ export function createEmployeeMasterRegister(pool) {
     },
     async updateEmployeeMasterRegister(profile, id, input) {
       const scope = await access(pool, profile);
-      const {siteCode,...changes} = parseChanges(input);
+      const {siteCode,...changes} = parseChanges(input, await loadWorkingHours(pool));
       const db = await pool.connect();
       try {
         await db.query('BEGIN');

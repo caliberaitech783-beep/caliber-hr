@@ -11,6 +11,8 @@ import PayrollProcessing from './PayrollProcessing';
 import TrialForm,{loadSelection,saveSelection,showsTrialForm,type TrialSelection} from './TrialForm';
 import LeaveMaster,{LeaveRequests} from './LeaveMaster';
 import ShiftMaster from './ShiftMaster';
+import WorkingHourMaster from './WorkingHourMaster';
+import {setWorkingHours} from '../server/working-hours.mjs';
 import AttendanceManagement,{attendanceGroup,attendanceSidebarView,attendanceSidebarViews,attendanceViews} from './AttendanceManagement';
 import {Fragment,useEffect,useRef,useState} from 'react';
 import {ArrowLeft,Banknote,Bell,Boxes,CalendarDays,ChevronDown,Clock,FileBarChart,Folder,GraduationCap,LayoutDashboard,LogOut,Menu,Moon,PanelLeftClose,Search,Settings,ShieldCheck,Sun,UserPlus,Users,X} from 'lucide-react';
@@ -41,6 +43,8 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
   const navSearch=useRef<HTMLInputElement>(null);
   const[dashboardTab,setDashboardTab]=useState<DashboardTab>('HR Dashboard');
   const[masterMenu,setMasterMenu]=useState('Shift Master');
+  /* Working Hour Master (owner, 28 Nov 2026): the hours every Working Hours field offers come with the configuration. */
+  const[,setWorkingHoursVersion]=useState(()=>{setWorkingHours(initialConfig.workingHours);return 0;});
   const[expandedMenu,setExpandedMenu]=useState(()=>isProjectManager(initialConfig.profile)?PM_APPROVALS_PAGE:decodeURIComponent(window.location.hash.slice(1))||'Employee Master');
   const workflow=new URLSearchParams(window.location.search).get('hrWorkflow');
   const[employeeMenu,setEmployeeMenuState]=useState(()=>{
@@ -127,9 +131,10 @@ export default function Workspace({session,initialConfig,logout,leaveOnly=false}
     </header>
     <div className={'content '+(page==='VTC Batch Module'?'content-vtc':'')}>{pmOnly?pmContent:<>{page==='Master Configuration'&&<section className="master-configuration" aria-label="Master Configuration">
       <div className="module-tabs" aria-label="Master configuration menus">
-        {['Shift Master','Holiday & Leave Master','Trial Hierarchy','Biometric Exception Master'].map(item=><button type="button" key={item} className={masterMenu===item?'selected':''} aria-pressed={masterMenu===item} onClick={()=>setMasterMenu(item)}>{item}</button>)}
+        {['Shift Master','Working Hour Master','Holiday & Leave Master','Trial Hierarchy','Biometric Exception Master'].map(item=><button type="button" key={item} className={masterMenu===item?'selected':''} aria-pressed={masterMenu===item} onClick={()=>setMasterMenu(item)}>{item}</button>)}
       </div>
       {masterMenu==='Shift Master'?<ShiftMaster grant={session.grant} module={config.shifts}/>
+        :masterMenu==='Working Hour Master'?<WorkingHourMaster grant={session.grant} module={config.workingHours} onChange={()=>setWorkingHoursVersion(x=>x+1)}/>
         :masterMenu==='Trial Hierarchy'?<HierarchyMaster grant={session.grant}/>
         :masterMenu==='Biometric Exception Master'?<BiometricExceptionMaster grant={session.grant}/>
         :masterMenu==='Holiday & Leave Master'?<LeaveMaster grant={session.grant} config={config} actor={profile.actor||''} canApprove={access.has('Approval Management')} notice={setNotice}/>

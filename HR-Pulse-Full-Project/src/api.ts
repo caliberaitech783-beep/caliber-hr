@@ -5,7 +5,7 @@ export type Profile={name:string;username?:string;email?:string;actor?:string;as
 export type Session={grant:string;profile:Profile};
 export type Field={key:string;label:string;type:string;required?:boolean;reference?:string;options?:string[];min?:number};
 export type Module={autoCode?:boolean;title:string;menu:string;category?:string;fields:Field[];canWrite:boolean};
-export type HRConfig={profile:Profile;modules:Record<string,Module>};
+export type HRConfig={profile:Profile;modules:Record<string,Module>;workingHours?:number[]};
 export type RecordRow={id:string;kind:string;code:string;name:string;data:Record<string,string|number>;status:string;version:number;updated_at:string;progress?:{state:string;stage:number;steps:{label:string}[]}|null};
 export type Lookup={department_id?:string;site_id?:string;id:string;kind:string;code:string;name:string};
 export async function pulse(action:string,data:object){

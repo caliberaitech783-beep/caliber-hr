@@ -1,6 +1,15 @@
 export const WORKING_HOURS_FIELD:'Working Hours *';
+export const WORKING_HOURS_KIND:'workingHours';
+export const DEFAULT_WORKING_HOURS:readonly number[];
 export const WORKING_HOURS_OPTIONS:readonly string[];
-export function normalizeWorkingHours(value:unknown):string|null;
-export function sheetWorkingHours(value:unknown):string|null;
-export function workingHoursProblem(value:unknown):string;
+export function hoursLabel(hours:number):string;
+export function validMasterHours(hours:number):boolean;
+export function setWorkingHours(list:unknown):readonly number[];
+export function currentWorkingHours():readonly number[];
+export function workingHoursOptions(allowed?:readonly number[]):string[];
+export function allowedText(allowed?:readonly number[]):string;
+export function normalizeWorkingHours(value:unknown,allowed?:readonly number[]):string|null;
+export function sheetWorkingHours(value:unknown,allowed?:readonly number[]):string|null;
+export function workingHoursProblem(value:unknown,allowed?:readonly number[]):string;
 export function workingHoursNumber(value:unknown):number|null;
+export function masterLine<T extends {code?:unknown}>(data:T):T&{code:string;name:string};

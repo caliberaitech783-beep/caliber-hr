@@ -44,6 +44,7 @@ test('a passed trial creates an active employee once without creating an approva
    linked={data:{...params[3],siteId:params[3].siteId||''},created_by:params[4],status:'ACTIVE'};
    return {rows:[]};
   }
+  if (sql.startsWith('SELECT kind,code,status FROM hr_records')) return {rows:[]}; // Working Hour Master (working-hours.mjs)
   assert.fail('Unexpected query: '+sql);
  }};
  const service=createService({connect:async()=>db});
@@ -56,7 +57,8 @@ test('a passed trial creates an active employee once without creating an approva
 
 test('joining requests fail before an employee record is written when mandatory data is missing',async()=>{
  const db={release(){},async query(sql){
-  assert.ok(['BEGIN','ROLLBACK'].includes(sql),'Unexpected write: '+sql);
+  // Reading Working Hour Master (working-hours.mjs) is not a write.
+  assert.ok(['BEGIN','ROLLBACK'].includes(sql)||sql.startsWith('SELECT kind,code,status FROM hr_records'),'Unexpected write: '+sql);
  }};
  const service=createService({connect:async()=>db});
  const incomplete={...employee,__officeData:{...employee.__officeData,'Mess Plan':' '}};
