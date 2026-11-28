@@ -40,6 +40,8 @@ export type RosterGroup = {
   /** Biometric by site: the machines and IDs punched on, and false for a machine ID not linked to an employee. */
   machines: string[];
   linked: boolean;
+  /** The public holidays HR set for this person's site in the roster's dates (from the register's HR calendar). */
+  holidays?: string[];
 };
 
 const CALENDAR = new Set(['WO', 'H', 'L', 'CO', 'OD']);
@@ -147,6 +149,7 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
   }
   for (const group of groups) {
     const days = new Map((group.bio?.days || []).map(d => [d.date, d]));
+    group.holidays = dates.filter(date => days.get(date)?.calendar === 'H');
     for (const date of dates) {
       if (date > today) continue;
       const day = days.get(date);
@@ -156,26 +159,61 @@ export function buildRoster(register: RegisterRow[], trips: AttendanceRow[] | nu
       if (!trips || !group.hasTripCards || (tripRead && !tripRead.has(date))) continue;
       if (bioUnread) {const read = group.tripDays[date]?.code || ''; if (read) group.tripCodes[date] = read; continue;}
       const calendar = day?.calendar || (CALENDAR.has(bio) ? bio : '');
-      const tripDay = group.tripDays[date];
       // Without a biometric line there is no HR calendar to tell a weekly off from an absence: leave such days blank.
-      const trip = tripDay?.code || calendar || (group.bio && date < today ? 'A' : '');
-      group.tripCodes[date] = trip;
+      group.tripCodes[date] = group.tripDays[date]?.code || calendar || (group.bio && date < today ? 'A' : '');
+    }
+    // Public holiday rule (owner, 28 Nov 2026) on both lines, before they are compared.
+    const holidays = new Set(group.holidays);
+    applyHolidayRule(group.bioCodes, dates, holidays);
+    applyHolidayRule(group.tripCodes, dates, holidays);
+    for (const date of dates) {
+      if (!(date in group.tripCodes)) continue;
+      const trip = group.tripCodes[date];
+      if (bioRead && !bioRead.has(date)) continue;
       if (trip === '?') group.pending++;
+      const bio = group.bioCodes[date] || '';
       if (!trip && !bio) continue;
       const reason = difference(trip, bio);
-      if (reason) group.mismatches.push({date, trip, bio, reason, tripDetail: tripText(tripDay), bioDetail: bioText(day)});
+      if (reason) group.mismatches.push({date, trip, bio, reason, tripDetail: tripText(group.tripDays[date]), bioDetail: bioText(days.get(date))});
     }
   }
   return groups.sort((a, b) => a.name.localeCompare(b.name) || a.code.localeCompare(b.code));
 }
 
-export type LineTotals = {totalDays: number; present: number; half: number; absent: number; weeklyOff: number; holiday: number; compOff: number; leave: number; onDuty: number; missPunch: number; lateEarly: number; cuts: number; paidDays: number};
-/** Totals of one roster line. Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + comp off + leave + on duty. */
-export function lineTotals(codes: Record<string, string>, dates: string[], extra: {lateEarly?: number; cuts?: number} = {}): LineTotals {
+/** A day's mark that means the person came to work (a trip card, a punch, a half day). */
+const CAME = new Set(['P', 'IN', 'HD', 'MP']);
+/**
+ * Public holiday (PH) rule, owner 28 Nov 2026 (Pulse II HR deck, slide 10), on the PH dates HR set for the site:
+ *  1. Works on the PH (present, half day or miss punch): the work counts and the PH is credited too, so a present PH is paid twice.
+ *  2. Not at work on the PH, but not absent the day before or the day after (present, leave, OD, comp off): the PH is credited (H).
+ *  3. Absent the day before and the day after: the PH is not credited and shows A.
+ * "Before" and "after" skip weekly offs and other holidays. A side that is not known (outside the roster's dates, after
+ * today, not read yet, trip card not verified) never takes the PH away: it is lost only when both sides are A.
+ * Changes `codes` in place and returns the PH dates lost.
+ */
+export function applyHolidayRule(codes: Record<string, string>, dates: string[], holidays: Set<string>): string[] {
+  const side = (index: number, step: number) => {
+    for (let i = index + step; i >= 0 && i < dates.length; i += step) {
+      const code = codes[dates[i]] || '';
+      if (code === 'WO' || code === 'H' || (holidays.has(dates[i]) && !CAME.has(code))) continue;
+      return code;
+    }
+    return '';
+  };
+  const lost = dates.filter((date, index) => holidays.has(date) && codes[date] === 'H' && side(index, -1) === 'A' && side(index, 1) === 'A');
+  for (const date of lost) codes[date] = 'A';
+  return lost;
+}
+
+export type LineTotals = {totalDays: number; present: number; half: number; absent: number; weeklyOff: number; holiday: number; holidayWorked: number; compOff: number; leave: number; onDuty: number; missPunch: number; lateEarly: number; cuts: number; paidDays: number};
+/** Totals of one roster line. Paid days = present + half day ÷ 2 − half duty cuts ÷ 2 + weekly off + holiday + PH worked + comp off + leave + on duty.
+    PH worked: a public holiday on which the person came to work is credited once more, so it is paid twice (PH rule 1). */
+export function lineTotals(codes: Record<string, string>, dates: string[], extra: {lateEarly?: number; cuts?: number; holidays?: string[]} = {}): LineTotals {
   const list = dates.map(d => codes[d] || '');
   const count = (...wanted: string[]) => list.filter(c => wanted.includes(c)).length;
-  const t = {totalDays: dates.length, present: count('P', 'IN'), half: count('HD'), absent: count('A'), weeklyOff: count('WO'), holiday: count('H'), compOff: count('CO'),
+  const holidayWorked = (extra.holidays || []).filter(date => dates.includes(date) && CAME.has(codes[date] || '')).length;
+  const t = {totalDays: dates.length, present: count('P', 'IN'), half: count('HD'), absent: count('A'), weeklyOff: count('WO'), holiday: count('H'), holidayWorked, compOff: count('CO'),
     leave: count('L'), onDuty: count('OD'), missPunch: count('MP'), lateEarly: extra.lateEarly || 0, cuts: extra.cuts || 0, paidDays: 0};
-  t.paidDays = Math.max(0, Math.round((t.present + t.half / 2 - t.cuts / 2 + t.weeklyOff + t.holiday + t.compOff + t.leave + t.onDuty) * 100) / 100);
+  t.paidDays = Math.max(0, Math.round((t.present + t.half / 2 - t.cuts / 2 + t.weeklyOff + t.holiday + t.holidayWorked + t.compOff + t.leave + t.onDuty) * 100) / 100);
   return t;
 }

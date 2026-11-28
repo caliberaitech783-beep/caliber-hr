@@ -24,8 +24,9 @@ export function calculatePayroll(structure,inputs,month) {
   const [year,m]=month.split('-').map(Number);
   const days=new Date(Date.UTC(year,m,0)).getUTCDate();
   const paidDays=inputs.paidDays??days;
-  if(!Number.isFinite(paidDays)||paidDays<0||paidDays>days||!Number.isInteger(paidDays*2))
-    throw fail('Paid days must be within the month, in whole or half days.');
+  // A public holiday worked is paid twice (PH rule, owner 28 Nov 2026), so paid days may pass the month's days, never twice them.
+  if(!Number.isFinite(paidDays)||paidDays<0||paidDays>days*2||!Number.isInteger(paidDays*2))
+    throw fail('Paid days must be from 0 to twice the days of the month (a worked public holiday is paid twice), in whole or half days.');
   const earnings=Object.fromEntries(groups.structure.map(k=>[k,round(structure[k]*paidDays/days)]));
   Object.assign(earnings,{allowance:inputs.allowance??0,overtime:round((inputs.hours??0)*(inputs.hourlyRate??0)),bonus:inputs.bonus??0,incentive:inputs.incentive??0});
   const deductions=Object.fromEntries(['deduction',...groups.statutory].map(k=>[k,inputs[k]??0]));
