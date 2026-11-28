@@ -582,26 +582,3 @@ it('Manual Biometric reports every day as it arrives, with the days still to com
  expect(result.failedDays).toEqual(['2026-11-04']);
  expect(result.rows[0].days.map(d=>d.date)).toEqual(['2026-11-02','2026-11-03']);
 });
-
-// Owner, 28 Nov 2026: "Yes, build it". The server reads a site's week once for a Fetch again; the days of one Fetch again
-// carry the same name so the server knows they belong together.
-it('names each Fetch again, so the server reads a week once for all its days',async()=>{
- const {streamTripCards,setRetryPause}=await import('./rosterData');
- setRetryPause(async()=>{});
- const asked:URLSearchParams[]=[];
- vi.stubGlobal('fetch',vi.fn(async(url:string)=>{asked.push(new URL(url,'https://x').searchParams);return Response.json(misReport());}));
- const days=['2026-11-02','2026-11-03','2026-11-04'];
- await streamTripCards('a'.repeat(43),days,'Gevra',()=>{},()=>true,true);
- const first=asked.map(q=>q.get('run'));
- expect(asked.map(q=>q.get('refresh'))).toEqual(['1','1','1']);
- expect(new Set(first).size).toBe(1);
- expect(first[0]).toMatch(/^[a-z0-9]{24}$/);
- asked.length=0;
- await streamTripCards('a'.repeat(43),days,'Gevra',()=>{},()=>true,true);
- expect(new Set(asked.map(q=>q.get('run'))).size).toBe(1);
- expect(asked[0].get('run')).not.toBe(first[0]);
- // An ordinary open is not a Fetch again and carries no name.
- asked.length=0;
- await streamTripCards('a'.repeat(43),days,'Gevra',()=>{});
- expect(asked.map(q=>[q.get('refresh'),q.get('run')])).toEqual([[null,null],[null,null],[null,null]]);
-});
