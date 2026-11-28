@@ -33,11 +33,18 @@ let pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /** Tests replace the wait between tries. */
 export const setRetryPause = (fn: typeof pause) => {pause = fn;};
 
+/* The server reads a site's whole week from MIS in one request and hands out its days (28 Nov 2026; a day on its own
+   took MIS about 14 seconds, 28 times for a month). The first day of a week waits for that week, which can take longer
+   than the 30 seconds an ordinary request is given. */
+export const TRIP_DAY_TIMEOUT_MS = 60_000;
+/** A name for one "Fetch again": the server reads each week once for it instead of once for every day. */
+const newRun = () => Array.from({length: 4}, () => Math.random().toString(36).slice(2, 8).padEnd(6, '0')).join('');
+
 /** One day of MIS trip cards for the site, tried `attempts` times with a growing wait. */
-async function readDay(grant: string, day: string, site: string, attempts: number, onRetry: (attempt: number, error: string) => void, refresh = false) {
+async function readDay(grant: string, day: string, site: string, attempts: number, onRetry: (attempt: number, error: string) => void, refresh = false, run = '') {
   for (let attempt = 1; ; attempt++) {
     try {
-      const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day, ...(site ? {site, trim: '1'} : {}), ...(refresh ? {refresh: '1'} : {})}));
+      const data = await api<unknown>(grant, 'attendance/mis?' + new URLSearchParams({from: day, to: day, ...(site ? {site, trim: '1'} : {}), ...(refresh ? {refresh: '1', ...(run ? {run} : {})} : {})}), 'GET', undefined, TRIP_DAY_TIMEOUT_MS);
       // The feed also carries the day before (for night shifts); keep only this day so no duty is counted twice.
       const all = mapMisAttendance(data).filter(r => r.date === day);
       // trim: for one site the server sends that site only (server/mis-trim.mjs; one day of every site was 15.9 MB) and
@@ -61,14 +68,14 @@ async function readDay(grant: string, day: string, site: string, attempts: numbe
  * muster fills in day by day. `live()` false stops it (the user changed the site or dates).
  */
 export async function streamTripCards(grant: string, days: string[], site: string, onDay: (update: DayUpdate) => void, live: () => boolean = () => true, refresh = false) {
-  const failed = new Set<string>();
+  const failed = new Set<string>(), runName = refresh ? newRun() : '';
   let next = 0;
   for (const day of days) onDay({day, state: 'queued'});
   async function run(day: string, attempts: number) {
     if (!live()) return;
     onDay({day, state: 'loading'});
     try {
-      const result = await readDay(grant, day, site, attempts, (attempt, error) => {if (live()) onDay({day, state: 'retrying', attempt, error});}, refresh);
+      const result = await readDay(grant, day, site, attempts, (attempt, error) => {if (live()) onDay({day, state: 'retrying', attempt, error});}, refresh, runName);
       failed.delete(day);
       if (live()) onDay({day, state: 'done', rows: result.rows, sites: result.sites, signature: result.signature});
     } catch (e) {
